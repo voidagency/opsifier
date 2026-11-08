@@ -1,0 +1,70 @@
+{
+  "savedHint": "Déployez pour l'appliquer.",
+  "ports": {
+    "title": "Ports publiés",
+    "description": "Ouvrez un port TCP ou UDP sur l'adresse du serveur, pour le trafic qui ne passe pas par le proxy.",
+    "add": "Ajouter un port",
+    "edit": "Modifier ce port",
+    "delete": "Retirer ce port",
+    "deleteAll": "Retirer tous les ports",
+    "protocol": "Protocole",
+    "published": "Publié",
+    "publishedHint": "Le port ouvert sur le serveur.",
+    "target": "Cible",
+    "targetHint": "Le port écouté par le conteneur.",
+    "created": "Port ajouté",
+    "updated": "Port modifié",
+    "deleted": "Port retiré",
+    "deletedAll": "Ports retirés",
+    "empty": {
+      "title": "Rien n'est publié",
+      "description": "Le trafic web atteint ce service par ses domaines. Ne publiez un port que pour autre chose."
+    },
+    "dialog": {
+      "createTitle": "Ajouter un port",
+      "updateTitle": "Modifier ce port",
+      "create": "Ajouter",
+      "save": "Enregistrer"
+    },
+    "deleteDialog": {
+      "title": "Retirer ce port ?",
+      "description": "{{port}} sera fermé au prochain déploiement.",
+      "confirm": "Retirer le port"
+    },
+    "deleteAllDialog": {
+      "title": "Retirer tous les ports ?",
+      "description": "Tous les ports publiés seront fermés au prochain déploiement.",
+      "confirm": "Tout retirer"
+    }
+  },
+  "deploy": {
+    "title": "Exécution",
+    "description": "Réplicas, mises à jour et processus du conteneur.",
+    "submit": "Enregistrer",
+    "saved": "Réglages de déploiement enregistrés",
+    "replicas": "Réplicas",
+    "replicasStoppedHint": "Un service arrêté peut rester à 0, mais il lui en faut au moins 1 pour redémarrer.",
+    "zeroDowntime": "Sans interruption",
+    "zeroDowntimeHint": "Démarre la nouvelle tâche avant d'arrêter l'ancienne.",
+    "zeroDowntimeWithPorts": "Désactivé tant que ce service publie des ports : une nouvelle tâche ne peut pas occuper un port encore tenu par l'ancienne.",
+    "tiniInit": "Lancer avec un processus init",
+    "tiniInitHint": "Ajoute un petit init qui récupère les processus zombies et transmet les signaux.",
+    "command": "Commande",
+    "commandHint": "Remplace la commande de l'image. Exécutée par /bin/sh.",
+    "capAdd": "Ajouter des capacités",
+    "capDrop": "Retirer des capacités",
+    "sysctls": "Sysctls",
+    "sysctlsHint": "Paires clé=valeur séparées par des virgules.",
+    "groups": "Groupes supplémentaires",
+    "groupsHint": "Identifiants de groupe numériques séparés par des virgules."
+  },
+  "errors": {
+    "port": "Indiquez un port de 1 à 65535.",
+    "replicas": "Indiquez de 1 à 100 réplicas.",
+    "replicasStopped": "Indiquez un nombre entier de 0 à 100.",
+    "command": "Saisissez une commande ou laissez ce champ vide.",
+    "capabilities": "Utilisez des noms de capacités connus comme NET_ADMIN, une seule fois chacun et jamais dans les deux champs.",
+    "sysctls": "Utilisez des paires clé=valeur avec espace de noms, comme net.core.somaxconn=1024.",
+    "groups": "Utilisez des identifiants de groupe numériques."
+  }
+}

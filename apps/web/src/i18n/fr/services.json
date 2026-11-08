@@ -1,0 +1,171 @@
+{
+  "activeAction": "{{label}} en cours",
+  "status": {
+    "undeployed": "Non déployé",
+    "stopped": "Arrêté",
+    "starting": "En démarrage",
+    "running": "En marche",
+    "failing": "En échec",
+    "unknown": "État indisponible"
+  },
+  "tabs": {
+    "label": "Sections du service",
+    "overview": "Aperçu",
+    "source": "Source",
+    "deployments": "Déploiements",
+    "environment": "Environnement",
+    "domains": "Domaines",
+    "redirects": "Redirections",
+    "scripts": "Scripts",
+    "security": "Sécurité",
+    "resources": "Ressources",
+    "maintenance": "Maintenance",
+    "storage": "Stockage",
+    "advanced": "Avancé"
+  },
+  "crumbs": {
+    "projects": "Projets",
+    "services": "Services de ce projet",
+    "projectSettings": "Réglages de ce projet",
+    "newProject": "Nouveau projet",
+    "newService": "Ajouter un service",
+    "switchProject": "Projet {{name}}. Changer de projet",
+    "switchService": "Service {{name}}. Changer de service"
+  },
+  "rows": {
+    "wakeLabel_one": "{{count}} déploiement récent",
+    "wakeLabel_other": "{{count}} déploiements récents",
+    "replicasHint": "Tâches actives sur celles attendues",
+    "neverDeployed": "Jamais déployé"
+  },
+  "metrics": {
+    "cpu": "CPU",
+    "memory": "Mémoire",
+    "networkIn": "Entrée",
+    "networkOut": "Sortie"
+  },
+  "toolbar": {
+    "deploy": "Déployer",
+    "start": "Démarrer",
+    "stop": "Arrêter",
+    "restart": "Redémarrer",
+    "open": "Ouvrir ce site",
+    "more": "Plus d'actions",
+    "notes": "Notes",
+    "rebuild": "Déployer sans cache",
+    "destroy": "Supprimer le service",
+    "deployed": "Déploiement terminé",
+    "deployFailed": "Le déploiement n'a pas abouti",
+    "started": "Le service est lancé",
+    "startFailed": "Le service n'a pas démarré",
+    "stopped": "Le service est arrêté",
+    "stopFailed": "Le service ne s'est pas arrêté",
+    "restarted": "De nouvelles tâches tournent",
+    "restartFailed": "Le redémarrage n'a pas abouti"
+  },
+  "create": {
+    "pageTitle": "Ajouter à ce projet",
+    "pageDescription": "Choisissez ce qui doit tourner dans {{project}}.",
+    "tabs": {
+      "services": "Services",
+      "templates": "Modèles",
+      "custom": "Personnalisé"
+    },
+    "soon": "Plus tard",
+    "types": {
+      "app": {
+        "name": "Application",
+        "hint": "Exécute n'importe quelle image de conteneur."
+      },
+      "mysql": {
+        "name": "MySQL",
+        "hint": "Une base de données relationnelle gérée."
+      },
+      "mariadb": {
+        "name": "MariaDB",
+        "hint": "Le dérivé communautaire de MySQL."
+      },
+      "postgres": {
+        "name": "Postgres",
+        "hint": "Une base de données relationnelle gérée."
+      },
+      "mongo": {
+        "name": "Mongo",
+        "hint": "Une base de données orientée documents."
+      },
+      "redis": {
+        "name": "Redis",
+        "hint": "Un magasin de données en mémoire."
+      },
+      "box": {
+        "name": "Box",
+        "hint": "Un simple conteneur pour travailler."
+      },
+      "compose": {
+        "name": "Compose",
+        "hint": "Toute une pile depuis un fichier compose."
+      },
+      "wordpress": {
+        "name": "WordPress",
+        "hint": "Un site avec sa base de données."
+      }
+    },
+    "templates": {
+      "title": "Les modèles arrivent bientôt",
+      "description": "Des piles prêtes à l'emploi pour démarrer seront listées ici."
+    },
+    "custom": {
+      "title": "Les créations personnalisées arrivent bientôt",
+      "description": "La création de services depuis une description enregistrée se fera ici."
+    },
+    "title": "Ajouter une application",
+    "description": "Elle démarre à vide : choisissez ensuite une image.",
+    "name": "Nom du service",
+    "nameHint": "Lettres minuscules, chiffres, tirets et tirets bas.",
+    "required": "Donnez un nom au service.",
+    "invalid": "Utilisez des lettres minuscules, des chiffres, des tirets et des tirets bas, en finissant par une lettre ou un chiffre.",
+    "submit": "Ajouter",
+    "created": "Service {{name}} ajouté"
+  },
+  "init": {
+    "description": "Pour fonctionner, ce service a besoin de quelque chose à exécuter.",
+    "sourceTitle": "Que doit exécuter ce service ?",
+    "sourceDescription": "Rien n'est encore déployé. Choisissez une source ci-dessous, puis appuyez sur Déployer sur la page du service.",
+    "save": "Enregistrer et continuer",
+    "destroy": "Supprimer le service"
+  },
+  "destroy": {
+    "title": "Supprimer ce service ?",
+    "description": "Ses conteneurs, ses routes et son dossier de données seront supprimés.",
+    "confirm": "Supprimer",
+    "copyName": "Copier le nom du service",
+    "started": "Suppression de {{name}}"
+  },
+  "rename": {
+    "open": "Renommer ou déplacer ce service",
+    "title": "Renommer ou déplacer",
+    "description": "Les domaines restent inchangés. Le service doit d'abord être arrêté.",
+    "project": "Projet",
+    "name": "Nom",
+    "submit": "Enregistrer",
+    "done": "Le service s'appelle désormais {{name}}"
+  },
+  "notes": {
+    "title": "Notes",
+    "description": "Tout ce qu'il faut retenir sur ce service. Le Markdown est accepté.",
+    "heading": "Notes",
+    "edit": "Modifier",
+    "label": "Vos notes",
+    "save": "Enregistrer",
+    "saved": "Notes enregistrées",
+    "tooLong": "C'est trop long."
+  },
+  "placeholder": {
+    "title": "{{tab}} n'est pas encore configurable",
+    "descriptions": {
+      "redirects": "Les règles de réécriture de tous les domaines de ce service seront gérées ici.",
+      "security": "La protection par mot de passe des domaines de ce service se réglera ici.",
+      "maintenance": "Une page de maintenance à afficher à la place de l'application se réglera ici."
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "title": "Maintenance",
+  "description": "Show a maintenance page on every domain of this service, instead of the app. The containers keep running.",
+  "enabled": "Show the maintenance page",
+  "enabledHint": "Visitors get this page with a 503 status. Nothing is redeployed.",
+  "activeTitle": "The maintenance page is on",
+  "activeHint": "Visitors see it instead of the app on every domain.",
+  "pageTitle": "Title",
+  "pageTitleHint": "Leave empty for a standard message in the visitor's language.",
+  "subtitle": "Subtitle",
+  "customize": "Page design",
+  "logo": "Logo",
+  "logoHint": "A PNG, JPEG, GIF, WebP or SVG image of at most 128 KB, stored inline so the page loads nothing else.",
+  "logoPreview": "The chosen logo",
+  "logoChoose": "Choose a logo",
+  "logoRemove": "Remove",
+  "css": "Custom CSS",
+  "cssHint": "Style the page with .page, .logo, .code, .title, .subtitle and .links.",
+  "hideLogo": "Hide the logo",
+  "hideLinks": "Hide the links",
+  "hideLinksHint": "Removes the “Try again” link under the message.",
+  "submit": "Save",
+  "savedOn": "Maintenance page on",
+  "savedOff": "Maintenance settings saved",
+  "savedHint": "Applied right away, without a deploy.",
+  "errors": {
+    "tooLong": "This is too long.",
+    "css": "This CSS is too long or contains </style.",
+    "logo": "Choose a PNG, JPEG, GIF, WebP or SVG image.",
+    "logoTooLarge": "That image is larger than 128 KB.",
+    "logoUnreadable": "That file could not be read."
+  }
+}

@@ -1,0 +1,365 @@
+@import "tailwindcss";
+
+/*
+ * The token table in docs/ARCHITECTURE.md is the source of truth for these colours.
+ * The theme is set as data-theme on <html> by public/theme-boot.js before first paint.
+ *
+ * Contrast (WCAG 2.2, both themes):
+ *   ink, muted, accent, ok and bad pass AA as text on bg and raised.
+ *   busy and off only reach 3:1, so they colour graphics and control borders, never text.
+ *   highlight is the brand amber. It is below 3:1 on white, so it only ever decorates
+ *   something that another cue already conveys, such as an active tab's stronger label.
+ *   rule is decorative: hairlines between regions, not control boundaries.
+ */
+:root {
+  --bg: #ffffff;
+  --raised: #f6f7fa;
+  --ink: #16264a;
+  --muted: #5b6781;
+  --rule: #dfe3ec;
+  --accent: #16264a;
+  --highlight: #e3a33a;
+  --ok: #1f7a6e;
+  --busy: #b7791f;
+  --off: #7b869c;
+  --bad: #be2453;
+
+  /* Derived from the table above. */
+  --on-accent: #ffffff;
+  --on-bad: #ffffff;
+  --accent-strong: #223a6e;
+  --bad-strong: color-mix(in srgb, var(--bad) 86%, var(--ink));
+  --wash: color-mix(in srgb, var(--ink) 6%, transparent);
+  --scrim: rgb(22 38 74 / 0.3);
+
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #0f1b36;
+  --raised: #16264a;
+  --ink: #ffffff;
+  --muted: #a9b4ca;
+  --rule: #2b3c63;
+  --accent: #e3a33a;
+  --highlight: #e3a33a;
+  --ok: #3dbfae;
+  --busy: #e3a33a;
+  --off: #8592ac;
+  --bad: #ff7a9c;
+
+  --on-accent: #16264a;
+  --on-bad: #16264a;
+  --accent-strong: color-mix(in srgb, var(--accent) 86%, var(--ink));
+  --wash: color-mix(in srgb, var(--ink) 8%, transparent);
+  --scrim: rgb(6 12 26 / 0.62);
+
+  color-scheme: dark;
+}
+
+/* The navy top bar in both themes. Everything inside inherits these values. */
+.brand-bar {
+  --bg: #16264a;
+  --raised: #1d3058;
+  --ink: #ffffff;
+  --muted: #b4bed2;
+  --rule: #2b3c63;
+  --accent: #e3a33a;
+  --on-accent: #16264a;
+  --wash: rgb(255 255 255 / 0.09);
+  background-color: var(--bg);
+  color: var(--ink);
+}
+
+@theme inline {
+  --color-*: initial;
+  --color-bg: var(--bg);
+  --color-raised: var(--raised);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-rule: var(--rule);
+  --color-accent: var(--accent);
+  --color-highlight: var(--highlight);
+  --color-accent-strong: var(--accent-strong);
+  --color-ok: var(--ok);
+  --color-busy: var(--busy);
+  --color-off: var(--off);
+  --color-bad: var(--bad);
+  --color-bad-strong: var(--bad-strong);
+  --color-on-accent: var(--on-accent);
+  --color-on-bad: var(--on-bad);
+  --color-wash: var(--wash);
+  --color-scrim: var(--scrim);
+
+  --font-sans: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --text-*: initial;
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.0625rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.375rem;
+  --text-md: 1rem;
+  --text-md--line-height: 1.5rem;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.625rem;
+  --text-xl: 1.625rem;
+  --text-xl--line-height: 2rem;
+
+  --radius-*: initial;
+  --radius-sm: 3px;
+
+  --shadow-*: initial;
+  --shadow-overlay: 0 1px 2px rgb(10 18 24 / 0.12), 0 18px 44px -14px rgb(10 18 24 / 0.38);
+
+  --ease-*: initial;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  --animate-*: initial;
+  --animate-fade-in: fade-in 140ms var(--ease-out) both;
+  --animate-fade-out: fade-out 120ms var(--ease-out) both;
+  --animate-rise-in: rise-in 160ms var(--ease-out) both;
+  --animate-rise-out: rise-out 120ms var(--ease-out) both;
+  --animate-drop-in: drop-in 140ms var(--ease-out) both;
+  --animate-drop-out: drop-out 120ms var(--ease-out) both;
+  --animate-slide-in: slide-in 180ms var(--ease-out) both;
+  --animate-slide-out: slide-out 140ms var(--ease-out) both;
+  --animate-sweep: sweep 1100ms linear infinite;
+  --animate-lamp: lamp 1600ms var(--ease-out) infinite;
+  --animate-pulse: pulse 1400ms ease-in-out infinite;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 6px, 0);
+    }
+  }
+  @keyframes rise-out {
+    to {
+      opacity: 0;
+      transform: translate3d(0, 4px, 0);
+    }
+  }
+  @keyframes drop-in {
+    from {
+      opacity: 0;
+      transform: translate3d(0, -4px, 0);
+    }
+  }
+  @keyframes drop-out {
+    to {
+      opacity: 0;
+      transform: translate3d(0, -3px, 0);
+    }
+  }
+  @keyframes slide-in {
+    from {
+      transform: translate3d(0, 100%, 0);
+    }
+  }
+  @keyframes slide-out {
+    to {
+      transform: translate3d(0, 100%, 0);
+    }
+  }
+  @keyframes sweep {
+    from {
+      transform: translate3d(-100%, 0, 0);
+    }
+    to {
+      transform: translate3d(300%, 0, 0);
+    }
+  }
+  @keyframes lamp {
+    0% {
+      opacity: 0.7;
+      transform: scale(0.7);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.9);
+    }
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.45;
+    }
+  }
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--rule);
+  }
+
+  html {
+    background-color: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scrollbar-color: var(--off) transparent;
+    scrollbar-width: thin;
+  }
+
+  body {
+    margin: 0;
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+  }
+
+  .font-mono,
+  code,
+  kbd,
+  samp {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--accent) 26%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  [cmdk-input]:focus-visible {
+    outline: none;
+  }
+
+  /* Colour changes are instant by design: motion is limited to transform and opacity. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      /* biome-ignore lint/complexity/noImportantStyles: has to outrank every animation utility */
+      animation: none !important;
+      /* biome-ignore lint/complexity/noImportantStyles: has to outrank every transition utility */
+      transition: none !important;
+    }
+  }
+}
+
+/* A small label above or beside values. Sans, because mono is reserved for machine values. */
+@utility eyebrow {
+  font-size: var(--text-micro);
+  line-height: var(--text-micro--line-height);
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Ruler ticks along an edge, in the manner of a chart's graduated margin. */
+@utility graduated {
+  background-image:
+    repeating-linear-gradient(90deg, var(--off) 0 1px, transparent 1px 48px),
+    repeating-linear-gradient(90deg, var(--rule) 0 1px, transparent 1px 8px);
+  background-size:
+    100% 5px,
+    100% 3px;
+  background-position:
+    left top,
+    left top;
+  background-repeat: no-repeat;
+}
+
+/*
+ * The visual language: ui/visual/state.ts maps each state to one of these colours, a shape, a label
+ * and a motion. Rules are in docs/ARCHITECTURE.md.
+ *
+ * Every --state-* colour reaches 3:1 against bg and raised in both themes (checked by contrast.test.ts).
+ * --track is the unfilled part of a gauge or bar: the fill keeps 3:1 against it as well.
+ */
+:root {
+  --state-running: var(--ok);
+  --state-progress: var(--busy);
+  --state-degraded: #c94f1e;
+  --state-stopped: var(--off);
+  --state-failed: var(--bad);
+  --state-unknown: var(--muted);
+  --track: #eceef3;
+}
+
+:root[data-theme="dark"] {
+  --state-degraded: #ff8f5e;
+  --track: #2b3c63;
+}
+
+/* The top bar is navy in both themes, so its signals use the dark theme's colours. */
+.brand-bar {
+  --state-running: #3dbfae;
+  --state-progress: #e3a33a;
+  --state-degraded: #ff8f5e;
+  --state-stopped: #8592ac;
+  --state-failed: #ff7a9c;
+  --state-unknown: #b4bed2;
+  --track: #2b3c63;
+}
+
+/* Only the variant matching the theme is displayed, so lazy loading never fetches the other. */
+.illustration-dark {
+  display: none;
+}
+
+:root[data-theme="dark"] .illustration-light {
+  display: none;
+}
+
+:root[data-theme="dark"] .illustration-dark {
+  display: block;
+}
+
+@theme inline {
+  --animate-lamp-turn: lamp-turn 1400ms linear infinite;
+  --animate-lamp-breathe: lamp-breathe 1600ms ease-in-out 3;
+  --animate-lamp-alarm: lamp-alarm 1600ms var(--ease-out) 3;
+
+  @keyframes lamp-turn {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes lamp-breathe {
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @keyframes lamp-alarm {
+    from {
+      opacity: 0.65;
+      transform: scale(0.75);
+    }
+    to {
+      opacity: 0;
+      transform: scale(1.5);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Without its animation this halo would sit opaque behind the busy lamp and hide its shape. */
+  .animate-lamp {
+    display: none;
+  }
+}

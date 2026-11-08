@@ -1,0 +1,8 @@
+{
+  "title": "Domains",
+  "description": "Every hostname this server answers for.",
+  "empty": {
+    "title": "No domains charted",
+    "description": "Domains you attach to services will be listed here with their routing and certificate status."
+  }
+}

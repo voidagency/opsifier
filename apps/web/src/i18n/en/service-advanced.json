@@ -1,0 +1,70 @@
+{
+  "savedHint": "Deploy to apply it.",
+  "ports": {
+    "title": "Published ports",
+    "description": "Open a TCP or UDP port on the server's address, for traffic that doesn't go through the proxy.",
+    "add": "Add a port",
+    "edit": "Edit this port",
+    "delete": "Remove this port",
+    "deleteAll": "Remove all ports",
+    "protocol": "Protocol",
+    "published": "Published",
+    "publishedHint": "The port opened on the server.",
+    "target": "Target",
+    "targetHint": "The port the container listens on.",
+    "created": "Port added",
+    "updated": "Port updated",
+    "deleted": "Port removed",
+    "deletedAll": "Ports removed",
+    "empty": {
+      "title": "Nothing is published",
+      "description": "Web traffic reaches this service through its domains. Publish a port only for anything else."
+    },
+    "dialog": {
+      "createTitle": "Add a port",
+      "updateTitle": "Edit this port",
+      "create": "Add",
+      "save": "Save"
+    },
+    "deleteDialog": {
+      "title": "Remove this port?",
+      "description": "{{port}} will close at the next deploy.",
+      "confirm": "Remove port"
+    },
+    "deleteAllDialog": {
+      "title": "Remove all ports?",
+      "description": "Every published port will close at the next deploy.",
+      "confirm": "Remove all"
+    }
+  },
+  "deploy": {
+    "title": "How it runs",
+    "description": "Replicas, updates and the process inside the container.",
+    "submit": "Save",
+    "saved": "Deploy settings saved",
+    "replicas": "Replicas",
+    "replicasStoppedHint": "A stopped service can stay at 0, but needs at least 1 to start again.",
+    "zeroDowntime": "Zero downtime",
+    "zeroDowntimeHint": "Start the new task before stopping the old one.",
+    "zeroDowntimeWithPorts": "Off while this service publishes ports: a new task can't bind a port the old one still holds.",
+    "tiniInit": "Run with an init process",
+    "tiniInitHint": "Adds a small init that reaps zombie processes and forwards signals.",
+    "command": "Command",
+    "commandHint": "Replaces the image's command. Run by /bin/sh.",
+    "capAdd": "Add capabilities",
+    "capDrop": "Drop capabilities",
+    "sysctls": "Sysctls",
+    "sysctlsHint": "Comma-separated key=value pairs.",
+    "groups": "Extra groups",
+    "groupsHint": "Comma-separated numeric group IDs."
+  },
+  "errors": {
+    "port": "Use a port from 1 to 65535.",
+    "replicas": "Run from 1 to 100 replicas.",
+    "replicasStopped": "Use a whole number from 0 to 100.",
+    "command": "Enter a command, or leave this empty.",
+    "capabilities": "Use known capability names such as NET_ADMIN, each listed once and never in both fields.",
+    "sysctls": "Use namespaced key=value pairs such as net.core.somaxconn=1024.",
+    "groups": "Use numeric group IDs."
+  }
+}

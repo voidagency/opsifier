@@ -1,0 +1,33 @@
+{
+  "title": "Basic authentication",
+  "description": "Ask visitors for a name and password on every domain of this service. It takes effect at once.",
+  "add": "Add a user",
+  "edit": "Edit this user",
+  "delete": "Remove this user",
+  "copyUsername": "Copy the username",
+  "passwordHidden": "Password stored as a hash, not shown here",
+  "saved": "Basic authentication updated",
+  "deleted": "User removed",
+  "empty": {
+    "title": "This service is open to everyone",
+    "description": "Add a user and visitors will be asked to sign in before seeing it."
+  },
+  "deleteDialog": {
+    "title": "Remove this user?",
+    "description": "{{username}} can no longer get in. With no users left, the service is open again.",
+    "confirm": "Remove user"
+  },
+  "dialog": {
+    "createTitle": "Add a user",
+    "updateTitle": "Edit this user",
+    "create": "Add",
+    "save": "Save",
+    "username": "Username",
+    "password": "Password",
+    "passwordKeep": "Leave empty to keep the current password."
+  },
+  "errors": {
+    "username": "Enter a username with no spaces or colons.",
+    "password": "Enter a password of up to 72 bytes."
+  }
+}

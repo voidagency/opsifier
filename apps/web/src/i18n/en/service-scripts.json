@@ -1,0 +1,32 @@
+{
+  "title": "Scripts",
+  "description": "Commands you run often, ready to start from this service's console.",
+  "add": "Add a script",
+  "edit": "Edit this script",
+  "delete": "Delete this script",
+  "emptyScript": "Empty",
+  "saved": "Script saved",
+  "deleted": "Script deleted",
+  "empty": {
+    "title": "No scripts yet",
+    "description": "Saved scripts appear next to Sh and Bash in the console."
+  },
+  "dialog": {
+    "createTitle": "Add a script",
+    "updateTitle": "Edit this script",
+    "create": "Add",
+    "save": "Save",
+    "name": "Name",
+    "script": "Script",
+    "scriptHint": "Run by /bin/sh inside the task you pick in the console."
+  },
+  "deleteDialog": {
+    "title": "Delete this script?",
+    "description": "{{name}} will no longer be offered in the console.",
+    "confirm": "Delete script"
+  },
+  "errors": {
+    "name": "Give it a name with letters, digits, spaces, dots, dashes or underscores.",
+    "script": "This script is too long."
+  }
+}

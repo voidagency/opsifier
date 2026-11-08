@@ -1,0 +1,20 @@
+{
+  "title": "Resources",
+  "description": "Reserve CPU and memory for this service, or cap what it can use.",
+  "hint": "0 means no reservation and no limit.",
+  "submit": "Save",
+  "saved": "Resources saved",
+  "savedHint": "Deploy to apply them.",
+  "fields": {
+    "memoryReservation": "Memory reservation (MB)",
+    "memoryLimit": "Memory limit (MB)",
+    "cpuReservation": "CPU reservation (cores)",
+    "cpuLimit": "CPU limit (cores)"
+  },
+  "errors": {
+    "memoryReservation": "Use 0, or at least 6 MB, and no more than the limit.",
+    "memoryLimit": "Use 0 for no limit, or at least 6 MB.",
+    "cpuReservation": "Use 0, or at least 0.01 cores, and no more than the limit.",
+    "cpuLimit": "Use 0 for no limit, or at least 0.01 cores."
+  }
+}

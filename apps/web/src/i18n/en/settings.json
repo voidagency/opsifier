@@ -1,0 +1,60 @@
+{
+  "credentials": {
+    "title": "Sign-in details",
+    "description": "The email and password that open this panel. Your current password is needed to change either one.",
+    "email": "Email",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "newPasswordHint": "At least 12 characters. To keep your password as it is, enter it again here.",
+    "submit": "Save changes",
+    "saved": "Sign-in details updated"
+  },
+  "twoFactor": {
+    "title": "Two-factor sign-in",
+    "description": "Adds a code from your phone to every sign-in, so a stolen password isn't enough.",
+    "on": "On",
+    "off": "Off",
+    "warning": "Your account is protected by its password alone.",
+    "setUp": "Set up two-factor",
+    "disable": "Turn off two-factor",
+    "dialogTitle": "Set up two-factor sign-in",
+    "stepDescriptions": {
+      "password": "Confirm your password to link a new device to this account.",
+      "scan": "Link an authenticator app to this account.",
+      "codes": "Each code signs you in once if you lose your phone. Keep them somewhere safe: they won't be shown again."
+    },
+    "currentPassword": "Current password",
+    "continue": "Continue",
+    "recoveryTitle": "Save your recovery codes",
+    "recoveryListLabel": "Recovery codes",
+    "copyCodes": "Copy all codes",
+    "recoverySaved": "I've saved these codes somewhere safe",
+    "recoveryDone": "Done",
+    "recoveryCode": "Recovery code",
+    "useRecoveryCode": "Use a recovery code instead",
+    "useAuthenticator": "Use a code from your app instead",
+    "qrLabel": "QR code holding the setup key",
+    "setupKey": "Setup key",
+    "copyKey": "Copy setup key",
+    "codeLabel": "6-digit code",
+    "confirm": "Turn on",
+    "enabled": "Two-factor sign-in is on",
+    "disabled": "Two-factor sign-in is off",
+    "disableTitle": "Turn off two-factor sign-in?",
+    "disableDescription": "Signing in will only need your password. Enter your password and a current code to confirm.",
+    "disableConfirm": "Turn off",
+    "steps": {
+      "install": "Open an authenticator app on your phone, or install one.",
+      "scan": "Scan the QR code. If you can't, type the setup key instead.",
+      "enter": "Enter the 6-digit code the app shows."
+    }
+  },
+  "errors": {
+    "email": "Enter a valid email address.",
+    "currentPassword": "Enter your current password.",
+    "newPassword": "Use at least 12 characters.",
+    "passwordTooLong": "Use at most {{max}} characters.",
+    "code": "Enter the 6-digit code.",
+    "recoveryCode": "Enter a recovery code, like abcd-efgh-jkmn-pqrs."
+  }
+}

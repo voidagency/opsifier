@@ -1,0 +1,48 @@
+{
+  "create": {
+    "title": "New project",
+    "description": "Services in one project share a private network and a set of variables.",
+    "name": "Project name",
+    "nameHint": "Lowercase letters, digits and dashes.",
+    "required": "Give the project a name.",
+    "invalid": "Use lowercase letters, digits and dashes, starting and ending with a letter or digit.",
+    "submit": "Create",
+    "created": "Project {{name}} is ready"
+  },
+  "page": {
+    "newService": "Add service",
+    "templates": "Templates",
+    "settings": "Settings",
+    "emptyTitle": "No services in this project yet",
+    "emptyDescription": "Add a service to run a container image, then deploy it from its own page."
+  },
+  "settings": {
+    "pageTitle": "{{name}} settings",
+    "pageDescription": "What every service of this project shares.",
+    "env": {
+      "title": "Shared variables",
+      "description": "Given to every service here, ahead of its own variables. A running service keeps its old values until its next deploy.",
+      "submit": "Save variables",
+      "saved": "Shared variables saved",
+      "savedHint": "They reach a service at its next deploy.",
+      "invalidLine": "Line {{line}} needs to look like NAME=value."
+    },
+    "schema": {
+      "title": "Portable description",
+      "description": "This project as JSON, for keeping or moving it elsewhere. Passwords are never included.",
+      "copy": "Copy the JSON"
+    },
+    "danger": {
+      "title": "Destroy this project",
+      "description": "Stops its services and removes them, their routes and the project's network. There is no undo.",
+      "destroy": "Destroy project",
+      "warning_one": "The {{count}} service in this project goes with it.",
+      "warning_other": "All {{count}} services in this project go with it.",
+      "dialogTitle": "Destroy this project?",
+      "dialogDescription": "Everything it runs stops for good.",
+      "confirm": "Destroy",
+      "copyName": "Copy the project's name",
+      "destroying": "Destroying {{name}}"
+    }
+  }
+}

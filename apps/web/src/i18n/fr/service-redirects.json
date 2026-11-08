@@ -1,0 +1,44 @@
+{
+  "add": "Ajouter une redirection",
+  "edit": "Modifier cette redirection",
+  "delete": "Supprimer cette redirection",
+  "permanent": "Permanente (301)",
+  "temporary": "Temporaire (302)",
+  "disabled": "Inactive",
+  "saved": "Redirections mises à jour",
+  "deleted": "Redirection supprimée",
+  "empty": {
+    "title": "Aucune redirection pour l'instant",
+    "description": "Envoyez les visiteurs d'une adresse à une autre avec une règle, sur tous les domaines de ce service."
+  },
+  "deleteDialog": {
+    "title": "Supprimer cette redirection ?",
+    "description": "Les requêtes concernées iront désormais à l'application.",
+    "confirm": "Supprimer la redirection"
+  },
+  "examples": {
+    "stripWww": "www vers le domaine nu",
+    "addWww": "Domaine nu vers www",
+    "oldDomain": "Ancien domaine vers le nouveau",
+    "oldPath": "Ancien chemin vers le nouveau"
+  },
+  "dialog": {
+    "createTitle": "Ajouter une redirection",
+    "updateTitle": "Modifier cette redirection",
+    "create": "Ajouter",
+    "save": "Enregistrer",
+    "loadExample": "Partir d'un exemple",
+    "enabled": "Active",
+    "enabledHint": "Désactivez pour garder la règle sans l'appliquer.",
+    "regex": "Expression régulière",
+    "regexHint": "Comparée à l'URL complète de la requête.",
+    "replacement": "Remplacement",
+    "replacementHint": "Utilisez $1 ou ${1} pour ce que les groupes ont capturé.",
+    "permanent": "Permanente",
+    "permanentHint": "Répond 301 si activée, 302 sinon."
+  },
+  "errors": {
+    "regex": "Saisissez une expression régulière que Traefik peut compiler, sans espaces.",
+    "replacement": "Saisissez un remplacement sans espaces."
+  }
+}

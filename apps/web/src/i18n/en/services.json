@@ -1,0 +1,171 @@
+{
+  "activeAction": "{{label}} in progress",
+  "status": {
+    "undeployed": "Not deployed",
+    "stopped": "Stopped",
+    "starting": "Starting",
+    "running": "Running",
+    "failing": "Failing",
+    "unknown": "Status unavailable"
+  },
+  "tabs": {
+    "label": "Service sections",
+    "overview": "Overview",
+    "source": "Source",
+    "deployments": "Deployments",
+    "environment": "Environment",
+    "domains": "Domains",
+    "redirects": "Redirects",
+    "scripts": "Scripts",
+    "security": "Security",
+    "resources": "Resources",
+    "maintenance": "Maintenance",
+    "storage": "Storage",
+    "advanced": "Advanced"
+  },
+  "crumbs": {
+    "projects": "Projects",
+    "services": "Services in this project",
+    "projectSettings": "This project's settings",
+    "newProject": "New project",
+    "newService": "Add a service",
+    "switchProject": "Project {{name}}. Switch project",
+    "switchService": "Service {{name}}. Switch service"
+  },
+  "rows": {
+    "wakeLabel_one": "{{count}} recent deployment",
+    "wakeLabel_other": "{{count}} recent deployments",
+    "replicasHint": "Running tasks out of those wanted",
+    "neverDeployed": "Never deployed"
+  },
+  "metrics": {
+    "cpu": "CPU",
+    "memory": "Memory",
+    "networkIn": "In",
+    "networkOut": "Out"
+  },
+  "toolbar": {
+    "deploy": "Deploy",
+    "start": "Start",
+    "stop": "Stop",
+    "restart": "Restart",
+    "open": "Open this site",
+    "more": "More actions",
+    "notes": "Notes",
+    "rebuild": "Deploy without cache",
+    "destroy": "Destroy service",
+    "deployed": "Deployment finished",
+    "deployFailed": "The deployment didn't finish",
+    "started": "Service is up",
+    "startFailed": "The service didn't come up",
+    "stopped": "Service is down",
+    "stopFailed": "The service didn't stop",
+    "restarted": "Fresh tasks are running",
+    "restartFailed": "The restart didn't finish"
+  },
+  "create": {
+    "pageTitle": "Add to this project",
+    "pageDescription": "Choose what to run in {{project}}.",
+    "tabs": {
+      "services": "Services",
+      "templates": "Templates",
+      "custom": "Custom"
+    },
+    "soon": "Later",
+    "types": {
+      "app": {
+        "name": "App",
+        "hint": "Run any container image."
+      },
+      "mysql": {
+        "name": "MySQL",
+        "hint": "A managed relational database."
+      },
+      "mariadb": {
+        "name": "MariaDB",
+        "hint": "The community fork of MySQL."
+      },
+      "postgres": {
+        "name": "Postgres",
+        "hint": "A managed relational database."
+      },
+      "mongo": {
+        "name": "Mongo",
+        "hint": "A document database."
+      },
+      "redis": {
+        "name": "Redis",
+        "hint": "An in-memory data store."
+      },
+      "box": {
+        "name": "Box",
+        "hint": "A plain container to work in."
+      },
+      "compose": {
+        "name": "Compose",
+        "hint": "A whole stack from a compose file."
+      },
+      "wordpress": {
+        "name": "WordPress",
+        "hint": "A site with its database."
+      }
+    },
+    "templates": {
+      "title": "Templates are on their way",
+      "description": "Ready-made stacks you can start from will be listed here."
+    },
+    "custom": {
+      "title": "Custom setups are on their way",
+      "description": "Creating services from a saved description will live here."
+    },
+    "title": "Add an app",
+    "description": "It starts empty: choose an image next.",
+    "name": "Service name",
+    "nameHint": "Lowercase letters, digits, dashes and underscores.",
+    "required": "Give the service a name.",
+    "invalid": "Use lowercase letters, digits, dashes and underscores, ending with a letter or digit.",
+    "submit": "Add",
+    "created": "Service {{name}} added"
+  },
+  "init": {
+    "description": "Before this service can run, it needs something to run.",
+    "sourceTitle": "What should this service run?",
+    "sourceDescription": "Nothing is deployed yet. Choose a source below, then press Deploy on the service's page.",
+    "save": "Save and continue",
+    "destroy": "Destroy service"
+  },
+  "destroy": {
+    "title": "Destroy this service?",
+    "description": "Its containers, routes and data directory will be removed.",
+    "confirm": "Destroy",
+    "copyName": "Copy the service's name",
+    "started": "Destroying {{name}}"
+  },
+  "rename": {
+    "open": "Rename or move this service",
+    "title": "Rename or move",
+    "description": "Domains stay as they are. The service must be stopped first.",
+    "project": "Project",
+    "name": "Name",
+    "submit": "Save",
+    "done": "Service is now {{name}}"
+  },
+  "notes": {
+    "title": "Notes",
+    "description": "Anything worth remembering about this service. Markdown works.",
+    "heading": "Notes",
+    "edit": "Edit",
+    "label": "Your notes",
+    "save": "Save",
+    "saved": "Notes saved",
+    "tooLong": "This is too long."
+  },
+  "placeholder": {
+    "title": "{{tab}} isn't configurable yet",
+    "descriptions": {
+      "redirects": "Rewrite rules for every domain of this service will be managed here.",
+      "security": "Password protection for this service's domains will be set here.",
+      "maintenance": "A maintenance page to show instead of the app will be set here."
+    }
+  }
+}

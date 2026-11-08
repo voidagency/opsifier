@@ -1,0 +1,44 @@
+{
+  "heading": "Outils d'administration web",
+  "enable": "Activer",
+  "disable": "Désactiver",
+  "enabled": "{{tool}} est prêt",
+  "enableFailed": "L'outil n'a pas pu démarrer",
+  "disabled": "{{tool}} est désactivé",
+  "disableFailed": "L'outil n'a pas pu être retiré",
+  "address": "Adresse",
+  "username": "Identifiant",
+  "token": "Jeton d'accès",
+  "reveal": "Afficher",
+  "hide": "Masquer",
+  "copyToken": "Copier le jeton d'accès",
+  "revealFailed": "Impossible de lire ce jeton",
+  "slowStart": "Peut mettre quelques minutes à être disponible.",
+  "confirmDisable": {
+    "title": "Désactiver {{tool}} ?",
+    "description": "Son adresse cessera de fonctionner. Vos données ne sont pas touchées et vous pourrez le réactiver.",
+    "submit": "Désactiver"
+  },
+  "tools": {
+    "pgweb": {
+      "name": "pgweb",
+      "description": "Consultez et interrogez Postgres depuis le navigateur."
+    },
+    "dbgate": {
+      "name": "DbGate",
+      "description": "Un gestionnaire de bases avec éditeur de requêtes et explorateur de données."
+    },
+    "phpmyadmin": {
+      "name": "phpMyAdmin",
+      "description": "L'interface web classique de MySQL et MariaDB."
+    },
+    "mongo-express": {
+      "name": "Mongo Express",
+      "description": "Consultez et modifiez des documents depuis le navigateur."
+    },
+    "redis-commander": {
+      "name": "Redis Commander",
+      "description": "Consultez et modifiez des clés depuis le navigateur."
+    }
+  }
+}

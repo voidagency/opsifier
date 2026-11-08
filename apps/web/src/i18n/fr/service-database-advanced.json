@@ -1,0 +1,21 @@
+{
+  "image": "Image",
+  "imageHint": "Changer de version peut rendre les données illisibles. Passez d'une version majeure à l'autre avec précaution.",
+  "imageRequired": "Choisissez une image.",
+  "invalidImage": "Saisissez une image, par exemple nom:version.",
+  "command": "Commande",
+  "commandHint": {
+    "default": "Exécutée avec /bin/sh -c à la place de la commande de démarrage de l'image. Laissez vide pour utiliser celle de l'image.",
+    "redis": "Exécutée avec /bin/sh -c à la place de la commande par défaut. Gardez-y le mot de passe, par exemple : redis-server --requirepass \"$REDIS_PASSWORD\" --maxmemory 256mb"
+  },
+  "env": "Environnement",
+  "envHint": "Un NOM=valeur par ligne, ajouté aux variables du moteur.",
+  "invalidEnv": "Chaque ligne doit être de la forme NOM=valeur.",
+  "configFile": "Fichier de configuration",
+  "configFileHint": "Conservé à côté de la configuration du serveur. Pris en compte au redémarrage de la base.",
+  "restartNote": "L'enregistrement redémarre immédiatement la base de données.",
+  "save": "Enregistrer et redémarrer",
+  "restarting": "Redémarrage de la base de données…",
+  "saved": "Les réglages avancés sont en place",
+  "failed": "Les nouveaux réglages n'ont pas été appliqués"
+}

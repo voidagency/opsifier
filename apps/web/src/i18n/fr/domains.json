@@ -1,0 +1,8 @@
+{
+  "title": "Domaines",
+  "description": "Tous les noms d'hôte auxquels ce serveur répond.",
+  "empty": {
+    "title": "Aucun domaine référencé",
+    "description": "Les domaines associés à vos services seront listés ici, avec leur routage et l'état de leur certificat."
+  }
+}

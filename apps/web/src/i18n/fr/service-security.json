@@ -1,0 +1,33 @@
+{
+  "title": "Authentification basique",
+  "description": "Demandez un nom et un mot de passe aux visiteurs sur tous les domaines de ce service. Effet immédiat.",
+  "add": "Ajouter un utilisateur",
+  "edit": "Modifier cet utilisateur",
+  "delete": "Retirer cet utilisateur",
+  "copyUsername": "Copier le nom d'utilisateur",
+  "passwordHidden": "Mot de passe conservé sous forme de hachage, jamais affiché ici",
+  "saved": "Authentification basique mise à jour",
+  "deleted": "Utilisateur retiré",
+  "empty": {
+    "title": "Ce service est ouvert à tous",
+    "description": "Ajoutez un utilisateur et les visiteurs devront se connecter pour le voir."
+  },
+  "deleteDialog": {
+    "title": "Retirer cet utilisateur ?",
+    "description": "{{username}} n'aura plus accès. Sans utilisateur restant, le service redevient ouvert.",
+    "confirm": "Retirer l'utilisateur"
+  },
+  "dialog": {
+    "createTitle": "Ajouter un utilisateur",
+    "updateTitle": "Modifier cet utilisateur",
+    "create": "Ajouter",
+    "save": "Enregistrer",
+    "username": "Nom d'utilisateur",
+    "password": "Mot de passe",
+    "passwordKeep": "Laissez vide pour garder le mot de passe actuel."
+  },
+  "errors": {
+    "username": "Saisissez un nom sans espaces ni deux-points.",
+    "password": "Saisissez un mot de passe de 72 octets au plus."
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "home": "Opsifier home",
+  "breadcrumb": "Breadcrumb",
+  "skipToContent": "Skip to content",
+  "language": "Language",
+  "nav": {
+    "label": "Primary",
+    "overview": "Overview",
+    "activity": "Activity",
+    "monitor": "Monitor",
+    "domains": "Domains",
+    "settings": "Settings"
+  },
+  "settingsNav": {
+    "label": "Settings",
+    "authentication": "Authentication",
+    "groups": {
+      "user": "User",
+      "server": "Server"
+    },
+    "github": "GitHub"
+  },
+  "server": {
+    "copyIp": "Copy server IP",
+    "copyIpValue": "Copy server IP, {{ip}}"
+  },
+  "theme": {
+    "label": "Theme",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "user": {
+    "menu": "Account menu",
+    "signOut": "Sign out",
+    "role": {
+      "admin": "Administrator",
+      "member": "Member"
+    }
+  },
+  "palette": {
+    "open": "Open the command palette",
+    "trigger": "Search",
+    "title": "Command palette",
+    "placeholder": "Where to?",
+    "empty": "Nothing matches that.",
+    "move": "move",
+    "select": "open",
+    "useTheme": "Theme: {{theme}}",
+    "groups": {
+      "navigation": "Go to",
+      "settings": "Settings",
+      "preferences": "Preferences"
+    }
+  },
+  "tape": {
+    "idle": "Nothing running",
+    "running_one": "{{count}} running",
+    "running_other": "{{count}} running",
+    "expand": "Show live log",
+    "collapse": "Hide live log",
+    "drawerLabel": "Live activity log",
+    "drawerEmptyTitle": "Nothing running",
+    "drawerEmptyBody": "When a deploy, restart or backup starts, its output streams here line by line.",
+    "openActivity": "See past activity",
+    "pickAction": "Pick an action to see its output.",
+    "noOutput": "No output yet.",
+    "logUnavailable": "This action's output couldn't be loaded.",
+    "connection": {
+      "live": "Live",
+      "reconnecting": "Reconnecting"
+    },
+    "status": {
+      "idle": "Idle",
+      "queued": "Queued",
+      "running": "Running",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "noLog": "This action doesn't produce any output."
+  },
+  "error": {
+    "title": "Opsifier can't load this page",
+    "description": "The app couldn't get what it needs from the server."
+  },
+  "notFound": {
+    "title": "There is nothing at this address",
+    "description": "The link may be old, or the page may have moved.",
+    "back": "Back to Overview"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "intro": "Cap what this database may use, and set aside what it must have. Zero means no limit or reservation. Saving restarts the database.",
+  "memoryReservation": "Memory reservation (MB)",
+  "memoryLimit": "Memory limit (MB)",
+  "cpuReservation": "CPU reservation (cores)",
+  "cpuLimit": "CPU limit (cores)",
+  "invalid": "Use a number, 0 or more, and keep any reservation within its limit.",
+  "save": "Save and restart",
+  "restarting": "Restarting the database…",
+  "saved": "New limits are in place",
+  "failed": "The new limits weren't applied"
+}

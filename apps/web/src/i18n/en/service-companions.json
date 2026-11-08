@@ -1,0 +1,44 @@
+{
+  "heading": "Web admin tools",
+  "enable": "Enable",
+  "disable": "Disable",
+  "enabled": "{{tool}} is ready",
+  "enableFailed": "The tool couldn't be started",
+  "disabled": "{{tool}} is off",
+  "disableFailed": "The tool couldn't be removed",
+  "address": "Address",
+  "username": "Sign-in name",
+  "token": "Access token",
+  "reveal": "Reveal",
+  "hide": "Hide",
+  "copyToken": "Copy the access token",
+  "revealFailed": "Couldn't read this token",
+  "slowStart": "May take a couple of minutes to become available.",
+  "confirmDisable": {
+    "title": "Disable {{tool}}?",
+    "description": "Its address stops working. Your data isn't touched, and you can turn it back on.",
+    "submit": "Disable"
+  },
+  "tools": {
+    "pgweb": {
+      "name": "pgweb",
+      "description": "Browse and query Postgres from the browser."
+    },
+    "dbgate": {
+      "name": "DbGate",
+      "description": "A database manager with a query editor and data browser."
+    },
+    "phpmyadmin": {
+      "name": "phpMyAdmin",
+      "description": "The classic web interface for MySQL and MariaDB."
+    },
+    "mongo-express": {
+      "name": "Mongo Express",
+      "description": "Browse and edit documents from the browser."
+    },
+    "redis-commander": {
+      "name": "Redis Commander",
+      "description": "Browse and change keys from the browser."
+    }
+  }
+}

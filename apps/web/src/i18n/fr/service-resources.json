@@ -1,0 +1,20 @@
+{
+  "title": "Ressources",
+  "description": "Réservez du CPU et de la mémoire pour ce service, ou limitez ce qu'il peut utiliser.",
+  "hint": "0 signifie aucune réservation et aucune limite.",
+  "submit": "Enregistrer",
+  "saved": "Ressources enregistrées",
+  "savedHint": "Déployez pour les appliquer.",
+  "fields": {
+    "memoryReservation": "Réservation de mémoire (Mo)",
+    "memoryLimit": "Limite de mémoire (Mo)",
+    "cpuReservation": "Réservation de CPU (cœurs)",
+    "cpuLimit": "Limite de CPU (cœurs)"
+  },
+  "errors": {
+    "memoryReservation": "Indiquez 0, ou au moins 6 Mo, sans dépasser la limite.",
+    "memoryLimit": "Indiquez 0 pour aucune limite, ou au moins 6 Mo.",
+    "cpuReservation": "Indiquez 0, ou au moins 0,01 cœur, sans dépasser la limite.",
+    "cpuLimit": "Indiquez 0 pour aucune limite, ou au moins 0,01 cœur."
+  }
+}

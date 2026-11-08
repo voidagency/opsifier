@@ -1,0 +1,29 @@
+{
+  "empty": {
+    "title": "Nothing deployed yet",
+    "description": "Each deployment of this service is listed here with its full output."
+  },
+  "columns": {
+    "outcome": "Outcome",
+    "started": "Started",
+    "duration": "Took",
+    "by": "By",
+    "log": "Output"
+  },
+  "status": {
+    "queued": "Queued",
+    "running": "Rolling out",
+    "succeeded": "Settled",
+    "failed": "Failed",
+    "cancelled": "Cancelled"
+  },
+  "byPanel": "Automated",
+  "view": "See output",
+  "trigger": {
+    "title": "Deployment trigger",
+    "description": "Calling this URL with GET or POST starts a deployment, so CI or any other tool can deploy this service. Anyone holding it can. Add ?forceRebuild to skip the build cache.",
+    "copy": "Copy the trigger URL",
+    "rotate": "Replace the URL",
+    "rotated": "New trigger URL ready"
+  }
+}

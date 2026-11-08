@@ -1,0 +1,48 @@
+{
+  "create": {
+    "title": "Nouveau projet",
+    "description": "Les services d'un même projet partagent un réseau privé et un jeu de variables.",
+    "name": "Nom du projet",
+    "nameHint": "Lettres minuscules, chiffres et tirets.",
+    "required": "Donnez un nom au projet.",
+    "invalid": "Utilisez des lettres minuscules, des chiffres et des tirets, en commençant et finissant par une lettre ou un chiffre.",
+    "submit": "Créer",
+    "created": "Le projet {{name}} est prêt"
+  },
+  "page": {
+    "newService": "Ajouter un service",
+    "templates": "Modèles",
+    "settings": "Réglages",
+    "emptyTitle": "Aucun service dans ce projet pour l'instant",
+    "emptyDescription": "Ajoutez un service pour exécuter une image de conteneur, puis déployez-le depuis sa page."
+  },
+  "settings": {
+    "pageTitle": "Réglages de {{name}}",
+    "pageDescription": "Ce que partagent tous les services de ce projet.",
+    "env": {
+      "title": "Variables partagées",
+      "description": "Transmises à chaque service d'ici, avant ses propres variables. Un service en cours garde ses anciennes valeurs jusqu'à son prochain déploiement.",
+      "submit": "Enregistrer les variables",
+      "saved": "Variables partagées enregistrées",
+      "savedHint": "Elles parviennent à un service à son prochain déploiement.",
+      "invalidLine": "La ligne {{line}} doit ressembler à NOM=valeur."
+    },
+    "schema": {
+      "title": "Description portable",
+      "description": "Ce projet en JSON, pour le conserver ou le déplacer. Les mots de passe n'y figurent jamais.",
+      "copy": "Copier le JSON"
+    },
+    "danger": {
+      "title": "Supprimer ce projet",
+      "description": "Arrête ses services et supprime ceux-ci, leurs routes et le réseau du projet. Impossible de revenir en arrière.",
+      "destroy": "Supprimer le projet",
+      "warning_one": "Le service de ce projet sera supprimé avec lui.",
+      "warning_other": "Les {{count}} services de ce projet seront supprimés avec lui.",
+      "dialogTitle": "Supprimer ce projet ?",
+      "dialogDescription": "Tout ce qu'il exécute s'arrêtera définitivement.",
+      "confirm": "Supprimer",
+      "copyName": "Copier le nom du projet",
+      "destroying": "Suppression de {{name}}"
+    }
+  }
+}

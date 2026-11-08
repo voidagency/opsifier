@@ -1,0 +1,70 @@
+{
+  "logs": {
+    "heading": "Journaux en direct",
+    "label": "Sortie du service",
+    "open": "Journaux",
+    "title": "Journaux de {{service}}",
+    "separator": "Ajouter un séparateur",
+    "refresh": "Recharger les journaux",
+    "fullscreen": "Ouvrir en plein écran",
+    "connecting": "Connexion…",
+    "waiting": "En attente du démarrage de {{name}}…",
+    "empty": "Rien d'affiché pour le moment.",
+    "error": "Les journaux sont illisibles pour l'instant. Nouvel essai en cours…",
+    "modes": {
+      "label": "Comment lire les journaux",
+      "live": "Direct",
+      "search": "Recherche"
+    }
+  },
+  "search": {
+    "text": "Texte",
+    "placeholder": "N'importe quelle partie d'une ligne",
+    "stream": "Flux",
+    "streams": {
+      "all": "Tous",
+      "stdout": "Sortie standard",
+      "stderr": "Erreurs seulement"
+    },
+    "level": "Niveau",
+    "levels": {
+      "any": "Tous",
+      "error": "Erreurs",
+      "warn": "Avertissements",
+      "info": "Informations",
+      "debug": "Débogage"
+    },
+    "range": "Période",
+    "ranges": {
+      "15m": "15 minutes",
+      "1h": "Dernière heure",
+      "6h": "6 heures",
+      "24h": "24 heures",
+      "7d": "7 jours",
+      "all": "Tout ce qui est conservé"
+    },
+    "limit": "Au maximum",
+    "submit": "Rechercher",
+    "intro": "Cherche dans ce que Docker conserve encore pour ce service, sur ses tâches actuelles et passées.",
+    "summary": "{{shown}} lignes trouvées sur {{scanned}} lues.",
+    "summaryTruncated": "Affiche les {{shown}} dernières correspondances sur {{scanned}} lignes lues. Affinez pour voir les autres.",
+    "empty": {
+      "title": "Aucune ligne trouvée",
+      "description": "Essayez un autre mot ou une période plus longue."
+    }
+  },
+  "console": {
+    "open": "Console",
+    "title": "Console de {{service}}",
+    "task": "Tâche",
+    "choose": "Choisissez un programme pour ouvrir une session dans la tâche sélectionnée.",
+    "noTasks": "Rien ne tourne pour l'instant. Démarrez le service pour ouvrir une console.",
+    "notRunning": "Démarrez le service pour ouvrir une console",
+    "adminOnly": "Seul un administrateur peut ouvrir une console",
+    "disconnect": "Déconnecter",
+    "ended": "Session terminée.",
+    "endedWithCode": "Session terminée avec le code {{code}}.",
+    "lost": "La connexion a été perdue.",
+    "refused": "La console n'a pas pu être ouverte."
+  }
+}

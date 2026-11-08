@@ -1,0 +1,16 @@
+{
+  "title": "GitHub",
+  "description": "Un jeton permet à Opsifier de lire les dépôts privés et d'ajouter le webhook du déploiement automatique. GitHub le vérifie avant qu'il soit enregistré.",
+  "token": "Jeton d'accès",
+  "tokenHint": "Le scope repo suffit pour déployer. Le déploiement automatique demande aussi admin:repo_hook, ou Webhooks en lecture et écriture sur un jeton fine-grained.",
+  "create": "En créer un sur GitHub",
+  "placeholder": "Conservé",
+  "connected": "Connecté en tant que {{login}}",
+  "save": "Enregistrer",
+  "saved": "Jeton GitHub enregistré",
+  "remove": "Retirer",
+  "removed": "Jeton GitHub retiré",
+  "errors": {
+    "tokenRequired": "Collez un jeton GitHub."
+  }
+}

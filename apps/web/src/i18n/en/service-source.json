@@ -1,0 +1,141 @@
+{
+  "title": "Source",
+  "description": "Where this service's code or image comes from. Saving doesn't touch what's running: deploy to apply it.",
+  "submit": "Save",
+  "saved": "Source saved",
+  "savedHint": "It takes effect at the next deploy.",
+  "tabs": {
+    "label": "Kind of source",
+    "image": "Docker image",
+    "github": "GitHub",
+    "git": "Git",
+    "dockerfile": "Dockerfile",
+    "upload": "Upload"
+  },
+  "image": "Image",
+  "imageHint": "From any registry, for example ghcr.io/owner/app:1.2.",
+  "registryHint": "Only for a private registry.",
+  "username": "Registry username",
+  "password": "Registry password",
+  "passwordStored": "A password is stored. Leave this blank to keep it, or clear the username to remove both.",
+  "passwordPlaceholder": "Stored",
+  "branch": "Branch",
+  "branchHint": "A branch, a tag or a full commit hash.",
+  "path": "Build path",
+  "pathHint": "The folder to build from. Useful in a monorepo.",
+  "git": {
+    "url": "Repository URL",
+    "urlHint": "An https:// or ssh:// address, or user@host:path."
+  },
+  "github": {
+    "repository": "Repository",
+    "repositoryHint": "Written as owner/repository.",
+    "repositoryPlaceholder": "owner/repository",
+    "previewEmpty": "owner/repository",
+    "tokenWarning": "Private repositories need a GitHub token.",
+    "tokenLink": "Add one in Settings",
+    "private": "Private",
+    "searching": "Searching…",
+    "noRepositories": "No repository matches",
+    "noBranches": "No branch matches"
+  },
+  "dockerfile": {
+    "label": "Dockerfile",
+    "hint": "Built as it is, with nothing else in its context."
+  },
+  "upload": {
+    "drop": "Drop an archive of your code here, or choose a file",
+    "choose": "Choose an archive",
+    "formats": "zip, tar, tar.gz, tar.bz2, tar.xz, tar.zst, 7z or rar, up to {{limit}}",
+    "current": "Uploaded",
+    "uploading": "Uploading, {{percent}}%"
+  },
+  "build": {
+    "title": "Build",
+    "description": "How the code becomes an image. With nothing chosen, a Dockerfile in the build path is used if there is one, and Nixpacks otherwise.",
+    "skip": "Skip",
+    "submit": "Save build settings",
+    "saved": "Build settings saved",
+    "savedHint": "They take effect at the next build.",
+    "skipped": "Build settings cleared",
+    "skippedHint": "The next build detects what to use.",
+    "types": {
+      "dockerfile": "Dockerfile",
+      "buildpacks": "Buildpacks",
+      "nixpacks": "Nixpacks",
+      "railpack": "Railpack"
+    },
+    "descriptions": {
+      "dockerfile": "Build from a Dockerfile in the repository.",
+      "buildpacks": "Detect the stack and build it with a Cloud Native Buildpacks builder.",
+      "nixpacks": "Detect the stack and build it with Nixpacks.",
+      "railpack": "Detect the stack and build it with Railpack."
+    },
+    "file": "Dockerfile path",
+    "fileHint": "Relative to the build path, which is also the Docker context.",
+    "builder": "Builder",
+    "builderHint": "Any builder image.",
+    "version": "Version",
+    "installCommand": "Install command",
+    "buildCommand": "Build command",
+    "startCommand": "Start command",
+    "commandHint": "Set a command to replace the detected one.",
+    "nixPackages": "Nix packages",
+    "aptPackages": "APT packages",
+    "misePackages": "Mise packages",
+    "misePackagesHint": "Separated by spaces, as name or name@version.",
+    "buildAptPackages": "APT packages for the build",
+    "deployAptPackages": "APT packages in the final image",
+    "packagesHint": "Separated by spaces."
+  },
+  "sshKey": {
+    "title": "SSH key",
+    "description": "A private repository needs a key. Generate one, then add its public half to the repository on your Git host, as a read-only deploy key.",
+    "generate": "Generate SSH key",
+    "generated": "SSH key generated",
+    "generatedHint": "Add its public half to your Git host.",
+    "copy": "Copy the public key",
+    "refresh": "Replace the SSH key",
+    "refreshTitle": "Replace this SSH key?",
+    "refreshDescription": "The current key stops working for this service at once, so add the new one to your Git host before the next deploy.",
+    "refreshConfirm": "Replace"
+  },
+  "autoDeploy": {
+    "title": "Auto-deploy",
+    "label": "Deploy on every push to {{branch}}",
+    "hint": "Adds a webhook to the repository. The GitHub token needs permission to manage webhooks.",
+    "needsToken": "Auto-deploy needs a GitHub token.",
+    "enabled": "Auto-deploy is on",
+    "disabled": "Auto-deploy is off"
+  },
+  "errors": {
+    "imageRequired": "Enter an image to run.",
+    "imageInvalid": "Enter an image such as name:tag.",
+    "usernameRequired": "A password needs a username.",
+    "passwordRequired": "A username needs a password.",
+    "repositoryInvalid": "Write it as owner/repository.",
+    "refRequired": "Enter a branch, tag or commit.",
+    "refInvalid": "That isn't a branch, tag or commit name git would accept.",
+    "urlRequired": "Enter the address of the repository.",
+    "urlInvalid": "Use an https:// or ssh:// address, or user@host:path.",
+    "pathRequired": "Enter a folder, or / for the whole repository.",
+    "pathInvalid": "Use a folder inside the repository, such as /apps/web.",
+    "dockerfileRequired": "Write a Dockerfile to build.",
+    "fileRequired": "Choose an archive to upload.",
+    "fileType": "Use a zip, tar, 7z or rar archive.",
+    "fileTooLarge": "This archive is larger than {{limit}}.",
+    "build": {
+      "file": "Use a path inside the build path, such as Dockerfile.",
+      "builder": "Enter a builder image such as heroku/builder:24.",
+      "version": "Use a version such as 1.2.3.",
+      "installCommand": "Write the command on one line.",
+      "buildCommand": "Write the command on one line.",
+      "startCommand": "Write the command on one line.",
+      "nixPackages": "Use package names separated by spaces.",
+      "aptPackages": "Use package names separated by spaces.",
+      "misePackages": "Use name or name@version, separated by spaces.",
+      "buildAptPackages": "Use package names separated by spaces.",
+      "deployAptPackages": "Use package names separated by spaces."
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "empty": {
+    "title": "Rien de déployé pour le moment",
+    "description": "Chaque déploiement de ce service est listé ici, avec sa sortie complète."
+  },
+  "columns": {
+    "outcome": "Résultat",
+    "started": "Lancé",
+    "duration": "Durée",
+    "by": "Par",
+    "log": "Sortie"
+  },
+  "status": {
+    "queued": "En file",
+    "running": "En cours",
+    "succeeded": "Stabilisé",
+    "failed": "Échoué",
+    "cancelled": "Annulé"
+  },
+  "byPanel": "Automatique",
+  "view": "Voir la sortie",
+  "trigger": {
+    "title": "Déclencheur de déploiement",
+    "description": "Appeler cette URL en GET ou POST lance un déploiement : la CI ou tout autre outil peut donc déployer ce service. Quiconque la possède le peut. Ajoutez ?forceRebuild pour ignorer le cache de build.",
+    "copy": "Copier l'URL du déclencheur",
+    "rotate": "Remplacer l'URL",
+    "rotated": "Nouvelle URL prête"
+  }
+}

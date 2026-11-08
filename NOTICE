@@ -1,0 +1,8 @@
+Opsifier
+Copyright 2026 Opsifier contributors
+
+Opsifier is an independent implementation of a self-hosted application control
+panel. It is not affiliated with or endorsed by any other control panel vendor.
+
+Third-party packages retain their own licenses. See bun.lock and the license
+distributed with each package.

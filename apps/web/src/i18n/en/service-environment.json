@@ -1,0 +1,17 @@
+{
+  "title": "Variables",
+  "description": "One NAME=value per line. They come after the project's shared variables, and reach the container at its next deploy.",
+  "submit": "Save variables",
+  "saved": "Variables saved",
+  "savedHint": "They take effect at the next deploy.",
+  "invalidLine": "Line {{line}} needs to look like NAME=value.",
+  "file": {
+    "label": "Also write these variables to a file",
+    "hint": "Created in the source before each build.",
+    "path": "File path",
+    "pathHint": "Relative to the build path.",
+    "pathInvalid": "Use a path inside the source, such as .env.",
+    "submit": "Save file setting",
+    "saved": "File setting saved"
+  }
+}

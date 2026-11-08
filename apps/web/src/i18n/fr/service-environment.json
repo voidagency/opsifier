@@ -1,0 +1,17 @@
+{
+  "title": "Variables",
+  "description": "Un NOM=valeur par ligne. Elles passent après les variables partagées du projet et parviennent au conteneur à son prochain déploiement.",
+  "submit": "Enregistrer les variables",
+  "saved": "Variables enregistrées",
+  "savedHint": "Elles s'appliquent au prochain déploiement.",
+  "invalidLine": "La ligne {{line}} doit ressembler à NOM=valeur.",
+  "file": {
+    "label": "Écrire aussi ces variables dans un fichier",
+    "hint": "Créé dans la source avant chaque build.",
+    "path": "Chemin du fichier",
+    "pathHint": "Relatif au chemin de build.",
+    "pathInvalid": "Utilisez un chemin à l'intérieur de la source, comme .env.",
+    "submit": "Enregistrer le réglage",
+    "saved": "Réglage enregistré"
+  }
+}

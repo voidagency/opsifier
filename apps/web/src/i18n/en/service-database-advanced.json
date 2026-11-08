@@ -1,0 +1,21 @@
+{
+  "image": "Image",
+  "imageHint": "Changing the version can make existing data unreadable. Move between major versions with care.",
+  "imageRequired": "Choose an image.",
+  "invalidImage": "Enter an image such as name:tag.",
+  "command": "Command",
+  "commandHint": {
+    "default": "Runs with /bin/sh -c instead of the image's own start command. Leave empty to use the image's.",
+    "redis": "Runs with /bin/sh -c instead of the default command. Keep the password in it, for example: redis-server --requirepass \"$REDIS_PASSWORD\" --maxmemory 256mb"
+  },
+  "env": "Environment",
+  "envHint": "One NAME=value per line, added to the engine's own variables.",
+  "invalidEnv": "Each line must look like NAME=value.",
+  "configFile": "Config file",
+  "configFileHint": "Kept beside the server's own configuration. Takes effect when the database restarts.",
+  "restartNote": "Saving restarts the database right away.",
+  "save": "Save and restart",
+  "restarting": "Restarting the database…",
+  "saved": "Advanced settings are in place",
+  "failed": "The new settings weren't applied"
+}

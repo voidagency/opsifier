@@ -1,0 +1,68 @@
+{
+  "title": "Activité",
+  "description": "L'historique de tout ce que le panneau a fait sur ce serveur.",
+  "empty": {
+    "title": "Le journal est vide",
+    "description": "Les déploiements, redémarrages et sauvegardes sont consignés ici au fil de leur exécution, avec leur sortie complète."
+  },
+  "loadMore": "Afficher les entrées plus anciennes",
+  "view": "Voir la sortie",
+  "stop": "Arrêter cette action",
+  "openService": "Ouvrir le service",
+  "startedBy": "Lancée par {{email}}",
+  "status": {
+    "queued": "En file",
+    "running": "En cours",
+    "succeeded": "Réussie",
+    "failed": "Échouée",
+    "cancelled": "Annulée"
+  },
+  "logDialog": {
+    "description": "Sortie de cette action, ligne par ligne."
+  },
+  "types": {
+    "auth": {
+      "setup": "Compte administrateur créé",
+      "login": "Connexion",
+      "credentials": "Identifiants modifiés",
+      "two-factor": "Connexion à deux facteurs modifiée"
+    },
+    "project": {
+      "create": "Projet créé",
+      "env": "Variables partagées modifiées",
+      "destroy": "Projet supprimé"
+    },
+    "service": {
+      "create": "Service créé",
+      "source": "Source modifiée",
+      "env": "Variables modifiées",
+      "deploy": "Déploiement",
+      "start": "Démarrage du service",
+      "stop": "Arrêt du service",
+      "restart": "Redémarrage du service",
+      "rename": "Service renommé",
+      "destroy": "Service supprimé",
+      "domains": "Domaines modifiés",
+      "redirects": "Redirections modifiées",
+      "security": "Authentification basique modifiée",
+      "maintenance": "Page de maintenance modifiée",
+      "console": "Session de console",
+      "resources": "Ressources modifiées",
+      "scripts": "Scripts modifiés",
+      "mounts": "Montages modifiés",
+      "deploy-settings": "Réglages de déploiement modifiés",
+      "ports": "Ports publiés modifiés"
+    },
+    "database": {
+      "create": "Base de données créée",
+      "password": "Mot de passe de la base modifié",
+      "password-recovery": "Mot de passe de la base vérifié",
+      "expose": "Exposition de la base modifiée",
+      "settings": "Réglages de la base modifiés",
+      "reveal": "Secret de la base affiché",
+      "companion-enable": "Outil d'administration web activé",
+      "companion-disable": "Outil d'administration web désactivé",
+      "companion-reveal": "Jeton de l'outil d'administration affiché"
+    }
+  }
+}

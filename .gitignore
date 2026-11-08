@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+
+
+# The Docker-in-Docker sandbox of scripts/sandbox.sh.
+.sandbox/

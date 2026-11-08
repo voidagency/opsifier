@@ -1,0 +1,61 @@
+{
+  "engines": {
+    "postgres": "Postgres",
+    "mysql": "MySQL",
+    "mariadb": "MariaDB",
+    "mongo": "Mongo",
+    "redis": "Redis"
+  },
+  "tabs": {
+    "label": "Database sections",
+    "overview": "Overview",
+    "credentials": "Credentials",
+    "expose": "Expose",
+    "resources": "Resources",
+    "advanced": "Advanced"
+  },
+  "toolbar": {
+    "start": "Start",
+    "stop": "Stop",
+    "more": "More actions",
+    "notes": "Notes",
+    "redeploy": "Redeploy",
+    "destroy": "Destroy database",
+    "started": "Database is up",
+    "startFailed": "The database didn't start",
+    "stopped": "Database is down",
+    "stopFailed": "The database didn't stop",
+    "redeployed": "Redeploy finished",
+    "redeployFailed": "The redeploy didn't finish"
+  },
+  "destroy": {
+    "title": "Destroy this database?",
+    "description": "This permanently deletes the service and its data volume {{volume}}. The data cannot be recovered. To confirm, type",
+    "confirm": "Destroy database",
+    "copyName": "Copy the name",
+    "started": "Destroying {{name}}"
+  },
+  "create": {
+    "title": "Add a {{engine}} database",
+    "description": "It starts deploying as soon as you add it to {{project}}.",
+    "name": "Service name",
+    "nameHint": "Lowercase letters, digits, dashes and underscores.",
+    "databaseName": "Database name",
+    "databaseNameHint": "Leave empty to use {{project}}.",
+    "user": "User",
+    "userHint": "Leave empty for {{user}}.",
+    "password": "Password",
+    "rootPassword": "Root password",
+    "passwordHint": "Leave empty and a strong one is generated for you.",
+    "image": "Image",
+    "imageHint": "Leave empty for {{image}}.",
+    "submit": "Add database",
+    "required": "Give the service a name.",
+    "invalidName": "Use lowercase letters, digits, dashes and underscores, ending with a letter or digit.",
+    "invalidDatabaseName": "Use letters, digits, dashes and underscores.",
+    "invalidUser": "Use letters, digits, dashes, dots and underscores.",
+    "invalidPassword": "Use up to 256 characters, with no line breaks or other control characters.",
+    "invalidImage": "Enter an image such as name:tag.",
+    "created": "Database {{name}} is being deployed"
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "home": "Accueil Opsifier",
+  "breadcrumb": "Fil d'Ariane",
+  "skipToContent": "Aller au contenu",
+  "language": "Langue",
+  "nav": {
+    "label": "Principale",
+    "overview": "Aperçu",
+    "activity": "Activité",
+    "monitor": "Supervision",
+    "domains": "Domaines",
+    "settings": "Réglages"
+  },
+  "settingsNav": {
+    "label": "Réglages",
+    "authentication": "Authentification",
+    "groups": {
+      "user": "Utilisateur",
+      "server": "Serveur"
+    },
+    "github": "GitHub"
+  },
+  "server": {
+    "copyIp": "Copier l'IP du serveur",
+    "copyIpValue": "Copier l'IP du serveur, {{ip}}"
+  },
+  "theme": {
+    "label": "Thème",
+    "system": "Système",
+    "light": "Clair",
+    "dark": "Sombre"
+  },
+  "user": {
+    "menu": "Menu du compte",
+    "signOut": "Se déconnecter",
+    "role": {
+      "admin": "Administrateur",
+      "member": "Membre"
+    }
+  },
+  "palette": {
+    "open": "Ouvrir la palette de commandes",
+    "trigger": "Rechercher",
+    "title": "Palette de commandes",
+    "placeholder": "Où allons-nous ?",
+    "empty": "Aucun résultat.",
+    "move": "naviguer",
+    "select": "ouvrir",
+    "useTheme": "Thème : {{theme}}",
+    "groups": {
+      "navigation": "Aller à",
+      "settings": "Réglages",
+      "preferences": "Préférences"
+    }
+  },
+  "tape": {
+    "idle": "Aucune tâche en cours",
+    "running_one": "{{count}} en cours",
+    "running_other": "{{count}} en cours",
+    "expand": "Afficher le journal en direct",
+    "collapse": "Masquer le journal en direct",
+    "drawerLabel": "Journal d'activité en direct",
+    "drawerEmptyTitle": "Aucune tâche en cours",
+    "drawerEmptyBody": "Quand un déploiement, un redémarrage ou une sauvegarde démarre, sa sortie défile ici ligne par ligne.",
+    "openActivity": "Voir l'activité passée",
+    "pickAction": "Choisissez une tâche pour voir sa sortie.",
+    "noOutput": "Pas encore de sortie.",
+    "logUnavailable": "Impossible de charger la sortie de cette tâche.",
+    "connection": {
+      "live": "En direct",
+      "reconnecting": "Reconnexion"
+    },
+    "status": {
+      "idle": "Inactif",
+      "queued": "En attente",
+      "running": "En cours",
+      "succeeded": "Réussie",
+      "failed": "Échouée",
+      "cancelled": "Annulée"
+    },
+    "noLog": "Cette tâche ne produit aucune sortie."
+  },
+  "error": {
+    "title": "Opsifier ne peut pas charger cette page",
+    "description": "L'application n'a pas obtenu ce dont elle a besoin auprès du serveur."
+  },
+  "notFound": {
+    "title": "Il n'y a rien à cette adresse",
+    "description": "Le lien est peut-être ancien, ou la page a changé d'emplacement.",
+    "back": "Retour à l'aperçu"
+  }
+}

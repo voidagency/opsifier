@@ -1,0 +1,68 @@
+{
+  "title": "Mounts",
+  "description": "Give the container a folder from the server, a volume that outlives its tasks, or a file written by the panel.",
+  "edit": "Edit this mount",
+  "delete": "Remove this mount",
+  "created": "Mount added",
+  "updated": "Mount updated",
+  "deleted": "Mount removed",
+  "savedHint": "Deploy to apply it.",
+  "add": {
+    "bind": "Add a bind mount",
+    "volume": "Add a volume",
+    "file": "Add a file"
+  },
+  "kinds": {
+    "bind": "BIND",
+    "volume": "VOLUME",
+    "file": "FILE",
+    "fileLabel": "File kept by the panel"
+  },
+  "riskBadge": {
+    "docker-socket": "Exposes the Docker socket to this container",
+    "data-directory": "Exposes the panel's data directory to this container"
+  },
+  "empty": {
+    "title": "Nothing is mounted",
+    "description": "Everything the container writes disappears with its task. Add a mount to keep it."
+  },
+  "dialog": {
+    "bind": {
+      "createTitle": "Add a bind mount",
+      "updateTitle": "Edit this bind mount"
+    },
+    "volume": {
+      "createTitle": "Add a volume",
+      "updateTitle": "Edit this volume"
+    },
+    "file": {
+      "createTitle": "Add a file",
+      "updateTitle": "Edit this file"
+    },
+    "create": "Add",
+    "save": "Save",
+    "hostPath": "Path on the server",
+    "hostPathHint": "An absolute path on this server.",
+    "name": "Name",
+    "nameHint": "Lowercase letters, digits, dashes and underscores.",
+    "mountPath": "Path in the container",
+    "content": "Content"
+  },
+  "deleteDialog": {
+    "title": "Remove this mount?",
+    "description": "{{path}} will no longer be mounted after the next deploy. Volume data stays on the server until the service is destroyed.",
+    "confirm": "Remove mount"
+  },
+  "risk": {
+    "title": "This gives the container power over the server",
+    "mount_exposes_docker_socket": "A container with access to the Docker socket can start containers of its own and take over this server. Only do this for software you trust completely.",
+    "mount_exposes_data_directory": "This folder holds the panel's database and its encryption key. A container with access to it can read every secret and change anything in the panel. Only do this for software you trust completely.",
+    "confirm": "Mount it anyway"
+  },
+  "errors": {
+    "hostPath": "Use an absolute path such as /srv/app, with no . or .. in it.",
+    "mountPath": "Use an absolute path such as /data, with no . or .. in it. Docker can't mount over /, /proc, /sys or /dev.",
+    "name": "Use lowercase letters, digits, dashes and underscores, ending with a letter or digit.",
+    "content": "This file is too large."
+  }
+}

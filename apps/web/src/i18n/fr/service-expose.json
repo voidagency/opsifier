@@ -1,0 +1,20 @@
+{
+  "intro": "Publie le port de cette base ({{port}}) sur le serveur, pour que des outils extérieurs puissent s'y connecter. L'enregistrement redémarre la base. Les autres services de ce serveur n'en ont pas besoin.",
+  "warning": {
+    "title": "Réfléchissez avant d'exposer une base de données",
+    "description": "Toute personne pouvant atteindre ce port peut tenter de s'y connecter, et des robots cherchent les bases ouvertes. Gardez un mot de passe robuste et limitez l'accès avec un pare-feu si possible."
+  },
+  "port": "Port public",
+  "hint": "0 pour ne plus l'exposer, ou un port libre de 1024 à 65535.",
+  "invalid": "Utilisez 0, ou un nombre entier de 1024 à 65535.",
+  "save": "Enregistrer et redémarrer",
+  "restarting": "Redémarrage de la base de données…",
+  "exposed": "Le port {{port}} est ouvert",
+  "removed": "La base de données n'est plus exposée",
+  "failed": "Le port n'a pas été modifié",
+  "confirm": {
+    "title": "Exposer cette base de données ?",
+    "description": "Le port {{port}} sera joignable depuis l'extérieur de ce serveur. Gardez un mot de passe robuste.",
+    "submit": "L'exposer"
+  }
+}

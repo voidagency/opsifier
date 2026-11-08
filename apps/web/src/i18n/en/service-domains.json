@@ -1,0 +1,74 @@
+{
+  "add": "Add domain",
+  "empty": {
+    "title": "No domains yet",
+    "description": "This service has no address yet, so nothing routes to it."
+  },
+  "primary": "The service's main domain",
+  "makePrimary": "Make this the main domain",
+  "copyUrl": "Copy the public address",
+  "copyInternal": "Copy the internal address",
+  "open": "Open this address",
+  "edit": "Edit this domain",
+  "delete": "Delete this domain",
+  "httpOnly": "HTTP only",
+  "wildcard": "Wildcard",
+  "created": "Domain added",
+  "updated": "Domain updated",
+  "deleted": "Domain deleted",
+  "primaryMoved": "Main domain changed",
+  "primaryMovedHint": "$(PRIMARY_DOMAIN) and PORT follow it at the next deploy.",
+  "deleteDialog": {
+    "title": "Delete this domain?",
+    "description": "{{url}} stops routing to this service right away.",
+    "confirm": "Delete domain"
+  },
+  "primaryDialog": {
+    "title": "Make this the main domain?",
+    "description": "{{host}} becomes the service's main address, used by Open and $(PRIMARY_DOMAIN).",
+    "confirm": "Make main"
+  },
+  "dialog": {
+    "createTitle": "Add a domain",
+    "updateTitle": "Edit this domain",
+    "create": "Add",
+    "save": "Save",
+    "tabs": {
+      "details": "Details",
+      "middlewares": "Middlewares",
+      "ssl": "SSL"
+    },
+    "https": "HTTPS",
+    "httpsHint": "Redirect HTTP to HTTPS and get a certificate for this address.",
+    "host": "Hostname",
+    "path": "Path",
+    "pathHint": "Only requests starting with this path go to this service.",
+    "destination": "Destination inside the service",
+    "protocol": "Protocol",
+    "port": "Port",
+    "portHint": "The port the app listens on inside its container.",
+    "selectPort": "Choose",
+    "portsLoading": "Reading the image…",
+    "noSuggestions": "No suggestions yet",
+    "destinationPath": "Destination path",
+    "destinationPathHint": "Added in front of the path the app receives, when it isn't /.",
+    "middlewaresHint": "Extra Traefik middlewares to run for this domain, by name, one per row.",
+    "middleware": "Middleware {{number}}",
+    "removeMiddleware": "Remove middleware {{number}}",
+    "addMiddleware": "Add middleware",
+    "resolver": "Certificate resolver",
+    "resolverHint": "Leave empty for the default resolver. Wildcards need one that can do DNS challenges.",
+    "resolverPlaceholder": "letsencrypt",
+    "wildcard": "Wildcard domain",
+    "wildcardHint": "Also answer on every direct subdomain of this hostname. The bare hostname needs its own entry."
+  },
+  "errors": {
+    "host": "Enter a full hostname, such as app.example.com.",
+    "path": "A path starts with / and holds only URL path characters.",
+    "port": "Enter a port between 1 and 65535.",
+    "destinationPath": "A path starts with / and holds only URL path characters.",
+    "resolver": "Use letters, digits, dashes and underscores.",
+    "resolverRequired": "A wildcard certificate needs a named resolver that can do DNS challenges.",
+    "middlewares": "Each middleware needs a name, made of letters, digits, dots, dashes and underscores, with an optional @provider."
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "engines": {
+    "postgres": "Postgres",
+    "mysql": "MySQL",
+    "mariadb": "MariaDB",
+    "mongo": "Mongo",
+    "redis": "Redis"
+  },
+  "tabs": {
+    "label": "Sections de la base de données",
+    "overview": "Aperçu",
+    "credentials": "Identifiants",
+    "expose": "Exposition",
+    "resources": "Ressources",
+    "advanced": "Avancé"
+  },
+  "toolbar": {
+    "start": "Démarrer",
+    "stop": "Arrêter",
+    "more": "Plus d'actions",
+    "notes": "Notes",
+    "redeploy": "Redéployer",
+    "destroy": "Supprimer la base de données",
+    "started": "La base de données est démarrée",
+    "startFailed": "La base de données n'a pas démarré",
+    "stopped": "La base de données est arrêtée",
+    "stopFailed": "La base de données ne s'est pas arrêtée",
+    "redeployed": "Redéploiement terminé",
+    "redeployFailed": "Le redéploiement n'a pas abouti"
+  },
+  "destroy": {
+    "title": "Supprimer cette base de données ?",
+    "description": "Le service et son volume de données {{volume}} seront supprimés définitivement. Les données ne pourront pas être récupérées. Pour confirmer, saisissez",
+    "confirm": "Supprimer la base",
+    "copyName": "Copier le nom",
+    "started": "Suppression de {{name}}"
+  },
+  "create": {
+    "title": "Ajouter une base {{engine}}",
+    "description": "Elle se déploie dès que vous l'ajoutez à {{project}}.",
+    "name": "Nom du service",
+    "nameHint": "Lettres minuscules, chiffres, tirets et underscores.",
+    "databaseName": "Nom de la base",
+    "databaseNameHint": "Laissez vide pour utiliser {{project}}.",
+    "user": "Utilisateur",
+    "userHint": "Laissez vide pour {{user}}.",
+    "password": "Mot de passe",
+    "rootPassword": "Mot de passe root",
+    "passwordHint": "Laissez vide : un mot de passe robuste sera généré.",
+    "image": "Image",
+    "imageHint": "Laissez vide pour {{image}}.",
+    "submit": "Ajouter la base",
+    "required": "Donnez un nom au service.",
+    "invalidName": "Utilisez des lettres minuscules, chiffres, tirets et underscores, et terminez par une lettre ou un chiffre.",
+    "invalidDatabaseName": "Utilisez des lettres, chiffres, tirets et underscores.",
+    "invalidUser": "Utilisez des lettres, chiffres, tirets, points et underscores.",
+    "invalidPassword": "Utilisez 256 caractères au plus, sans saut de ligne ni autre caractère de contrôle.",
+    "invalidImage": "Saisissez une image, par exemple nom:version.",
+    "created": "La base {{name}} se déploie"
+  }
+}

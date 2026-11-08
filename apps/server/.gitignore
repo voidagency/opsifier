@@ -1,0 +1,2 @@
+# Local runtime data: the database and the secret key live here.
+.data/

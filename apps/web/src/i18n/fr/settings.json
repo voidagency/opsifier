@@ -1,0 +1,60 @@
+{
+  "credentials": {
+    "title": "Identifiants de connexion",
+    "description": "L'e-mail et le mot de passe qui ouvrent ce panneau. Votre mot de passe actuel est nécessaire pour les modifier.",
+    "email": "E-mail",
+    "currentPassword": "Mot de passe actuel",
+    "newPassword": "Nouveau mot de passe",
+    "newPasswordHint": "Au moins 12 caractères. Pour conserver votre mot de passe, saisissez-le ici à nouveau.",
+    "submit": "Enregistrer",
+    "saved": "Identifiants mis à jour"
+  },
+  "twoFactor": {
+    "title": "Connexion à deux facteurs",
+    "description": "Ajoute à chaque connexion un code généré sur votre téléphone : un mot de passe volé ne suffit plus.",
+    "on": "Activée",
+    "off": "Désactivée",
+    "warning": "Votre compte n'est protégé que par son mot de passe.",
+    "setUp": "Configurer les deux facteurs",
+    "disable": "Désactiver les deux facteurs",
+    "dialogTitle": "Configurer la connexion à deux facteurs",
+    "stepDescriptions": {
+      "password": "Confirmez votre mot de passe pour associer un nouvel appareil à ce compte.",
+      "scan": "Associez une application d'authentification à ce compte.",
+      "codes": "Chaque code permet de vous connecter une fois si vous perdez votre téléphone. Conservez-les en lieu sûr : ils ne seront plus affichés."
+    },
+    "currentPassword": "Mot de passe actuel",
+    "continue": "Continuer",
+    "recoveryTitle": "Enregistrez vos codes de récupération",
+    "recoveryListLabel": "Codes de récupération",
+    "copyCodes": "Copier tous les codes",
+    "recoverySaved": "J'ai enregistré ces codes en lieu sûr",
+    "recoveryDone": "Terminé",
+    "recoveryCode": "Code de récupération",
+    "useRecoveryCode": "Utiliser plutôt un code de récupération",
+    "useAuthenticator": "Utiliser plutôt un code de votre application",
+    "qrLabel": "Code QR contenant la clé de configuration",
+    "setupKey": "Clé de configuration",
+    "copyKey": "Copier la clé de configuration",
+    "codeLabel": "Code à 6 chiffres",
+    "confirm": "Activer",
+    "enabled": "La connexion à deux facteurs est activée",
+    "disabled": "La connexion à deux facteurs est désactivée",
+    "disableTitle": "Désactiver la connexion à deux facteurs ?",
+    "disableDescription": "La connexion ne demandera plus que votre mot de passe. Saisissez votre mot de passe et un code valide pour confirmer.",
+    "disableConfirm": "Désactiver",
+    "steps": {
+      "install": "Ouvrez une application d'authentification sur votre téléphone, ou installez-en une.",
+      "scan": "Scannez le code QR. Si ce n'est pas possible, saisissez la clé de configuration.",
+      "enter": "Saisissez le code à 6 chiffres affiché par l'application."
+    }
+  },
+  "errors": {
+    "email": "Saisissez une adresse e-mail valide.",
+    "currentPassword": "Saisissez votre mot de passe actuel.",
+    "newPassword": "Utilisez au moins 12 caractères.",
+    "passwordTooLong": "Utilisez au plus {{max}} caractères.",
+    "code": "Saisissez le code à 6 chiffres.",
+    "recoveryCode": "Saisissez un code de récupération, au format abcd-efgh-jkmn-pqrs."
+  }
+}

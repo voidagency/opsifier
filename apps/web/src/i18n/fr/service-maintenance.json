@@ -1,0 +1,33 @@
+{
+  "title": "Maintenance",
+  "description": "Affiche une page de maintenance sur tous les domaines de ce service, à la place de l'application. Les conteneurs continuent de tourner.",
+  "enabled": "Afficher la page de maintenance",
+  "enabledHint": "Les visiteurs reçoivent cette page avec un statut 503. Rien n'est redéployé.",
+  "activeTitle": "La page de maintenance est active",
+  "activeHint": "Les visiteurs la voient à la place de l'application sur tous les domaines.",
+  "pageTitle": "Titre",
+  "pageTitleHint": "Laissez vide pour un message standard dans la langue du visiteur.",
+  "subtitle": "Sous-titre",
+  "customize": "Apparence de la page",
+  "logo": "Logo",
+  "logoHint": "Une image PNG, JPEG, GIF, WebP ou SVG de 128 Ko maximum, stockée en ligne pour que la page ne charge rien d'autre.",
+  "logoPreview": "Le logo choisi",
+  "logoChoose": "Choisir un logo",
+  "logoRemove": "Retirer",
+  "css": "CSS personnalisé",
+  "cssHint": "Stylez la page avec .page, .logo, .code, .title, .subtitle et .links.",
+  "hideLogo": "Masquer le logo",
+  "hideLinks": "Masquer les liens",
+  "hideLinksHint": "Retire le lien « Réessayer » sous le message.",
+  "submit": "Enregistrer",
+  "savedOn": "Page de maintenance activée",
+  "savedOff": "Réglages de maintenance enregistrés",
+  "savedHint": "Appliqué tout de suite, sans déploiement.",
+  "errors": {
+    "tooLong": "C'est trop long.",
+    "css": "Ce CSS est trop long ou contient </style.",
+    "logo": "Choisissez une image PNG, JPEG, GIF, WebP ou SVG.",
+    "logoTooLarge": "Cette image dépasse 128 Ko.",
+    "logoUnreadable": "Ce fichier n'a pas pu être lu."
+  }
+}

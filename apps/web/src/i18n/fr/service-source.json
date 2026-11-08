@@ -1,0 +1,141 @@
+{
+  "title": "Source",
+  "description": "D'où vient le code ou l'image de ce service. Enregistrer ne change rien à ce qui tourne : déployez pour l'appliquer.",
+  "submit": "Enregistrer",
+  "saved": "Source enregistrée",
+  "savedHint": "Elle s'applique au prochain déploiement.",
+  "tabs": {
+    "label": "Type de source",
+    "image": "Image Docker",
+    "github": "GitHub",
+    "git": "Git",
+    "dockerfile": "Dockerfile",
+    "upload": "Envoi"
+  },
+  "image": "Image",
+  "imageHint": "Depuis n'importe quel registre, par exemple ghcr.io/owner/app:1.2.",
+  "registryHint": "Uniquement pour un registre privé.",
+  "username": "Identifiant du registre",
+  "password": "Mot de passe du registre",
+  "passwordStored": "Un mot de passe est conservé. Laissez vide pour le garder, ou videz l'identifiant pour retirer les deux.",
+  "passwordPlaceholder": "Conservé",
+  "branch": "Branche",
+  "branchHint": "Une branche, un tag ou un hash de commit complet.",
+  "path": "Chemin de build",
+  "pathHint": "Le dossier à construire. Pratique dans un monorepo.",
+  "git": {
+    "url": "URL du dépôt",
+    "urlHint": "Une adresse https:// ou ssh://, ou utilisateur@hôte:chemin."
+  },
+  "github": {
+    "repository": "Dépôt",
+    "repositoryHint": "Sous la forme propriétaire/dépôt.",
+    "repositoryPlaceholder": "propriétaire/dépôt",
+    "previewEmpty": "propriétaire/dépôt",
+    "tokenWarning": "Les dépôts privés nécessitent un jeton GitHub.",
+    "tokenLink": "En ajouter un dans les réglages",
+    "private": "Privé",
+    "searching": "Recherche…",
+    "noRepositories": "Aucun dépôt ne correspond",
+    "noBranches": "Aucune branche ne correspond"
+  },
+  "dockerfile": {
+    "label": "Dockerfile",
+    "hint": "Construit tel quel, sans rien d'autre dans son contexte."
+  },
+  "upload": {
+    "drop": "Déposez ici une archive de votre code, ou choisissez un fichier",
+    "choose": "Choisir une archive",
+    "formats": "zip, tar, tar.gz, tar.bz2, tar.xz, tar.zst, 7z ou rar, jusqu'à {{limit}}",
+    "current": "Envoyé",
+    "uploading": "Envoi en cours, {{percent}} %"
+  },
+  "build": {
+    "title": "Build",
+    "description": "Comment le code devient une image. Sans choix, un Dockerfile dans le chemin de build est utilisé s'il existe, sinon Nixpacks.",
+    "skip": "Passer",
+    "submit": "Enregistrer le build",
+    "saved": "Réglages de build enregistrés",
+    "savedHint": "Ils s'appliquent au prochain build.",
+    "skipped": "Réglages de build retirés",
+    "skippedHint": "Le prochain build détectera quoi utiliser.",
+    "types": {
+      "dockerfile": "Dockerfile",
+      "buildpacks": "Buildpacks",
+      "nixpacks": "Nixpacks",
+      "railpack": "Railpack"
+    },
+    "descriptions": {
+      "dockerfile": "Construire à partir d'un Dockerfile du dépôt.",
+      "buildpacks": "Détecter la pile et la construire avec un builder Cloud Native Buildpacks.",
+      "nixpacks": "Détecter la pile et la construire avec Nixpacks.",
+      "railpack": "Détecter la pile et la construire avec Railpack."
+    },
+    "file": "Chemin du Dockerfile",
+    "fileHint": "Relatif au chemin de build, qui est aussi le contexte Docker.",
+    "builder": "Builder",
+    "builderHint": "N'importe quelle image de builder.",
+    "version": "Version",
+    "installCommand": "Commande d'installation",
+    "buildCommand": "Commande de build",
+    "startCommand": "Commande de démarrage",
+    "commandHint": "Renseignez une commande pour remplacer celle qui est détectée.",
+    "nixPackages": "Paquets Nix",
+    "aptPackages": "Paquets APT",
+    "misePackages": "Paquets Mise",
+    "misePackagesHint": "Séparés par des espaces, sous la forme nom ou nom@version.",
+    "buildAptPackages": "Paquets APT pour le build",
+    "deployAptPackages": "Paquets APT dans l'image finale",
+    "packagesHint": "Séparés par des espaces."
+  },
+  "sshKey": {
+    "title": "Clé SSH",
+    "description": "Un dépôt privé nécessite une clé. Générez-en une, puis ajoutez sa partie publique au dépôt sur votre hébergeur Git, comme clé de déploiement en lecture seule.",
+    "generate": "Générer une clé SSH",
+    "generated": "Clé SSH générée",
+    "generatedHint": "Ajoutez sa partie publique à votre hébergeur Git.",
+    "copy": "Copier la clé publique",
+    "refresh": "Remplacer la clé SSH",
+    "refreshTitle": "Remplacer cette clé SSH ?",
+    "refreshDescription": "La clé actuelle cesse aussitôt de fonctionner pour ce service : ajoutez la nouvelle à votre hébergeur Git avant le prochain déploiement.",
+    "refreshConfirm": "Remplacer"
+  },
+  "autoDeploy": {
+    "title": "Déploiement automatique",
+    "label": "Déployer à chaque push sur {{branch}}",
+    "hint": "Ajoute un webhook au dépôt. Le jeton GitHub doit pouvoir gérer les webhooks.",
+    "needsToken": "Le déploiement automatique nécessite un jeton GitHub.",
+    "enabled": "Déploiement automatique activé",
+    "disabled": "Déploiement automatique désactivé"
+  },
+  "errors": {
+    "imageRequired": "Indiquez une image à exécuter.",
+    "imageInvalid": "Indiquez une image comme nom:tag.",
+    "usernameRequired": "Un mot de passe requiert un identifiant.",
+    "passwordRequired": "Un identifiant requiert un mot de passe.",
+    "repositoryInvalid": "Écrivez-le sous la forme propriétaire/dépôt.",
+    "refRequired": "Indiquez une branche, un tag ou un commit.",
+    "refInvalid": "Ce nom de branche, de tag ou de commit serait refusé par git.",
+    "urlRequired": "Indiquez l'adresse du dépôt.",
+    "urlInvalid": "Utilisez une adresse https:// ou ssh://, ou utilisateur@hôte:chemin.",
+    "pathRequired": "Indiquez un dossier, ou / pour tout le dépôt.",
+    "pathInvalid": "Utilisez un dossier du dépôt, comme /apps/web.",
+    "dockerfileRequired": "Écrivez un Dockerfile à construire.",
+    "fileRequired": "Choisissez une archive à envoyer.",
+    "fileType": "Utilisez une archive zip, tar, 7z ou rar.",
+    "fileTooLarge": "Cette archive dépasse {{limit}}.",
+    "build": {
+      "file": "Utilisez un chemin à l'intérieur du chemin de build, comme Dockerfile.",
+      "builder": "Indiquez une image de builder comme heroku/builder:24.",
+      "version": "Utilisez une version comme 1.2.3.",
+      "installCommand": "Écrivez la commande sur une seule ligne.",
+      "buildCommand": "Écrivez la commande sur une seule ligne.",
+      "startCommand": "Écrivez la commande sur une seule ligne.",
+      "nixPackages": "Utilisez des noms de paquets séparés par des espaces.",
+      "aptPackages": "Utilisez des noms de paquets séparés par des espaces.",
+      "misePackages": "Utilisez nom ou nom@version, séparés par des espaces.",
+      "buildAptPackages": "Utilisez des noms de paquets séparés par des espaces.",
+      "deployAptPackages": "Utilisez des noms de paquets séparés par des espaces."
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "title": "Scripts",
+  "description": "Les commandes que vous lancez souvent, prêtes à démarrer depuis la console de ce service.",
+  "add": "Ajouter un script",
+  "edit": "Modifier ce script",
+  "delete": "Supprimer ce script",
+  "emptyScript": "Vide",
+  "saved": "Script enregistré",
+  "deleted": "Script supprimé",
+  "empty": {
+    "title": "Aucun script pour l'instant",
+    "description": "Les scripts enregistrés apparaissent à côté de Sh et Bash dans la console."
+  },
+  "dialog": {
+    "createTitle": "Ajouter un script",
+    "updateTitle": "Modifier ce script",
+    "create": "Ajouter",
+    "save": "Enregistrer",
+    "name": "Nom",
+    "script": "Script",
+    "scriptHint": "Exécuté par /bin/sh dans la tâche choisie dans la console."
+  },
+  "deleteDialog": {
+    "title": "Supprimer ce script ?",
+    "description": "{{name}} ne sera plus proposé dans la console.",
+    "confirm": "Supprimer le script"
+  },
+  "errors": {
+    "name": "Donnez-lui un nom avec des lettres, chiffres, espaces, points, tirets ou underscores.",
+    "script": "Ce script est trop long."
+  }
+}

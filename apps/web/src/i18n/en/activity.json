@@ -1,0 +1,68 @@
+{
+  "title": "Activity",
+  "description": "A record of everything the panel has done on this server.",
+  "empty": {
+    "title": "The log is empty",
+    "description": "Deploys, restarts and backups are recorded here as they run, with their full output."
+  },
+  "loadMore": "Show older entries",
+  "view": "See the output",
+  "stop": "Stop this action",
+  "openService": "Open the service",
+  "startedBy": "Started by {{email}}",
+  "status": {
+    "queued": "Queued",
+    "running": "Running",
+    "succeeded": "Succeeded",
+    "failed": "Failed",
+    "cancelled": "Cancelled"
+  },
+  "logDialog": {
+    "description": "Output of this action, line by line."
+  },
+  "types": {
+    "auth": {
+      "setup": "Administrator account created",
+      "login": "Signed in",
+      "credentials": "Sign-in details changed",
+      "two-factor": "Two-factor sign-in changed"
+    },
+    "project": {
+      "create": "Project created",
+      "env": "Shared variables changed",
+      "destroy": "Project destroyed"
+    },
+    "service": {
+      "create": "Service created",
+      "source": "Source changed",
+      "env": "Variables changed",
+      "deploy": "Deployment",
+      "start": "Service start",
+      "stop": "Service stop",
+      "restart": "Service restart",
+      "rename": "Service renamed",
+      "destroy": "Service destroyed",
+      "domains": "Domains changed",
+      "redirects": "Redirects changed",
+      "security": "Basic authentication changed",
+      "maintenance": "Maintenance page changed",
+      "console": "Console session",
+      "resources": "Resources changed",
+      "scripts": "Scripts changed",
+      "mounts": "Mounts changed",
+      "deploy-settings": "Deploy settings changed",
+      "ports": "Published ports changed"
+    },
+    "database": {
+      "create": "Database created",
+      "password": "Database password changed",
+      "password-recovery": "Database password checked",
+      "expose": "Database exposure changed",
+      "settings": "Database settings changed",
+      "reveal": "Database secret revealed",
+      "companion-enable": "Web admin tool enabled",
+      "companion-disable": "Web admin tool disabled",
+      "companion-reveal": "Web admin tool token revealed"
+    }
+  }
+}

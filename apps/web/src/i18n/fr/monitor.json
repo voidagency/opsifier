@@ -1,0 +1,18 @@
+{
+  "title": "Supervision",
+  "description": "L'état de ce serveur et de ses services.",
+  "empty": {
+    "title": "Rien ne tourne",
+    "description": "Les chiffres de CPU, de mémoire et de réseau s'affichent ici dès que des services tournent."
+  },
+  "services": "Services",
+  "unavailable": "Docker ne répond pas : il n'y a rien à afficher pour l'instant.",
+  "columns": {
+    "name": "Projet / service / tâche",
+    "cpu": "CPU",
+    "memory": "Mémoire",
+    "memoryPercent": "Mémoire %",
+    "networkIn": "Réseau entrant",
+    "networkOut": "Réseau sortant"
+  }
+}

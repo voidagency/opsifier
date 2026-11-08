@@ -1,0 +1,16 @@
+{
+  "title": "GitHub",
+  "description": "A token lets Opsifier read private repositories and add the webhook behind auto-deploy. It is checked with GitHub before being stored.",
+  "token": "Access token",
+  "tokenHint": "The repo scope is enough to deploy. Auto-deploy also needs admin:repo_hook, or Webhooks read and write on a fine-grained token.",
+  "create": "Create one on GitHub",
+  "placeholder": "Stored",
+  "connected": "Connected as {{login}}",
+  "save": "Save",
+  "saved": "GitHub token saved",
+  "remove": "Remove",
+  "removed": "GitHub token removed",
+  "errors": {
+    "tokenRequired": "Paste a GitHub token."
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "logs": {
+    "heading": "Live logs",
+    "label": "Service output",
+    "open": "Logs",
+    "title": "Logs of {{service}}",
+    "separator": "Add a separator",
+    "refresh": "Reload the logs",
+    "fullscreen": "Open in the whole window",
+    "connecting": "Connecting…",
+    "waiting": "Waiting for {{name}} to start…",
+    "empty": "Nothing printed yet.",
+    "error": "The logs can't be read right now. Retrying…",
+    "modes": {
+      "label": "How to read the logs",
+      "live": "Live",
+      "search": "Search"
+    }
+  },
+  "search": {
+    "text": "Text",
+    "placeholder": "Any part of a line",
+    "stream": "Stream",
+    "streams": {
+      "all": "All",
+      "stdout": "Standard output",
+      "stderr": "Errors only"
+    },
+    "level": "Level",
+    "levels": {
+      "any": "Any",
+      "error": "Errors",
+      "warn": "Warnings",
+      "info": "Information",
+      "debug": "Debug"
+    },
+    "range": "Period",
+    "ranges": {
+      "15m": "15 minutes",
+      "1h": "Last hour",
+      "6h": "6 hours",
+      "24h": "24 hours",
+      "7d": "7 days",
+      "all": "Everything kept"
+    },
+    "limit": "At most",
+    "submit": "Search",
+    "intro": "Searches what Docker still keeps for this service, across its current and earlier tasks.",
+    "summary": "{{shown}} matching lines, out of {{scanned}} read.",
+    "summaryTruncated": "Showing the latest {{shown}} matches, out of {{scanned}} lines read. Narrow it down to see the others.",
+    "empty": {
+      "title": "No matching lines",
+      "description": "Try another word, or a longer period."
+    }
+  },
+  "console": {
+    "open": "Console",
+    "title": "Console of {{service}}",
+    "task": "Task",
+    "choose": "Choose a program to open a session in the selected task.",
+    "noTasks": "Nothing is running yet. Start the service to open a console.",
+    "notRunning": "Start the service to open a console",
+    "adminOnly": "Only an administrator can open a console",
+    "disconnect": "Disconnect",
+    "ended": "Session ended.",
+    "endedWithCode": "Session ended with code {{code}}.",
+    "lost": "The connection was lost.",
+    "refused": "The console couldn't be opened."
+  }
+}

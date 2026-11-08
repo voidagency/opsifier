@@ -1,0 +1,44 @@
+{
+  "add": "Add redirect",
+  "edit": "Edit this redirect",
+  "delete": "Delete this redirect",
+  "permanent": "Permanent (301)",
+  "temporary": "Temporary (302)",
+  "disabled": "Off",
+  "saved": "Redirects updated",
+  "deleted": "Redirect deleted",
+  "empty": {
+    "title": "No redirects yet",
+    "description": "Send visitors from one address to another with a rule, on every domain of this service."
+  },
+  "deleteDialog": {
+    "title": "Delete this redirect?",
+    "description": "Requests that match it go to the app instead, from now on.",
+    "confirm": "Delete redirect"
+  },
+  "examples": {
+    "stripWww": "www to bare domain",
+    "addWww": "Bare domain to www",
+    "oldDomain": "Old domain to new domain",
+    "oldPath": "Old path to new path"
+  },
+  "dialog": {
+    "createTitle": "Add a redirect",
+    "updateTitle": "Edit this redirect",
+    "create": "Add",
+    "save": "Save",
+    "loadExample": "Start from an example",
+    "enabled": "Active",
+    "enabledHint": "Turn this off to keep the rule without applying it.",
+    "regex": "Regular expression",
+    "regexHint": "Matched against the whole request URL.",
+    "replacement": "Replacement",
+    "replacementHint": "Use $1 or ${1} for what the groups captured.",
+    "permanent": "Permanent",
+    "permanentHint": "Answers 301 when on, 302 when off."
+  },
+  "errors": {
+    "regex": "Enter a regular expression Traefik can compile, with no spaces.",
+    "replacement": "Enter a replacement with no spaces."
+  }
+}

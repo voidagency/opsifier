@@ -1,0 +1,18 @@
+{
+  "title": "Monitor",
+  "description": "How this server and its services are holding up.",
+  "empty": {
+    "title": "Nothing is running",
+    "description": "Live CPU, memory and network figures appear here once services are running."
+  },
+  "services": "Services",
+  "unavailable": "Docker isn't answering, so there's nothing to show right now.",
+  "columns": {
+    "name": "Project / service / task",
+    "cpu": "CPU",
+    "memory": "Memory",
+    "memoryPercent": "Memory %",
+    "networkIn": "Network in",
+    "networkOut": "Network out"
+  }
+}

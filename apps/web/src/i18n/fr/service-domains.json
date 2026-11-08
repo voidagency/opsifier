@@ -1,0 +1,74 @@
+{
+  "add": "Ajouter un domaine",
+  "empty": {
+    "title": "Aucun domaine pour l'instant",
+    "description": "Ce service n'a pas encore d'adresse : rien n'est routé vers lui."
+  },
+  "primary": "Le domaine principal du service",
+  "makePrimary": "En faire le domaine principal",
+  "copyUrl": "Copier l'adresse publique",
+  "copyInternal": "Copier l'adresse interne",
+  "open": "Ouvrir cette adresse",
+  "edit": "Modifier ce domaine",
+  "delete": "Supprimer ce domaine",
+  "httpOnly": "HTTP seul",
+  "wildcard": "Wildcard",
+  "created": "Domaine ajouté",
+  "updated": "Domaine modifié",
+  "deleted": "Domaine supprimé",
+  "primaryMoved": "Domaine principal changé",
+  "primaryMovedHint": "$(PRIMARY_DOMAIN) et PORT suivront au prochain déploiement.",
+  "deleteDialog": {
+    "title": "Supprimer ce domaine ?",
+    "description": "{{url}} cesse tout de suite d'être routé vers ce service.",
+    "confirm": "Supprimer le domaine"
+  },
+  "primaryDialog": {
+    "title": "En faire le domaine principal ?",
+    "description": "{{host}} devient l'adresse principale du service, utilisée par Ouvrir et $(PRIMARY_DOMAIN).",
+    "confirm": "Définir comme principal"
+  },
+  "dialog": {
+    "createTitle": "Ajouter un domaine",
+    "updateTitle": "Modifier ce domaine",
+    "create": "Ajouter",
+    "save": "Enregistrer",
+    "tabs": {
+      "details": "Détails",
+      "middlewares": "Middlewares",
+      "ssl": "SSL"
+    },
+    "https": "HTTPS",
+    "httpsHint": "Redirige HTTP vers HTTPS et obtient un certificat pour cette adresse.",
+    "host": "Nom d'hôte",
+    "path": "Chemin",
+    "pathHint": "Seules les requêtes commençant par ce chemin vont vers ce service.",
+    "destination": "Destination dans le service",
+    "protocol": "Protocole",
+    "port": "Port",
+    "portHint": "Le port sur lequel l'application écoute dans son conteneur.",
+    "selectPort": "Choisir",
+    "portsLoading": "Lecture de l'image…",
+    "noSuggestions": "Aucune suggestion pour l'instant",
+    "destinationPath": "Chemin de destination",
+    "destinationPathHint": "Ajouté devant le chemin reçu par l'application, s'il n'est pas /.",
+    "middlewaresHint": "Middlewares Traefik supplémentaires à exécuter pour ce domaine, par nom, un par ligne.",
+    "middleware": "Middleware {{number}}",
+    "removeMiddleware": "Retirer le middleware {{number}}",
+    "addMiddleware": "Ajouter un middleware",
+    "resolver": "Résolveur de certificat",
+    "resolverHint": "Laissez vide pour le résolveur par défaut. Un wildcard en demande un capable de faire des défis DNS.",
+    "resolverPlaceholder": "letsencrypt",
+    "wildcard": "Domaine wildcard",
+    "wildcardHint": "Répond aussi sur chaque sous-domaine direct de ce nom d'hôte. Le nom d'hôte nu a besoin de sa propre entrée."
+  },
+  "errors": {
+    "host": "Saisissez un nom d'hôte complet, comme app.example.com.",
+    "path": "Un chemin commence par / et ne contient que des caractères de chemin d'URL.",
+    "port": "Saisissez un port entre 1 et 65535.",
+    "destinationPath": "Un chemin commence par / et ne contient que des caractères de chemin d'URL.",
+    "resolver": "Utilisez des lettres, des chiffres, des tirets et des tirets bas.",
+    "resolverRequired": "Un certificat wildcard demande un résolveur nommé capable de faire des défis DNS.",
+    "middlewares": "Chaque middleware a besoin d'un nom, avec des lettres, chiffres, points, tirets et tirets bas, et un @provider facultatif."
+  }
+}

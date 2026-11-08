@@ -1,0 +1,68 @@
+{
+  "title": "Montages",
+  "description": "Donnez au conteneur un dossier du serveur, un volume qui survit à ses tâches, ou un fichier écrit par le panneau.",
+  "edit": "Modifier ce montage",
+  "delete": "Retirer ce montage",
+  "created": "Montage ajouté",
+  "updated": "Montage modifié",
+  "deleted": "Montage retiré",
+  "savedHint": "Déployez pour l'appliquer.",
+  "add": {
+    "bind": "Ajouter un dossier du serveur",
+    "volume": "Ajouter un volume",
+    "file": "Ajouter un fichier"
+  },
+  "kinds": {
+    "bind": "DOSSIER",
+    "volume": "VOLUME",
+    "file": "FICHIER",
+    "fileLabel": "Fichier conservé par le panneau"
+  },
+  "riskBadge": {
+    "docker-socket": "Expose le socket Docker à ce conteneur",
+    "data-directory": "Expose le dossier de données du panneau à ce conteneur"
+  },
+  "empty": {
+    "title": "Rien n'est monté",
+    "description": "Tout ce que le conteneur écrit disparaît avec sa tâche. Ajoutez un montage pour le conserver."
+  },
+  "dialog": {
+    "bind": {
+      "createTitle": "Ajouter un dossier du serveur",
+      "updateTitle": "Modifier ce dossier du serveur"
+    },
+    "volume": {
+      "createTitle": "Ajouter un volume",
+      "updateTitle": "Modifier ce volume"
+    },
+    "file": {
+      "createTitle": "Ajouter un fichier",
+      "updateTitle": "Modifier ce fichier"
+    },
+    "create": "Ajouter",
+    "save": "Enregistrer",
+    "hostPath": "Chemin sur le serveur",
+    "hostPathHint": "Un chemin absolu sur ce serveur.",
+    "name": "Nom",
+    "nameHint": "Lettres minuscules, chiffres, tirets et underscores.",
+    "mountPath": "Chemin dans le conteneur",
+    "content": "Contenu"
+  },
+  "deleteDialog": {
+    "title": "Retirer ce montage ?",
+    "description": "{{path}} ne sera plus monté après le prochain déploiement. Les données d'un volume restent sur le serveur jusqu'à la destruction du service.",
+    "confirm": "Retirer le montage"
+  },
+  "risk": {
+    "title": "Ceci donne au conteneur la main sur le serveur",
+    "mount_exposes_docker_socket": "Un conteneur qui accède au socket Docker peut lancer ses propres conteneurs et prendre le contrôle de ce serveur. Ne le faites que pour un logiciel en lequel vous avez entièrement confiance.",
+    "mount_exposes_data_directory": "Ce dossier contient la base de données du panneau et sa clé de chiffrement. Un conteneur qui y accède peut lire tous les secrets et tout modifier dans le panneau. Ne le faites que pour un logiciel en lequel vous avez entièrement confiance.",
+    "confirm": "Monter quand même"
+  },
+  "errors": {
+    "hostPath": "Utilisez un chemin absolu comme /srv/app, sans . ni .. à l'intérieur.",
+    "mountPath": "Utilisez un chemin absolu comme /data, sans . ni .. à l'intérieur. Docker ne peut pas monter sur /, /proc, /sys ou /dev.",
+    "name": "Utilisez des lettres minuscules, chiffres, tirets et underscores, avec une lettre ou un chiffre à la fin.",
+    "content": "Ce fichier est trop volumineux."
+  }
+}
