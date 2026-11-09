@@ -20,3 +20,10 @@ export const exposedPort = z
 
 export const exposeSettings = z.object({ port: exposedPort });
 export type ExposeSettings = z.infer<typeof exposeSettings>;
+
+/** GET .../expose: what is saved, and what a deployment has actually published. */
+export const exposeState = exposeSettings.extend({
+  /** Null while Docker can't be asked. Differs from `port` until the next deployment. */
+  publishedPort: z.number().int().min(0).max(65535).nullable(),
+});
+export type ExposeState = z.infer<typeof exposeState>;

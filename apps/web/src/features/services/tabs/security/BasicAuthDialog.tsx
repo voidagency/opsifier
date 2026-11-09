@@ -67,7 +67,7 @@ export function BasicAuthDialog({ project, service, entry, onClose, onSaved }: B
     >
       <div className="grid gap-4">
         {form.banner && <FormBanner>{form.banner}</FormBanner>}
-        <Field label={t("dialog.username")} error={form.errors.username}>
+        <Field label={t("dialog.username")} error={form.errors.username} hint={t("dialog.usernameHint")}>
           <Input
             {...form.field("username")}
             mono

@@ -89,6 +89,7 @@ describe("first-time setup", () => {
   it("creates an admin, signs them in and stores only a hash", async () => {
     const result = await authPost<SessionState>(app, "setup", {
       token: setupTokenOf(app),
+      name: "Ada Admin",
       email: "Admin@Example.COM",
       password: TEST_PASSWORD,
     });
@@ -109,6 +110,7 @@ describe("first-time setup", () => {
     await setupAdmin(app);
     const again = await authPost(app, "setup", {
       token: "x".repeat(43),
+      name: "Someone Else",
       email: "other@example.com",
       password: "another password here",
     });
@@ -122,7 +124,12 @@ describe("first-time setup", () => {
     const token = setupTokenOf(app);
     const attempts = await Promise.all(
       Array.from({ length: 8 }, (_, index) =>
-        authPost(app, "setup", { token, email: `user${index}@example.com`, password: TEST_PASSWORD }),
+        authPost(app, "setup", {
+          token,
+          name: "Ada Admin",
+          email: `user${index}@example.com`,
+          password: TEST_PASSWORD,
+        }),
       ),
     );
 
@@ -135,6 +142,7 @@ describe("first-time setup", () => {
   it("rejects a blank password that only meets the length rule", async () => {
     const result = await authPost(app, "setup", {
       token: setupTokenOf(app),
+      name: "Ada Admin",
       email: TEST_EMAIL,
       password: " ".repeat(16),
     });
@@ -146,6 +154,7 @@ describe("first-time setup", () => {
   it("rejects a short password and a malformed email, per field", async () => {
     const result = await authPost(app, "setup", {
       token: setupTokenOf(app),
+      name: "Ada Admin",
       email: "not-an-email",
       password: "short",
     });
@@ -155,7 +164,7 @@ describe("first-time setup", () => {
 });
 
 describe("the setup token", () => {
-  const account = { email: TEST_EMAIL, password: TEST_PASSWORD };
+  const account = { name: "Ada Admin", email: TEST_EMAIL, password: TEST_PASSWORD };
   const tokenFile = () => context.deps.config.setupTokenFile;
 
   it("is required", async () => {
@@ -223,6 +232,44 @@ describe("the setup token", () => {
     for (const expected of [403, 403, 429]) {
       expect((await authPost(app, "setup", { ...account, token: "a".repeat(43) })).status).toBe(expected);
     }
+  });
+});
+
+describe("the owner's name", () => {
+  it("is required and kept", async () => {
+    const missing = await authPost(app, "setup", {
+      token: setupTokenOf(app),
+      email: TEST_EMAIL,
+      password: TEST_PASSWORD,
+    });
+    expect(missing.status).toBe(400);
+    expect(apiErrorOf(missing).fields).toHaveProperty("name");
+
+    const created = await authPost(app, "setup", {
+      token: setupTokenOf(app),
+      name: "  Ada Admin  ",
+      email: TEST_EMAIL,
+      password: TEST_PASSWORD,
+    });
+    expect(created.status).toBe(201);
+    expect(allUsers()[0]).toMatchObject({ name: "Ada Admin", isOwner: true });
+  });
+
+  it.each([
+    ["blank", "   "],
+    ["too long", "x".repeat(101)],
+    ["over two lines", "Ada\nAdmin"],
+  ])("refuses one that is %s, and creates nothing", async (_label, name) => {
+    const result = await authPost(app, "setup", {
+      token: setupTokenOf(app),
+      name,
+      email: TEST_EMAIL,
+      password: TEST_PASSWORD,
+    });
+
+    expect(result.status).toBe(400);
+    expect(apiErrorOf(result).fields).toHaveProperty("name");
+    expect(allUsers()).toHaveLength(0);
   });
 });
 

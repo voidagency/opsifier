@@ -40,5 +40,6 @@
   "errors": {
     "regex": "Saisissez une expression régulière que Traefik peut compiler, sans espaces.",
     "replacement": "Saisissez un remplacement sans espaces."
-  }
+  },
+  "enabled": "Active"
 }

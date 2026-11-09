@@ -5,7 +5,7 @@ import { type CompiledDomains, compileDomains, type DomainInput } from "./domain
 import { compileEnv } from "./env";
 import { compileMiddlewares } from "./middlewares";
 import { compileMounts, type MountFile, type MountVolume } from "./mounts";
-import { builtImageName, projectNetworkName, qualifiedName } from "./names";
+import { appNetworks, builtImageName, idLabel, qualifiedName } from "./names";
 import { compilePorts } from "./ports";
 import { compileResources } from "./resources";
 
@@ -16,18 +16,25 @@ export interface CompileDomain extends DomainInput {
 }
 
 export interface CompileInput {
-  project: { name: string; env: string };
-  service: { name: string; spec: AppServiceSpec };
+  project: { name: string };
+  service: { name: string; spec: AppServiceSpec; id?: string | null };
+  /** The unsealed variables of the project and the service. Only a deploy needs them, so only it passes them. */
+  env?: { project: string; service: string };
   domains: readonly CompileDomain[];
   dataDir: string;
   /** Raise it to make Swarm replace the tasks even when nothing else changed. */
   forceUpdate: number;
   /** The commit a build came from, exposed to the container as `GIT_SHA`. */
   gitSha?: string | null;
+  /** Unsealed values for the `$(secret.x)` and `$(db.x.y)` references of this service's environment. */
+  references?: Readonly<Record<string, string>>;
 }
 
 export interface ProxyConfig {
-  http: Pick<CompiledDomains, "routers" | "services"> & { middlewares?: Record<string, unknown> };
+  http: Pick<CompiledDomains, "routers" | "services"> & {
+    middlewares?: Record<string, unknown>;
+    serversTransports?: Record<string, unknown>;
+  };
 }
 
 export interface CompiledService {
@@ -67,6 +74,9 @@ export function compileService(input: CompileInput): CompiledService {
       routers: compiledDomains.routers,
       services: compiledDomains.services,
       ...(Object.keys(definitions).length > 0 ? { middlewares: definitions } : {}),
+      ...(Object.keys(compiledDomains.transports).length > 0
+        ? { serversTransports: compiledDomains.transports }
+        : {}),
     },
   };
 
@@ -77,17 +87,20 @@ export function compileService(input: CompileInput): CompiledService {
   const env = compileEnv({
     project: project.name,
     service: service.name,
-    projectEnv: project.env,
-    serviceEnv: spec.env,
+    projectEnv: input.env?.project ?? "",
+    serviceEnv: input.env?.service ?? "",
     primaryHost: primary?.host ?? "",
     port: primary?.port ?? DEFAULT_PORT,
     gitSha: input.gitSha,
+    references: input.references,
+    interpolate: spec.envInterpolation,
   });
   const mounts = compileMounts({
     mounts: spec.mounts,
     project: project.name,
     service: service.name,
     dataDir: input.dataDir,
+    id: service.id,
   });
   const deploy = compileDeploy({
     settings: spec.deploy,
@@ -98,7 +111,12 @@ export function compileService(input: CompileInput): CompiledService {
 
   const swarmSpec: SwarmServiceSpec = {
     Name: name,
-    Labels: { "opsifier.project": project.name, "opsifier.service": service.name, "opsifier.type": "app" },
+    Labels: {
+      "opsifier.project": project.name,
+      "opsifier.service": service.name,
+      "opsifier.type": spec.box === null ? "app" : "box",
+      ...idLabel(service.id),
+    },
     TaskTemplate: {
       ContainerSpec: {
         Image: spec.source.type === "image" ? spec.source.image : builtImageName(project.name, service.name),
@@ -108,12 +126,7 @@ export function compileService(input: CompileInput): CompiledService {
       },
       Resources: compileResources(spec.resources),
       Placement: mounts.constraints.length > 0 ? { Constraints: mounts.constraints } : {},
-      Networks: [
-        {
-          Target: projectNetworkName(project.name),
-          Aliases: [`${project.name}-${service.name}`, service.name],
-        },
-      ],
+      Networks: appNetworks(project.name, service.name),
       ...deploy.task,
     },
     Mode: deploy.Mode,
@@ -126,4 +139,10 @@ export function compileService(input: CompileInput): CompiledService {
 }
 
 export { internalUrl } from "./domains";
-export { projectNetworkName, qualifiedName } from "./names";
+export {
+  composeChildAddress,
+  projectNetworkName,
+  projectProxyNetworkName,
+  qualifiedName,
+  SHARED_NETWORK,
+} from "./names";

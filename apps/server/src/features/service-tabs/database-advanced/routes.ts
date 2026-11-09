@@ -1,6 +1,5 @@
 import { createRoute } from "@hono/zod-openapi";
-import { actionEntry, databaseAdvancedSettings, servicePath } from "@opsifier/contract";
-import { toActionEntry } from "../../../core/actions";
+import { databaseAdvancedSettings, saveDatabaseAdvancedRequest, servicePath } from "@opsifier/contract";
 import { requirePrincipal } from "../../../core/auth";
 import type { Feature } from "../../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../../core/openapi";
@@ -29,13 +28,15 @@ const putRoute = createRoute({
   method: "put",
   path: PATH,
   tags,
-  description: "Saves and applies at once, which restarts a running database.",
-  request: { params: servicePath, body: jsonBody(databaseAdvancedSettings) },
+  description:
+    "Saves the settings, which reach the database at its next deployment. A move to another major version must name the service in `confirm`.",
+  request: { params: servicePath, body: jsonBody(saveDatabaseAdvancedRequest) },
   responses: {
-    202: jsonResponse(actionEntry, "The Action applying them."),
+    200: jsonResponse(databaseAdvancedSettings, "Saved."),
     400: invalid,
     401: denied,
     404: missing,
+    409: errorResponse("The new image needs a confirmation, or the database is not in a state to take it."),
   },
 });
 
@@ -51,15 +52,13 @@ export const feature: Feature = {
     app.openapi(putRoute, (c) => {
       const principal = requirePrincipal(c);
       return c.json(
-        toActionEntry(
-          saveAdvanced(
-            deps,
-            target(c.req.valid("param")),
-            c.req.valid("json"),
-            principal.kind === "session" ? principal.user.email : undefined,
-          ),
+        saveAdvanced(
+          deps,
+          target(c.req.valid("param")),
+          c.req.valid("json"),
+          principal.kind === "session" ? principal.user.email : undefined,
         ),
-        202,
+        200,
       );
     });
   },

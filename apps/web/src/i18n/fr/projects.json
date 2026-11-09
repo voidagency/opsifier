@@ -14,7 +14,9 @@
     "templates": "Modèles",
     "settings": "Réglages",
     "emptyTitle": "Aucun service dans ce projet pour l'instant",
-    "emptyDescription": "Ajoutez un service pour exécuter une image de conteneur, puis déployez-le depuis sa page."
+    "emptyDescription": "Ajoutez un service pour exécuter une image de conteneur, puis déployez-le depuis sa page.",
+    "healthLabel": "Services par état",
+    "noMatch": "Rien n'est dans cet état pour l'instant."
   },
   "settings": {
     "pageTitle": "Réglages de {{name}}",
@@ -34,15 +36,17 @@
     },
     "danger": {
       "title": "Supprimer ce projet",
-      "description": "Arrête ses services et supprime ceux-ci, leurs routes et le réseau du projet. Impossible de revenir en arrière.",
+      "description": "Seul un projet vide peut être supprimé : ses services partent d'abord, un par un.",
       "destroy": "Supprimer le projet",
-      "warning_one": "Le service de ce projet sera supprimé avec lui.",
-      "warning_other": "Les {{count}} services de ce projet seront supprimés avec lui.",
+      "warning_one": "Supprimez d'abord le service de ce projet.",
+      "warning_other": "Supprimez d'abord les {{count}} services de ce projet.",
       "dialogTitle": "Supprimer ce projet ?",
-      "dialogDescription": "Tout ce qu'il exécute s'arrêtera définitivement.",
+      "dialogDescription": "Vous allez supprimer",
       "confirm": "Supprimer",
       "copyName": "Copier le nom du projet",
-      "destroying": "Suppression de {{name}}"
+      "destroying": "Suppression de {{name}}",
+      "removed": "Son réseau et ses variables partagées.",
+      "kept": "Les volumes conservés des services qu'il contenait, et leurs sauvegardes. Supprimez les volumes conservés dans Supervision, Stockage."
     }
   }
 }

@@ -1,0 +1,102 @@
+{
+  "id": "etherpad",
+  "version": "1.0.0",
+  "name": "Etherpad",
+  "summary": {
+    "en": "Edit the same document at the same time.",
+    "fr": "Modifiez le même document au même moment."
+  },
+  "description": {
+    "en": "A collaborative text editor where everyone's changes appear as they type. Administrators sign in at /admin.",
+    "fr": "Un éditeur de texte collaboratif où les modifications de chacun apparaissent en direct. Les administrateurs se connectent sur /admin."
+  },
+  "instructions": {
+    "en": "Administrators sign in at /admin as admin with the password shown below.",
+    "fr": "Les administrateurs se connectent sur /admin avec admin et le mot de passe affiché ci-dessous."
+  },
+  "category": "documents",
+  "tags": ["collaboration", "documents", "writing"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://etherpad.org"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/ether/etherpad/blob/develop/doc/docker.md"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/ether/etherpad"
+    }
+  ],
+  "verified": false,
+  "params": [
+    {
+      "key": "adminPassword",
+      "label": {
+        "en": "Admin password",
+        "fr": "Mot de passe administrateur"
+      },
+      "type": "secret",
+      "required": false,
+      "help": {
+        "en": "Leave empty to generate one.",
+        "fr": "Laissez vide pour en générer un."
+      },
+      "generate": {
+        "length": 24,
+        "alphabet": "alphanumeric"
+      }
+    }
+  ],
+  "secrets": [],
+  "services": [
+    {
+      "key": "db",
+      "name": "etherpad-db",
+      "kind": "database",
+      "engine": "postgres",
+      "image": "postgres:17.11-alpine",
+      "databaseName": "etherpad",
+      "user": "etherpad"
+    },
+    {
+      "key": "app",
+      "name": "etherpad",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "etherpad/etherpad:3.3.16"
+      },
+      "env": {
+        "DB_TYPE": "postgres",
+        "DB_HOST": "{{services.db.host}}",
+        "DB_PORT": "{{services.db.port}}",
+        "DB_NAME": "{{services.db.database}}",
+        "DB_USER": "{{services.db.user}}",
+        "DB_PASS": "{{services.db.password}}",
+        "ADMIN_PASSWORD": "{{params.adminPassword}}",
+        "TRUST_PROXY": "true"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "var",
+          "path": "/opt/etherpad-lite/var"
+        }
+      ],
+      "domain": {
+        "port": 9001,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/health",
+        "expect": [200]
+      },
+      "dependsOn": ["db"]
+    }
+  ]
+}

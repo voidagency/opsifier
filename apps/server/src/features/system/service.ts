@@ -4,7 +4,7 @@ import type { SystemInfo } from "@opsifier/contract";
 import type { AppDeps } from "../../core/context";
 import { getSetting, putSetting } from "./repo";
 
-const SERVER_IP_KEY = "server_ip";
+export const SERVER_IP_KEY = "server_ip";
 
 function firstInterfaceAddress(): string | null {
   for (const addresses of Object.values(networkInterfaces())) {
@@ -17,7 +17,7 @@ function firstInterfaceAddress(): string | null {
   return null;
 }
 
-async function detectServerIp(deps: Pick<AppDeps, "docker" | "logger">): Promise<string | null> {
+export async function detectServerIp(deps: Pick<AppDeps, "docker" | "logger">): Promise<string | null> {
   try {
     const swarm = await deps.docker.swarmInfo();
     if (swarm.nodeAddr !== null && isIP(swarm.nodeAddr) !== 0) {
@@ -55,5 +55,6 @@ export function getSystemInfo(deps: AppDeps): SystemInfo {
   return {
     version: deps.config.version,
     serverIp: typeof stored === "string" && isIP(stored) !== 0 ? stored : null,
+    simulated: deps.docker.kind === "fake",
   };
 }

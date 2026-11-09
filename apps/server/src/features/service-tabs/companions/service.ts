@@ -17,14 +17,15 @@ import {
   unsealSecrets,
 } from "../../databases/service";
 import { COMPANION_TOKEN_CONTEXT, type StoredCompanion } from "../../databases/spec";
-import { ensureProjectNetwork, joinProxyToNetwork } from "../../projects/network";
+import { liveAddressDomain } from "../../opsifier-address/repo";
+import { prepareRoutedNetworks, releaseProxyFromProjectNetwork } from "../../projects/network";
 import {
   type CompiledCompanion,
   companionImage,
-  companionServiceName,
   compileCompanion,
 } from "../../services/compile/database/companions";
-import { findService, saveServiceSpec } from "../../services/repo";
+import { inspectOwnedService, removeOwnedService } from "../../services/ownership";
+import { findService, listServiceRecords, saveServiceSpec } from "../../services/repo";
 import { assertNameFits, type ServiceTarget } from "../../services/service";
 import { getSetting, SERVICE_DOMAIN_KEY } from "../../system/repo";
 import { getSystemInfo } from "../../system/service";
@@ -45,6 +46,12 @@ function generateToken(): string {
 
 const routeName = (target: ServiceTarget, tool: CompanionTool): string => `${target.serviceName}-${tool}`;
 
+/** A tool is a Swarm service of its own, labelled with the name its database gives it. */
+const companionTarget = (target: ServiceTarget, tool: CompanionTool): ServiceTarget => ({
+  projectName: target.projectName,
+  serviceName: routeName(target, tool),
+});
+
 function sslipSuffix(ip: string): string {
   const dashed = isIP(ip) === 6 ? ip.toLowerCase().replaceAll(":", "-") : ip;
   return `${dashed.startsWith("-") ? `0${dashed}` : dashed}.sslip.io`;
@@ -55,6 +62,10 @@ function baseDomain(deps: AppDeps): string | null {
   const configured = getSetting(deps.db, SERVICE_DOMAIN_KEY);
   if (typeof configured === "string" && configured !== "") {
     return configured;
+  }
+  const address = liveAddressDomain(deps.db);
+  if (address !== null) {
+    return address;
   }
   const { serverIp } = getSystemInfo(deps);
   return serverIp === null ? null : sslipSuffix(serverIp);
@@ -73,7 +84,7 @@ function pickCompanionHost(deps: AppDeps, target: ServiceTarget, tool: Companion
   for (let attempt = 1; attempt <= 100; attempt += 1) {
     const suffix = attempt === 1 ? "" : `-${attempt}`;
     const host = `${label.slice(0, MAX_LABEL - suffix.length)}${suffix}.${base}`;
-    if (isHostAvailable(deps.db, host, "/")) {
+    if (isHostAvailable(deps.db, target.projectName, host, "/")) {
       return host;
     }
   }
@@ -156,13 +167,12 @@ async function deployCompanion(
 ): Promise<void> {
   const compiled = compileFor(deps, target, record, tool, stored);
   const name = compiled.swarmSpec.Name;
-  const network = await ensureProjectNetwork(deps.docker, target.projectName);
-  await joinProxyToNetwork(deps.docker, network, ctx.log);
+  await prepareRoutedNetworks(deps, target.projectName, ctx.log);
 
   ctx.log(`Pulling image ${companionImage(tool)}`);
   await deps.docker.pullImage(companionImage(tool), { signal: ctx.signal });
 
-  const existing = await deps.docker.inspectService(name);
+  const existing = await inspectOwnedService(deps, companionTarget(target, tool));
   const previous = new Set(
     existing === null ? [] : (await deps.docker.listTasks({ service: name })).map((task) => task.id),
   );
@@ -189,6 +199,7 @@ async function deployCompanion(
     signal: ctx.signal,
     log: ctx.log,
   });
+  await releaseProxyFromProjectNetwork(deps.docker, target.projectName, ctx.log);
 }
 
 async function removeCompanion(
@@ -198,7 +209,7 @@ async function removeCompanion(
   log: (line: string) => void,
 ): Promise<void> {
   log(`Removing ${tool}`);
-  await deps.docker.removeService(companionServiceName(target.projectName, target.serviceName, tool));
+  await removeOwnedService(deps, companionTarget(target, tool), log);
   await deps.proxy.removeService(target.projectName, routeName(target, tool));
 }
 
@@ -224,6 +235,26 @@ async function runEnable(
     throw error;
   }
   ctx.log(`${tool} is available at https://${stored.host}/`);
+}
+
+/** Moves web tools with the server's address, so a released name does not take them down with it. */
+export async function rehostCompanions(deps: AppDeps, fromSuffix: string, toSuffix: string): Promise<void> {
+  for (const service of listServiceRecords(deps.db)) {
+    if (!isDatabaseRecord(service)) {
+      continue;
+    }
+    const target = { projectName: service.projectName, serviceName: service.name };
+    for (const [tool, stored] of Object.entries(service.spec.database.companions)) {
+      if (stored === undefined || !stored.host.endsWith(fromSuffix)) {
+        continue;
+      }
+      const host = `${stored.host.slice(0, -fromSuffix.length)}${toSuffix}`;
+      const moved = { ...stored, host };
+      saveCompanion(deps, target, tool as CompanionTool, moved);
+      const compiled = compileFor(deps, target, requireDatabase(deps, target), tool as CompanionTool, moved);
+      await deps.proxy.writeService(target.projectName, compiled.routeName, compiled.proxyConfig);
+    }
+  }
 }
 
 function assertEnableAllowed(deps: AppDeps, target: ServiceTarget, tool: CompanionTool): void {
@@ -331,6 +362,28 @@ export async function refreshEnabledCompanions(
   for (const [tool, stored] of Object.entries(record.spec.database.companions)) {
     ctx.log(`Updating ${tool} with the new password`);
     await deployCompanion(deps, target, record, tool as CompanionTool, stored, ctx);
+  }
+}
+
+/**
+ * A web tool enabled before the proxy had a network of its own goes along when its database moves.
+ * A tool that can't be moved now is still reachable as it was, so this doesn't fail the deployment.
+ */
+export async function moveCompanionsToProxyNetwork(
+  deps: AppDeps,
+  target: ServiceTarget,
+  ctx: ActionContext,
+): Promise<void> {
+  const record = requireDatabase(deps, target);
+  for (const [tool, stored] of Object.entries(record.spec.database.companions)) {
+    ctx.log(`Moving ${tool} to the proxy's network`);
+    await deployCompanion(deps, target, record, tool as CompanionTool, stored, ctx).catch(
+      (error: unknown) => {
+        ctx.log(
+          `Could not move ${tool} yet: ${error instanceof Error ? error.message : String(error)}. It keeps working where it is.`,
+        );
+      },
+    );
   }
 }
 

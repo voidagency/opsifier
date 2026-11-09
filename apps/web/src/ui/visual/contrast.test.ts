@@ -34,6 +34,35 @@ function resolveToken(tokens: Tokens, name: string): string {
   return reference?.[1] === undefined ? value : resolveToken(tokens, reference[1]);
 }
 
+const channels = (hex: string) =>
+  [1, 3, 5].map((start) => Number.parseInt(hex.slice(start, start + 2), 16)) as [number, number, number];
+
+const toHex = (parts: readonly number[]) =>
+  `#${parts.map((part) => Math.round(part).toString(16).padStart(2, "0")).join("")}`;
+
+/** `amount` of `top` over `bottom`, as `color-mix` and a translucent fill both compute it. */
+const mixed = (top: string, amount: number, bottom: string) => {
+  const [a, b] = [channels(top), channels(bottom)];
+  return toHex(a.map((value, index) => value * amount + (b[index] as number) * (1 - amount)));
+};
+
+/** A token as the colour that ends up on the screen, painted over `surface` if it is translucent. */
+function paint(tokens: Tokens, name: string, surface: string): string {
+  const value = resolveToken(tokens, name);
+  const mix = /^color-mix\(in srgb, var\((--[\w-]+)\) (\d+)%, (?:var\((--[\w-]+)\)|transparent)\)$/.exec(
+    value,
+  );
+  if (mix !== null) {
+    const bottom = mix[3] === undefined ? surface : paint(tokens, mix[3], surface);
+    return mixed(paint(tokens, mix[1] as string, surface), Number(mix[2]) / 100, bottom);
+  }
+  const rgba = /^rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)\)$/.exec(value);
+  if (rgba !== null) {
+    return mixed(toHex([Number(rgba[1]), Number(rgba[2]), Number(rgba[3])]), Number(rgba[4]), surface);
+  }
+  return value;
+}
+
 const light = declarations(":root");
 const dark = new Map([...light, ...declarations(':root[data-theme="dark"]')]);
 const topBar = new Map([...dark, ...declarations(".brand-bar")]);
@@ -77,6 +106,66 @@ describe("contrast on the navy top bar", () => {
           contrastRatio(resolveToken(tokens, token), resolveToken(tokens, surface)),
         ).toBeGreaterThanOrEqual(MIN_INDICATOR_CONTRAST);
       });
+    });
+  });
+});
+
+/**
+ * Every pair of colours the interface puts together, so that a change to any token is caught. Each
+ * row is a foreground, the surfaces it is drawn on and the contrast it needs: 4.5:1 for text, 3:1 for
+ * the boundaries of controls and for indicators. Amber on white is the one deliberate exception,
+ * only ever decoration (see theme.css).
+ */
+type ColourPair = [what: string, foreground: string, surfaces: readonly string[], minimum: number];
+
+const SURFACES = ["--bg", "--raised"];
+const HOVERED = ["--wash"];
+
+const everyCombination: readonly ColourPair[] = [
+  ["body text", "--ink", SURFACES, MIN_TEXT_CONTRAST],
+  ["secondary text", "--muted", SURFACES, MIN_TEXT_CONTRAST],
+  ["links and accented text", "--accent", SURFACES, MIN_TEXT_CONTRAST],
+  ["success text", "--ok", SURFACES, MIN_TEXT_CONTRAST],
+  ["error text", "--bad", SURFACES, MIN_TEXT_CONTRAST],
+  ["hovered row or button text", "--ink", HOVERED, MIN_TEXT_CONTRAST],
+  ["hovered secondary text", "--muted", HOVERED, MIN_TEXT_CONTRAST],
+  ["control borders", "--off", SURFACES, MIN_INDICATOR_CONTRAST],
+  ["focus rings and active tabs", "--accent", SURFACES, MIN_INDICATOR_CONTRAST],
+  ["primary buttons", "--on-accent", ["--accent", "--accent-strong"], MIN_TEXT_CONTRAST],
+  ["danger buttons", "--on-bad", ["--bad", "--bad-strong"], MIN_TEXT_CONTRAST],
+  ["tooltips", "--bg", ["--ink"], MIN_TEXT_CONTRAST],
+];
+
+/** The top bar is its own navy surface, so only what it really draws is held to it. */
+const topBarCombination: readonly ColourPair[] = [
+  ["body text", "--ink", SURFACES, MIN_TEXT_CONTRAST],
+  ["secondary text", "--muted", SURFACES, MIN_TEXT_CONTRAST],
+  ["hovered text", "--ink", HOVERED, MIN_TEXT_CONTRAST],
+  ["hovered secondary text", "--muted", HOVERED, MIN_TEXT_CONTRAST],
+  ["control borders", "--off", SURFACES, MIN_INDICATOR_CONTRAST],
+  ["focus rings and active tabs", "--accent", SURFACES, MIN_INDICATOR_CONTRAST],
+];
+
+function backgroundsOf(tokens: Tokens, surface: string): Set<string> {
+  // A hover wash is translucent, so it is checked over each surface a row or button can sit on.
+  return surface === "--wash"
+    ? new Set(["--bg", "--raised"].map((under) => paint(tokens, "--wash", paint(tokens, under, "#000000"))))
+    : new Set([paint(tokens, surface, paint(tokens, "--bg", "#000000"))]);
+}
+
+describe.each([
+  ["light theme", light, everyCombination],
+  ["dark theme", dark, everyCombination],
+  ["top bar over the dark theme", topBar, topBarCombination],
+  ["top bar over the light theme", topBarOnLight, topBarCombination],
+] as const)("every colour combination in the %s", (_context, tokens, combinations) => {
+  describe.each([...combinations])("%s", (_what, foreground, surfaces, minimum) => {
+    it.each([...surfaces])("on %s", (surface) => {
+      for (const background of backgroundsOf(tokens, surface)) {
+        expect(contrastRatio(paint(tokens, foreground, background), background)).toBeGreaterThanOrEqual(
+          minimum,
+        );
+      }
     });
   });
 });

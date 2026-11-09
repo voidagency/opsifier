@@ -1,0 +1,90 @@
+{
+  "id": "vikunja",
+  "version": "1.0.0",
+  "name": "Vikunja",
+  "summary": {
+    "en": "Organise tasks and projects your way.",
+    "fr": "Organisez tâches et projets à votre façon."
+  },
+  "description": {
+    "en": "Lists, kanban boards, Gantt charts and reminders for you or your team. Register the first account in the app.",
+    "fr": "Listes, tableaux kanban, diagrammes de Gantt et rappels, pour vous ou votre équipe. Créez le premier compte dans l'application."
+  },
+  "instructions": {
+    "en": "Open the site and register the first account.",
+    "fr": "Ouvrez le site et créez le premier compte."
+  },
+  "category": "productivity",
+  "tags": ["tasks", "todo", "projects"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://vikunja.io"
+    },
+    {
+      "kind": "docs",
+      "url": "https://vikunja.io/docs/installing"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/go-vikunja/vikunja"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [
+    {
+      "key": "serviceSecret",
+      "length": 48,
+      "alphabet": "alphanumeric"
+    }
+  ],
+  "services": [
+    {
+      "key": "db",
+      "name": "vikunja-db",
+      "kind": "database",
+      "engine": "postgres",
+      "image": "postgres:17.11-alpine",
+      "databaseName": "vikunja",
+      "user": "vikunja"
+    },
+    {
+      "key": "app",
+      "name": "vikunja",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "vikunja/vikunja:2.8.0"
+      },
+      "env": {
+        "VIKUNJA_SERVICE_PUBLICURL": "{{services.app.url}}/",
+        "VIKUNJA_SERVICE_SECRET": "{{secrets.serviceSecret}}",
+        "VIKUNJA_DATABASE_TYPE": "postgres",
+        "VIKUNJA_DATABASE_HOST": "{{services.db.host}}",
+        "VIKUNJA_DATABASE_USER": "{{services.db.user}}",
+        "VIKUNJA_DATABASE_PASSWORD": "{{services.db.password}}",
+        "VIKUNJA_DATABASE_DATABASE": "{{services.db.database}}",
+        "VIKUNJA_DATABASE_SSLMODE": "disable"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "files",
+          "path": "/app/vikunja/files"
+        }
+      ],
+      "domain": {
+        "port": 3456,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/health",
+        "expect": [200]
+      },
+      "dependsOn": ["db"]
+    }
+  ]
+}

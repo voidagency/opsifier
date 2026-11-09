@@ -1,8 +1,10 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ActionEntry, ProjectList, ProjectSummary } from "@opsifier/contract";
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { projects } from "../../core/db/schema";
 import {
   apiErrorOf,
   call,
@@ -11,7 +13,10 @@ import {
   TEST_ORIGIN,
   type TestContext,
 } from "../../testing/harness";
+import { insertService } from "../services/repo";
+import { appServiceSpec } from "../services/spec";
 import { PROXY_SERVICE } from "./network";
+import { enqueueProjectDestroy } from "./service";
 
 let context: TestContext;
 let cookie: string;
@@ -99,7 +104,7 @@ describe("creating a project", () => {
     expect((await api("/projects", "POST", { name: "shop" })).status).toBe(201);
   });
 
-  it("puts the proxy on the new network, and only once", async () => {
+  it("puts the proxy on the project's proxy network, and only once", async () => {
     await context.docker.createService({
       Name: PROXY_SERVICE,
       TaskTemplate: { ContainerSpec: { Image: "traefik:3" } },
@@ -107,7 +112,7 @@ describe("creating a project", () => {
 
     await api("/projects", "POST", { name: "shop" });
     const proxy = await context.docker.inspectService(PROXY_SERVICE);
-    const network = await context.docker.inspectNetwork("opsifier-shop");
+    const network = await context.docker.inspectNetwork("opsifier-shop_proxy");
     expect(proxy?.spec.TaskTemplate.Networks).toEqual([{ Target: network?.id }]);
 
     const version = proxy?.version;
@@ -134,13 +139,31 @@ describe("the project's environment", () => {
     await api("/projects", "POST", { name: "shop" });
   });
 
-  it("saves the text and returns it", async () => {
-    const saved = await api<{ env: string }>("/projects/shop/env", "PUT", {
+  it("saves the text, shows only its names, and gives the values to whoever asks", async () => {
+    const saved = await api<{ names: string[] }>("/projects/shop/env", "PUT", {
       env: "SHARED_ONE=project-value",
     });
 
     expect(saved.status).toBe(200);
-    expect((await api<{ env: string }>("/projects/shop/env")).body.env).toBe("SHARED_ONE=project-value");
+    expect(saved.body).toEqual({ names: ["SHARED_ONE"] });
+    const page = await api("/projects/shop/env");
+    expect(page.body).toEqual({ names: ["SHARED_ONE"] });
+    expect(JSON.stringify(page.body)).not.toContain("project-value");
+
+    const revealed = await api<{ env: string }>("/projects/shop/env/reveal", "POST");
+    expect(revealed.body.env).toBe("SHARED_ONE=project-value");
+    expect(revealed.headers.get("cache-control")).toBe("no-store");
+
+    const actions = await api<{ items: Array<{ type: string }> }>("/actions?type=project.env-reveal");
+    expect(actions.body.items).toHaveLength(1);
+  });
+
+  it("keeps the values sealed in the database", async () => {
+    await api("/projects/shop/env", "PUT", { env: "SHARED_ONE=project-value" });
+
+    const row = context.deps.db.select().from(projects).where(eq(projects.name, "shop")).get();
+    expect(row?.sealedEnv).toMatch(/^v1\./);
+    expect(JSON.stringify(row)).not.toContain("project-value");
   });
 
   it("names the line that is not a variable", async () => {
@@ -218,19 +241,72 @@ describe("destroying a project", () => {
     expect((await api<ProjectList>("/projects")).body.projects).toHaveLength(1);
   });
 
-  it("removes services, routes, data, the network and the project", async () => {
+  it("is refused while the project holds a service, and leaves it all running", async () => {
     await api("/projects/shop/services", "POST", { name: "web" });
     await api("/projects/shop/services/web/source", "PUT", { image: "nginx:1.27" });
     await waitForAction((await api<ActionEntry>("/projects/shop/services/web/deploy", "POST")).body.id);
 
+    const refused = await api("/projects/shop", "DELETE", { confirm: "shop" });
+
+    expect(refused.status).toBe(409);
+    expect(apiErrorOf(refused)).toMatchObject({
+      code: "project_not_empty",
+      message: expect.stringContaining("1 service"),
+    });
+    expect((await api("/projects/shop")).status).toBe(200);
+    expect(await context.docker.inspectService("shop_web")).not.toBeNull();
+    expect(await context.docker.inspectNetwork("opsifier-shop")).not.toBeNull();
+    expect(readdirSync(context.deps.config.traefikDynamicDir)).toContain("shop__web.yaml");
+  });
+
+  it("removes an empty project and its network", async () => {
     const accepted = await api<ActionEntry>("/projects/shop", "DELETE", { confirm: "shop" });
     expect(accepted.status).toBe(202);
     expect((await waitForAction(accepted.body.id)).status).toBe("succeeded");
 
     expect((await api("/projects/shop")).status).toBe(404);
-    expect(await context.docker.inspectService("shop_web")).toBeNull();
     expect(await context.docker.inspectNetwork("opsifier-shop")).toBeNull();
-    expect(readdirSync(context.deps.config.traefikDynamicDir)).not.toContain("shop__web.yaml");
+  });
+
+  it("can follow the removal of its last service, and keeps what that service kept", async () => {
+    await api("/projects/shop/services", "POST", { name: "web" });
+    await api("/projects/shop/services/web/storage/mounts", "POST", {
+      type: "volume",
+      name: "uploads",
+      mountPath: "/data/uploads",
+    });
+    await api("/projects/shop/services/web/source", "PUT", { image: "nginx:1.27" });
+    await waitForAction((await api<ActionEntry>("/projects/shop/services/web/deploy", "POST")).body.id);
+    const data = join(context.dataDir, "projects/shop/web/volumes/uploads");
+    writeFileSync(join(data, "kept.txt"), "precious");
+
+    const destroyed = await api<ActionEntry>("/projects/shop/services/web", "DELETE", { confirm: "web" });
+    expect((await waitForAction(destroyed.body.id)).status).toBe("succeeded");
+    const gone = await api<ActionEntry>("/projects/shop", "DELETE", { confirm: "shop" });
+    expect((await waitForAction(gone.body.id)).status).toBe("succeeded");
+
+    expect((await api("/projects/shop")).status).toBe(404);
+    expect(readFileSync(join(data, "kept.txt"), "utf8")).toBe("precious");
+    expect(await context.docker.inspectVolume("shop_web_uploads")).not.toBeNull();
+  });
+
+  it("removes the project's empty folder and nothing that is still in it", async () => {
+    const emptyProject = join(context.dataDir, "projects", "shop");
+    mkdirSync(emptyProject, { recursive: true });
+    await waitForAction((await api<ActionEntry>("/projects/shop", "DELETE", { confirm: "shop" })).body.id);
+    expect(existsSync(emptyProject)).toBe(false);
+  });
+
+  it("is checked again when it runs, so a service created in the meantime is not swept away", async () => {
+    const action = enqueueProjectDestroy(context.deps, "shop", "shop", undefined);
+    insertService(context.deps.db, "shop", "late", "app", appServiceSpec.parse({}), new Date());
+
+    const finished = await waitForAction(action.id);
+
+    expect(finished.status).toBe("failed");
+    expect(finished.error).toContain("1 service");
+    expect((await api("/projects/shop")).status).toBe(200);
+    expect(await context.docker.inspectNetwork("opsifier-shop")).not.toBeNull();
   });
 
   it("keeps the record of what happened after the project has gone", async () => {
@@ -240,7 +316,6 @@ describe("destroying a project", () => {
   });
 
   it("waits for work in progress to finish", async () => {
-    await api("/projects/shop/services", "POST", { name: "web" });
     let release: () => void = () => {};
     context.deps.actions.enqueue({
       type: "test",
@@ -284,7 +359,7 @@ describe("destroying a project", () => {
 
     await api("/projects", "POST", { name: "next" });
 
-    const network = await context.docker.inspectNetwork("opsifier-next");
+    const network = await context.docker.inspectNetwork("opsifier-next_proxy");
     expect((await context.docker.inspectService(PROXY_SERVICE))?.spec.TaskTemplate.Networks).toEqual([
       { Target: network?.id },
     ]);

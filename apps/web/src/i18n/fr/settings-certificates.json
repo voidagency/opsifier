@@ -1,0 +1,18 @@
+{
+  "title": "Certificats",
+  "description": "Ce que détient le proxy. Il les demande lui-même selon les domaines.",
+  "emptyTitle": "Aucun certificat",
+  "emptyDescription": "Un certificat s'affiche ici une fois émis pour un domaine en HTTPS.",
+  "unknownIssuer": "Émetteur inconnu",
+  "expiry": "Temps restant",
+  "remove": "Retirer",
+  "removed": "Certificat retiré, redémarrage du proxy",
+  "removeTitle": "Retirer ce certificat ?",
+  "removeDescription": "Le proxy l'oublie et redémarre. Un nouveau sera demandé au besoin.",
+  "state": {
+    "valid": "Valide",
+    "expiring": "Expire bientôt",
+    "expired": "Expiré",
+    "unreadable": "Illisible"
+  }
+}

@@ -40,5 +40,9 @@
       "name": "Redis Commander",
       "description": "Consultez et modifiez des clés depuis le navigateur."
     }
+  },
+  "state": {
+    "on": "Activé",
+    "off": "Désactivé"
   }
 }

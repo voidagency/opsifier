@@ -6,6 +6,10 @@ export const githubStatus = z.object({
   /** The account the token belongs to, as GitHub reported when it was saved. */
   login: z.string().nullable(),
   updatedAt: z.iso.datetime().nullable(),
+  /** How the token got here: pasted, or granted through the panel's OAuth app. */
+  method: z.enum(["token", "oauth"]).nullable(),
+  /** The OAuth app the panel can sign in with, if one has been registered. Its secret stays on the server. */
+  oauthApp: z.object({ clientId: z.string() }).nullable(),
 });
 export type GithubStatus = z.infer<typeof githubStatus>;
 
@@ -14,6 +18,20 @@ export const saveGithubTokenRequest = z.object({
   token: z.string().trim().min(1, "Required").max(1024, "This is too long"),
 });
 export type SaveGithubTokenRequest = z.infer<typeof saveGithubTokenRequest>;
+
+/** PUT /api/v1/settings/github/oauth, the app the owner registered with GitHub. */
+export const saveGithubOauthAppRequest = z.object({
+  clientId: z.string().trim().min(1, "Required").max(256, "This is too long"),
+  clientSecret: z.string().trim().min(1, "Required").max(1024, "This is too long"),
+});
+export type SaveGithubOauthAppRequest = z.infer<typeof saveGithubOauthAppRequest>;
+
+/** POST /api/v1/settings/github/oauth/start. Where to send the browser to grant access. */
+export const githubOauthStart = z.object({ authorizationUrl: z.string() });
+export type GithubOauthStart = z.infer<typeof githubOauthStart>;
+
+/** The address GitHub sends the browser back to, which the OAuth app has to be registered with. */
+export const githubOauthCallbackPath = "/api/v1/settings/github/oauth/callback";
 
 export const githubRepositoryEntry = z.object({
   fullName: z.string(),

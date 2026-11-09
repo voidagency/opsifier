@@ -1,17 +1,68 @@
 {
   "title": "Variables",
   "description": "One NAME=value per line. They come after the project's shared variables, and reach the container at its next deploy.",
+  "descriptionBuilt": "One NAME=value per line. They come after the project's shared variables, and reach the container at its next deploy. They do not reach a build.",
   "submit": "Save variables",
   "saved": "Variables saved",
   "savedHint": "They take effect at the next deploy.",
   "invalidLine": "Line {{line}} needs to look like NAME=value.",
   "file": {
-    "label": "Also write these variables to a file",
-    "hint": "Created in the source before each build.",
+    "label": "Also write the build variables to a file",
+    "hint": "Prepared before each build.",
     "path": "File path",
     "pathHint": "Relative to the build path.",
     "pathInvalid": "Use a path inside the source, such as .env.",
+    "inImage": "Put this file in the build context",
+    "inImageOff": "It stays out of the context, so no COPY can put it in the image. A Dockerfile reads it with RUN --mount=type=secret,id=env-file,dst=.env. Other builders do not get it.",
+    "inImageOn": "A COPY of the context puts it in an image layer, where anyone with the image can read it. It holds only build variables.",
     "submit": "Save file setting",
     "saved": "File setting saved"
+  },
+  "interpolation": {
+    "label": "Fill in $(PROJECT_NAME), $(SERVICE_NAME) and $(PRIMARY_DOMAIN)",
+    "hint": "Off, those stay exactly as you type them. Every other $(...) and ${...} is always left alone.",
+    "saved": "Setting saved",
+    "failed": "Could not change this setting"
+  },
+  "reveal": "Show and edit",
+  "revealHint": "Showing these values is recorded in the activity log.",
+  "hide": "Hide",
+  "masked": "Value hidden",
+  "build": {
+    "title": "Build",
+    "description": "What a build gets. Nothing in the container's variables reaches it on its own.",
+    "inherited": {
+      "title": "Still sharing its variables with the build",
+      "body": "This service was building before build variables existed, so its builds still get its runtime variables, sealed ones aside. A value a Dockerfile declares as ARG stays in the image's history. Set what the build needs below, then stop sharing them.",
+      "stop": "Stop sharing them",
+      "stopped": "Runtime variables no longer reach the build",
+      "confirmTitle": "Stop sharing runtime variables with the build?",
+      "confirmBody": "After this the build only gets what is set for it here. A build that relied on anything else may start failing, or start working differently."
+    },
+    "variables": {
+      "title": "Build variables",
+      "hint": "One NAME=value per line. They reach the build as arguments, and what a Dockerfile declares as ARG can be read back from the image's history, so nothing secret goes here.",
+      "submit": "Save build variables",
+      "saved": "Build variables saved"
+    },
+    "secrets": {
+      "title": "Build secrets",
+      "hint": "For a build step that needs a credential. A Dockerfile reads one with RUN --mount=type=secret,id=NAME. It is never part of the image and can't be read back. Nixpacks can't take one without writing it into the image, so it gets none.",
+      "empty": "No build secrets.",
+      "name": "Name",
+      "value": "Value",
+      "updated": "Updated",
+      "submit": "Save secret",
+      "saved": "Build secret saved",
+      "nameInvalid": "Use letters, digits and underscores, starting with a letter.",
+      "valueRequired": "Enter its value.",
+      "remove": "Remove {{name}}",
+      "removeTitle": "Remove {{name}}?",
+      "removeHint": "Builds will no longer get this secret. Its value can't be recovered.",
+      "removeConfirm": "Remove",
+      "removed": "Build secret removed",
+      "nameHint": "The name a build step reads it by.",
+      "valueHint": "Kept sealed and given to the build only."
+    }
   }
 }

@@ -122,7 +122,7 @@ describe("DAT-05: credentials and connection strings", () => {
 
   it("adds the external host, port and URL once exposed, using the exposed port", async () => {
     await suite.deployed({ engine: "redis", password: "x" });
-    await suite.run(`${suite.service()}/expose`, "PUT", { port: 16379 });
+    await suite.saveThenDeploy(`${suite.service()}/expose`, { port: 16379 });
 
     const body = await credentials();
     expect(body.external).toEqual({
@@ -135,7 +135,7 @@ describe("DAT-05: credentials and connection strings", () => {
 
   it("uses the hostname the panel was reached on as the external host", async () => {
     await suite.deployed({ engine: "redis", password: "x" });
-    await suite.run(`${suite.service()}/expose`, "PUT", { port: 16379 });
+    await suite.saveThenDeploy(`${suite.service()}/expose`, { port: 16379 });
 
     const asBrowser = await call<DatabaseCredentials>(context.app, `/api/v1${credentialsPath()}`, {
       cookie: suite.cookie,
@@ -216,7 +216,7 @@ describe("Secrets: sealed, and never on an ordinary response", () => {
 
   it("appears in no list, detail, settings or log response", async () => {
     await suite.deployed({ engine: "mysql", password: PASSWORD, rootPassword: ROOT });
-    await suite.run(`${suite.service()}/expose`, "PUT", { port: 13306 });
+    await suite.saveThenDeploy(`${suite.service()}/expose`, { port: 13306 });
     await suite.run(`${suite.service()}/deploy`);
 
     const visible = await everythingVisible();
@@ -239,6 +239,29 @@ describe("Secrets: sealed, and never on an ordinary response", () => {
     const visible = await everythingVisible();
     expect(visible).not.toContain(PASSWORD);
     expect(visible).not.toContain("old-secret-value");
+  });
+
+  it("stays hidden in anything printed later about a service, once it is an old password", async () => {
+    scriptExec(context, () => ({ exitCode: 0, output: "opsifier-ok\n" }));
+    await suite.deployed({ engine: "postgres", password: "old-secret-value" });
+    expect((await suite.run(credentialsPath(), "PUT", { password: PASSWORD })).status).toBe("succeeded");
+
+    const printed = context.deps.actions.enqueue({
+      type: "test.print",
+      title: "Print it",
+      projectName: PROJECT,
+      serviceName: "db",
+      run: (ctx) => {
+        ctx.log("the connection still had old-secret-value in it");
+      },
+    });
+    await vi.waitFor(() => {
+      expect(context.deps.actions.isIdle()).toBe(true);
+    });
+    const { body } = await suite.api<{ log: string }>(`/actions/${printed.id}`);
+
+    expect(body.log).toContain("the connection still had [redacted] in it");
+    expect(body.log).not.toContain("old-secret-value");
   });
 
   it("is only ever returned by the reveal endpoint, for the secret asked for", async () => {

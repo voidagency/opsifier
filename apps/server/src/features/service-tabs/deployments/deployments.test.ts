@@ -34,6 +34,41 @@ const page = (query = "") => call<ActionPage>(context.app, `${PATH}${query}`, { 
 const record = (status: "succeeded" | "failed", type = deployActionType, serviceName = "web") =>
   context.deps.actions.record({ type, title: "Deploy", projectName: "shop", serviceName, status });
 
+describe("the deployments tab's numbers", () => {
+  it.each([
+    ["zero", "0"],
+    ["a negative number", "-1"],
+    ["NaN", "NaN"],
+    ["Infinity", "Infinity"],
+    ["a fraction", "1.5"],
+    ["past the maximum", "101"],
+    ["a huge number", "99999999999999999999"],
+    ["hexadecimal", "0x5"],
+    ["an exponent", "1e1"],
+    ["a sign", "+5"],
+    ["padding", "%205"],
+    ["a leading zero", "05"],
+    ["nothing at all", ""],
+    ["a word", "ten"],
+  ])("refuses %s as a page size", async (_label, value) => {
+    expect((await page(`?limit=${value}`)).status).toBe(400);
+  });
+
+  it("pages through everything once", async () => {
+    for (let index = 0; index < 5; index += 1) {
+      record("succeeded");
+    }
+
+    const first = await page("?limit=2");
+    const second = await page(`?limit=2&cursor=${first.body.nextCursor}`);
+    const third = await page(`?limit=2&cursor=${second.body.nextCursor}`);
+
+    const ids = [...first.body.items, ...second.body.items, ...third.body.items].map((item) => item.id);
+    expect(new Set(ids).size).toBe(5);
+    expect(third.body.nextCursor).toBeNull();
+  });
+});
+
 describe("the deployments tab", () => {
   it("is empty before the first deployment", async () => {
     expect((await page()).body).toEqual({ items: [], nextCursor: null });

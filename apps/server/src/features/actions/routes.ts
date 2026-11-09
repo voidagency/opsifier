@@ -2,6 +2,7 @@ import { createRoute, z } from "@hono/zod-openapi";
 import { actionDetail, actionEntry, actionPage, listActionsQuery } from "@opsifier/contract";
 import type { Feature } from "../../core/context";
 import { errorResponse, jsonResponse } from "../../core/openapi";
+import { requestAccess } from "../access/guard";
 import { cancelAction, getActionDetail, listActionPage } from "./service";
 
 const tags = ["Actions"];
@@ -46,10 +47,16 @@ const cancelRoute = createRoute({
 
 export const feature: Feature = {
   register(app, deps) {
-    app.openapi(listRoute, (c) => c.json(listActionPage(deps, c.req.valid("query")), 200));
+    app.openapi(listRoute, (c) =>
+      c.json(listActionPage(deps, c.req.valid("query"), requestAccess(deps, c)), 200),
+    );
 
-    app.openapi(getRoute, async (c) => c.json(await getActionDetail(deps, c.req.valid("param").id), 200));
+    app.openapi(getRoute, async (c) =>
+      c.json(await getActionDetail(deps, c.req.valid("param").id, requestAccess(deps, c)), 200),
+    );
 
-    app.openapi(cancelRoute, (c) => c.json(cancelAction(deps, c.req.valid("param").id), 200));
+    app.openapi(cancelRoute, (c) =>
+      c.json(cancelAction(deps, c.req.valid("param").id, requestAccess(deps, c)), 200),
+    );
   },
 };

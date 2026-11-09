@@ -1,11 +1,29 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { serviceMetrics, servicesMetrics } from "@opsifier/contract";
 import pino from "pino";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { openDatabase } from "../../core/db";
 import { type DockerDriver, DockerDriverError, FakeDriver, type TaskStats } from "../../core/docker";
+import { insertReading } from "../monitor/store";
 import { createMetricsProvider, PollingFeed, readServiceMetrics, sumTaskStats } from "./metrics";
 
 const logger = pino({ level: "silent" });
 const closers: Array<() => void> = [];
+
+let directory: string;
+let database: ReturnType<typeof openDatabase>;
+
+beforeAll(() => {
+  directory = mkdtempSync(join(tmpdir(), "opsifier-metrics-"));
+  database = openDatabase(join(directory, "panel.db"));
+});
+
+afterAll(() => {
+  database.close();
+  rmSync(directory, { recursive: true, force: true });
+});
 
 afterEach(() => {
   for (const close of closers.splice(0)) {
@@ -28,6 +46,7 @@ const sample = (overrides: Partial<TaskStats> = {}): TaskStats => ({
   slot: 1,
   containerId: "c1",
   cpuPercent: 1.5,
+  cpuCapacityPercent: 400,
   memoryUsedBytes: 1024,
   memoryLimitBytes: 4096,
   networkRxBytes: 10,
@@ -37,10 +56,14 @@ const sample = (overrides: Partial<TaskStats> = {}): TaskStats => ({
 });
 
 describe("reading a service", () => {
+  const target = { projectName: "shop", serviceName: "web" };
+
   it("adds the tasks together", () => {
     expect(sumTaskStats([sample(), sample({ cpuPercent: 2.5 })])).toEqual({
       cpuPercent: 4,
+      cpuCapacityPercent: 800,
       memoryUsedBytes: 2048,
+      memoryLimitBytes: 8192,
       networkRxBytes: 20,
       networkTxBytes: 40,
       readAt: "2026-01-01T00:00:00.000Z",
@@ -51,32 +74,104 @@ describe("reading a service", () => {
     "never lets %d through as a reading",
     (bad) => {
       const summed = sumTaskStats([
-        sample({ cpuPercent: bad, memoryUsedBytes: bad, networkRxBytes: bad, networkTxBytes: bad }),
+        sample({
+          cpuPercent: bad,
+          cpuCapacityPercent: bad,
+          memoryUsedBytes: bad,
+          memoryLimitBytes: bad,
+          networkRxBytes: bad,
+          networkTxBytes: bad,
+        }),
       ]);
 
-      expect(serviceMetrics.parse(summed)).toEqual({
-        cpuPercent: 0,
-        memoryUsedBytes: 0,
-        networkRxBytes: 0,
-        networkTxBytes: 0,
+      expect(serviceMetrics.parse(summed)).toMatchObject({
+        cpuPercent: null,
+        cpuCapacityPercent: null,
+        memoryUsedBytes: null,
+        memoryLimitBytes: null,
+        networkRxBytes: null,
+        networkTxBytes: null,
         readAt: "2026-01-01T00:00:00.000Z",
       });
     },
   );
 
-  it("reads zero for a service with no tasks", () => {
-    expect(sumTaskStats([])).toMatchObject({ cpuPercent: 0, memoryUsedBytes: 0, readAt: null });
+  it("reports a real zero as zero", () => {
+    expect(sumTaskStats([sample({ cpuPercent: 0, networkRxBytes: 0 })])).toMatchObject({
+      cpuPercent: 0,
+      networkRxBytes: 0,
+    });
   });
 
-  it("reads zero when Docker fails rather than failing", async () => {
+  it("adds up what is known, and leaves unknown only what no task reported", () => {
+    const summed = sumTaskStats([
+      sample({ memoryUsedBytes: null, networkRxBytes: null }),
+      sample({ memoryUsedBytes: 100, networkRxBytes: null }),
+    ]);
+
+    expect(summed.memoryUsedBytes).toBe(100);
+    expect(summed.networkRxBytes).toBeNull();
+  });
+
+  it("reads nothing at all for a service with no tasks", () => {
+    expect(sumTaskStats([])).toMatchObject({ cpuPercent: null, memoryUsedBytes: null, readAt: null });
+  });
+
+  it("says Docker is away, and dates the last reading, when Docker doesn't answer", async () => {
     const docker = new FakeDriver({ tickMs: 1 });
     docker.failNext("serviceStats", new DockerDriverError("daemon away", 500));
+    const at = Date.UTC(2026, 0, 1, 12, 0, 0);
+    insertReading(database.db, {
+      scope: "shop/web",
+      at,
+      cpu: 1,
+      memoryUsed: 1,
+      memoryTotal: 1,
+      diskUsed: null,
+      diskTotal: null,
+      rx: null,
+      tx: null,
+    });
+
+    await expect(readServiceMetrics({ docker, db: database.db }, target)).resolves.toMatchObject({
+      available: false,
+      memoryUsedBytes: null,
+      networkRxBytes: null,
+      readAt: null,
+      lastReadAt: new Date(at).toISOString(),
+    });
+  });
+
+  it("tells a service Docker has never heard of apart from a daemon that is away", async () => {
+    const docker = new FakeDriver({ tickMs: 1 });
+    docker.failNext("serviceStats", new DockerDriverError("not found", 404));
 
     await expect(
-      readServiceMetrics({ docker }, { projectName: "shop", serviceName: "web" }),
-    ).resolves.toMatchObject({ memoryUsedBytes: 0, readAt: null });
+      readServiceMetrics({ docker, db: database.db }, { projectName: "shop", serviceName: "absent" }),
+    ).resolves.toMatchObject({ available: true, tasks: 0, memoryUsedBytes: null, readAt: null });
+  });
+
+  it("states where its figures came from, what they cover and when they were taken", async () => {
+    const docker = await runningDriver();
+
+    const reading = await readServiceMetrics({ docker, db: database.db }, target);
+
+    expect(reading).toMatchObject({ origin: "simulated", scope: "service", tasks: 1, available: true });
+    expect(reading.readAt).not.toBeNull();
+    expect(reading.lastReadAt).toBe(reading.readAt);
   });
 });
+
+async function runningDriver(name = "shop_web", replicas = 1): Promise<FakeDriver> {
+  const docker = new FakeDriver({ tickMs: 1 });
+  await docker.createService({
+    Name: name,
+    TaskTemplate: { ContainerSpec: { Image: "nginx:alpine" } },
+    Mode: { Replicated: { Replicas: replicas } },
+  });
+  docker.advance(8);
+  return docker;
+}
 
 describe("the polling feed", () => {
   function feedOf(read: (signal: AbortSignal) => Promise<number>, intervalMs = 5) {
@@ -157,7 +252,7 @@ describe("the polling feed", () => {
 });
 
 describe("the metrics provider", () => {
-  const deps = (docker: DockerDriver) => ({ docker, logger, now: () => 1_700_000_000_000 });
+  const deps = (docker: DockerDriver) => ({ docker, logger, now: () => 1_700_000_000_000, db: database.db });
 
   function subscribe(docker: DockerDriver, topic: string) {
     const provider = createMetricsProvider(deps(docker), { intervalMs: 5 });
@@ -167,16 +262,7 @@ describe("the metrics provider", () => {
     return { feed, published };
   }
 
-  async function running(name: string, replicas = 1): Promise<FakeDriver> {
-    const docker = new FakeDriver({ tickMs: 1 });
-    await docker.createService({
-      Name: name,
-      TaskTemplate: { ContainerSpec: { Image: "nginx:alpine" } },
-      Mode: { Replicated: { Replicas: replicas } },
-    });
-    docker.advance(8);
-    return docker;
-  }
+  const running = runningDriver;
 
   it("samples one service only while it is open", async () => {
     const docker = await running("shop_web");
@@ -241,6 +327,66 @@ describe("the metrics provider", () => {
 
     await until(() => published.length >= 1);
 
-    expect(servicesMetrics.parse(published[0])).toEqual({ available: false, readAt: null, services: [] });
+    expect(servicesMetrics.parse(published[0])).toMatchObject({
+      available: false,
+      readAt: null,
+      services: [],
+    });
+  });
+
+  it("does not call a whole server empty because Docker stopped answering halfway", async () => {
+    const docker = await running("shop_web");
+    docker.failNext("serviceStats", new DockerDriverError("daemon away", 500));
+    const { published } = subscribe(docker, "metrics:services");
+
+    await until(() => published.length >= 1);
+
+    expect(servicesMetrics.parse(published[0])).toMatchObject({ available: false, services: [] });
+  });
+
+  it("dates the outage with the newest reading of any service", async () => {
+    const at = Date.UTC(2026, 3, 1, 8, 30, 0);
+    insertReading(database.db, {
+      scope: "shop/api",
+      at,
+      cpu: 1,
+      memoryUsed: 1,
+      memoryTotal: 1,
+      diskUsed: null,
+      diskTotal: null,
+      rx: null,
+      tx: null,
+    });
+    insertReading(database.db, {
+      scope: "system",
+      at: at + 60_000,
+      cpu: 1,
+      memoryUsed: 1,
+      memoryTotal: 1,
+      diskUsed: null,
+      diskTotal: null,
+      rx: null,
+      tx: null,
+    });
+    const docker = await running("shop_web");
+    docker.failNext("listServices");
+    const { published } = subscribe(docker, "metrics:services");
+
+    await until(() => published.length >= 1);
+
+    expect(servicesMetrics.parse(published[0]).lastReadAt).toBe(new Date(at).toISOString());
+  });
+
+  it("says what its figures are while they flow", async () => {
+    const docker = await running("shop_web");
+    const { published } = subscribe(docker, "metrics:services");
+
+    await until(() => published.length >= 1);
+
+    expect(servicesMetrics.parse(published[0])).toMatchObject({
+      available: true,
+      origin: "simulated",
+      scope: "containers",
+    });
   });
 });

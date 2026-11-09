@@ -9,8 +9,10 @@ import {
   Button,
   ConfirmDialog,
   EmptyState,
-  FormBanner,
+  ErrorState,
+  Lamp,
   MonoValue,
+  Pictogram,
   Skeleton,
   Tooltip,
   toast,
@@ -36,7 +38,7 @@ export function RedirectsTab() {
 
   if (isPending) {
     return (
-      <div className="grid max-w-[880px] gap-3 px-4 py-6 md:px-6 lg:px-8">
+      <div className="grid max-w-[1100px] gap-3 px-4 py-6 md:px-6 lg:px-8">
         <Skeleton className="h-6" />
       </div>
     );
@@ -44,9 +46,8 @@ export function RedirectsTab() {
 
   if (isError) {
     return (
-      <div className="grid max-w-[520px] justify-items-start gap-3 px-4 py-6 md:px-6 lg:px-8">
-        <FormBanner>{errorMessage(error, t)}</FormBanner>
-        <Button onClick={() => refetch()}>{t("common:actions.retry")}</Button>
+      <div className="px-4 py-6 md:px-6 lg:px-8">
+        <ErrorState message={errorMessage(error, t)} onRetry={() => refetch()} />
       </div>
     );
   }
@@ -64,15 +65,25 @@ export function RedirectsTab() {
   return (
     <div className="grid gap-6 px-4 py-6 md:px-6 lg:px-8">
       {data.redirects.length === 0 ? (
-        <EmptyState title={t("empty.title")} description={t("empty.description")} action={add} />
+        <EmptyState
+          illustration="no-domains"
+          title={t("empty.title")}
+          description={t("empty.description")}
+          action={add}
+        />
       ) : (
-        <div className="grid max-w-[880px] gap-4">
+        <div className="grid max-w-[1100px] gap-4">
           <ul className="border-y">
             {data.redirects.map((rule) => (
               <li
                 key={rule.id}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 border-b py-2.5 last:border-b-0"
+                className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-x-3 border-b py-2.5 last:border-b-0"
               >
+                <Lamp
+                  state={rule.enabled ? "running" : "stopped"}
+                  label={rule.enabled ? t("enabled") : t("disabled")}
+                />
+                <Pictogram name="redirect" className="text-muted" />
                 <span className={rule.enabled ? "grid min-w-0 gap-0.5" : "grid min-w-0 gap-0.5 opacity-60"}>
                   <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                     <MonoValue value={rule.regex} truncate className="text-sm" />

@@ -10,21 +10,24 @@ function EnvFileFields({
   project,
   service,
   path,
+  inImage,
 }: {
   project: string;
   service: string;
   path: string | null;
+  inImage: boolean;
 }) {
   const { t } = useTranslation("service-environment");
   const queryClient = useQueryClient();
   const form = useForm({
     t,
-    initialValues: { enabled: path !== null, path: path ?? ".env" },
+    initialValues: { enabled: path !== null, path: path ?? ".env", inImage },
     validate: (values) =>
       values.enabled && !envFilePath.safeParse(values.path).success ? { path: t("file.pathInvalid") } : {},
     onSubmit: async (values) => {
       const saved = await sourceApi.saveEnvFile(project, service, {
         path: values.enabled ? values.path : null,
+        ...(values.enabled ? { inImage: values.inImage } : {}),
       });
       queryClient.setQueryData(envFileQuery(project, service).queryKey, saved);
       toast.success(t("file.saved"), t("savedHint"));
@@ -32,7 +35,7 @@ function EnvFileFields({
   });
 
   return (
-    <form onSubmit={form.handleSubmit} noValidate className="grid max-w-[520px] gap-3 border-t pt-4">
+    <form onSubmit={form.handleSubmit} noValidate className="grid max-w-[650px] gap-3 border-t pt-4">
       {form.banner && <FormBanner>{form.banner}</FormBanner>}
       <Switch
         label={t("file.label")}
@@ -41,9 +44,17 @@ function EnvFileFields({
         onCheckedChange={(checked) => form.set("enabled", checked)}
       />
       {form.values.enabled && (
-        <Field label={t("file.path")} hint={t("file.pathHint")} error={form.errors.path}>
-          <Input {...form.field("path")} mono autoComplete="off" spellCheck={false} placeholder=".env" />
-        </Field>
+        <>
+          <Field label={t("file.path")} hint={t("file.pathHint")} error={form.errors.path}>
+            <Input {...form.field("path")} mono autoComplete="off" spellCheck={false} placeholder=".env" />
+          </Field>
+          <Switch
+            label={t("file.inImage")}
+            hint={t(form.values.inImage ? "file.inImageOn" : "file.inImageOff")}
+            checked={form.values.inImage}
+            onCheckedChange={(checked) => form.set("inImage", checked)}
+          />
+        </>
       )}
       <div>
         <Button type="submit" pending={form.pending}>
@@ -67,5 +78,13 @@ export function EnvFileForm({ project, service }: { project: string; service: st
   ) {
     return null;
   }
-  return <EnvFileFields key={data.path} project={project} service={service} path={data.path} />;
+  return (
+    <EnvFileFields
+      key={`${data.path}:${data.inImage}`}
+      project={project}
+      service={service}
+      path={data.path}
+      inImage={data.inImage}
+    />
+  );
 }

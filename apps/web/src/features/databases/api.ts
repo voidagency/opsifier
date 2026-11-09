@@ -4,17 +4,19 @@ import {
   type CompanionTool,
   type CreateDatabaseRequest,
   companionList,
-  type DatabaseAdvancedSettings,
   type DatabaseSecretName,
   databaseAdvancedSettings,
+  databaseAvailability,
   databaseCredentials,
   databaseDetail,
   type ExposeSettings,
   exposeSettings,
+  exposeState,
   type ResourcesSpec,
   resourcesSpec,
   revealedCompanionToken,
   revealedSecret,
+  type SaveDatabaseAdvancedRequest,
   serviceDetail,
 } from "@opsifier/contract";
 import { queryOptions } from "@tanstack/react-query";
@@ -31,6 +33,15 @@ export const databaseQuery = (project: string, service: string) =>
     staleTime: 0,
   });
 
+export const databaseAvailabilityQuery = (project: string, service: string) =>
+  queryOptions({
+    queryKey: [...serviceKey(project, service), "database-availability"] as const,
+    queryFn: ({ signal }) =>
+      api.get(`${base(project, service)}/database/availability`, { schema: databaseAvailability, signal }),
+    staleTime: 0,
+    refetchInterval: 30_000,
+  });
+
 export const credentialsQuery = (project: string, service: string) =>
   queryOptions({
     queryKey: [...serviceKey(project, service), "credentials"] as const,
@@ -42,7 +53,7 @@ export const credentialsQuery = (project: string, service: string) =>
 export const exposeQuery = (project: string, service: string) =>
   queryOptions({
     queryKey: [...serviceKey(project, service), "expose"] as const,
-    queryFn: ({ signal }) => api.get(`${base(project, service)}/expose`, { schema: exposeSettings, signal }),
+    queryFn: ({ signal }) => api.get(`${base(project, service)}/expose`, { schema: exposeState, signal }),
     staleTime: 0,
   });
 
@@ -80,11 +91,11 @@ export const databasesApi = {
   checkPassword: (project: string, service: string) =>
     api.post(`${base(project, service)}/credentials/check`, { schema: actionEntry }),
   saveExpose: (project: string, service: string, body: ExposeSettings) =>
-    api.put(`${base(project, service)}/expose`, { body, schema: actionEntry }),
+    api.put(`${base(project, service)}/expose`, { body, schema: exposeSettings }),
   saveResources: (project: string, service: string, body: ResourcesSpec) =>
-    api.put(`${base(project, service)}/database-resources`, { body, schema: actionEntry }),
-  saveAdvanced: (project: string, service: string, body: DatabaseAdvancedSettings) =>
-    api.put(`${base(project, service)}/database-advanced`, { body, schema: actionEntry }),
+    api.put(`${base(project, service)}/database-resources`, { body, schema: resourcesSpec }),
+  saveAdvanced: (project: string, service: string, body: SaveDatabaseAdvancedRequest) =>
+    api.put(`${base(project, service)}/database-advanced`, { body, schema: databaseAdvancedSettings }),
   enableCompanion: (project: string, service: string, tool: CompanionTool) =>
     api.post(`${base(project, service)}/companions/${tool}`, { schema: actionEntry }),
   disableCompanion: (project: string, service: string, tool: CompanionTool) =>

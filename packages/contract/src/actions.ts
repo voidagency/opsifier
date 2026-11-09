@@ -1,18 +1,26 @@
 import { z } from "zod";
-import { action, actionStatus, resourceName } from "./common";
+import { action, actionStatus, resourceName, wholeNumber } from "./common";
+
+/** How an Action came to be started. A deployment trigger and a push webhook are told apart. */
+export const actionOrigin = z.enum(["session", "api_key", "trigger", "webhook", "system"]);
+export type ActionOrigin = z.infer<typeof actionOrigin>;
 
 /** One row of the Activity page. */
 export const actionEntry = action.extend({
   /** False when the action never produced output: the UI offers no log view. */
   hasLog: z.boolean(),
-  /** Who started it. Null for API tokens and for the panel's own work. */
+  /** The account behind it: the one signed in, the owner of an API key, the one that issued a trigger. */
   actorEmail: z.string().nullable(),
+  /** Recorded with the Action, so it stays true after a restart. */
+  origin: actionOrigin.default("system"),
+  /** What the origin leaves out: an API key's name, the commit a push announced. */
+  originDetail: z.string().nullable().default(null),
 });
 export type ActionEntry = z.infer<typeof actionEntry>;
 
 /** GET /api/v1/actions: newest first, filtered on any combination of fields. */
 export const listActionsQuery = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(15),
+  limit: wholeNumber(1, 100).default(15),
   cursor: z
     .string()
     .regex(/^\d{1,18}$/, "Invalid cursor")

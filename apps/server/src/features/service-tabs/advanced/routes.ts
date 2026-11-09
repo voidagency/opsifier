@@ -10,6 +10,7 @@ import {
 import { requirePrincipal } from "../../../core/auth";
 import type { AppDeps, Feature } from "../../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../../core/openapi";
+import { requestAccess } from "../../access/guard";
 import type { ServiceTarget } from "../../services/service";
 import { addPort, getAdvanced, removeAllPorts, removePort, saveDeploySettings, updatePort } from "./service";
 
@@ -43,6 +44,7 @@ const saveDeployRoute = createRoute({
     200: jsonResponse(deploySettings, "Saved. Takes effect at the next deploy."),
     400: invalid,
     401: denied,
+    403: errorResponse("Granting a new capability takes an administrator."),
     404: missing,
   },
 });
@@ -105,7 +107,7 @@ export const feature: Feature = {
 
     app.openapi(saveDeployRoute, (c) => {
       const serviceTarget = target(c.req.valid("param"));
-      const saved = saveDeploySettings(deps, serviceTarget, c.req.valid("json"));
+      const saved = saveDeploySettings(deps, serviceTarget, c.req.valid("json"), requestAccess(deps, c));
       record(deps, serviceTarget, "deploy-settings", requirePrincipal(c));
       return c.json(saved, 200);
     });

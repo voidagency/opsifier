@@ -1,0 +1,113 @@
+{
+  "title": "IDE du navigateur",
+  "description": "Modifiez l'espace de travail de cette box depuis un navigateur. Il a son propre accès : être connecté au panneau ne l'ouvre pas, et son jeton n'ouvre rien d'autre.",
+  "access": {
+    "open": {
+      "title": "Ouvert à son jeton",
+      "body": "Quiconque détient le jeton peut modifier l'espace de travail."
+    },
+    "expired": {
+      "title": "Jeton expiré",
+      "body": "Personne ne peut entrer tant qu'un nouveau jeton n'est pas émis."
+    },
+    "no_token": {
+      "title": "Pas encore de jeton",
+      "body": "L'IDE est activé, mais personne ne peut entrer tant qu'un jeton n'est pas émis."
+    },
+    "off": {
+      "title": "Désactivé",
+      "body": "Rien ne peut accéder aux fichiers de cette box par l'IDE."
+    }
+  },
+  "enable": "Autoriser l'IDE du navigateur",
+  "enableHint": "Désactiver met fin au jeton actuel.",
+  "open": "Ouvrir l'IDE",
+  "token": {
+    "title": "Jeton d'accès",
+    "description": "Un secret affiché une seule fois. Le renouveler met fin au précédent immédiatement.",
+    "expires": "Expire {{when}}",
+    "lifetime": "Durée",
+    "lifetimeHint": "Il cesse de fonctionner tout seul après cette durée.",
+    "lifetimes": {
+      "1": "1 heure",
+      "24": "1 jour",
+      "168": "7 jours",
+      "720": "30 jours",
+      "2160": "90 jours"
+    },
+    "issue": "Émettre un jeton",
+    "rotate": "Renouveler le jeton",
+    "revoke": "Révoquer"
+  },
+  "issued": {
+    "title": "Copiez ce jeton",
+    "description": "Il ne sera plus affiché.",
+    "warning": "Conservez-le en lieu sûr. Quiconque le détient peut modifier les fichiers de cette box jusqu'à son expiration.",
+    "copy": "Copier le jeton",
+    "open": "Ouvrir l'IDE avec ce jeton",
+    "done": "Terminé"
+  },
+  "revoke": {
+    "title": "Révoquer ce jeton ?",
+    "description": "Qui le détient est immédiatement exclu. L'IDE reste activé : émettez un nouveau jeton pour y revenir.",
+    "confirm": "Révoquer le jeton"
+  },
+  "confinement": "L'IDE modifie les fichiers de l'espace de travail de cette box et rien d'autre. Il n'a pas de terminal, ne suit pas les liens qui sortent de l'espace de travail, et ne peut atteindre ni le panneau, ni un autre service, ni le serveur.",
+  "page": {
+    "title": "IDE de {{service}}",
+    "expires": "Le jeton expire {{when}}",
+    "signOut": "Se déconnecter",
+    "signIn": {
+      "title": "Ouvrir l'IDE",
+      "body": "Collez le jeton de l'IDE de cette box. Se connecter au panneau ne l'ouvre pas.",
+      "token": "Jeton",
+      "submit": "Ouvrir",
+      "expired": "Ce jeton a expiré. Émettez-en un nouveau dans l'onglet IDE de la box.",
+      "invalid": "Ce jeton ne peut pas ouvrir cet IDE.",
+      "again": "Votre jeton ne fonctionne plus",
+      "tokenHint": "Émis dans l'onglet IDE de cette box."
+    },
+    "tree": {
+      "label": "Fichiers",
+      "root": "Espace de travail",
+      "empty": "Vide",
+      "truncated": "Ce dossier contient plus que ce qui peut être affiché.",
+      "rename": "Renommer {{name}}",
+      "delete": "Supprimer {{name}}",
+      "notEditable": "Ce n'est pas un fichier ordinaire : il ne peut pas être ouvert ici."
+    },
+    "editor": {
+      "emptyTitle": "Choisissez un fichier",
+      "emptyBody": "Les fichiers de l'espace de travail de cette box sont listés à gauche.",
+      "binaryTitle": "{{name}} n'est pas du texte",
+      "binaryBody": "L'éditeur n'ouvre que les fichiers texte.",
+      "tooLargeTitle": "{{name}} est trop volumineux",
+      "tooLargeBody": "L'éditeur ouvre les fichiers jusqu'à {{max}} Ko.",
+      "save": "Enregistrer",
+      "nothingToSave": "Rien à enregistrer.",
+      "conflict": "Autre chose a modifié ce fichier depuis son ouverture. Vos modifications sont toujours là.",
+      "reload": "Charger la nouvelle version",
+      "keepEditing": "Continuer à modifier",
+      "state": {
+        "clean": "Enregistré",
+        "unsaved": "Modifications non enregistrées",
+        "saving": "Enregistrement",
+        "saved": "Enregistré",
+        "failed": "Non enregistré"
+      }
+    },
+    "dialogs": {
+      "newFile": "Nouveau fichier",
+      "newFolder": "Nouveau dossier",
+      "rename": "Renommer",
+      "name": "Nom",
+      "cancel": "Annuler",
+      "confirm": "Terminé",
+      "deleteTitle": "Supprimer ceci ?",
+      "deleteConfirm": "Supprimer",
+      "deleteFileBody": "Ce fichier est retiré de l'espace de travail.",
+      "deleteFolderBody": "Ce dossier et tout son contenu sont retirés de l'espace de travail.",
+      "nameHint": "Le nom seul : il est créé dans le dossier courant."
+    }
+  }
+}

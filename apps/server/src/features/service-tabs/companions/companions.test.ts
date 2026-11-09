@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type CompanionList, companionsByEngine, databaseEngines } from "@opsifier/contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +10,7 @@ import {
   scriptExec,
   setupDatabaseTests,
 } from "../../databases/testing";
+import { rehostCompanions } from "./service";
 
 let suite: DatabaseTestContext;
 let context: TestContext;
@@ -55,6 +56,16 @@ describe("DAT-13: web admin companions", () => {
     expect(await context.docker.inspectService("shop_db-dbgate")).toBeNull();
     expect(existsSync(routeFile("pgweb"))).toBe(true);
     expect(existsSync(routeFile("dbgate"))).toBe(false);
+  });
+
+  it("moves a tool with the server's address, and rewrites its route", async () => {
+    await suite.deployed({ engine: "postgres" });
+    await suite.run(`${path()}/pgweb`);
+
+    await rehostCompanions(context.deps, ".203.0.113.10.sslip.io", ".bcdfghjk.opsifier.dev");
+
+    expect((await list())[0]?.url).toBe("https://shop-db-pgweb.bcdfghjk.opsifier.dev/");
+    expect(readFileSync(routeFile("pgweb"), "utf8")).toContain("shop-db-pgweb.bcdfghjk.opsifier.dev");
   });
 
   it("returns the access token only through the audited reveal", async () => {

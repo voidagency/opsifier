@@ -11,7 +11,8 @@ import {
 } from "@opsifier/contract";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Field, Input } from "../../../../ui";
+import { buildTypePictogram, Field, Input, Pictogram } from "../../../../ui";
+import { BuilderFacts } from "./BuilderFacts";
 import { Combobox } from "./Combobox";
 
 interface BuildValues {
@@ -202,6 +203,16 @@ export function BuildFields({ draft }: { draft: BuildDraft }) {
 
   const nixpacksOptions = useMemo(() => [...nixpacksVersions], []);
   const railpackOptions = useMemo(() => [...railpackVersions], []);
+  /** A digest is what pins these, and it is too long to read, so a list shows the name beside its start. */
+  const builderOptions = useMemo(
+    () =>
+      buildpacksBuilders.map((builder) => {
+        const [name = builder, digest] = builder.split("@");
+        return digest === undefined ? builder : { value: builder, label: name, note: digest.slice(0, 19) };
+      }),
+    [],
+  );
+  const config = buildConfig.safeParse(toConfig(draft.values));
 
   return (
     <>
@@ -219,6 +230,7 @@ export function BuildFields({ draft }: { draft: BuildDraft }) {
               checked={type === builder}
               onChange={() => draft.setType(builder)}
             />
+            <Pictogram name={buildTypePictogram[builder]} className="mt-px text-muted" />
             <span className="grid gap-0.5">
               <span className="text-sm font-medium">{t(`build.types.${builder}`)}</span>
               <span className="text-xs text-muted">{t(`build.descriptions.${builder}`)}</span>
@@ -226,6 +238,8 @@ export function BuildFields({ draft }: { draft: BuildDraft }) {
           </label>
         ))}
       </fieldset>
+
+      {config.success && <BuilderFacts config={config.data} />}
 
       {type === "dockerfile" && (
         <TextField
@@ -242,14 +256,18 @@ export function BuildFields({ draft }: { draft: BuildDraft }) {
           <Combobox
             value={draft.values.builder}
             onValueChange={(value) => draft.set("builder", value)}
-            options={buildpacksBuilders}
+            options={builderOptions}
           />
         </Field>
       )}
 
       {type === "nixpacks" && (
         <>
-          <Field label={t("build.version")} error={draft.errors.nixpacksVersion}>
+          <Field
+            label={t("build.version")}
+            error={draft.errors.nixpacksVersion}
+            hint={t("build.versionHint")}
+          >
             <Combobox
               value={draft.values.nixpacksVersion}
               onValueChange={(value) => draft.set("nixpacksVersion", value)}
@@ -288,7 +306,11 @@ export function BuildFields({ draft }: { draft: BuildDraft }) {
 
       {type === "railpack" && (
         <>
-          <Field label={t("build.version")} error={draft.errors.railpackVersion}>
+          <Field
+            label={t("build.version")}
+            error={draft.errors.railpackVersion}
+            hint={t("build.versionHint")}
+          >
             <Combobox
               value={draft.values.railpackVersion}
               onValueChange={(value) => draft.set("railpackVersion", value)}

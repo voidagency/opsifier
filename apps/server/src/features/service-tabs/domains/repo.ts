@@ -1,8 +1,82 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { DbHandle } from "../../../core/db";
-import { domains } from "../../../core/db/schema";
+import { customDomains, domains } from "../../../core/db/schema";
 
 export type DomainRow = typeof domains.$inferSelect;
+
+/** What a route answers on. A wildcard covers the direct subdomains of its host and nothing else. */
+export interface RouteClaim {
+  host: string;
+  path: string;
+  wildcard: boolean;
+}
+
+/** A claim and who holds it. A custom destination belongs to no project, so its project is null. */
+export interface HeldRoute extends RouteClaim {
+  id: string;
+  project: string | null;
+  service: string | null;
+}
+
+const isUnder = (path: string, parent: string): boolean =>
+  parent === "/" || path === parent || path.startsWith(`${parent}/`);
+
+function hostsOverlap(a: RouteClaim, b: RouteClaim): boolean {
+  if (a.wildcard === b.wildcard) {
+    return a.host === b.host;
+  }
+  const [wildcard, exact] = a.wildcard ? [a, b] : [b, a];
+  return exact.host.slice(exact.host.indexOf(".") + 1) === wildcard.host;
+}
+
+/** Whether some request could match both routes. */
+export const routesOverlap = (a: RouteClaim, b: RouteClaim): boolean =>
+  hostsOverlap(a, b) && (isUnder(a.path, b.path) || isUnder(b.path, a.path));
+
+export const sameRoute = (a: RouteClaim, b: RouteClaim): boolean =>
+  a.host === b.host && a.path === b.path && a.wildcard === b.wildcard;
+
+function heldRoutes(db: DbHandle): HeldRoute[] {
+  const claim = { host: domains.host, path: domains.path, wildcard: domains.wildcard };
+  const held = db
+    .select({ ...claim, id: domains.id, project: domains.projectName, service: domains.serviceName })
+    .from(domains)
+    .all();
+  const custom = db
+    .select({
+      id: customDomains.id,
+      host: customDomains.host,
+      path: customDomains.path,
+      wildcard: customDomains.wildcard,
+    })
+    .from(customDomains)
+    .all()
+    .map((row) => ({ ...row, project: null, service: null }));
+  return [...held, ...custom];
+}
+
+/** Every route some request could share with this claim, whoever holds it. */
+export function overlappingRoutes(db: DbHandle, claim: RouteClaim): HeldRoute[] {
+  return heldRoutes(db).filter((route) => routesOverlap(route, claim));
+}
+
+/**
+ * What stands in the way of a claim made for a project, or for a custom destination when `project` is
+ * null. An identical route is always refused. One that only overlaps is refused when someone else
+ * holds it, because that is how one project would take another's traffic: a longer path on its host,
+ * or a wildcard over its exact host and the reverse. Inside one project the same people run both
+ * services, and sharing a host between them by path is what a path is for.
+ */
+export function findRouteConflict(
+  db: DbHandle,
+  claim: RouteClaim,
+  project: string | null,
+  ownId?: string,
+): HeldRoute | undefined {
+  return overlappingRoutes(db, claim).find(
+    (route) => route.id !== ownId && (sameRoute(route, claim) || route.project !== project),
+  );
+}
 
 /** Oldest first, insertion order breaking ties: a domain's position gives its router numbers. */
 export function listServiceDomains(db: DbHandle, project: string, service: string): DomainRow[] {
@@ -14,23 +88,9 @@ export function listServiceDomains(db: DbHandle, project: string, service: strin
     .all();
 }
 
-/** Whether a plain (not wildcard) address is free, for the default name of a new service. */
-export function isHostAvailable(db: DbHandle, host: string, path: string): boolean {
-  return findDomainByRoute(db, host, path, false) === undefined;
-}
-
-/** The domain already answering on an address, whichever service it belongs to. */
-export function findDomainByRoute(
-  db: DbHandle,
-  host: string,
-  path: string,
-  wildcard: boolean,
-): DomainRow | undefined {
-  return db
-    .select()
-    .from(domains)
-    .where(and(eq(domains.host, host), eq(domains.path, path), eq(domains.wildcard, wildcard)))
-    .get();
+/** Whether a plain (not wildcard) address is free for a project, for a name the panel generates. */
+export function isHostAvailable(db: DbHandle, project: string, host: string, path: string): boolean {
+  return findRouteConflict(db, { host, path, wildcard: false }, project) === undefined;
 }
 
 export function findDomain(db: DbHandle, id: string): DomainRow | undefined {

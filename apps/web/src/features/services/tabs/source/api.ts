@@ -1,16 +1,17 @@
 import {
   type AutoDeployRequest,
   type BuildConfig,
-  type EnvFileSettings,
   envFileSettings,
   githubBranchList,
   githubRepositoryList,
   githubStatus,
+  type SaveEnvFileRequest,
   type ServiceSource,
   saveBuildResponse,
   serviceSource,
   sourceSettings,
   sshKeyResponse,
+  sshKeyTestResult,
 } from "@opsifier/contract";
 import { queryOptions } from "@tanstack/react-query";
 import { ApiError, api, clientErrorCode } from "../../../../lib/api";
@@ -113,9 +114,13 @@ export const sourceApi = {
     }),
   generateSshKey: (project: string, service: string) =>
     api.post(`${base(project, service)}/ssh-key`, { schema: sshKeyResponse }),
+  deleteSshKey: (project: string, service: string) =>
+    api.delete(`${base(project, service)}/ssh-key`, { schema: sourceSettings }),
+  testSshKey: (project: string, service: string) =>
+    api.post(`${base(project, service)}/ssh-key/test`, { schema: sshKeyTestResult }),
   setAutoDeploy: (project: string, service: string, body: AutoDeployRequest) =>
     api.put(`${base(project, service)}/auto-deploy`, { body, schema: serviceSource }),
-  saveEnvFile: (project: string, service: string, body: EnvFileSettings) =>
+  saveEnvFile: (project: string, service: string, body: SaveEnvFileRequest) =>
     api.put(`${base(project, service)}/env-file`, { body, schema: envFileSettings }),
   upload: (
     project: string,

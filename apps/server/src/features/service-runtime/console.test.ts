@@ -1,16 +1,17 @@
 import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
-import type { ActionEntry, ConsoleInfo, ScriptList } from "@opsifier/contract";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { ActionEntry, ConsoleInfo, ScriptList, ScriptRunPage } from "@opsifier/contract";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 import { hashPassword, insertSession } from "../../core/auth";
-import { users } from "../../core/db/schema";
-import type { TaskInfo } from "../../core/docker";
+import { projectMembers, users } from "../../core/db/schema";
+import type { ComposeContainerInfo, ExecSession, TaskInfo } from "../../core/docker";
 import {
   apiErrorOf,
   call,
   createTestContext,
   setupAdmin,
+  TEST_EMAIL,
   TEST_ORIGIN,
   type TestContext,
 } from "../../testing/harness";
@@ -168,6 +169,95 @@ afterEach(async () => {
   await context.close();
 });
 
+describe("a saved script run from the console", () => {
+  const RUNS = `${SERVICE}/script-runs`;
+
+  async function runs() {
+    return (await api<ScriptRunPage>(RUNS)).body.items;
+  }
+
+  /** The newest run, once it has stopped being one in progress. */
+  async function settled() {
+    for (let attempt = 0; attempt < 400; attempt += 1) {
+      const [latest] = await runs();
+      if (latest !== undefined && latest.status !== "running") {
+        return latest;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    throw new Error("The run never settled");
+  }
+
+  async function startConsoleScript(extra: Record<string, unknown> = {}) {
+    await api(`${SERVICE}/scripts`, "POST", { name: "job", script: "echo hi", ...extra });
+    const task = await runningTask();
+    return connect(`task=${task.id}&script=job`);
+  }
+
+  it("goes on the record with who ran it and how it exited", async () => {
+    const { socket } = await startConsoleScript();
+    const [running] = await runs();
+    expect(running).toMatchObject({ scriptName: "job", origin: "console", status: "running" });
+
+    const ended = closed(socket);
+    socket.send(Buffer.from("exit\n"), { binary: true });
+    await ended;
+
+    const run = await settled();
+    expect(run).toMatchObject({
+      origin: "console",
+      actorEmail: TEST_EMAIL,
+      status: "succeeded",
+      exitCode: 0,
+      outputComplete: false,
+      note: { code: "console_output" },
+    });
+  });
+
+  it("refuses another run of the same script while one is open, from both sides", async () => {
+    const { socket } = await startConsoleScript();
+    const task = await runningTask();
+
+    expect(await outcome(open(`task=${task.id}&script=job`))).toBe(409);
+    const refused = await api(RUNS, "POST", { script: "job" });
+    expect(refused.status).toBe(409);
+    expect(apiErrorOf(refused).code).toBe("script_already_running");
+    expect(context.docker.execs).toHaveLength(1);
+    socket.close();
+  });
+
+  it("is held to its maximum duration, as any run of the script is", async () => {
+    await startConsoleScript({ maxDurationSeconds: 1 });
+
+    await until(() => context.docker.execs[0]?.terminated === true);
+
+    expect(await settled()).toMatchObject({ status: "timed_out", note: { code: "time_limit" } });
+  });
+
+  it("says the session was closed while it ran", async () => {
+    const { socket } = await startConsoleScript();
+
+    socket.close();
+
+    await until(() => context.docker.execs[0]?.terminated === true);
+    expect(await settled()).toMatchObject({ status: "cancelled", note: { code: "console_closed" } });
+  });
+
+  it("ends up on record after a restart, without claiming to know how it went", async () => {
+    await startConsoleScript();
+    const exec = context.docker.execs[0];
+    // The first process is gone: nothing it would have written about this session gets written.
+    exec?.stream.removeAllListeners("close");
+    exec?.stream.removeAllListeners("end");
+    vi.spyOn(context.deps.actions, "conclude").mockImplementation(() => undefined as never);
+
+    await context.restart();
+
+    await until(() => exec?.terminated === true);
+    expect(await settled()).toMatchObject({ status: "cancelled", note: { code: "console_closed" } });
+  });
+});
+
 describe("authentication at upgrade", () => {
   it("refuses a connection with no session", async () => {
     const task = await runningTask();
@@ -245,9 +335,10 @@ describe("a console session", () => {
   it("opens bash the same way", async () => {
     const task = await runningTask();
 
-    await connect(`task=${task.id}&program=bash`);
+    const { frames } = await connect(`task=${task.id}&program=bash`);
 
-    expect(context.docker.execs[0]?.options.command).toEqual(["/bin/bash"]);
+    expect(context.docker.execs.at(-1)?.options.command).toEqual(["/bin/bash"]);
+    expect(frames).toEqual([{ t: "ready" }]);
   });
 
   it("passes a script's text as one argument to the container's own shell", async () => {
@@ -258,6 +349,35 @@ describe("a console session", () => {
     await connect(`task=${task.id}&script=${encodeURIComponent("tidy up")}`);
 
     expect(context.docker.execs[0]?.options.command).toEqual(["/bin/sh", "-c", body]);
+  });
+
+  it("passes Ctrl+C on to the program as a keystroke, and stays open", async () => {
+    const task = await runningTask();
+    const { socket, frames, text } = await connect(`task=${task.id}&program=sh`);
+    const exec = context.docker.execs[0];
+
+    socket.send(Buffer.from([0x03]), { binary: true });
+
+    await until(() => text().includes("^C"));
+    expect(exec?.input).toContain(0x03);
+    expect(exec?.terminated).toBe(false);
+    expect(socket.readyState).toBe(WebSocket.OPEN);
+    expect(frames.some((frame) => frame.t === "exit")).toBe(false);
+
+    // The shell is still there to take the next command.
+    socket.send(Buffer.from("echo still here\n"), { binary: true });
+    await until(() => text().includes("fake: echo still here"));
+  });
+
+  it("ends the session cleanly on Ctrl+D, the terminal's end of input", async () => {
+    const task = await runningTask();
+    const { socket, frames } = await connect(`task=${task.id}&program=sh`);
+    const ended = closed(socket);
+
+    socket.send(Buffer.from([0x04]), { binary: true });
+
+    expect(await ended).toBe(1000);
+    expect(frames.at(-1)).toEqual({ t: "exit", code: 0 });
   });
 
   it("resizes the terminal and ignores frames it doesn't understand", async () => {
@@ -287,16 +407,16 @@ describe("a console session", () => {
     const task = await runningTask();
     context.docker.failNext(
       "execAttach",
-      new Error('OCI runtime exec failed: exec: "/bin/bash": stat /bin/bash'),
+      new Error('OCI runtime exec failed: exec: "/bin/sh": stat /bin/sh'),
     );
 
-    const socket = open(`task=${task.id}&program=bash`);
+    const socket = open(`task=${task.id}&program=sh`);
     const { frames } = collect(socket);
     const ended = closed(socket);
 
     expect(await ended).toBe(1011);
     expect(frames).toEqual([
-      { t: "error", message: 'OCI runtime exec failed: exec: "/bin/bash": stat /bin/bash' },
+      { t: "error", message: 'OCI runtime exec failed: exec: "/bin/sh": stat /bin/sh' },
     ]);
   });
 
@@ -415,6 +535,112 @@ describe("cleaning up", () => {
   });
 });
 
+describe("after a hard stop of the panel", () => {
+  const CONSOLES = "/api/v1/actions?type=service.console";
+
+  it("ends the console the dead panel left running", async () => {
+    const task = await runningTask();
+    await connect(`task=${task.id}&program=sh`);
+    const exec = context.docker.execs[0];
+    expect(exec?.terminated).toBe(false);
+
+    await context.restart();
+
+    await until(() => exec?.terminated === true);
+  });
+
+  it("touches nothing but what that console started", async () => {
+    await api("/api/v1/projects/shop/services", "POST", { name: "api" });
+    await api("/api/v1/projects/shop/services/api/source", "PUT", { image: "nginx:alpine" });
+    await run("/api/v1/projects/shop/services/api/deploy");
+    const task = await runningTask();
+    await connect(`task=${task.id}&program=sh`);
+    const orphan = context.docker.execs[0];
+
+    // Someone else's session in the same container, and an unrelated one next door.
+    await context.docker.execAttach({ service: "shop_web", taskId: task.id, command: ["/bin/sh"] });
+    await context.docker.execAttach({ service: "shop_api", command: ["/bin/sh"] });
+    const [, sameService, otherService] = context.docker.execs;
+
+    await context.restart();
+
+    await until(() => orphan?.terminated === true);
+    expect(sameService?.terminated).toBe(false);
+    expect(otherService?.terminated).toBe(false);
+  });
+
+  it("says on the activity log what became of the session", async () => {
+    const task = await runningTask();
+    await connect(`task=${task.id}&program=sh`);
+    // The first process is gone: nothing it would have written about this session gets written.
+    vi.spyOn(context.deps.actions, "conclude").mockImplementation(() => undefined as never);
+
+    await context.restart();
+
+    const [entry] = (await api<{ items: ActionEntry[] }>(CONSOLES)).body.items;
+    expect(entry).toMatchObject({ status: "failed" });
+    expect(entry?.error).toContain("panel stopped");
+  });
+
+  it("leaves a console that closed properly alone", async () => {
+    const task = await runningTask();
+    const { socket } = await connect(`task=${task.id}&program=sh`);
+    const exec = context.docker.execs[0];
+    socket.close();
+    await until(() => exec?.terminated === true);
+    await until(() => context.docker.endedMarkers.length === 0);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await context.restart();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(context.docker.endedMarkers).toEqual([]);
+  });
+
+  it("forgets a console whose program ended by itself", async () => {
+    const task = await runningTask();
+    const { socket } = await connect(`task=${task.id}&program=sh`);
+    const ended = closed(socket);
+    socket.send(Buffer.from("exit\n"), { binary: true });
+    await ended;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await context.restart();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(context.docker.endedMarkers).toEqual([]);
+  });
+
+  it("tries again at the next boot if Docker couldn't be asked", async () => {
+    const task = await runningTask();
+    await connect(`task=${task.id}&program=sh`);
+    const exec = context.docker.execs[0];
+
+    context.docker.failNext("terminateExec");
+    await context.restart();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(exec?.terminated).toBe(false);
+
+    await context.restart();
+
+    await until(() => exec?.terminated === true);
+  });
+
+  it("removes a host console's helper that outlived the panel", async () => {
+    const helper = await context.docker.openHelper({ image: "alpine", command: ["/bin/sh"] });
+
+    await context.restart();
+
+    await until(() => helper.stream.destroyed);
+  });
+
+  it("does not hold up a boot when Docker fails to answer about helpers", async () => {
+    context.docker.failNext("removeLeftoverHelpers");
+
+    await expect(context.restart()).resolves.toBeDefined();
+  });
+});
+
 describe("backpressure", () => {
   it("stops reading the program while the browser can't take more", async () => {
     const task = await runningTask();
@@ -468,7 +694,7 @@ describe("the activity log", () => {
     const task = await runningTask();
     context.docker.failNext("execAttach", new Error("no such file"));
 
-    const socket = open(`task=${task.id}&program=bash`);
+    const socket = open(`task=${task.id}&program=sh`);
     await closed(socket);
     await until(() => true);
 
@@ -495,14 +721,22 @@ describe("the console's information", () => {
     const { body } = await api<ConsoleInfo>(`${SERVICE}/console`);
 
     expect(body).toEqual({
-      tasks: [{ id: task.id, slot: 1, name: `shop_web.1.${task.id}` }],
-      programs: ["sh", "bash"],
+      tasks: [{ id: task.id, slot: 1, name: `shop_web.1.${task.id}`, programs: ["sh", "bash"] }],
       scripts: ["tidy up"],
     });
   });
 
   it("is for administrators only", async () => {
-    const result = await api(`${SERVICE}/console`, "GET", undefined, await addMember());
+    const cookie = await addMember();
+    // A member who can't see the project finds nothing at all.
+    expect((await api(`${SERVICE}/console`, "GET", undefined, cookie)).status).toBe(404);
+
+    const now = new Date();
+    context.deps.db
+      .insert(projectMembers)
+      .values({ userId: "member-1", projectName: "shop", role: "operator", createdAt: now, updatedAt: now })
+      .run();
+    const result = await api(`${SERVICE}/console`, "GET", undefined, cookie);
 
     expect(result.status).toBe(403);
     expect(apiErrorOf(result).code).toBe("admin_required");
@@ -510,6 +744,133 @@ describe("the console's information", () => {
 
   it("answers 404 for a service that doesn't exist", async () => {
     expect((await api("/api/v1/projects/shop/services/missing/console")).status).toBe(404);
+  });
+});
+
+describe("a Compose stack's console", () => {
+  const STACK_TERMINAL = "/api/v1/terminal/shop/stack";
+  const composeContainer = (overrides: Partial<ComposeContainerInfo>): ComposeContainerInfo => ({
+    id: "own-container",
+    name: "stack-web-1",
+    image: "traefik/whoami:v1.10",
+    project: "shop_stack",
+    child: "web",
+    number: 1,
+    state: "running",
+    status: "Up 2 seconds",
+    exitCode: null,
+    health: null,
+    ports: [],
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    await api("/api/v1/projects/shop/compose", "POST", { name: "stack" });
+    context.docker.composeContainers.push(
+      composeContainer({}),
+      composeContainer({ id: "stopped-container", child: "worker", state: "exited" }),
+      composeContainer({ id: "foreign-container", project: "shop_other", name: "shop_other-db-1" }),
+    );
+  });
+
+  it("runs in a container of this stack, by its exact id", async () => {
+    const socket = open("task=own-container&program=sh", {}, STACK_TERMINAL);
+    const { frames } = collect(socket);
+    expect(await outcome(socket)).toBe(101);
+    await until(() => frames.some((frame) => frame.t === "ready"));
+
+    expect(context.docker.execs[0]?.options).toMatchObject({
+      service: "shop_stack",
+      containerId: "own-container",
+    });
+  });
+
+  it.each([
+    ["a container of another stack", "foreign-container"],
+    ["a container that is not running", "stopped-container"],
+    ["a container's name instead of its id", "stack-web-1"],
+    ["the start of an id", "own-cont"],
+    ["an id Docker has never heard of", "nonsense"],
+  ])("refuses %s", async (_label, id) => {
+    const socket = open(`task=${id}&program=sh`, {}, STACK_TERMINAL);
+    const { frames } = collect(socket);
+    const ended = closed(socket);
+
+    expect(await ended).toBe(1011);
+    expect(frames).toEqual([{ t: "error", message: "This container is not a running part of this stack." }]);
+    expect(context.docker.execs).toHaveLength(0);
+  });
+});
+
+describe("the shells on offer", () => {
+  /** Stands in for a container that has `/bin/sh` but no `/bin/bash`. */
+  function withoutBash() {
+    const real = context.docker.execAttach.bind(context.docker);
+    return vi
+      .spyOn(context.docker, "execAttach")
+      .mockImplementation(async (options): Promise<ExecSession> => {
+        if (options.command[0] === "/bin/bash") {
+          return { ...(await real(options)), exited: async () => 127 };
+        }
+        return real(options);
+      });
+  }
+
+  it("opens sh, and says so, when the bash asked for isn't there", async () => {
+    const task = await runningTask();
+    withoutBash();
+
+    const { socket, frames, text } = await connect(`task=${task.id}&program=bash`);
+
+    expect(context.docker.execs.at(-1)?.options.command).toEqual(["/bin/sh"]);
+    expect(frames).toEqual([{ t: "ready", fallback: "sh" }]);
+    socket.send(Buffer.from("echo hi\n"), { binary: true });
+    await until(() => text().includes("fake: echo hi"));
+
+    const { body } = await api<{ items: ActionEntry[] }>("/api/v1/actions?type=service.console");
+    expect(body.items[0]?.title).toContain("/bin/sh");
+    expect(body.items[0]?.title).not.toContain("/bin/bash");
+  });
+
+  it("are the ones that really start in the task", async () => {
+    await runningTask();
+    withoutBash();
+
+    const { body } = await api<ConsoleInfo>(`${SERVICE}/console`);
+
+    expect(body.tasks[0]?.programs).toEqual(["sh"]);
+  });
+
+  it("leave out a program Docker could not even start", async () => {
+    await runningTask();
+    const real = context.docker.execAttach.bind(context.docker);
+    vi.spyOn(context.docker, "execAttach").mockImplementation(async (options) => {
+      if (options.command[0] === "/bin/bash") {
+        throw new Error('OCI runtime exec failed: exec: "/bin/bash": stat /bin/bash');
+      }
+      return real(options);
+    });
+
+    expect((await api<ConsoleInfo>(`${SERVICE}/console`)).body.tasks[0]?.programs).toEqual(["sh"]);
+  });
+
+  it("are empty for a container with no shell at all", async () => {
+    await runningTask();
+    vi.spyOn(context.docker, "execAttach").mockRejectedValue(new Error("no such file"));
+
+    expect((await api<ConsoleInfo>(`${SERVICE}/console`)).body.tasks[0]?.programs).toEqual([]);
+  });
+
+  it("are asked for once per image, however many tasks run it", async () => {
+    await api(`${SERVICE}/advanced/deploy`, "PUT", { replicas: 3 });
+    await run(`${SERVICE}/deploy`);
+    await runningTask();
+    const before = context.docker.execs.length;
+
+    await api<ConsoleInfo>(`${SERVICE}/console`);
+
+    // One probe per shell for the single image, not per task.
+    expect(context.docker.execs.length - before).toBe(2);
   });
 });
 

@@ -9,7 +9,11 @@ import { nanoid } from "nanoid";
 import type { AppDeps } from "../../core/context";
 import { type DockerDriver, DockerDriverError, type LogLine } from "../../core/docker";
 import type { TopicChannel, TopicFeed, TopicProvider } from "../../core/realtime";
+import { LineRedactor, Redactor } from "../../core/tools";
+import { searchStoredLogs } from "../monitor/logstore";
+import { readMonitoringSettings } from "../monitor/settings";
 import { qualifiedName } from "../services/compile";
+import { serviceRedactor } from "../services/masking";
 import { type ServiceRef, serviceExists } from "./repo";
 import { sleep } from "./timing";
 import { parseServiceTopic } from "./topics";
@@ -20,6 +24,8 @@ const TOPIC_PREFIX = "service-logs:";
 const TAIL_LINES = 200;
 /** After a follow ended by itself: read everything since the last line, in practice very little. */
 const RESUME_TAIL_LINES = 10_000;
+/** After skipping ahead, how far back the fresh follow starts, so nothing of the present is missed. */
+const SKIP_AHEAD_MARGIN_SECONDS = 1;
 const MAX_LINE_CHARS = 16 * 1024;
 const MAX_FEEDS = 32;
 
@@ -38,6 +44,8 @@ export interface LogFeedTiming {
   paceMs: number;
   /** How long one stuck subscriber can hold up all the others. */
   pressureWaitMs: number;
+  /** How far behind the live output the feed may read before it drops what Docker has queued. */
+  behindMs: number;
 }
 
 const DEFAULT_TIMING: LogFeedTiming = {
@@ -47,6 +55,7 @@ const DEFAULT_TIMING: LogFeedTiming = {
   retryMs: 2000,
   paceMs: 200,
   pressureWaitMs: 5000,
+  behindMs: 5000,
 };
 
 export interface LogFeedLimits {
@@ -74,12 +83,58 @@ const ANSI_SEQUENCE = /\u001b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u000
 const CONTROL_CHARACTERS = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
 
 /** Colours and cursor movement mean nothing in a log view, and a line must not be able to send them. */
-function plainText(text: string): string {
+export function plainText(text: string): string {
   return text.replace(ANSI_SEQUENCE, "").replace(CONTROL_CHARACTERS, "");
 }
 
+/**
+ * The lines of one service with its secrets removed, each stream on its own so that one split over
+ * several lines can be put back together. Docker cuts a long line into pieces too.
+ */
+export class RedactedLogStreams<M> {
+  private readonly streams: Record<LogLine["stream"], LineRedactor<M>>;
+
+  constructor(redactor: Redactor, emit: (line: string, meta: M) => void, holdMs?: number | null) {
+    this.streams = {
+      stdout: new LineRedactor(redactor, emit, holdMs),
+      stderr: new LineRedactor(redactor, emit, holdMs),
+    };
+  }
+
+  use(redactor: Redactor): void {
+    this.streams.stdout.use(redactor);
+    this.streams.stderr.use(redactor);
+  }
+
+  write(entry: LogLine, meta: M): void {
+    this.streams[entry.stream].write(plainText(entry.line), meta);
+  }
+
+  flush(): void {
+    this.streams.stdout.flush();
+    this.streams.stderr.flush();
+  }
+}
+
+/** A finished batch of lines with its secrets removed, in the order they came. */
+export function redactLogEntries(redactor: Redactor, entries: readonly LogLine[]): LogLine[] {
+  const redacted = [...entries];
+  const streams = new RedactedLogStreams<number>(
+    redactor,
+    (line, index) => {
+      redacted[index] = { ...(entries[index] as LogLine), line };
+    },
+    null,
+  );
+  entries.forEach((entry, index) => {
+    streams.write(entry, index);
+  });
+  streams.flush();
+  return redacted;
+}
+
 /** Docker trims trailing zeros, so timestamps only compare as text once they are the same width. */
-function comparable(at: string | null): string {
+export function comparable(at: string | null): string {
   if (at === null) {
     return "";
   }
@@ -87,7 +142,7 @@ function comparable(at: string | null): string {
   return `${seconds}.${fraction.padEnd(9, "0")}`;
 }
 
-function toLogLine(entry: LogLine, seq: number): ServiceLogLine {
+export function toLogLine(entry: LogLine, seq: number): ServiceLogLine {
   const text = plainText(entry.line);
   return {
     seq,
@@ -97,12 +152,21 @@ function toLogLine(entry: LogLine, seq: number): ServiceLogLine {
   };
 }
 
+interface LagGauge {
+  /** When this follow began, on our clock. Lines stamped earlier are history. */
+  startedAt: number;
+  /** The smallest age seen so far, which is as close as this can get to Docker's clock. */
+  freshest: number;
+}
+
 interface LogFeedOptions {
   docker: DockerDriver;
   logger: AppDeps["logger"];
   /** The Swarm service to follow. */
   name: string;
   channel: TopicChannel;
+  /** What to hide, given what the running container was started with. Asked again as things change. */
+  redactor?: (applied: readonly string[]) => Redactor;
   timing?: Partial<LogFeedTiming>;
   limits?: Partial<LogFeedLimits>;
 }
@@ -114,6 +178,11 @@ interface LogFeedOptions {
  * their way out in a batch that is only allowed to fill up. Once it is full nothing more is read from
  * Docker until the batch has left and the slowest subscriber has caught up, so an endless log slows
  * down the follow instead of piling up here.
+ *
+ * Slowing down only moves the pile, though: Swarm queues a follow's lines without limit, so a service
+ * that prints a lot at every start leaves a backlog that outlives the burst and grows with each restart.
+ * Once the lines being read are more than a few seconds old the rest of the queue is not worth reading,
+ * so the follow is dropped, which discards it, and a new one starts from the present.
  */
 export class LogFeed implements TopicFeed {
   private readonly id = nanoid(8);
@@ -128,26 +197,50 @@ export class LogFeed implements TopicFeed {
   private flushTimer: NodeJS.Timeout | undefined;
   private settlesAt = 0;
   private seq = 0;
+  /** Set by skipping ahead: seconds since the epoch where the next follow starts instead. */
+  private skipTo: number | undefined;
   /** Where to pick up after a follow that ended by itself. Comparable form of the last timestamp. */
   private lastSeen: string | null = null;
   private lastSeenSeconds: number | undefined;
+  private readonly clean: RedactedLogStreams<LogLine>;
 
   constructor(private readonly options: LogFeedOptions) {
     this.timing = { ...DEFAULT_TIMING, ...options.timing };
     this.limits = { ...DEFAULT_LIMITS, ...options.limits };
     this.settlesAt = Date.now() + this.timing.settleMs;
+    this.clean = new RedactedLogStreams(this.redactorFor([]), (line, entry) => this.admit(line, entry));
     void this.run().catch((error: unknown) => {
       options.logger.error({ err: error, service: options.name }, "A log feed stopped unexpectedly");
     });
   }
 
   close(): void {
+    this.clean.flush();
     this.controller.abort();
     clearTimeout(this.flushTimer);
   }
 
+  /** Failing to work this out must leave the patterns in force, not stop the log. */
+  private redactorFor(applied: readonly string[]): Redactor {
+    try {
+      return this.options.redactor?.(applied) ?? new Redactor();
+    } catch (error) {
+      this.options.logger.warn({ err: error, service: this.options.name }, "Could not read what to hide");
+      return new Redactor();
+    }
+  }
+
   replay(): ServiceLogEvent[] {
-    return [{ kind: "snapshot", feed: this.id, state: this.state, lines: [...this.ring] }];
+    return [
+      {
+        kind: "snapshot",
+        feed: this.id,
+        state: this.state,
+        lines: [...this.ring],
+        tailLines: TAIL_LINES,
+        ringLines: this.limits.ringLines,
+      },
+    ];
   }
 
   private get signal(): AbortSignal {
@@ -164,6 +257,7 @@ export class LogFeed implements TopicFeed {
           await sleep(this.timing.retryMs, this.signal);
           continue;
         }
+        this.clean.use(this.redactorFor(service.spec.TaskTemplate.ContainerSpec.Env ?? []));
         await this.follow(service.id);
       } catch (error) {
         if (!this.signal.aborted) {
@@ -185,12 +279,17 @@ export class LogFeed implements TopicFeed {
     void this.watch(serviceId, stream);
 
     const resuming = this.lastSeenSeconds !== undefined;
+    const skipped = this.skipTo;
+    this.skipTo = undefined;
+    const startedAt = Date.now();
+    const lag: LagGauge = { startedAt, freshest: Number.POSITIVE_INFINITY };
+    let skippingAhead = false;
     try {
       for await (const entry of docker.serviceLogs(name, {
         follow: true,
         timestamps: true,
-        tail: resuming ? RESUME_TAIL_LINES : TAIL_LINES,
-        since: resuming ? this.lastSeenSeconds : undefined,
+        tail: skipped !== undefined || !resuming ? TAIL_LINES : RESUME_TAIL_LINES,
+        since: skipped ?? (resuming ? this.lastSeenSeconds : undefined),
         signal: stream.signal,
       })) {
         if (stream.signal.aborted) {
@@ -201,6 +300,10 @@ export class LogFeed implements TopicFeed {
         }
         this.accept(entry);
         if (this.isBatchFull()) {
+          if (this.isFarBehind(entry, lag)) {
+            skippingAhead = true;
+            break;
+          }
           await this.drain();
         }
       }
@@ -208,13 +311,51 @@ export class LogFeed implements TopicFeed {
       clearInterval(watcher);
       this.signal.removeEventListener("abort", stop);
       stream.abort();
+      this.clean.flush();
       this.flush();
+    }
+
+    if (skippingAhead) {
+      this.markGap();
+      this.skipTo = Math.floor(Date.now() / 1000) - SKIP_AHEAD_MARGIN_SECONDS;
+      return;
     }
 
     // Docker keeps a follow open across restarts, so one that ends means the daemon went away.
     if (!this.signal.aborted) {
       await sleep(this.timing.retryMs, this.signal);
     }
+  }
+
+  /**
+   * Whether the line just read is old news. History from before this follow says nothing about that, and
+   * the Docker host's clock may differ from ours, so an age only counts beyond the freshest one seen.
+   */
+  private isFarBehind(entry: LogLine, lag: LagGauge): boolean {
+    if (entry.timestamp === undefined) {
+      return false;
+    }
+    const at = Date.parse(entry.timestamp);
+    if (Number.isNaN(at) || at < lag.startedAt) {
+      return false;
+    }
+    const age = Date.now() - at;
+    lag.freshest = Math.min(lag.freshest, age);
+    return age - lag.freshest > this.timing.behindMs;
+  }
+
+  /** Tells whoever is reading that this is not where the last line left off. */
+  private markGap(): void {
+    const line: ServiceLogLine = {
+      seq: this.seq,
+      stream: "stdout",
+      line: "",
+      at: new Date().toISOString(),
+      gap: true,
+    };
+    this.seq += 1;
+    this.remember([line]);
+    this.publish({ kind: "lines", feed: this.id, lines: [line] });
   }
 
   /** Docker keeps a follow open after its service is removed, so this is how that gets noticed. */
@@ -229,6 +370,7 @@ export class LogFeed implements TopicFeed {
         stream.abort();
         return;
       }
+      this.clean.use(this.redactorFor(service.spec.TaskTemplate.ContainerSpec.Env ?? []));
       this.setState(tasks.some((task) => task.desiredState === "running") ? "streaming" : "waiting");
     } catch (error) {
       logger.debug({ err: error, service: name }, "Could not check on a service's tasks");
@@ -242,8 +384,11 @@ export class LogFeed implements TopicFeed {
   }
 
   private accept(entry: LogLine): void {
-    const line = toLogLine(entry, this.seq);
-    this.seq += 1;
+    this.clean.write(entry, entry);
+  }
+
+  private admit(text: string, entry: LogLine): void {
+    const line = toLogLine({ ...entry, line: text }, 0);
     this.batch.push(line);
     this.batchBytes += line.line.length;
     if (line.at !== null) {
@@ -289,7 +434,14 @@ export class LogFeed implements TopicFeed {
     if (this.batch.length === 0) {
       return;
     }
-    const lines = this.batch.sort((a, b) => comparable(a.at).localeCompare(comparable(b.at)));
+    // Numbered after sorting: a client keeps only what increases, so anything else would vanish.
+    const lines = this.batch
+      .sort((a, b) => comparable(a.at).localeCompare(comparable(b.at)))
+      .map((line) => {
+        const numbered = { ...line, seq: this.seq };
+        this.seq += 1;
+        return numbered;
+      });
     this.batch = [];
     this.batchBytes = 0;
     this.remember(lines);
@@ -337,7 +489,7 @@ function refusedFeed(state: LogFeedState): TopicFeed {
 }
 
 export function createLogsProvider(
-  deps: Pick<AppDeps, "db" | "docker" | "logger">,
+  deps: Pick<AppDeps, "db" | "docker" | "logger" | "secrets">,
   options: { timing?: Partial<LogFeedTiming>; limits?: Partial<LogFeedLimits> } = {},
 ): LogsProvider {
   let open = 0;
@@ -355,6 +507,7 @@ export function createLogsProvider(
         logger: deps.logger,
         name: qualifiedName(target.projectName, target.serviceName),
         channel,
+        redactor: (applied) => serviceRedactor(deps, target, applied),
         ...options,
       });
       return {
@@ -402,15 +555,38 @@ function matches(line: ServiceLogLine, query: LogSearchQuery, needle: string): b
  * the newest matches, so a huge log costs time but never memory.
  */
 export async function searchServiceLogs(
-  deps: Pick<AppDeps, "docker" | "now">,
+  deps: Pick<AppDeps, "docker" | "now"> & Partial<Pick<AppDeps, "db" | "secrets" | "logger">>,
   target: ServiceRef,
   query: LogSearchQuery,
   signal?: AbortSignal,
 ): Promise<LogSearchResult> {
+  const { db, secrets, logger } = deps;
+  const redactor =
+    db !== undefined && secrets !== undefined && logger !== undefined
+      ? serviceRedactor({ db, secrets, logger }, target)
+      : new Redactor();
+  if (db !== undefined && readMonitoringSettings({ db }).logs.enabled) {
+    const stored = searchStoredLogs({ db, now: deps.now }, target, query);
+    return { ...stored, lines: stored.lines.map((line) => ({ ...line, line: redactor.apply(line.line) })) };
+  }
   const needle = query.q.toLowerCase();
   const found: ServiceLogLine[] = [];
   let scanned = 0;
   let truncated = false;
+  const keep = new RedactedLogStreams<LogLine>(
+    redactor,
+    (text, entry) => {
+      const line = toLogLine({ ...entry, line: text }, scanned);
+      if (matches(line, query, needle)) {
+        found.push(line);
+        if (found.length > query.limit) {
+          found.shift();
+          truncated = true;
+        }
+      }
+    },
+    null,
+  );
 
   try {
     for await (const entry of deps.docker.serviceLogs(qualifiedName(target.projectName, target.serviceName), {
@@ -423,15 +599,8 @@ export async function searchServiceLogs(
         truncated = true;
         break;
       }
-      const line = toLogLine(entry, scanned);
+      keep.write(entry, entry);
       scanned += 1;
-      if (matches(line, query, needle)) {
-        found.push(line);
-        if (found.length > query.limit) {
-          found.shift();
-          truncated = true;
-        }
-      }
     }
   } catch (error) {
     // A service that has never been deployed simply has nothing to search.
@@ -439,6 +608,7 @@ export async function searchServiceLogs(
       throw error;
     }
   }
+  keep.flush();
 
   found.sort((a, b) => comparable(a.at).localeCompare(comparable(b.at)));
   return { lines: found, scanned, truncated };

@@ -1,0 +1,109 @@
+{
+  "id": "keycloak",
+  "version": "1.0.0",
+  "name": "Keycloak",
+  "summary": {
+    "en": "Single sign-on for your applications.",
+    "fr": "Authentification unique pour vos applications."
+  },
+  "description": {
+    "en": "User federation, OpenID Connect and SAML in one identity server. The first start builds its configuration and takes a little while.",
+    "fr": "Fédération d'utilisateurs, OpenID Connect et SAML dans un seul serveur d'identité. Le premier démarrage prépare sa configuration et prend un moment."
+  },
+  "instructions": {
+    "en": "Sign in to the admin console as {{params.adminUser}} with the password shown below.",
+    "fr": "Connectez-vous à la console d'administration avec {{params.adminUser}} et le mot de passe affiché ci-dessous."
+  },
+  "category": "security",
+  "tags": ["identity", "sso", "oidc"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://www.keycloak.org"
+    },
+    {
+      "kind": "docs",
+      "url": "https://www.keycloak.org/server/containers"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/keycloak/keycloak"
+    }
+  ],
+  "verified": false,
+  "params": [
+    {
+      "key": "adminUser",
+      "label": {
+        "en": "Admin user",
+        "fr": "Utilisateur administrateur"
+      },
+      "type": "text",
+      "required": true,
+      "default": "admin"
+    },
+    {
+      "key": "adminPassword",
+      "label": {
+        "en": "Admin password",
+        "fr": "Mot de passe administrateur"
+      },
+      "type": "secret",
+      "required": false,
+      "help": {
+        "en": "Leave empty to generate one.",
+        "fr": "Laissez vide pour en générer un."
+      },
+      "generate": {
+        "length": 24,
+        "alphabet": "alphanumeric"
+      }
+    }
+  ],
+  "secrets": [],
+  "services": [
+    {
+      "key": "db",
+      "name": "keycloak-db",
+      "kind": "database",
+      "engine": "postgres",
+      "image": "postgres:17.11-alpine",
+      "databaseName": "keycloak",
+      "user": "keycloak"
+    },
+    {
+      "key": "app",
+      "name": "keycloak",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "quay.io/keycloak/keycloak:26.8.2"
+      },
+      "env": {
+        "KC_DB": "postgres",
+        "KC_DB_URL_HOST": "{{services.db.host}}",
+        "KC_DB_URL_PORT": "{{services.db.port}}",
+        "KC_DB_URL_DATABASE": "{{services.db.database}}",
+        "KC_DB_USERNAME": "{{services.db.user}}",
+        "KC_DB_PASSWORD": "{{services.db.password}}",
+        "KC_HOSTNAME": "{{services.app.url}}",
+        "KC_HTTP_ENABLED": "true",
+        "KC_PROXY_HEADERS": "xforwarded",
+        "KC_BOOTSTRAP_ADMIN_USERNAME": "{{params.adminUser}}",
+        "KC_BOOTSTRAP_ADMIN_PASSWORD": "{{params.adminPassword}}"
+      },
+      "command": "/opt/keycloak/bin/kc.sh start",
+      "mounts": [],
+      "domain": {
+        "port": 8080,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/realms/master",
+        "expect": [200]
+      },
+      "dependsOn": ["db"]
+    }
+  ]
+}

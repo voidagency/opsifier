@@ -1,0 +1,71 @@
+{
+  "id": "navidrome",
+  "version": "1.0.0",
+  "name": "Navidrome",
+  "summary": {
+    "en": "Your own music streaming server.",
+    "fr": "Votre propre serveur de musique."
+  },
+  "description": {
+    "en": "Plays your music library in a web player and through the many apps that speak the Subsonic protocol. Files go under /music, on the Storage tab.",
+    "fr": "Lit votre bibliothèque dans un lecteur web et avec les nombreuses applications compatibles Subsonic. Les fichiers vont sous /music, dans l'onglet Stockage."
+  },
+  "instructions": {
+    "en": "Open the site and create the first administrator.",
+    "fr": "Ouvrez le site et créez le premier administrateur."
+  },
+  "category": "media",
+  "tags": ["music", "streaming", "subsonic"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://www.navidrome.org"
+    },
+    {
+      "kind": "docs",
+      "url": "https://www.navidrome.org/docs/installation/docker/"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/navidrome/navidrome"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "navidrome",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "deluan/navidrome:0.64.2"
+      },
+      "env": {},
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/data"
+        },
+        {
+          "type": "volume",
+          "name": "music",
+          "path": "/music"
+        }
+      ],
+      "domain": {
+        "port": 4533,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/ping",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "id": "jellyfin",
+  "version": "1.0.0",
+  "name": "Jellyfin",
+  "summary": {
+    "en": "Stream your own films, series and music.",
+    "fr": "Diffusez vos propres films, séries et musiques."
+  },
+  "description": {
+    "en": "A free media server with no account outside your server, available on most televisions and phones. Add your files under /media from the service's Storage tab.",
+    "fr": "Un serveur multimédia libre, sans compte extérieur, disponible sur la plupart des téléviseurs et téléphones. Ajoutez vos fichiers sous /media depuis l'onglet Stockage."
+  },
+  "instructions": {
+    "en": "Open the site and follow the setup wizard.",
+    "fr": "Ouvrez le site et suivez l'assistant de configuration."
+  },
+  "category": "media",
+  "tags": ["media-server", "video", "music"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://jellyfin.org"
+    },
+    {
+      "kind": "docs",
+      "url": "https://jellyfin.org/docs/general/installation/container/"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/jellyfin/jellyfin"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "jellyfin",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "jellyfin/jellyfin:10.11.11"
+      },
+      "env": {},
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "config",
+          "path": "/config"
+        },
+        {
+          "type": "volume",
+          "name": "cache",
+          "path": "/cache"
+        },
+        {
+          "type": "volume",
+          "name": "media",
+          "path": "/media"
+        }
+      ],
+      "domain": {
+        "port": 8096,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/health",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn";
+import { useReturnFocus } from "./useReturnFocus";
 
 export interface DialogProps {
   open: boolean;
@@ -16,7 +17,7 @@ export interface DialogProps {
   onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
 }
 
-const sizes = { sm: "max-w-[420px]", md: "max-w-[520px]", lg: "max-w-[680px]" };
+const sizes = { sm: "max-w-[530px]", md: "max-w-[650px]", lg: "max-w-[850px]" };
 
 export function Dialog({
   open,
@@ -29,6 +30,7 @@ export function Dialog({
   onSubmit,
 }: DialogProps) {
   const { t } = useTranslation();
+  const returnFocus = useReturnFocus(open);
 
   const body = (
     <>
@@ -45,8 +47,9 @@ export function Dialog({
         <RadixDialog.Overlay className="fixed inset-0 z-50 bg-scrim data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
         <RadixDialog.Content
           {...(description ? {} : { "aria-describedby": undefined })}
+          onCloseAutoFocus={returnFocus}
           className={cn(
-            "fixed inset-x-4 top-[max(1rem,9dvh)] z-50 mx-auto flex max-h-[calc(100dvh-2rem)] flex-col rounded-sm border bg-raised shadow-overlay focus-visible:outline-none data-[state=closed]:animate-rise-out data-[state=open]:animate-rise-in sm:max-h-[82dvh]",
+            "fixed inset-x-4 top-[max(1rem,9dvh)] z-50 mx-auto flex max-h-[calc(100dvh-max(1rem,9dvh)-1rem)] flex-col rounded-sm border bg-raised shadow-overlay focus-visible:outline-none data-[state=closed]:animate-rise-out data-[state=open]:animate-rise-in sm:max-h-[82dvh]",
             sizes[size],
           )}
         >

@@ -13,9 +13,9 @@ const TICK_HALF_ANGLE = 4.75;
 const SWEEP = 360 - 2 * TICK_HALF_ANGLE;
 
 const sizes = {
-  sm: { pixels: 56, text: "text-xs", textLong: "text-micro", scale: false },
-  md: { pixels: 88, text: "text-md", textLong: "text-sm", scale: true },
-  lg: { pixels: 128, text: "text-xl", textLong: "text-lg", scale: true },
+  sm: { pixels: 70, text: "text-xs", textLong: "text-micro", scale: false },
+  md: { pixels: 110, text: "text-md", textLong: "text-sm", scale: true },
+  lg: { pixels: 160, text: "text-xl", textLong: "text-lg", scale: true },
 } as const;
 
 export type GaugeSize = keyof typeof sizes;

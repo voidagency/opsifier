@@ -16,8 +16,14 @@ export function insertProject(db: DbHandle, name: string, now: Date): ProjectRow
   return db.insert(projects).values({ name, createdAt: now, updatedAt: now }).returning().get();
 }
 
-export function updateProjectEnv(db: DbHandle, name: string, env: string, now: Date): void {
-  db.update(projects).set({ env, updatedAt: now }).where(eq(projects.name, name)).run();
+export function updateProjectEnv(
+  db: DbHandle,
+  name: string,
+  sealedEnv: string,
+  sealedRetired: string | null,
+  now: Date,
+): void {
+  db.update(projects).set({ sealedEnv, sealedRetired, updatedAt: now }).where(eq(projects.name, name)).run();
 }
 
 /** Services and their domains go with it, through the foreign keys. */

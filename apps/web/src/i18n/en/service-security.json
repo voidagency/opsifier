@@ -24,7 +24,8 @@
     "save": "Save",
     "username": "Username",
     "password": "Password",
-    "passwordKeep": "Leave empty to keep the current password."
+    "passwordKeep": "Leave empty to keep the current password.",
+    "usernameHint": "The name visitors sign in with."
   },
   "errors": {
     "username": "Enter a username with no spaces or colons.",

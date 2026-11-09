@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import type { SwarmServiceSpec } from "../../../../core/docker";
 import { type AppServiceSpec, appServiceSpec, type StoredDatabase } from "../../spec";
 import { compileService } from "../index";
+import { MAX_TASK_PROCESSES } from "../resources";
 import { compileCompanion } from "./companions";
 import { connectionUrl, maskedConnectionUrl, percentEncode } from "./connection";
 import { compileDatabaseService, type DatabaseSecrets } from "./index";
@@ -48,12 +49,13 @@ function spec(
 
 function compile(
   engine: DatabaseEngine,
-  overrides: Partial<AppServiceSpec> = {},
+  { env: serviceEnv, ...overrides }: Partial<AppServiceSpec> & { env?: string } = {},
   options: { secrets?: DatabaseSecrets; env?: string; forceUpdate?: number } = {},
 ) {
   return compileDatabaseService({
-    project: { name: "probe-data", env: options.env ?? "" },
+    project: { name: "probe-data" },
     service: { name: "db", spec: spec(engine, overrides) },
+    env: { project: options.env ?? "", service: serviceEnv ?? "" },
     secrets: options.secrets ?? SECRETS,
     dataDir: "/var/lib/opsifier",
     forceUpdate: options.forceUpdate ?? 0,
@@ -106,17 +108,24 @@ describe("DAT-02: the Swarm service of a database", () => {
     expect(compiled.RollbackConfig).toEqual(expected);
   });
 
-  it("joins the shared network and the project network, with their aliases", () => {
+  it("joins only its project's network, under its aliases", () => {
     expect(compiled.TaskTemplate.Networks).toEqual([
-      { Target: "opsifier", Aliases: ["probe-data-db"] },
       { Target: "opsifier-probe-data", Aliases: ["probe-data-db", "db"] },
     ]);
   });
 
   it("keeps a database's data on a named volume, not on a host path", () => {
-    expect(compiled.TaskTemplate.ContainerSpec.Mounts).toEqual([
+    expect(compiled.TaskTemplate.ContainerSpec.Mounts).toMatchObject([
       { Type: "volume", Source: "probe-data_db_data", Target: "/var/lib/postgresql/data" },
     ]);
+  });
+
+  it("marks the volume it asks Docker to create as the panel's", () => {
+    expect(compiled.TaskTemplate.ContainerSpec.Mounts?.[0]?.VolumeOptions?.Labels).toEqual({
+      "opsifier.project": "probe-data",
+      "opsifier.service": "db",
+      "opsifier.type": "postgres",
+    });
   });
 
   it("keeps its tasks on the node that holds the volume", () => {
@@ -162,7 +171,7 @@ describe("DAT-14: per-engine differences", () => {
     postgres: {
       port: 5432,
       mount: "/var/lib/postgresql/data",
-      defaultImage: "postgres:18",
+      defaultImage: "postgres:18.6",
       defaultUser: "postgres",
       env: [
         "POSTGRES_PASSWORD=pw",
@@ -174,7 +183,7 @@ describe("DAT-14: per-engine differences", () => {
     mysql: {
       port: 3306,
       mount: "/var/lib/mysql",
-      defaultImage: "mysql:9",
+      defaultImage: "mysql:9.7.4",
       defaultUser: "mysql",
       env: [
         "MYSQL_ROOT_PASSWORD=rootpw",
@@ -186,7 +195,7 @@ describe("DAT-14: per-engine differences", () => {
     mariadb: {
       port: 3306,
       mount: "/var/lib/mysql",
-      defaultImage: "mariadb:11",
+      defaultImage: "mariadb:11.8.9",
       defaultUser: "mariadb",
       env: [
         "MARIADB_ROOT_PASSWORD=rootpw",
@@ -198,14 +207,14 @@ describe("DAT-14: per-engine differences", () => {
     mongo: {
       port: 27017,
       mount: "/data/db",
-      defaultImage: "mongo:8",
+      defaultImage: "mongo:8.3.13",
       defaultUser: "mongo",
       env: ["MONGO_INITDB_ROOT_USERNAME=mongo", "MONGO_INITDB_ROOT_PASSWORD=pw"],
     },
     redis: {
       port: 6379,
       mount: "/data",
-      defaultImage: "redis:7",
+      defaultImage: "redis:7.4.8",
       defaultUser: "default",
       env: ["REDIS_PASSWORD=pw"],
     },
@@ -224,7 +233,7 @@ describe("DAT-14: per-engine differences", () => {
     });
 
     it("mounts its data at the documented path", () => {
-      expect(container(compile(engine)).Mounts).toEqual([
+      expect(container(compile(engine)).Mounts).toMatchObject([
         { Type: "volume", Source: "probe-data_db_data", Target: expected.mount },
       ]);
     });
@@ -349,18 +358,21 @@ describe("DAT-08: resources", () => {
     });
     expect(swarm(result).TaskTemplate.Resources).toEqual({
       Reservations: { NanoCPUs: 100_000_000, MemoryBytes: 67108864 },
-      Limits: { NanoCPUs: 500_000_000, MemoryBytes: 134217728 },
+      Limits: { NanoCPUs: 500_000_000, MemoryBytes: 134217728, Pids: MAX_TASK_PROCESSES },
     });
   });
 
   it("leaves limits and reservations empty when every value is zero", () => {
-    expect(swarm(compile("redis")).TaskTemplate.Resources).toEqual({ Limits: {}, Reservations: {} });
+    expect(swarm(compile("redis")).TaskTemplate.Resources).toEqual({
+      Limits: { Pids: MAX_TASK_PROCESSES },
+      Reservations: {},
+    });
   });
 
   it("applies a CPU limit on its own instead of dropping it", () => {
     const result = compile("postgres", { resources: resourcesSpec.parse({ cpuLimit: 0.5 }) });
     expect(swarm(result).TaskTemplate.Resources).toEqual({
-      Limits: { NanoCPUs: 500_000_000 },
+      Limits: { NanoCPUs: 500_000_000, Pids: MAX_TASK_PROCESSES },
       Reservations: {},
     });
   });
@@ -463,11 +475,12 @@ describe("DAT-13: web admin companions", () => {
     token: "tokenvalue",
   };
 
-  it("runs as its own Swarm service on the project network", () => {
+  it("runs as its own Swarm service on the project's networks, where the proxy can reach it", () => {
     const { swarmSpec } = compileCompanion(input);
     expect(swarmSpec.Name).toBe("probe-data_db-pgweb");
     expect(swarmSpec.TaskTemplate.Networks).toEqual([
       { Target: "opsifier-probe-data", Aliases: ["probe-data_db-pgweb"] },
+      { Target: "opsifier-probe-data_proxy" },
     ]);
     expect(swarmSpec.Labels).toMatchObject({ "opsifier.type": "companion", "opsifier.parent": "db" });
   });
@@ -515,7 +528,7 @@ describe("App services and databases stay separate", () => {
       source: { type: "image", image: "traefik/whoami:v1.10", username: null, sealedPassword: null },
     });
     const result = compileService({
-      project: { name: "shop", env: "" },
+      project: { name: "shop" },
       service: { name: "web", spec: appSpec },
       domains: [],
       dataDir: "/var/lib/opsifier",
@@ -524,6 +537,7 @@ describe("App services and databases stay separate", () => {
     expect(result.swarmSpec?.EndpointSpec).toEqual({ Mode: "vip" });
     expect(result.swarmSpec?.TaskTemplate.Networks).toEqual([
       { Target: "opsifier-shop", Aliases: ["shop-web", "web"] },
+      { Target: "opsifier-shop_proxy" },
     ]);
   });
 });

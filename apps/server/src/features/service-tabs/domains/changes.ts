@@ -1,20 +1,26 @@
-import type { DomainEntry, SaveDomainFields } from "@opsifier/contract";
+import { X509Certificate } from "node:crypto";
+import { type DomainEntry, MAX_DOMAINS_PER_SERVICE, type SaveDomainFields } from "@opsifier/contract";
 import { nanoid } from "nanoid";
 import type { AppDeps } from "../../../core/context";
 import type { DbHandle } from "../../../core/db";
 import { DockerDriverError } from "../../../core/docker";
-import { conflict, notFound } from "../../../core/errors";
+import { badRequest, conflict, notFound } from "../../../core/errors";
+import { assertHostAvailableForPanel } from "../../server/panel-host";
 import { compileService } from "../../services/compile";
 import { builtImageName } from "../../services/compile/names";
 import { findService, listServiceRecords, type ServiceRecord } from "../../services/repo";
+import { assertRuntimeCertain } from "../../services/runtime-state";
 import { requireProject, requireService, type ServiceTarget, writeProxyConfig } from "../../services/service";
+import { findRedirectLoop } from "../redirects/loops";
 import {
   type DomainRow,
   deleteDomain as deleteDomainRow,
   findDomain,
-  findDomainByRoute,
+  findRouteConflict,
   insertDomain,
   listServiceDomains,
+  type RouteClaim,
+  sameRoute,
   setPrimaryDomain,
   updateDomain as updateDomainRow,
 } from "./repo";
@@ -22,23 +28,54 @@ import { toCompileDomains, toEntry } from "./service";
 
 const TAKEN_BY_THIS_SERVICE = "This service already answers on this hostname and path";
 const TAKEN_BY_ANOTHER_SERVICE = "Another service already uses this hostname on this path";
+const OVERLAPS_ANOTHER_ROUTE = "This hostname and path overlap a route that is already in use";
 
-/** The UI compares these exact codes against its own translated messages. */
-function assertRouteFree(
-  db: DbHandle,
-  target: ServiceTarget,
-  route: Pick<DomainRow, "host" | "path" | "wildcard">,
-  ownId?: string,
-): void {
-  const existing = findDomainByRoute(db, route.host, route.path, route.wildcard);
-  if (existing === undefined || existing.id === ownId) {
+/** The UI compares these exact codes against its own translated messages. Nothing here names the owner. */
+function assertRouteFree(db: DbHandle, target: ServiceTarget, route: RouteClaim, ownId?: string): void {
+  const held = findRouteConflict(db, route, target.projectName, ownId);
+  if (held === undefined) {
     return;
   }
-  const sameService =
-    existing.projectName === target.projectName && existing.serviceName === target.serviceName;
-  throw conflict("domain_taken", sameService ? TAKEN_BY_THIS_SERVICE : TAKEN_BY_ANOTHER_SERVICE, {
-    host: sameService ? TAKEN_BY_THIS_SERVICE : TAKEN_BY_ANOTHER_SERVICE,
-  });
+  const ownService = held.project === target.projectName && held.service === target.serviceName;
+  const identical = ownService ? TAKEN_BY_THIS_SERVICE : TAKEN_BY_ANOTHER_SERVICE;
+  const message = sameRoute(held, route) ? identical : OVERLAPS_ANOTHER_ROUTE;
+  throw conflict("domain_taken", message, { host: message });
+}
+
+const PEM_BLOCKS = /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g;
+
+/** The contract checks the shape. Only this says that the proxy will really be able to use it. */
+function assertReadableCertificates(pem: string | null): void {
+  try {
+    for (const block of pem?.match(PEM_BLOCKS) ?? []) {
+      new X509Certificate(block);
+    }
+  } catch {
+    throw badRequest("validation_failed", "Some fields need attention.", {
+      upstreamCa: "This certificate can't be read",
+    });
+  }
+}
+
+/** An address can complete a loop the rules could not make alone, by bringing their target here. */
+function assertNoRedirectLoop(
+  db: DbHandle,
+  target: ServiceTarget,
+  domain: Pick<DomainRow, "host" | "wildcard">,
+): void {
+  const record = findService(db, target.projectName, target.serviceName);
+  if (record === undefined) {
+    return;
+  }
+  const host = domain.wildcard ? `x.${domain.host}` : domain.host;
+  const domains = listServiceDomains(db, target.projectName, target.serviceName);
+  if (findRedirectLoop({ host }, record.spec.redirects, domains) !== null) {
+    throw conflict(
+      "domain_redirect_loop",
+      "This address would send visitors round in a loop with this service's redirects.",
+      { host: "This service's redirects would loop on this address" },
+    );
+  }
 }
 
 function requireDomain(db: DbHandle, target: ServiceTarget, id: string): DomainRow {
@@ -91,16 +128,24 @@ async function applyRouteChange<T>(
   return result;
 }
 
+/** What to check an upstream's certificate against means nothing to an upstream that has none. */
+const upstreamCheck = (value: string | null, fields: SaveDomainFields) =>
+  fields.destinationProtocol === "https" && value !== "" ? value : null;
+
 const toColumns = (fields: SaveDomainFields) => ({
   host: fields.host,
   path: fields.path,
+  stripPath: fields.stripPath,
   https: fields.https,
   port: fields.port,
   destinationProtocol: fields.destinationProtocol,
   destinationPath: fields.destinationPath,
+  upstreamServerName: upstreamCheck(fields.upstreamServerName, fields),
+  upstreamCa: upstreamCheck(fields.upstreamCa, fields),
   certificateResolver: fields.certificateResolver === "" ? null : fields.certificateResolver,
   wildcard: fields.wildcard,
   middlewares: fields.middlewares,
+  ...(fields.composeService === undefined ? {} : { composeService: fields.composeService }),
 });
 
 export async function createDomain(
@@ -109,11 +154,16 @@ export async function createDomain(
   fields: SaveDomainFields,
 ): Promise<DomainEntry> {
   requireService(deps, target);
+  assertHostAvailableForPanel(deps, fields.host, fields.wildcard);
+  assertReadableCertificates(fields.upstreamCa);
   const id = nanoid();
   const now = new Date(deps.now());
   const row = await applyRouteChange(deps, target, (tx) => {
     assertRouteFree(tx, target, fields);
     const existing = listServiceDomains(tx, target.projectName, target.serviceName);
+    if (existing.length >= MAX_DOMAINS_PER_SERVICE) {
+      throw conflict("too_many_domains", "This service answers on as many domains as it can hold.");
+    }
     insertDomain(tx, {
       id,
       projectName: target.projectName,
@@ -124,6 +174,7 @@ export async function createDomain(
       createdAt: now,
       updatedAt: now,
     });
+    assertNoRedirectLoop(tx, target, fields);
     return findDomain(tx, id);
   });
   if (row === undefined) {
@@ -139,14 +190,25 @@ export async function updateDomain(
   fields: SaveDomainFields,
 ): Promise<DomainEntry> {
   requireService(deps, target);
+  assertHostAvailableForPanel(deps, fields.host, fields.wildcard);
+  assertReadableCertificates(fields.upstreamCa);
   const now = new Date(deps.now());
   const row = await applyRouteChange(deps, target, (tx) => {
     const current = requireDomain(tx, target, id);
+    if (current.host !== fields.host || current.path !== fields.path) {
+      assertRuntimeCertain(deps, target);
+    }
     if (current.isPrimary) {
       assertCanBePrimary(fields);
     }
-    assertRouteFree(tx, target, fields, id);
+    // What a route already holds is not a new claim, so one that predates these rules can be edited.
+    if (!sameRoute(current, fields)) {
+      assertRouteFree(tx, target, fields, id);
+    }
     updateDomainRow(tx, id, { ...toColumns(fields), updatedAt: now });
+    if (!sameRoute(current, fields) || current.https !== fields.https) {
+      assertNoRedirectLoop(tx, target, fields);
+    }
     return findDomain(tx, id);
   });
   if (row === undefined) {
@@ -157,6 +219,7 @@ export async function updateDomain(
 
 export async function deleteDomain(deps: AppDeps, target: ServiceTarget, id: string): Promise<void> {
   requireService(deps, target);
+  assertRuntimeCertain(deps, target);
   const now = new Date(deps.now());
   await applyRouteChange(deps, target, (tx) => {
     const current = requireDomain(tx, target, id);

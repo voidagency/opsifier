@@ -59,7 +59,7 @@ export function ImageSourceForm({
   });
 
   return (
-    <form onSubmit={form.handleSubmit} noValidate className="grid max-w-[520px] gap-4">
+    <form onSubmit={form.handleSubmit} noValidate className="grid max-w-[650px] gap-4">
       {form.banner && <FormBanner>{form.banner}</FormBanner>}
       <Field label={t("image")} hint={t("imageHint")} error={form.errors.image}>
         <Input
@@ -73,7 +73,7 @@ export function ImageSourceForm({
       </Field>
       <fieldset className="m-0 grid gap-4 border-0 p-0">
         <legend className="mb-1 text-xs text-muted">{t("registryHint")}</legend>
-        <Field label={t("username")} optional error={form.errors.username}>
+        <Field label={t("username")} optional error={form.errors.username} hint={t("usernameHint")}>
           <Input {...form.field("username")} mono autoComplete="off" spellCheck={false} />
         </Field>
         <Field

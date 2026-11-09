@@ -4,6 +4,7 @@ import {
   createProjectRequest,
   destroyRequest,
   envDocument,
+  envSummary,
   projectList,
   projectPath,
   projectSchemaDocument,
@@ -13,6 +14,8 @@ import { toActionEntry } from "../../core/actions";
 import { requirePrincipal } from "../../core/auth";
 import type { Feature } from "../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
+import { requestAccess } from "../access/guard";
+import { filterVisible } from "../access/rules";
 import {
   createProject,
   enqueueProjectDestroy,
@@ -20,6 +23,7 @@ import {
   getProjectEnv,
   getProjectSummary,
   listProjectSummaries,
+  revealProjectEnv,
   saveProjectEnv,
 } from "./service";
 
@@ -62,9 +66,24 @@ const getEnvRoute = createRoute({
   method: "get",
   path: `${PATH}/env`,
   tags,
+  description: "The names of the project's variables. The values take a reveal.",
   request: { params: projectPath },
   responses: {
-    200: jsonResponse(envDocument, "The project's variables."),
+    200: jsonResponse(envSummary, "What the variables are called."),
+    400: invalid,
+    401: denied,
+    404: missing,
+  },
+});
+
+const revealEnvRoute = createRoute({
+  method: "post",
+  path: `${PATH}/env/reveal`,
+  tags,
+  description: "Returns the values and records who asked for them in the activity log.",
+  request: { params: projectPath },
+  responses: {
+    200: jsonResponse(envDocument, "The variables as text."),
     400: invalid,
     401: denied,
     404: missing,
@@ -77,7 +96,7 @@ const putEnvRoute = createRoute({
   tags,
   request: { params: projectPath, body: jsonBody(envDocument) },
   responses: {
-    200: jsonResponse(envDocument, "Saved. Running services keep the old values until redeployed."),
+    200: jsonResponse(envSummary, "Saved. Running services keep the old values until redeployed."),
     400: invalid,
     401: denied,
     404: missing,
@@ -116,7 +135,13 @@ const actorEmailOf = (principal: ReturnType<typeof requirePrincipal>) =>
 
 export const feature: Feature = {
   register(app, deps) {
-    app.openapi(listRoute, async (c) => c.json(await listProjectSummaries(deps), 200));
+    app.openapi(listRoute, async (c) => {
+      const { projects } = await listProjectSummaries(deps);
+      return c.json(
+        { projects: filterVisible(requestAccess(deps, c), projects, (project) => project.name) },
+        200,
+      );
+    });
 
     app.openapi(createProjectRoute, async (c) =>
       c.json(await createProject(deps, c.req.valid("json"), actorEmailOf(requirePrincipal(c))), 201),
@@ -127,6 +152,14 @@ export const feature: Feature = {
     );
 
     app.openapi(getEnvRoute, (c) => c.json(getProjectEnv(deps, c.req.valid("param").project), 200));
+
+    app.openapi(revealEnvRoute, (c) => {
+      c.header("Cache-Control", "no-store");
+      return c.json(
+        revealProjectEnv(deps, c.req.valid("param").project, requirePrincipal(c).user.email),
+        200,
+      );
+    });
 
     app.openapi(putEnvRoute, (c) =>
       c.json(

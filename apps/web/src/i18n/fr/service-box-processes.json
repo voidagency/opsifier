@@ -1,0 +1,58 @@
+{
+  "title": "Processus",
+  "description": "Ce que cette box maintient en marche. Un processus qui s'arrête est relancé, avec une attente un peu plus longue à chaque fois. Les changements faits ici arrivent dans la box au prochain déploiement.",
+  "add": "Ajouter un processus",
+  "save": "Enregistrer",
+  "saved": "Enregistré. Le prochain déploiement l'appliquera.",
+  "columns": {
+    "state": "État",
+    "name": "Nom",
+    "command": "Commande",
+    "restarts": "Relances",
+    "exit": "Dernier code",
+    "actions": "Actions"
+  },
+  "state": {
+    "running": "En marche",
+    "restarting": "Relance en cours",
+    "stopped": "Arrêté",
+    "disabled": "Désactivé",
+    "unknown": "Impossible à dire"
+  },
+  "system": "Issu d'un module",
+  "startedByModule": "Lancé par un module",
+  "restart": "Relancer {{name}}",
+  "restarted": "{{name}} relancé",
+  "restartFailed": "{{name}} n'a pas redémarré",
+  "edit": "Modifier {{name}}",
+  "remove": "Retirer {{name}}",
+  "notRunning": "Désactivé : il ne tourne pas.",
+  "unreachable": "Cette box n'est pas en marche : ses processus ne peuvent pas être lus. Déployez-la ou démarrez-la d'abord.",
+  "identity": "Chaque processus s'exécute sous {{user}} (uid {{uid}}) dans {{path}}.",
+  "emptyTitle": "Rien à maintenir en marche",
+  "emptyBody": "Ajoutez un processus, ou activez un serveur web dans l'onglet Modules.",
+  "deleteTitle": "Retirer ce processus ?",
+  "deleteBody": "Il s'arrête au prochain déploiement. Ses fichiers restent dans l'espace de travail.",
+  "deleteConfirm": "Retirer le processus",
+  "dialog": {
+    "add": "Ajouter un processus",
+    "edit": "Modifier ce processus",
+    "description": "Lancé avec /bin/sh dans l'espace de travail. Il peut utiliser tout ce qu'installent les modules."
+  },
+  "fields": {
+    "name": "Nom",
+    "nameHint": "Lettres minuscules, chiffres et tirets.",
+    "command": "Commande",
+    "commandHint": "Exécutée par /bin/sh : elle peut être un pipeline complet.",
+    "directory": "Dossier",
+    "directoryHint": "Dans l'espace de travail. Utilisez . pour l'espace de travail lui-même.",
+    "enabled": "Exécuter ce processus",
+    "enabledHint": "Désactivez pour le garder ici sans l'exécuter."
+  },
+  "errors": {
+    "name": "Utilisez des lettres minuscules, des chiffres et des tirets, en commençant par une lettre.",
+    "command": "Saisissez une commande.",
+    "directory": "Utilisez un dossier de l'espace de travail.",
+    "duplicate": "Un autre processus porte déjà ce nom."
+  }
+}

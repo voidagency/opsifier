@@ -42,7 +42,7 @@
     "httpsHint": "Redirige HTTP vers HTTPS et obtient un certificat pour cette adresse.",
     "host": "Nom d'hôte",
     "path": "Chemin",
-    "pathHint": "Seules les requêtes commençant par ce chemin vont vers ce service.",
+    "pathHint": "Seuls ce chemin et ce qui se trouve en dessous vont vers ce service : /api ne répond jamais pour /apix.",
     "destination": "Destination dans le service",
     "protocol": "Protocole",
     "port": "Port",
@@ -60,7 +60,14 @@
     "resolverHint": "Laissez vide pour le résolveur par défaut. Un wildcard en demande un capable de faire des défis DNS.",
     "resolverPlaceholder": "letsencrypt",
     "wildcard": "Domaine wildcard",
-    "wildcardHint": "Répond aussi sur chaque sous-domaine direct de ce nom d'hôte. Le nom d'hôte nu a besoin de sa propre entrée."
+    "wildcardHint": "Répond aussi sur chaque sous-domaine direct de ce nom d'hôte. Le nom d'hôte nu a besoin de sa propre entrée.",
+    "stripPath": "Retirer le chemin",
+    "stripPathHint": "Le service reçoit la requête sans ce chemin : /api/users arrive comme /users.",
+    "wildcardUnverified": "Le HTTPS sur un wildcard n'est pas encore vérifié. Il dépend de votre résolveur à défi DNS, et n'apparaît comme fonctionnel qu'une fois le certificat réellement détenu par le proxy.",
+    "maxMiddlewares": "20 middlewares au maximum.",
+    "middlewareHint": "Un middleware Traefik appliqué à ce domaine.",
+    "protocolHint": "Le protocole parlé par l'application derrière le proxy.",
+    "hostHint": "Le nom saisi par les visiteurs, par exemple shop.example.com."
   },
   "errors": {
     "host": "Saisissez un nom d'hôte complet, comme app.example.com.",
@@ -69,6 +76,19 @@
     "destinationPath": "Un chemin commence par / et ne contient que des caractères de chemin d'URL.",
     "resolver": "Utilisez des lettres, des chiffres, des tirets et des tirets bas.",
     "resolverRequired": "Un certificat wildcard demande un résolveur nommé capable de faire des défis DNS.",
-    "middlewares": "Chaque middleware a besoin d'un nom, avec des lettres, chiffres, points, tirets et tirets bas, et un @provider facultatif."
-  }
+    "middlewares": "Chaque middleware a besoin d'un nom, avec des lettres, chiffres, points, tirets et tirets bas, et un @provider facultatif.",
+    "upstreamServerName": "Utilisez le nom porté par le certificat du service, en lettres, chiffres, points, tirets et tirets bas.",
+    "upstreamCa": "Collez un ou plusieurs certificats au format PEM."
+  },
+  "certificate": {
+    "issued": "Certificat valide",
+    "expiring": "Certificat bientôt expiré",
+    "expired": "Certificat expiré",
+    "pending": "Certificat en attente",
+    "none": "Pas encore de certificat",
+    "unreadable": "Certificat illisible",
+    "unverified": "HTTPS wildcard non vérifié",
+    "unknown": "État du certificat inconnu"
+  },
+  "pathStripped": "Chemin retiré"
 }

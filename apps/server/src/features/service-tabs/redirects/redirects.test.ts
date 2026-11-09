@@ -116,10 +116,14 @@ describe("the redirects tab", () => {
 
   it("accepts the shapes of every example the dialog offers", async () => {
     const examples = [
-      ["^https?://www\\.my-domain\\.com/(.*)", "https://my-domain.com/$${1}"],
-      ["^https?://my-domain\\.com/(.*)", "https://www.my-domain.com/$${1}"],
-      ["^https?://old-domain\\.com/(.*)", "https://new-domain.com/$${1}"],
-      ["^(.*)/old-path", "$${1}/new-path"],
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal text of a replacement template
+      ["^https?://www\\.my-domain\\.com/(.*)", "https://my-domain.com/${1}"],
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal text of a replacement template
+      ["^https?://my-domain\\.com/(.*)", "https://www.my-domain.com/${1}"],
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal text of a replacement template
+      ["^https?://old-domain\\.com/(.*)", "https://new-domain.com/${1}"],
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal text of a replacement template
+      ["^(.*)/old-path", "${1}/new-path"],
     ];
     for (const [regex, target] of examples) {
       const result = await api("/redirects", "POST", { regex, replacement: target });
@@ -150,7 +154,72 @@ describe("the redirects tab", () => {
     expect(await list()).toEqual([]);
   });
 
-  it("can't overrun the rule limit", async () => {
+  describe("a redirect that loops", () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal text of a replacement template
+    const toTwo = { regex: "^(https?://[^/]+)/one$", replacement: "${1}/two" };
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal text of a replacement template
+    const toOne = { regex: "^(https?://[^/]+)/two$", replacement: "${1}/one" };
+
+    it("is refused, for two rules pointing at each other, whichever comes second", async () => {
+      expect((await api("/redirects", "POST", toTwo)).status).toBe(201);
+
+      const result = await api("/redirects", "POST", toOne);
+
+      expect(result.status).toBe(400);
+      expect(apiErrorOf(result).code).toBe("redirect_loop");
+      expect(apiErrorOf(result).fields?.replacement).toBeTruthy();
+      expect(await list()).toHaveLength(1);
+    });
+
+    it("is refused when an edit closes the circle", async () => {
+      const first = await api<RedirectRule>("/redirects", "POST", toTwo);
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal text of a replacement template
+      const second = await api<RedirectRule>("/redirects", "POST", { ...toOne, replacement: "${1}/three" });
+      expect(first.status).toBe(201);
+
+      expect((await api(`/redirects/${second.body.id}`, "PUT", toOne)).status).toBe(400);
+    });
+
+    it("can be saved switched off, and is refused when switched on", async () => {
+      await api("/redirects", "POST", toTwo);
+      const off = await api<RedirectRule>("/redirects", "POST", { ...toOne, enabled: false });
+      expect(off.status).toBe(201);
+
+      expect((await api(`/redirects/${off.body.id}`, "PUT", { ...toOne, enabled: true })).status).toBe(400);
+    });
+
+    it("leaves a rule that arrives somewhere alone", async () => {
+      expect((await api("/redirects", "POST", toTwo)).status).toBe(201);
+      expect((await api("/redirects", "POST", { ...toOne, regex: "^(https?://[^/]+)/three$" })).status).toBe(
+        201,
+      );
+    });
+
+    it("stays removable if it got saved before this check existed", async () => {
+      const spec = await import("../../services/repo");
+      const record = spec.findService(context.deps.db, "shop", "web");
+      if (record === undefined) {
+        throw new Error("The service should exist");
+      }
+      const looping = [
+        { id: "one", enabled: true, permanent: false, ...toTwo },
+        { id: "two", enabled: true, permanent: false, ...toOne },
+      ];
+      spec.saveServiceSpec(
+        context.deps.db,
+        "shop",
+        "web",
+        { ...record.spec, redirects: looping },
+        new Date(),
+      );
+
+      expect((await api("/redirects/two", "DELETE")).status).toBe(200);
+      expect(await list()).toHaveLength(1);
+    });
+  });
+
+  // A hundred saves in a row, each flushed to disk: how long that takes depends on the machine.
+  it("can't overrun the rule limit", { timeout: 60_000 }, async () => {
     for (let index = 0; index < 100; index += 1) {
       expect((await api("/redirects", "POST", { regex: `r${index}`, replacement: "x" })).status).toBe(201);
     }

@@ -29,5 +29,8 @@
     "logo": "Choose a PNG, JPEG, GIF, WebP or SVG image.",
     "logoTooLarge": "That image is larger than 128 KB.",
     "logoUnreadable": "That file could not be read."
-  }
+  },
+  "stateOff": "Off: visitors see the app",
+  "subtitleHint": "A second line under the title.",
+  "hideLogoHint": "Hide the Opsifier mark on the page visitors see."
 }

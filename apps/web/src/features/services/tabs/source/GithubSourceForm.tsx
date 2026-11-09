@@ -83,7 +83,7 @@ export function GithubSourceForm({
   });
 
   return (
-    <form onSubmit={form.handleSubmit} noValidate className="grid max-w-[520px] gap-4">
+    <form onSubmit={form.handleSubmit} noValidate className="grid max-w-[650px] gap-4">
       {!githubConfigured && (
         <FormBanner tone="warning">
           {t("github.tokenWarning")}{" "}
@@ -141,6 +141,7 @@ export function GithubSourceForm({
         <Input {...form.field("path")} mono placeholder="/" autoComplete="off" spellCheck={false} />
       </Field>
       {shared && <EmbeddedBuild draft={draft} />}
+      {saved !== null && <p className="text-sm text-muted">{t("changeRevokes")}</p>}
       <div>
         <Button type="submit" variant="primary" pending={form.pending}>
           {submitLabel}

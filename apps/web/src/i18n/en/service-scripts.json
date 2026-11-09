@@ -1,15 +1,89 @@
 {
   "title": "Scripts",
-  "description": "Commands you run often, ready to start from this service's console.",
+  "description": "Commands saved on this service. Run them by hand, on a schedule, through the API or after each deployment.",
   "add": "Add a script",
   "edit": "Edit this script",
   "delete": "Delete this script",
+  "run": {
+    "title": "Run",
+    "titleOf": "Run of {{name}}",
+    "origin": "Started by",
+    "actor": "Account",
+    "exitCode": "Exit code",
+    "started": "Started",
+    "duration": "Duration",
+    "limit": "Limit",
+    "limitValue": "{{seconds}} s",
+    "due": "Due",
+    "task": "Task",
+    "output": "Output",
+    "noOutput": "Nothing was captured.",
+    "truncated": "It printed more than is kept: this is the end of it, up to {{count}} characters.",
+    "incomplete": "This output is not complete: the note above says why."
+  },
+  "runScript": "Run {{name}} now",
+  "cancelRun": "Stop this run",
+  "viewRun": "See this run",
   "emptyScript": "Empty",
   "saved": "Script saved",
   "deleted": "Script deleted",
+  "started": "{{name}} started",
+  "row": {
+    "limit": "Limit {{seconds}} s",
+    "afterDeploy": "After each deployment",
+    "next": "Next {{when}}"
+  },
   "empty": {
     "title": "No scripts yet",
-    "description": "Saved scripts appear next to Sh and Bash in the console."
+    "description": "Saved scripts appear next to Sh and Bash in the console, and can run by themselves."
+  },
+  "runs": {
+    "title": "Runs",
+    "description": "Every run of this service's scripts, with who or what started it and how it ended.",
+    "empty": "No script has run yet."
+  },
+  "columns": {
+    "outcome": "Outcome",
+    "script": "Script",
+    "when": "When",
+    "duration": "Duration",
+    "origin": "Started by",
+    "exit": "Exit",
+    "actions": "Actions"
+  },
+  "status": {
+    "queued": "Waiting",
+    "running": "Running",
+    "succeeded": "Succeeded",
+    "failed": "Failed",
+    "timed_out": "Timed out",
+    "cancelled": "Cancelled",
+    "skipped": "Skipped",
+    "unknown": "Unknown"
+  },
+  "origin": {
+    "manual": "By hand",
+    "api": "API",
+    "schedule": "Schedule",
+    "hook": "Deployment",
+    "console": "Console"
+  },
+  "runNote": {
+    "not_started": "The panel restarted before this run could start.",
+    "no_running_task": "The service had no running task to run this script in.",
+    "script_deleted": "This script was deleted before the run could start.",
+    "start_failed": "Docker could not start this script: {{message}}",
+    "connection_lost": "The panel lost its connection to this process. Output after that moment was not captured.",
+    "time_limit": "It was still running at its limit of {{seconds}} seconds, so the panel ended it.",
+    "end_unconfirmed": "The panel told this process to end, but could not confirm that it did.",
+    "panel_restarted": "The panel restarted as this run was starting. Anything that had started was ended, and what it did is not known.",
+    "panel_restarted_running": "The panel restarted during this run. The process is still running: output since the restart is not being captured.",
+    "panel_restarted_finished": "The panel restarted during this run. It ended while the panel was not watching, with the exit code Docker reported. Output after the restart was not captured.",
+    "panel_restarted_unknown": "The panel restarted during this run and Docker no longer knows this process. How it ended is not known, and output after the restart was not captured.",
+    "console_output": "Run from the console: its output went to the terminal and was not kept.",
+    "console_closed": "Run from the console: the session was closed while it was running.",
+    "skipped_overlap": "Not started: the previous run of this script was still in progress.",
+    "skipped_refused": "Not started: {{message}}"
   },
   "dialog": {
     "createTitle": "Add a script",
@@ -18,15 +92,39 @@
     "save": "Save",
     "name": "Name",
     "script": "Script",
-    "scriptHint": "Run by /bin/sh inside the task you pick in the console."
+    "scriptHint": "Run by /bin/sh in a running task of this service.",
+    "maxDuration": "Maximum duration, in seconds",
+    "maxDurationHint": "The process is ended when this runs out. At most 86400, one day.",
+    "scheduled": "Run on a schedule",
+    "scheduledHint": "If it is still running when the next time comes, that time is skipped and shown in the runs below.",
+    "schedule": "Schedule",
+    "cron": "Cron expression",
+    "cronHint": "Minute, hour, day of the month, month, day of the week.",
+    "timeZone": "Time zone",
+    "timeZoneHint": "The schedule follows this zone, daylight saving included.",
+    "runAfterDeploy": "Run after each deployment",
+    "runAfterDeployHint": "Starts once a deployment has succeeded. If it fails, the deployment still stands.",
+    "presets": {
+      "everyMinute": "Every minute",
+      "everyHour": "Every hour",
+      "every6Hours": "Every 6 hours",
+      "daily2": "Daily at 02:00",
+      "daily0": "Daily at midnight",
+      "custom": "Custom"
+    },
+    "nameHint": "The button's label in the console.",
+    "scheduleHint": "A common schedule, or a cron line below."
   },
   "deleteDialog": {
     "title": "Delete this script?",
-    "description": "{{name}} will no longer be offered in the console.",
+    "description": "{{name}} will no longer be offered in the console, and its schedule stops. Its past runs stay listed.",
     "confirm": "Delete script"
   },
   "errors": {
     "name": "Give it a name with letters, digits, spaces, dots, dashes or underscores.",
-    "script": "This script is too long."
+    "script": "This script is too long.",
+    "maxDurationSeconds": "Enter a whole number of seconds, from 1 to 86400.",
+    "cron": "Enter a valid cron expression, with five fields.",
+    "timeZone": "Enter a time zone name such as Europe/Paris or UTC."
   }
 }

@@ -42,7 +42,7 @@
     "httpsHint": "Redirect HTTP to HTTPS and get a certificate for this address.",
     "host": "Hostname",
     "path": "Path",
-    "pathHint": "Only requests starting with this path go to this service.",
+    "pathHint": "Only this path and what is below it go to this service: /api never answers for /apix.",
     "destination": "Destination inside the service",
     "protocol": "Protocol",
     "port": "Port",
@@ -60,7 +60,14 @@
     "resolverHint": "Leave empty for the default resolver. Wildcards need one that can do DNS challenges.",
     "resolverPlaceholder": "letsencrypt",
     "wildcard": "Wildcard domain",
-    "wildcardHint": "Also answer on every direct subdomain of this hostname. The bare hostname needs its own entry."
+    "wildcardHint": "Also answer on every direct subdomain of this hostname. The bare hostname needs its own entry.",
+    "stripPath": "Remove the path",
+    "stripPathHint": "The service receives the request without this path, so /api/users arrives as /users.",
+    "wildcardUnverified": "HTTPS on a wildcard is not verified yet. It depends on your DNS-challenge resolver, and shows as working only once the proxy really holds the certificate.",
+    "maxMiddlewares": "At most 20 middlewares.",
+    "middlewareHint": "A Traefik middleware applied to this domain.",
+    "protocolHint": "The protocol the app speaks behind the proxy.",
+    "hostHint": "The name visitors type, such as shop.example.com."
   },
   "errors": {
     "host": "Enter a full hostname, such as app.example.com.",
@@ -69,6 +76,19 @@
     "destinationPath": "A path starts with / and holds only URL path characters.",
     "resolver": "Use letters, digits, dashes and underscores.",
     "resolverRequired": "A wildcard certificate needs a named resolver that can do DNS challenges.",
-    "middlewares": "Each middleware needs a name, made of letters, digits, dots, dashes and underscores, with an optional @provider."
-  }
+    "middlewares": "Each middleware needs a name, made of letters, digits, dots, dashes and underscores, with an optional @provider.",
+    "upstreamServerName": "Use the name on the upstream's certificate, in letters, digits, dots, dashes and underscores.",
+    "upstreamCa": "Paste one or more certificates in PEM format."
+  },
+  "certificate": {
+    "issued": "Certificate valid",
+    "expiring": "Certificate expiring soon",
+    "expired": "Certificate expired",
+    "pending": "Certificate pending",
+    "none": "No certificate yet",
+    "unreadable": "Certificate unreadable",
+    "unverified": "Wildcard HTTPS not verified",
+    "unknown": "Certificate state unknown"
+  },
+  "pathStripped": "Path removed"
 }

@@ -6,11 +6,13 @@ import {
   envFileSettings,
   saveBuildRequest,
   saveBuildResponse,
+  saveEnvFileRequest,
   saveSourceRequest,
   servicePath,
   serviceSource,
   sourceSettings,
   sshKeyResponse,
+  sshKeyTestResult,
   uploadSourceQuery,
 } from "@opsifier/contract";
 import type { Context } from "hono";
@@ -19,6 +21,7 @@ import type { AppDeps, AppEnv, Feature } from "../../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../../core/openapi";
 import { setAutoDeploy } from "./auto-deploy";
 import {
+  deleteDeployKey,
   generateDeployKey,
   getEnvFile,
   getSourceSettings,
@@ -26,6 +29,7 @@ import {
   saveBuildSettings,
   saveEnvFile,
   saveServiceSource,
+  testDeployKey,
 } from "./service";
 
 const PATH = "/api/v1/projects/{project}/services/{service}/source";
@@ -113,6 +117,36 @@ const sshKeyRoute = createRoute({
   },
 });
 
+const deleteSshKeyRoute = createRoute({
+  method: "delete",
+  path: `${PATH}/ssh-key`,
+  tags,
+  description:
+    "Forgets the deploy key, so that this panel can never use it again. The copy at the Git host has to be removed there.",
+  request: { params: servicePath },
+  responses: {
+    200: jsonResponse(sourceSettings, "The key is gone."),
+    400: invalid,
+    401: denied,
+    404: missing,
+  },
+});
+
+const testSshKeyRoute = createRoute({
+  method: "post",
+  path: `${PATH}/ssh-key/test`,
+  tags,
+  description: "Connects to the exact repository the saved source names, with the key a build would use.",
+  request: { params: servicePath },
+  responses: {
+    200: jsonResponse(sshKeyTestResult, "Whether the connection worked, and if not, why."),
+    400: invalid,
+    401: denied,
+    404: missing,
+    503: errorResponse("git is not available on this server."),
+  },
+});
+
 const autoDeployRoute = createRoute({
   method: "put",
   path: `${PATH}/auto-deploy`,
@@ -133,7 +167,10 @@ const getEnvFileRoute = createRoute({
   tags,
   request: { params: servicePath },
   responses: {
-    200: jsonResponse(envFileSettings, "Where the environment is written in the source tree."),
+    200: jsonResponse(
+      envFileSettings,
+      "Where a file of variables is written, and if it may enter the image.",
+    ),
     400: invalid,
     401: denied,
     404: missing,
@@ -144,7 +181,7 @@ const putEnvFileRoute = createRoute({
   method: "put",
   path: `${PATH}/env-file`,
   tags,
-  request: { params: servicePath, body: jsonBody(envFileSettings) },
+  request: { params: servicePath, body: jsonBody(saveEnvFileRequest) },
   responses: {
     200: jsonResponse(envFileSettings, "Saved. Used by the next build."),
     400: invalid,
@@ -162,6 +199,12 @@ const actorOf = (c: Context<AppEnv>) => {
   const principal = requirePrincipal(c);
   return principal.kind === "session" ? principal.user.email : undefined;
 };
+
+/** Whoever saves a source decides what the panel's own GitHub token may read for it. */
+const authorOf = (c: Context<AppEnv>) => ({
+  actorEmail: actorOf(c),
+  isAdmin: requirePrincipal(c).user.role === "admin",
+});
 
 /** The address this panel was reached on, as far as it can be believed. */
 function panelOrigin(c: Context<AppEnv>, deps: AppDeps): string {
@@ -182,7 +225,7 @@ export const feature: Feature = {
 
     app.openapi(putRoute, async (c) =>
       c.json(
-        await saveServiceSource(deps, target(c.req.valid("param")), c.req.valid("json"), actorOf(c)),
+        await saveServiceSource(deps, target(c.req.valid("param")), c.req.valid("json"), authorOf(c)),
         200,
       ),
     );
@@ -215,6 +258,14 @@ export const feature: Feature = {
       c.json({ publicKey: generateDeployKey(deps, target(c.req.valid("param"))) }, 200),
     );
 
+    app.openapi(deleteSshKeyRoute, (c) =>
+      c.json(deleteDeployKey(deps, target(c.req.valid("param")), actorOf(c)), 200),
+    );
+
+    app.openapi(testSshKeyRoute, async (c) =>
+      c.json(await testDeployKey(deps, target(c.req.valid("param"))), 200),
+    );
+
     app.openapi(autoDeployRoute, async (c) =>
       c.json(
         await setAutoDeploy(
@@ -222,7 +273,7 @@ export const feature: Feature = {
           target(c.req.valid("param")),
           c.req.valid("json").enabled,
           panelOrigin(c, deps),
-          actorOf(c),
+          requirePrincipal(c).user,
         ),
         200,
       ),

@@ -1,0 +1,86 @@
+{
+  "id": "forgejo",
+  "version": "1.0.0",
+  "name": "Forgejo",
+  "summary": {
+    "en": "A community-run Git forge.",
+    "fr": "Une forge Git gouvernée par sa communauté."
+  },
+  "description": {
+    "en": "Repositories, issues, reviews and packages on your own server, developed under community governance and shipped with a stable release line.",
+    "fr": "Dépôts, tickets, revues et paquets sur votre serveur, développés sous gouvernance communautaire avec une branche de publication stable."
+  },
+  "instructions": {
+    "en": "Open the site and finish the installer. The database is already configured.",
+    "fr": "Ouvrez le site et terminez l'installateur. La base de données est déjà configurée."
+  },
+  "category": "development",
+  "tags": ["git", "forge", "code-hosting"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://forgejo.org"
+    },
+    {
+      "kind": "docs",
+      "url": "https://forgejo.org/docs/latest/admin/installation/docker/"
+    },
+    {
+      "kind": "source",
+      "url": "https://codeberg.org/forgejo/forgejo"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "db",
+      "name": "forgejo-db",
+      "kind": "database",
+      "engine": "postgres",
+      "image": "postgres:17.11-alpine",
+      "databaseName": "forgejo",
+      "user": "forgejo"
+    },
+    {
+      "key": "app",
+      "name": "forgejo",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "codeberg.org/forgejo/forgejo:17.0.1"
+      },
+      "env": {
+        "USER_UID": "1000",
+        "USER_GID": "1000",
+        "FORGEJO__database__DB_TYPE": "postgres",
+        "FORGEJO__database__HOST": "{{services.db.host}}:5432",
+        "FORGEJO__database__NAME": "{{services.db.database}}",
+        "FORGEJO__database__USER": "{{services.db.user}}",
+        "FORGEJO__database__PASSWD": "{{services.db.password}}",
+        "FORGEJO__server__ROOT_URL": "{{services.app.url}}/",
+        "FORGEJO__server__DOMAIN": "{{services.app.domain}}",
+        "FORGEJO__server__SSH_DOMAIN": "{{services.app.domain}}"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/data"
+        }
+      ],
+      "domain": {
+        "port": 3000,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/api/healthz",
+        "expect": [200]
+      },
+      "dependsOn": ["db"]
+    }
+  ]
+}

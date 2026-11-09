@@ -1,0 +1,11 @@
+{
+  "title": "API reference",
+  "description": "Every operation the panel offers. Send a key from your API keys page as a bearer token.",
+  "manageKeys": "Manage API keys",
+  "search": "Search operations",
+  "noResults": "Nothing matches that search.",
+  "parameters": "Parameters",
+  "body": "Body",
+  "responses": "Responses",
+  "untagged": "Other"
+}

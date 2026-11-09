@@ -1,0 +1,86 @@
+{
+  "id": "mailpit",
+  "version": "1.0.0",
+  "name": "Mailpit",
+  "summary": {
+    "en": "Catch the email your apps send, and read it in a browser.",
+    "fr": "Interceptez les e-mails de vos applications et lisez-les dans un navigateur."
+  },
+  "description": {
+    "en": "A fake SMTP server for development and staging: nothing leaves the machine, and every message shows up in the web interface.",
+    "fr": "Un faux serveur SMTP pour le développement et les tests : rien ne sort de la machine, et chaque message apparaît dans l'interface web."
+  },
+  "category": "development",
+  "tags": ["email", "testing", "smtp"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://mailpit.axllent.org"
+    },
+    {
+      "kind": "docs",
+      "url": "https://mailpit.axllent.org/docs/install/docker/"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/axllent/mailpit"
+    }
+  ],
+  "verified": false,
+  "params": [
+    {
+      "key": "smtpPort",
+      "label": {
+        "en": "SMTP port on the server",
+        "fr": "Port SMTP sur le serveur"
+      },
+      "type": "number",
+      "required": true,
+      "default": 1025,
+      "help": {
+        "en": "Apps send mail to this port.",
+        "fr": "Les applications envoient le courrier sur ce port."
+      }
+    }
+  ],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "mailpit",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "axllent/mailpit:v1.33.1"
+      },
+      "env": {
+        "MP_DATABASE": "/data/mailpit.db",
+        "MP_MAX_MESSAGES": "5000"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/data"
+        }
+      ],
+      "domain": {
+        "port": 8025,
+        "https": true
+      },
+      "ports": [
+        {
+          "protocol": "tcp",
+          "published": "{{params.smtpPort}}",
+          "target": 1025
+        }
+      ],
+      "startup": {
+        "path": "/livez",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

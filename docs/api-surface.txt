@@ -1,0 +1,5295 @@
+# The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
+# Operation, then its inputs and each field of its answers (`!` means required).
+# documented-changes: 22
+GET /api/v1/actions
+  200 items![].actorEmail!: null|string
+  200 items![].createdAt!: string
+  200 items![].error!: null|string
+  200 items![].finishedAt!: null|string
+  200 items![].hasLog!: boolean
+  200 items![].id!: string
+  200 items![].origin: enum(api_key|session|system|trigger|webhook)
+  200 items![].originDetail: null|string
+  200 items![].phase: null|string
+  200 items![].projectName!: null|string
+  200 items![].serviceName!: null|string
+  200 items![].startedAt!: null|string
+  200 items![].status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  200 items![].title!: string
+  200 items![].type!: string
+  200 nextCursor!: null|string
+  400
+  401
+  query cursor: string
+  query limit: integer
+  query projectName: string
+  query serviceName: string
+  query status: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  query type: string
+GET /api/v1/actions/{id}
+  200 actorEmail!: null|string
+  200 createdAt!: string
+  200 error!: null|string
+  200 finishedAt!: null|string
+  200 hasLog!: boolean
+  200 id!: string
+  200 log!: string
+  200 logSeq!: integer
+  200 logTruncated!: boolean
+  200 origin: enum(api_key|session|system|trigger|webhook)
+  200 originDetail: null|string
+  200 phase: null|string
+  200 projectName!: null|string
+  200 serviceName!: null|string
+  200 startedAt!: null|string
+  200 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  200 title!: string
+  200 type!: string
+  400
+  401
+  404
+  path id!: string
+POST /api/v1/actions/{id}/cancel
+  200 actorEmail!: null|string
+  200 createdAt!: string
+  200 error!: null|string
+  200 finishedAt!: null|string
+  200 hasLog!: boolean
+  200 id!: string
+  200 origin: enum(api_key|session|system|trigger|webhook)
+  200 originDetail: null|string
+  200 phase: null|string
+  200 projectName!: null|string
+  200 serviceName!: null|string
+  200 startedAt!: null|string
+  200 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  200 title!: string
+  200 type!: string
+  400
+  401
+  404
+  409
+  path id!: string
+POST /api/v1/auth/credentials
+  200 status!: enum(needs-setup)
+  200 status!: enum(signed-in)
+  200 status!: enum(signed-out)
+  200 user!.email!: string
+  200 user!.hostAdmin: boolean
+  200 user!.id!: string
+  200 user!.role!: enum(admin|member)
+  200 user!.twoFactorEnabled!: boolean
+  400
+  401
+  409
+  429
+  body currentPassword!: string
+  body email!: string
+  body newPassword!: string
+GET /api/v1/auth/identity
+  200 credential!.expiresAt!: null|string
+  200 credential!.kind!: enum(api_key)
+  200 credential!.kind!: enum(session)
+  200 credential!.level!: enum(read|write)
+  200 credential!.name!: string
+  200 credential!.projects!: array|null
+  200 operations![].method!: enum(DELETE|GET|PATCH|POST|PUT)
+  200 operations![].path!: string
+  200 operations![].projects!: array|null
+  200 projects!: array|null
+  200 user!.email!: string
+  200 user!.id!: string
+  200 user!.role!: enum(admin|member)
+  401
+POST /api/v1/auth/login
+  200 status!: enum(needs-setup)
+  200 status!: enum(signed-in)
+  200 status!: enum(signed-out)
+  200 user!.email!: string
+  200 user!.hostAdmin: boolean
+  200 user!.id!: string
+  200 user!.role!: enum(admin|member)
+  200 user!.twoFactorEnabled!: boolean
+  400
+  401
+  429
+  body code: string
+  body email!: string
+  body password!: string
+  body recoveryCode: string
+  body rememberMe: boolean
+POST /api/v1/auth/logout
+  200 status!: enum(needs-setup)
+  200 status!: enum(signed-in)
+  200 status!: enum(signed-out)
+  200 user!.email!: string
+  200 user!.hostAdmin: boolean
+  200 user!.id!: string
+  200 user!.role!: enum(admin|member)
+  200 user!.twoFactorEnabled!: boolean
+GET /api/v1/auth/session
+  200 status!: enum(needs-setup)
+  200 status!: enum(signed-in)
+  200 status!: enum(signed-out)
+  200 user!.email!: string
+  200 user!.hostAdmin: boolean
+  200 user!.id!: string
+  200 user!.role!: enum(admin|member)
+  200 user!.twoFactorEnabled!: boolean
+POST /api/v1/auth/setup
+  201 status!: enum(needs-setup)
+  201 status!: enum(signed-in)
+  201 status!: enum(signed-out)
+  201 user!.email!: string
+  201 user!.hostAdmin: boolean
+  201 user!.id!: string
+  201 user!.role!: enum(admin|member)
+  201 user!.twoFactorEnabled!: boolean
+  400
+  403
+  409
+  429
+  body email!: string
+  body name!: string
+  body password!: string
+  body token!: string
+POST /api/v1/auth/two-factor/begin
+  200 otpauthUri!: string
+  200 secret!: string
+  400
+  401
+  409
+  429
+  body currentPassword!: string
+POST /api/v1/auth/two-factor/disable
+  200 status!: enum(needs-setup)
+  200 status!: enum(signed-in)
+  200 status!: enum(signed-out)
+  200 user!.email!: string
+  200 user!.hostAdmin: boolean
+  200 user!.id!: string
+  200 user!.role!: enum(admin|member)
+  200 user!.twoFactorEnabled!: boolean
+  400
+  401
+  409
+  429
+  body code: string
+  body currentPassword!: string
+  body recoveryCode: string
+POST /api/v1/auth/two-factor/enable
+  200 recoveryCodes![]: string
+  200 status!: enum(signed-in)
+  200 user!.email!: string
+  200 user!.hostAdmin: boolean
+  200 user!.id!: string
+  200 user!.role!: enum(admin|member)
+  200 user!.twoFactorEnabled!: boolean
+  400
+  401
+  409
+  429
+  body code!: string
+GET /api/v1/certificates
+  200 certificates![].domain!: string
+  200 certificates![].id!: string
+  200 certificates![].issuer!: null|string
+  200 certificates![].notAfter!: null|string
+  200 certificates![].notBefore!: null|string
+  200 certificates![].resolver!: string
+  200 certificates![].sans![]: string
+  200 certificates![].state!: enum(expired|expiring|unreadable|valid)
+  401
+  403
+DELETE /api/v1/certificates/{id}
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  403
+  404
+  409
+  body confirm!: string
+  path id!: string
+POST /api/v1/deploy
+  200 actionId: string
+  200 deployed!: enum(false)
+  200 reason!: enum(branch_deleted|duplicate|no_repository|not_a_push|other_branch|other_repository)
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  413
+POST /api/v1/deploy/hook/{id}
+  200 actionId: string
+  200 deployed!: enum(false)
+  200 reason!: enum(branch_deleted|duplicate|no_repository|not_a_push|other_branch|other_repository)
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  413
+  path id!: string
+GET /api/v1/deploy/{token}
+  200 actionId: string
+  200 deployed!: enum(false)
+  200 reason!: enum(branch_deleted|duplicate|no_repository|not_a_push|other_branch|other_repository)
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  413
+  path token!: string
+POST /api/v1/deploy/{token}
+  200 actionId: string
+  200 deployed!: enum(false)
+  200 reason!: enum(branch_deleted|duplicate|no_repository|not_a_push|other_branch|other_repository)
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  413
+  path token!: string
+GET /api/v1/domains
+  200 domains![].certificateResolver!: null|string
+  200 domains![].composeService: null|string
+  200 domains![].destination!: enum(custom)
+  200 domains![].destination!: enum(service)
+  200 domains![].destinationPath!: string
+  200 domains![].destinationProtocol!: enum(http|https)
+  200 domains![].host!: string
+  200 domains![].https!: boolean
+  200 domains![].id!: string
+  200 domains![].internalUrl!: string
+  200 domains![].middlewares![]: string
+  200 domains![].path!: string
+  200 domains![].port!: integer
+  200 domains![].primary!: boolean
+  200 domains![].projectName!: string
+  200 domains![].servers![].url!: string
+  200 domains![].servers![].weight!: integer
+  200 domains![].serviceName!: string
+  200 domains![].stripPath!: boolean
+  200 domains![].tls!: enum(expired|expiring|issued|none|pending|unreadable|unverified)
+  200 domains![].upstreamCa!: null|string
+  200 domains![].upstreamServerName!: null|string
+  200 domains![].url!: string
+  200 domains![].wildcard!: boolean
+  200 managedProjects: array|null
+  200 serverIp!: null|string
+  401
+POST /api/v1/domains/custom
+  201 certificateResolver!: null|string
+  201 composeService: null|string
+  201 destination!: enum(custom)
+  201 destination!: enum(service)
+  201 destinationPath!: string
+  201 destinationProtocol!: enum(http|https)
+  201 host!: string
+  201 https!: boolean
+  201 id!: string
+  201 internalUrl!: string
+  201 middlewares![]: string
+  201 path!: string
+  201 port!: integer
+  201 primary!: boolean
+  201 projectName!: string
+  201 servers![].url!: string
+  201 servers![].weight!: integer
+  201 serviceName!: string
+  201 stripPath!: boolean
+  201 tls!: enum(expired|expiring|issued|none|pending|unreadable|unverified)
+  201 upstreamCa!: null|string
+  201 upstreamServerName!: null|string
+  201 url!: string
+  201 wildcard!: boolean
+  400
+  401
+  403
+  409
+  body certificateResolver: null|string
+  body host!: string
+  body https: boolean
+  body middlewares[]: string
+  body path: string
+  body servers![].url!: string
+  body servers![].weight: integer
+  body stripPath: boolean
+  body wildcard: boolean
+DELETE /api/v1/domains/custom/{id}
+  200 id!: string
+  400
+  401
+  403
+  404
+  path id!: string
+PUT /api/v1/domains/custom/{id}
+  200 certificateResolver!: null|string
+  200 composeService: null|string
+  200 destination!: enum(custom)
+  200 destination!: enum(service)
+  200 destinationPath!: string
+  200 destinationProtocol!: enum(http|https)
+  200 host!: string
+  200 https!: boolean
+  200 id!: string
+  200 internalUrl!: string
+  200 middlewares![]: string
+  200 path!: string
+  200 port!: integer
+  200 primary!: boolean
+  200 projectName!: string
+  200 servers![].url!: string
+  200 servers![].weight!: integer
+  200 serviceName!: string
+  200 stripPath!: boolean
+  200 tls!: enum(expired|expiring|issued|none|pending|unreadable|unverified)
+  200 upstreamCa!: null|string
+  200 upstreamServerName!: null|string
+  200 url!: string
+  200 wildcard!: boolean
+  400
+  401
+  403
+  404
+  409
+  body certificateResolver: null|string
+  body host!: string
+  body https: boolean
+  body middlewares[]: string
+  body path: string
+  body servers![].url!: string
+  body servers![].weight: integer
+  body stripPath: boolean
+  body wildcard: boolean
+  path id!: string
+GET /api/v1/github/repositories
+  200 items![].defaultBranch!: string
+  200 items![].fullName!: string
+  200 items![].private!: boolean
+  400
+  401
+  502
+  query q: string
+GET /api/v1/github/repositories/{owner}/{repo}/branches
+  200 items![].name!: string
+  400
+  401
+  502
+  path owner!: string
+  path repo!: string
+  query q: string
+GET /api/v1/health
+  200 status!: enum(ok)
+POST /api/v1/ide/{project}/{service}/directory
+  400
+  401
+  403
+  404
+  409
+  body path!: string
+  path project!: string
+  path service!: string
+DELETE /api/v1/ide/{project}/{service}/entry
+  400
+  401
+  403
+  404
+  409
+  body path!: string
+  body recursive: boolean
+  path project!: string
+  path service!: string
+GET /api/v1/ide/{project}/{service}/file
+  200 content!: null|string
+  200 path!: string
+  200 unreadable!: enum(binary|null|too_large)
+  200 version!: string
+  400
+  401
+  403
+  404
+  path project!: string
+  path service!: string
+  query path!: string
+PUT /api/v1/ide/{project}/{service}/file
+  200 version!: string
+  400
+  401
+  403
+  404
+  409
+  body content!: string
+  body path!: string
+  body version!: null|string
+  path project!: string
+  path service!: string
+POST /api/v1/ide/{project}/{service}/move
+  400
+  401
+  403
+  404
+  409
+  body from!: string
+  body to!: string
+  path project!: string
+  path service!: string
+GET /api/v1/ide/{project}/{service}/session
+  200 expiresAt!: string
+  200 maxFileBytes!: integer
+  200 project!: string
+  200 service!: string
+  400
+  401
+  path project!: string
+  path service!: string
+GET /api/v1/ide/{project}/{service}/tree
+  200 entries![].kind!: enum(directory|file|other|symlink)
+  200 entries![].name!: string
+  200 path!: string
+  200 truncated!: boolean
+  400
+  401
+  403
+  404
+  path project!: string
+  path service!: string
+  query path: any
+GET /api/v1/me/api-keys
+  200 keys![].createdAt!: string
+  200 keys![].expiresAt!: string
+  200 keys![].id!: string
+  200 keys![].lastUsedAt!: null|string
+  200 keys![].level!: enum(read|write)
+  200 keys![].name!: string
+  200 keys![].prefix!: string
+  200 keys![].projects!: array|null
+  401
+  403
+POST /api/v1/me/api-keys
+  201 createdAt!: string
+  201 expiresAt!: string
+  201 id!: string
+  201 lastUsedAt!: null|string
+  201 level!: enum(read|write)
+  201 name!: string
+  201 prefix!: string
+  201 projects!: array|null
+  201 token!: string
+  400
+  401
+  403
+  409
+  body expiresInDays: integer
+  body level: enum(read|write)
+  body name!: string
+  body projects: array|null
+DELETE /api/v1/me/api-keys/{key}
+  200 ok!: enum(true)
+  400
+  401
+  403
+  404
+  path key!: string
+GET /api/v1/monitor/services/trends
+  200 from: string
+  200 origin: enum(docker|host|simulated)
+  200 scope: enum(containers|host|service)
+  200 stepSeconds: integer
+  200 trends!: object
+  200 unit: enum(percent)
+  401
+  403
+GET /api/v1/monitor/storage
+  200 disk!.path!: string
+  200 disk!.totalBytes!: null|number
+  200 disk!.usedBytes!: null|number
+  200 docker!.buildCacheBytes!: number
+  200 docker!.containersBytes!: number
+  200 docker!.imagesBytes!: number
+  200 docker!.volumesBytes!: number
+  200 dockerDisk!.freeBytes!: number
+  200 dockerDisk!.path!: string
+  200 dockerDisk!.totalBytes!: number
+  200 dockerDisk!.usedBytes!: number
+  200 scannedAt!: null|string
+  200 scanning!: boolean
+  200 services![].path!: string
+  200 services![].projectName!: string
+  200 services![].serviceName!: string
+  200 services![].sizeBytes!: null|number
+  401
+  403
+GET /api/v1/monitor/system
+  200 cpu!.cores!: integer|null
+  200 cpu!.load!: array|null
+  200 cpu!.percent!: null|number
+  200 disk!.path!: string
+  200 disk!.percent!: null|number
+  200 disk!.totalBytes!: null|number
+  200 disk!.usedBytes!: null|number
+  200 docker!.available!: boolean
+  200 docker!.lastSeenAt!: null|string
+  200 memory!.percent!: null|number
+  200 memory!.totalBytes!: null|number
+  200 memory!.usedBytes!: null|number
+  200 network!.origin!: enum(docker|host|simulated)
+  200 network!.rxBytesPerSecond!: null|number
+  200 network!.scope!: enum(containers|host|service)
+  200 network!.txBytesPerSecond!: null|number
+  200 origin!: enum(docker|host|simulated)
+  200 readAt!: string
+  200 scope: enum(containers|host|service)
+  401
+  403
+GET /api/v1/monitor/system/history
+  200 origin: enum(docker|host|simulated)
+  200 points![].at!: string
+  200 points![].cpu!: null|number
+  200 points![].diskTotal!: null|number
+  200 points![].diskUsed!: null|number
+  200 points![].memoryTotal!: null|number
+  200 points![].memoryUsed!: null|number
+  200 points![].rx!: null|number
+  200 points![].tx!: null|number
+  200 range!: enum(12h|24h|48h|4h|7d)
+  200 scope: enum(containers|host|service)
+  200 step!: enum(15m|1h|1m|30m|5m)
+  200 stepSeconds!: integer
+  200 units.cpu!: enum(percent)
+  200 units.disk!: enum(bytes)
+  200 units.memory!: enum(bytes)
+  200 units.network!: enum(bytes-per-second)
+  400
+  401
+  403
+  query range: enum(12h|24h|48h|4h|7d)
+  query step: enum(15m|1h|1m|30m|5m)
+GET /api/v1/notifications/channels
+  200 canChangeSettings!: boolean
+  200 channels![].config!: object
+  200 channels![].createdAt!: string
+  200 channels![].events!.backup!: boolean
+  200 channels![].events!.deploy!: boolean
+  200 channels![].events!.diskUsage!.cron!: string
+  200 channels![].events!.diskUsage!.enabled!: boolean
+  200 channels![].events!.diskUsage!.minPercent!: integer
+  200 channels![].events!.dockerCleanup!: boolean
+  200 channels![].events!.updateAvailable!: boolean
+  200 channels![].hasSecret!: boolean
+  200 channels![].id!: string
+  200 channels![].lastDeliveryAt!: null|string
+  200 channels![].lastDeliveryOk!: boolean|null
+  200 channels![].name!: string
+  200 channels![].target!: string
+  200 channels![].type!: enum(discord|slack|smtp|telegram|webhook)
+  200 settings!.allowPrivateDestinations!: boolean
+  401
+  403
+POST /api/v1/notifications/channels
+  201 config!: object
+  201 createdAt!: string
+  201 events!.backup!: boolean
+  201 events!.deploy!: boolean
+  201 events!.diskUsage!.cron!: string
+  201 events!.diskUsage!.enabled!: boolean
+  201 events!.diskUsage!.minPercent!: integer
+  201 events!.dockerCleanup!: boolean
+  201 events!.updateAvailable!: boolean
+  201 hasSecret!: boolean
+  201 id!: string
+  201 lastDeliveryAt!: null|string
+  201 lastDeliveryOk!: boolean|null
+  201 name!: string
+  201 target!: string
+  201 type!: enum(discord|slack|smtp|telegram|webhook)
+  400
+  401
+  403
+  body config!.botToken: string
+  body config!.chatId!: string
+  body config!.from!: string
+  body config!.host!: string
+  body config!.password: string
+  body config!.port: integer
+  body config!.recipients![]: string
+  body config!.secret: string
+  body config!.type!: enum(discord)
+  body config!.type!: enum(slack)
+  body config!.type!: enum(smtp)
+  body config!.type!: enum(telegram)
+  body config!.type!: enum(webhook)
+  body config!.url: string
+  body config!.username: string
+  body config!.webhookUrl: string
+  body events!.backup!: boolean
+  body events!.deploy!: boolean
+  body events!.diskUsage!.cron!: string
+  body events!.diskUsage!.enabled!: boolean
+  body events!.diskUsage!.minPercent!: integer
+  body events!.dockerCleanup!: boolean
+  body events!.updateAvailable!: boolean
+  body name!: string
+DELETE /api/v1/notifications/channels/{channel}
+  200 ok!: enum(true)
+  400
+  401
+  403
+  404
+  path channel!: string
+PUT /api/v1/notifications/channels/{channel}
+  200 config!: object
+  200 createdAt!: string
+  200 events!.backup!: boolean
+  200 events!.deploy!: boolean
+  200 events!.diskUsage!.cron!: string
+  200 events!.diskUsage!.enabled!: boolean
+  200 events!.diskUsage!.minPercent!: integer
+  200 events!.dockerCleanup!: boolean
+  200 events!.updateAvailable!: boolean
+  200 hasSecret!: boolean
+  200 id!: string
+  200 lastDeliveryAt!: null|string
+  200 lastDeliveryOk!: boolean|null
+  200 name!: string
+  200 target!: string
+  200 type!: enum(discord|slack|smtp|telegram|webhook)
+  400
+  401
+  403
+  404
+  body config!.botToken: string
+  body config!.chatId!: string
+  body config!.from!: string
+  body config!.host!: string
+  body config!.password: string
+  body config!.port: integer
+  body config!.recipients![]: string
+  body config!.secret: string
+  body config!.type!: enum(discord)
+  body config!.type!: enum(slack)
+  body config!.type!: enum(smtp)
+  body config!.type!: enum(telegram)
+  body config!.type!: enum(webhook)
+  body config!.url: string
+  body config!.username: string
+  body config!.webhookUrl: string
+  body events!.backup!: boolean
+  body events!.deploy!: boolean
+  body events!.diskUsage!.cron!: string
+  body events!.diskUsage!.enabled!: boolean
+  body events!.diskUsage!.minPercent!: integer
+  body events!.dockerCleanup!: boolean
+  body events!.updateAvailable!: boolean
+  body name!: string
+  path channel!: string
+GET /api/v1/notifications/deliveries
+  200 deliveries![].attempts!: integer
+  200 deliveries![].channelId!: null|string
+  200 deliveries![].channelName!: string
+  200 deliveries![].createdAt!: string
+  200 deliveries![].event!: string
+  200 deliveries![].eventId!: string
+  200 deliveries![].id!: string
+  200 deliveries![].lastError!: null|string
+  200 deliveries![].status!: enum(failed|pending|sent)
+  200 deliveries![].title!: string
+  200 deliveries![].updatedAt!: string
+  401
+  403
+PUT /api/v1/notifications/settings
+  200 allowPrivateDestinations!: boolean
+  400
+  401
+  403
+  body allowPrivateDestinations!: boolean
+POST /api/v1/notifications/test
+  200 detail!: string
+  200 ok!: boolean
+  400
+  401
+  403
+  body config!.botToken: string
+  body config!.chatId!: string
+  body config!.from!: string
+  body config!.host!: string
+  body config!.password: string
+  body config!.port: integer
+  body config!.recipients![]: string
+  body config!.secret: string
+  body config!.type!: enum(discord)
+  body config!.type!: enum(slack)
+  body config!.type!: enum(smtp)
+  body config!.type!: enum(telegram)
+  body config!.type!: enum(webhook)
+  body config!.url: string
+  body config!.username: string
+  body config!.webhookUrl: string
+  body id: string
+GET /api/v1/projects
+  200 projects![].createdAt!: string
+  200 projects![].name!: string
+  200 projects![].services![].activeAction!.id!: string
+  200 projects![].services![].activeAction!.type!: string
+  200 projects![].services![].createdAt!: string
+  200 projects![].services![].lastDeployedAt!: null|string
+  200 projects![].services![].name!: string
+  200 projects![].services![].projectName!: string
+  200 projects![].services![].replicas!.desired!: integer
+  200 projects![].services![].replicas!.running!: integer
+  200 projects![].services![].runtimeUncertain!: enum(interrupted|null|restore_failed)
+  200 projects![].services![].status!: enum(failing|running|starting|stopped|undeployed|unknown)
+  200 projects![].services![].type!: string
+  200 projects![].services![].wake![]: enum(cancelled|failed|running|succeeded|uncertain)
+  401
+POST /api/v1/projects
+  201 createdAt!: string
+  201 name!: string
+  201 services![].activeAction!.id!: string
+  201 services![].activeAction!.type!: string
+  201 services![].createdAt!: string
+  201 services![].lastDeployedAt!: null|string
+  201 services![].name!: string
+  201 services![].projectName!: string
+  201 services![].replicas!.desired!: integer
+  201 services![].replicas!.running!: integer
+  201 services![].runtimeUncertain!: enum(interrupted|null|restore_failed)
+  201 services![].status!: enum(failing|running|starting|stopped|undeployed|unknown)
+  201 services![].type!: string
+  201 services![].wake![]: enum(cancelled|failed|running|succeeded|uncertain)
+  400
+  401
+  409
+  502
+  body name!: string
+DELETE /api/v1/projects/{project}
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  body confirm!: string
+  path project!: string
+GET /api/v1/projects/{project}
+  200 createdAt!: string
+  200 name!: string
+  200 services![].activeAction!.id!: string
+  200 services![].activeAction!.type!: string
+  200 services![].createdAt!: string
+  200 services![].lastDeployedAt!: null|string
+  200 services![].name!: string
+  200 services![].projectName!: string
+  200 services![].replicas!.desired!: integer
+  200 services![].replicas!.running!: integer
+  200 services![].runtimeUncertain!: enum(interrupted|null|restore_failed)
+  200 services![].status!: enum(failing|running|starting|stopped|undeployed|unknown)
+  200 services![].type!: string
+  200 services![].wake![]: enum(cancelled|failed|running|succeeded|uncertain)
+  400
+  401
+  404
+  path project!: string
+POST /api/v1/projects/{project}/box
+  201 activeAction!.id!: string
+  201 activeAction!.type!: string
+  201 answering!: boolean|null
+  201 createdAt!: string
+  201 lastDeployedAt!: null|string
+  201 name!: string
+  201 notes!: string
+  201 notesHidden: boolean
+  201 pendingChanges!: boolean
+  201 primaryUrl!: null|string
+  201 projectName!: string
+  201 replicas!.desired!: integer
+  201 replicas!.running!: integer
+  201 runtimeUncertain!: enum(interrupted|null|restore_failed)
+  201 source!.autoDeploy!: boolean
+  201 source!.dockerfile!: string
+  201 source!.fileName!: string
+  201 source!.hasPassword!: boolean
+  201 source!.image!: string
+  201 source!.path!: string
+  201 source!.ref!: string
+  201 source!.repository!: string
+  201 source!.sizeBytes!: integer
+  201 source!.type!: enum(dockerfile)
+  201 source!.type!: enum(git)
+  201 source!.type!: enum(github)
+  201 source!.type!: enum(image)
+  201 source!.type!: enum(upload)
+  201 source!.uploadedAt!: string
+  201 source!.url!: string
+  201 source!.username!: null|string
+  201 source!: null
+  201 status!: enum(failing|running|starting|stopped|undeployed|unknown)
+  201 stopped!: boolean
+  201 type!: string
+  201 wake![]: enum(cancelled|failed|running|succeeded|uncertain)
+  400
+  401
+  404
+  409
+  body name!: string
+  body preset: enum(node-service|null|php-site|python-service|ruby-service|static-site)
+  path project!: string
+POST /api/v1/projects/{project}/compose
+  201 activeAction!.id!: string
+  201 activeAction!.type!: string
+  201 answering!: boolean|null
+  201 createdAt!: string
+  201 lastDeployedAt!: null|string
+  201 name!: string
+  201 notes!: string
+  201 notesHidden: boolean
+  201 pendingChanges!: boolean
+  201 primaryUrl!: null|string
+  201 projectName!: string
+  201 replicas!.desired!: integer
+  201 replicas!.running!: integer
+  201 runtimeUncertain!: enum(interrupted|null|restore_failed)
+  201 source!.autoDeploy!: boolean
+  201 source!.dockerfile!: string
+  201 source!.fileName!: string
+  201 source!.hasPassword!: boolean
+  201 source!.image!: string
+  201 source!.path!: string
+  201 source!.ref!: string
+  201 source!.repository!: string
+  201 source!.sizeBytes!: integer
+  201 source!.type!: enum(dockerfile)
+  201 source!.type!: enum(git)
+  201 source!.type!: enum(github)
+  201 source!.type!: enum(image)
+  201 source!.type!: enum(upload)
+  201 source!.uploadedAt!: string
+  201 source!.url!: string
+  201 source!.username!: null|string
+  201 source!: null
+  201 status!: enum(failing|running|starting|stopped|undeployed|unknown)
+  201 stopped!: boolean
+  201 type!: string
+  201 wake![]: enum(cancelled|failed|running|succeeded|uncertain)
+  400
+  401
+  404
+  409
+  body name!: string
+  path project!: string
+POST /api/v1/projects/{project}/databases
+  201 activeAction!.id!: string
+  201 activeAction!.type!: string
+  201 answering!: boolean|null
+  201 createdAt!: string
+  201 lastDeployedAt!: null|string
+  201 name!: string
+  201 notes!: string
+  201 notesHidden: boolean
+  201 pendingChanges!: boolean
+  201 primaryUrl!: null|string
+  201 projectName!: string
+  201 replicas!.desired!: integer
+  201 replicas!.running!: integer
+  201 runtimeUncertain!: enum(interrupted|null|restore_failed)
+  201 source!.autoDeploy!: boolean
+  201 source!.dockerfile!: string
+  201 source!.fileName!: string
+  201 source!.hasPassword!: boolean
+  201 source!.image!: string
+  201 source!.path!: string
+  201 source!.ref!: string
+  201 source!.repository!: string
+  201 source!.sizeBytes!: integer
+  201 source!.type!: enum(dockerfile)
+  201 source!.type!: enum(git)
+  201 source!.type!: enum(github)
+  201 source!.type!: enum(image)
+  201 source!.type!: enum(upload)
+  201 source!.uploadedAt!: string
+  201 source!.url!: string
+  201 source!.username!: null|string
+  201 source!: null
+  201 status!: enum(failing|running|starting|stopped|undeployed|unknown)
+  201 stopped!: boolean
+  201 type!: string
+  201 wake![]: enum(cancelled|failed|running|succeeded|uncertain)
+  400
+  401
+  404
+  409
+  body databaseName: null|string
+  body engine!: enum(mariadb|mongo|mysql|postgres|redis)
+  body image: null|string
+  body name!: string
+  body password: null|string
+  body rootPassword: null|string
+  body user: null|string
+  path project!: string
+GET /api/v1/projects/{project}/env
+  200 names![]: string
+  400
+  401
+  404
+  path project!: string
+PUT /api/v1/projects/{project}/env
+  200 names![]: string
+  400
+  401
+  404
+  body env!: string
+  path project!: string
+POST /api/v1/projects/{project}/env/reveal
+  200 env!: string
+  400
+  401
+  404
+  path project!: string
+GET /api/v1/projects/{project}/schema
+  200 services![].data!.deploy!.command!: null|string
+  200 services![].data!.deploy!.replicas!: integer
+  200 services![].data!.deploy!.zeroDowntime!: boolean
+  200 services![].data!.domains![].certificateResolver!: string
+  200 services![].data!.domains![].host!: string
+  200 services![].data!.domains![].https!: boolean
+  200 services![].data!.domains![].internalProtocol!: string
+  200 services![].data!.domains![].middlewares![]: string
+  200 services![].data!.domains![].path!: string
+  200 services![].data!.domains![].port!: integer
+  200 services![].data!.domains![].wildcard!: boolean
+  200 services![].data!.projectName!: string
+  200 services![].data!.serviceName!: string
+  200 services![].data!.source!.autoDeploy!: boolean
+  200 services![].data!.source!.dockerfile!: string
+  200 services![].data!.source!.fileName!: string
+  200 services![].data!.source!.hasPassword!: boolean
+  200 services![].data!.source!.image!: string
+  200 services![].data!.source!.path!: string
+  200 services![].data!.source!.ref!: string
+  200 services![].data!.source!.repository!: string
+  200 services![].data!.source!.sizeBytes!: integer
+  200 services![].data!.source!.type!: enum(dockerfile)
+  200 services![].data!.source!.type!: enum(git)
+  200 services![].data!.source!.type!: enum(github)
+  200 services![].data!.source!.type!: enum(image)
+  200 services![].data!.source!.type!: enum(upload)
+  200 services![].data!.source!.uploadedAt!: string
+  200 services![].data!.source!.url!: string
+  200 services![].data!.source!.username!: null|string
+  200 services![].data!.source!: null
+  200 services![].type!: string
+  400
+  401
+  404
+  path project!: string
+POST /api/v1/projects/{project}/services
+  201 activeAction!.id!: string
+  201 activeAction!.type!: string
+  201 answering!: boolean|null
+  201 createdAt!: string
+  201 lastDeployedAt!: null|string
+  201 name!: string
+  201 notes!: string
+  201 notesHidden: boolean
+  201 pendingChanges!: boolean
+  201 primaryUrl!: null|string
+  201 projectName!: string
+  201 replicas!.desired!: integer
+  201 replicas!.running!: integer
+  201 runtimeUncertain!: enum(interrupted|null|restore_failed)
+  201 source!.autoDeploy!: boolean
+  201 source!.dockerfile!: string
+  201 source!.fileName!: string
+  201 source!.hasPassword!: boolean
+  201 source!.image!: string
+  201 source!.path!: string
+  201 source!.ref!: string
+  201 source!.repository!: string
+  201 source!.sizeBytes!: integer
+  201 source!.type!: enum(dockerfile)
+  201 source!.type!: enum(git)
+  201 source!.type!: enum(github)
+  201 source!.type!: enum(image)
+  201 source!.type!: enum(upload)
+  201 source!.uploadedAt!: string
+  201 source!.url!: string
+  201 source!.username!: null|string
+  201 source!: null
+  201 status!: enum(failing|running|starting|stopped|undeployed|unknown)
+  201 stopped!: boolean
+  201 type!: string
+  201 wake![]: enum(cancelled|failed|running|succeeded|uncertain)
+  400
+  401
+  404
+  409
+  body name!: string
+  body type: enum(app)
+  path project!: string
+POST /api/v1/projects/{project}/services/definition
+  201 activeAction!.id!: string
+  201 activeAction!.type!: string
+  201 answering!: boolean|null
+  201 createdAt!: string
+  201 lastDeployedAt!: null|string
+  201 name!: string
+  201 notes!: string
+  201 notesHidden: boolean
+  201 pendingChanges!: boolean
+  201 primaryUrl!: null|string
+  201 projectName!: string
+  201 replicas!.desired!: integer
+  201 replicas!.running!: integer
+  201 runtimeUncertain!: enum(interrupted|null|restore_failed)
+  201 source!.autoDeploy!: boolean
+  201 source!.dockerfile!: string
+  201 source!.fileName!: string
+  201 source!.hasPassword!: boolean
+  201 source!.image!: string
+  201 source!.path!: string
+  201 source!.ref!: string
+  201 source!.repository!: string
+  201 source!.sizeBytes!: integer
+  201 source!.type!: enum(dockerfile)
+  201 source!.type!: enum(git)
+  201 source!.type!: enum(github)
+  201 source!.type!: enum(image)
+  201 source!.type!: enum(upload)
+  201 source!.uploadedAt!: string
+  201 source!.url!: string
+  201 source!.username!: null|string
+  201 source!: null
+  201 status!: enum(failing|running|starting|stopped|undeployed|unknown)
+  201 stopped!: boolean
+  201 type!: string
+  201 wake![]: enum(cancelled|failed|running|succeeded|uncertain)
+  400
+  401
+  403
+  404
+  409
+  body deploy: boolean
+  body domains[].certificateResolver: null|string
+  body domains[].composeService: string
+  body domains[].destinationPath: string
+  body domains[].destinationProtocol: enum(http|https)
+  body domains[].host!: string
+  body domains[].https: boolean
+  body domains[].middlewares[]: string
+  body domains[].path: string
+  body domains[].port: integer
+  body domains[].stripPath: boolean
+  body domains[].upstreamCa: null|string
+  body domains[].upstreamServerName: null|string
+  body domains[].wildcard: boolean
+  body env: string
+  body mounts[].acknowledgeRisk: boolean
+  body mounts[].content: string
+  body mounts[].hostPath!: string
+  body mounts[].mountPath!: string
+  body mounts[].name!: string
+  body mounts[].type!: enum(bind)
+  body mounts[].type!: enum(file)
+  body mounts[].type!: enum(volume)
+  body name!: string
+  body resources.cpuLimit: number
+  body resources.cpuReservation: number
+  body resources.memoryLimit: number
+  body resources.memoryReservation: number
+  body source!.build.aptPackages: string
+  body source!.build.buildAptPackages: string
+  body source!.build.buildCommand: string
+  body source!.build.builder: string
+  body source!.build.deployAptPackages: string
+  body source!.build.file: string
+  body source!.build.installCommand: string
+  body source!.build.misePackages: string
+  body source!.build.nixPackages: string
+  body source!.build.startCommand: string
+  body source!.build.type!: enum(buildpacks)
+  body source!.build.type!: enum(dockerfile)
+  body source!.build.type!: enum(nixpacks)
+  body source!.build.type!: enum(railpack)
+  body source!.build.version: string
+  body source!.build: null
+  body source!.dockerfile!: string
+  body source!.image!: string
+  body source!.password: string
+  body source!.path!: string
+  body source!.ref!: string
+  body source!.repository!: string
+  body source!.type!: enum(dockerfile)
+  body source!.type!: enum(git)
+  body source!.type!: enum(github)
+  body source!.type!: enum(upload)
+  body source!.type: enum(image)
+  body source!.url!: string
+  body source!.username: string
+  path project!: string
+DELETE /api/v1/projects/{project}/services/{service}
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  body confirm!: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}
+  200 activeAction!.id!: string
+  200 activeAction!.type!: string
+  200 answering!: boolean|null
+  200 createdAt!: string
+  200 lastDeployedAt!: null|string
+  200 name!: string
+  200 notes!: string
+  200 notesHidden: boolean
+  200 pendingChanges!: boolean
+  200 primaryUrl!: null|string
+  200 projectName!: string
+  200 replicas!.desired!: integer
+  200 replicas!.running!: integer
+  200 runtimeUncertain!: enum(interrupted|null|restore_failed)
+  200 source!.autoDeploy!: boolean
+  200 source!.dockerfile!: string
+  200 source!.fileName!: string
+  200 source!.hasPassword!: boolean
+  200 source!.image!: string
+  200 source!.path!: string
+  200 source!.ref!: string
+  200 source!.repository!: string
+  200 source!.sizeBytes!: integer
+  200 source!.type!: enum(dockerfile)
+  200 source!.type!: enum(git)
+  200 source!.type!: enum(github)
+  200 source!.type!: enum(image)
+  200 source!.type!: enum(upload)
+  200 source!.uploadedAt!: string
+  200 source!.url!: string
+  200 source!.username!: null|string
+  200 source!: null
+  200 status!: enum(failing|running|starting|stopped|undeployed|unknown)
+  200 stopped!: boolean
+  200 type!: string
+  200 wake![]: enum(cancelled|failed|running|succeeded|uncertain)
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/advanced
+  200 deploy!.capAdd[]: string
+  200 deploy!.capDrop[]: string
+  200 deploy!.command: null|string
+  200 deploy!.groups[]: string
+  200 deploy!.replicas: integer
+  200 deploy!.stopGraceSeconds: integer
+  200 deploy!.stopSignal: enum(SIGHUP|SIGINT|SIGQUIT|SIGTERM|SIGUSR1|SIGUSR2|SIGWINCH|null)
+  200 deploy!.sysctls: object
+  200 deploy!.tiniInit: boolean
+  200 deploy!.zeroDowntime: boolean
+  200 ports![].protocol: enum(tcp|udp)
+  200 ports![].published!: integer
+  200 ports![].target!: integer
+  200 stopped!: boolean
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/advanced/deploy
+  200 capAdd[]: string
+  200 capDrop[]: string
+  200 command: null|string
+  200 groups[]: string
+  200 replicas: integer
+  200 stopGraceSeconds: integer
+  200 stopSignal: enum(SIGHUP|SIGINT|SIGQUIT|SIGTERM|SIGUSR1|SIGUSR2|SIGWINCH|null)
+  200 sysctls: object
+  200 tiniInit: boolean
+  200 zeroDowntime: boolean
+  400
+  401
+  403
+  404
+  body capAdd[]: string
+  body capDrop[]: string
+  body command: null|string
+  body groups[]: string
+  body replicas: integer
+  body stopGraceSeconds: integer
+  body stopSignal: enum(SIGHUP|SIGINT|SIGQUIT|SIGTERM|SIGUSR1|SIGUSR2|SIGWINCH|null)
+  body sysctls: object
+  body tiniInit: boolean
+  body zeroDowntime: boolean
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/advanced/ports
+  200 ports![].protocol: enum(tcp|udp)
+  200 ports![].published!: integer
+  200 ports![].target!: integer
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/advanced/ports
+  201 ports![].protocol: enum(tcp|udp)
+  201 ports![].published!: integer
+  201 ports![].target!: integer
+  400
+  401
+  404
+  409
+  body protocol: enum(tcp|udp)
+  body published!: integer
+  body target!: integer
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/advanced/ports/{index}
+  200 ports![].protocol: enum(tcp|udp)
+  200 ports![].published!: integer
+  200 ports![].target!: integer
+  400
+  401
+  404
+  path index!: integer
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/advanced/ports/{index}
+  200 ports![].protocol: enum(tcp|udp)
+  200 ports![].published!: integer
+  200 ports![].target!: integer
+  400
+  401
+  404
+  409
+  body protocol: enum(tcp|udp)
+  body published!: integer
+  body target!: integer
+  path index!: integer
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/backups
+  200 backups![].actionId!: null|string
+  200 backups![].cleanupError!: null|string
+  200 backups![].configId!: null|string
+  200 backups![].createdAt!: string
+  200 backups![].databaseName!: null|string
+  200 backups![].deletedAt!: null|string
+  200 backups![].engine!: enum(mariadb|mongo|mysql|null|postgres|redis)
+  200 backups![].engineVersion!: null|string
+  200 backups![].error!: null|string
+  200 backups![].finishedAt!: null|string
+  200 backups![].format!: enum(mariadb-accounts-sql-gz-v1|mariadb-instance-sql-gz-v1|mariadb-sql-gz-v1|mongo-accounts-jsonl-gz-v1|mongo-archive-v1|mongo-instance-archive-v1|mysql-accounts-sql-gz-v1|mysql-instance-sql-gz-v1|mysql-sql-gz-v1|null|postgres-accounts-sql-gz-v1|postgres-instance-sql-gz-v1|postgres-sql-gz-v1|volume-tar-gz-v1)
+  200 backups![].id!: string
+  200 backups![].kind!: enum(database|volume)
+  200 backups![].name!: null|string
+  200 backups![].origin!: enum(manual|safety|schedule)
+  200 backups![].path!: string
+  200 backups![].restorable!: boolean
+  200 backups![].scope!: enum(accounts|database|instance|volume)
+  200 backups![].sha256!: null|string
+  200 backups![].sizeBytes!: integer|null
+  200 backups![].status!: enum(cancelled|failed|running|succeeded)
+  200 backups![].storageProviderId!: null|string
+  200 backups![].storageProviderName!: string
+  200 backups![].volumeName!: null|string
+  200 configs![].createdAt!: string
+  200 configs![].databaseName!: null|string
+  200 configs![].destinationReady!: boolean
+  200 configs![].enabled!: boolean
+  200 configs![].id!: string
+  200 configs![].kind!: enum(database|volume)
+  200 configs![].lastRun!.backupId!: string
+  200 configs![].lastRun!.finishedAt!: null|string
+  200 configs![].lastRun!.status!: enum(cancelled|failed|running|succeeded)
+  200 configs![].nextRunAt!: null|string
+  200 configs![].path!: string
+  200 configs![].retention!: integer|null
+  200 configs![].schedule!: string
+  200 configs![].scope!: enum(accounts|database|instance|volume)
+  200 configs![].storageProviderId!: null|string
+  200 configs![].storageProviderName!: null|string
+  200 configs![].updatedAt!: string
+  200 configs![].volumeName!: null|string
+  200 defaultDatabase!: null|string
+  200 restores![].actionId!: null|string
+  200 restores![].actorEmail!: null|string
+  200 restores![].backupId!: null|string
+  200 restores![].createdAt!: string
+  200 restores![].databaseName!: null|string
+  200 restores![].earlierCopy!: null|string
+  200 restores![].error!: null|string
+  200 restores![].finishedAt!: null|string
+  200 restores![].id!: string
+  200 restores![].kind!: enum(database|volume)
+  200 restores![].phase!: enum(checking|done|importing|safety|staging|starting|swapping|verifying)
+  200 restores![].safetyBackupId!: null|string
+  200 restores![].scope!: enum(accounts|database|instance|volume)
+  200 restores![].sourcePath!: string
+  200 restores![].status!: enum(cancelled|failed|running|succeeded)
+  200 restores![].storageProviderName!: string
+  200 restores![].unresolved!: boolean
+  200 restores![].volumeName!: null|string
+  200 timezone!: string
+  200 volumes![]: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/backups/configs
+  201 createdAt!: string
+  201 databaseName!: null|string
+  201 destinationReady!: boolean
+  201 enabled!: boolean
+  201 id!: string
+  201 kind!: enum(database|volume)
+  201 lastRun!.backupId!: string
+  201 lastRun!.finishedAt!: null|string
+  201 lastRun!.status!: enum(cancelled|failed|running|succeeded)
+  201 nextRunAt!: null|string
+  201 path!: string
+  201 retention!: integer|null
+  201 schedule!: string
+  201 scope!: enum(accounts|database|instance|volume)
+  201 storageProviderId!: null|string
+  201 storageProviderName!: null|string
+  201 updatedAt!: string
+  201 volumeName!: null|string
+  400
+  401
+  404
+  409
+  body databaseName: string
+  body enabled: boolean
+  body kind!: enum(database)
+  body kind!: enum(volume)
+  body path!: string
+  body retention: integer|null
+  body schedule!: string
+  body scope: enum(accounts|database|instance)
+  body storageProviderId!: string
+  body volumeName!: string
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/backups/configs/{config}
+  200 id!: string
+  400
+  401
+  404
+  path config!: string
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/backups/configs/{config}
+  200 createdAt!: string
+  200 databaseName!: null|string
+  200 destinationReady!: boolean
+  200 enabled!: boolean
+  200 id!: string
+  200 kind!: enum(database|volume)
+  200 lastRun!.backupId!: string
+  200 lastRun!.finishedAt!: null|string
+  200 lastRun!.status!: enum(cancelled|failed|running|succeeded)
+  200 nextRunAt!: null|string
+  200 path!: string
+  200 retention!: integer|null
+  200 schedule!: string
+  200 scope!: enum(accounts|database|instance|volume)
+  200 storageProviderId!: null|string
+  200 storageProviderName!: null|string
+  200 updatedAt!: string
+  200 volumeName!: null|string
+  400
+  401
+  404
+  409
+  body databaseName: string
+  body enabled: boolean
+  body kind!: enum(database)
+  body kind!: enum(volume)
+  body path!: string
+  body retention: integer|null
+  body schedule!: string
+  body scope: enum(accounts|database|instance)
+  body storageProviderId!: string
+  body volumeName!: string
+  path config!: string
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/backups/configs/{config}/run
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  body name: string
+  path config!: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/backups/databases
+  200 databases![]: string
+  401
+  404
+  409
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/backups/destinations
+  200 options![].id!: string
+  200 options![].kind!: enum(aws-s3|backblaze-b2|cloudflare-r2|digitalocean-spaces|dropbox|ftp|generic-s3|google-drive|local|sftp|wasabi)
+  200 options![].name!: string
+  200 options![].offHost!: boolean
+  401
+  404
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/backups/restore
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  body confirm!: string
+  body databaseName: string
+  body path!: string
+  body scope: enum(accounts|database|instance)
+  body storageProviderId!: string
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/backups/restores/{restore}/discard-earlier-copy
+  200 actionId!: null|string
+  200 actorEmail!: null|string
+  200 backupId!: null|string
+  200 createdAt!: string
+  200 databaseName!: null|string
+  200 earlierCopy!: null|string
+  200 error!: null|string
+  200 finishedAt!: null|string
+  200 id!: string
+  200 kind!: enum(database|volume)
+  200 phase!: enum(checking|done|importing|safety|staging|starting|swapping|verifying)
+  200 safetyBackupId!: null|string
+  200 scope!: enum(accounts|database|instance|volume)
+  200 sourcePath!: string
+  200 status!: enum(cancelled|failed|running|succeeded)
+  200 storageProviderName!: string
+  200 unresolved!: boolean
+  200 volumeName!: null|string
+  400
+  401
+  404
+  409
+  body confirm!: string
+  path project!: string
+  path restore!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/backups/restores/{restore}/resolve
+  200 actionId!: null|string
+  200 actorEmail!: null|string
+  200 backupId!: null|string
+  200 createdAt!: string
+  200 databaseName!: null|string
+  200 earlierCopy!: null|string
+  200 error!: null|string
+  200 finishedAt!: null|string
+  200 id!: string
+  200 kind!: enum(database|volume)
+  200 phase!: enum(checking|done|importing|safety|staging|starting|swapping|verifying)
+  200 safetyBackupId!: null|string
+  200 scope!: enum(accounts|database|instance|volume)
+  200 sourcePath!: string
+  200 status!: enum(cancelled|failed|running|succeeded)
+  200 storageProviderName!: string
+  200 unresolved!: boolean
+  200 volumeName!: null|string
+  400
+  401
+  404
+  409
+  body confirm!: string
+  path project!: string
+  path restore!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/backups/{backup}
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  path backup!: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/backups/{backup}/download
+  200
+  400
+  401
+  404
+  409
+  path backup!: string
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/backups/{backup}/restore
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  body confirm!: string
+  body databaseName: string
+  path backup!: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/basic-auth
+  200 entries![].id!: string
+  200 entries![].username!: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/basic-auth
+  201 id!: string
+  201 username!: string
+  400
+  401
+  404
+  409
+  body password!: string
+  body username!: string
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/basic-auth/{entry}
+  200 id!: string
+  400
+  401
+  404
+  path entry!: string
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/basic-auth/{entry}
+  200 id!: string
+  200 username!: string
+  400
+  401
+  404
+  409
+  body password: string
+  body username!: string
+  path entry!: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/box
+  200 built!.base!: string
+  200 built!.configuration!: string
+  200 built!.matrixRevision!: string
+  200 built!.modules!: object
+  200 dockerfile!: string
+  200 history![].actionId!: string
+  200 history![].actorEmail!: null|string
+  200 history![].at!: string
+  200 history![].changes![].from!: null|string
+  200 history![].changes![].kind!: enum(configuration|modules|security|upgrade)
+  200 history![].changes![].subject!: string
+  200 history![].changes![].to!: null|string
+  200 history![].error!: null|string
+  200 history![].imageId!: null|string
+  200 history![].matrixRevision!: string
+  200 history![].reason!: enum(configuration|first|forced|modules|security|unchanged|upgrade)
+  200 history![].status!: enum(cancelled|failed|succeeded)
+  200 hooks!.build: string
+  200 hooks!.start: string
+  200 issues![].field!: string
+  200 issues![].message!: string
+  200 matrixRevision!: string
+  200 modules!.nginx.documentRoot: string
+  200 modules!.node.extensions[]: string
+  200 modules!.node.version!: string
+  200 modules!.php.extensions[]: string
+  200 modules!.php.version!: string
+  200 modules!.python.extensions[]: string
+  200 modules!.python.version!: string
+  200 modules!.ruby.extensions[]: string
+  200 modules!.ruby.version!: string
+  200 pendingChanges![].from!: null|string
+  200 pendingChanges![].kind!: enum(configuration|modules|security|upgrade)
+  200 pendingChanges![].subject!: string
+  200 pendingChanges![].to!: null|string
+  200 preset!: enum(node-service|null|php-site|python-service|ruby-service|static-site)
+  200 processes![].command!: string
+  200 processes![].directory: string
+  200 processes![].enabled: boolean
+  200 processes![].name!: string
+  200 runtime!.gid!: integer
+  200 runtime!.uid!: integer
+  200 runtime!.user!: string
+  200 runtime!.workspacePath!: string
+  200 runtime!.workspaceVolume!: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/box/hooks
+  200 built!.base!: string
+  200 built!.configuration!: string
+  200 built!.matrixRevision!: string
+  200 built!.modules!: object
+  200 dockerfile!: string
+  200 history![].actionId!: string
+  200 history![].actorEmail!: null|string
+  200 history![].at!: string
+  200 history![].changes![].from!: null|string
+  200 history![].changes![].kind!: enum(configuration|modules|security|upgrade)
+  200 history![].changes![].subject!: string
+  200 history![].changes![].to!: null|string
+  200 history![].error!: null|string
+  200 history![].imageId!: null|string
+  200 history![].matrixRevision!: string
+  200 history![].reason!: enum(configuration|first|forced|modules|security|unchanged|upgrade)
+  200 history![].status!: enum(cancelled|failed|succeeded)
+  200 hooks!.build: string
+  200 hooks!.start: string
+  200 issues![].field!: string
+  200 issues![].message!: string
+  200 matrixRevision!: string
+  200 modules!.nginx.documentRoot: string
+  200 modules!.node.extensions[]: string
+  200 modules!.node.version!: string
+  200 modules!.php.extensions[]: string
+  200 modules!.php.version!: string
+  200 modules!.python.extensions[]: string
+  200 modules!.python.version!: string
+  200 modules!.ruby.extensions[]: string
+  200 modules!.ruby.version!: string
+  200 pendingChanges![].from!: null|string
+  200 pendingChanges![].kind!: enum(configuration|modules|security|upgrade)
+  200 pendingChanges![].subject!: string
+  200 pendingChanges![].to!: null|string
+  200 preset!: enum(node-service|null|php-site|python-service|ruby-service|static-site)
+  200 processes![].command!: string
+  200 processes![].directory: string
+  200 processes![].enabled: boolean
+  200 processes![].name!: string
+  200 runtime!.gid!: integer
+  200 runtime!.uid!: integer
+  200 runtime!.user!: string
+  200 runtime!.workspacePath!: string
+  200 runtime!.workspaceVolume!: string
+  400
+  401
+  404
+  body build: string
+  body start: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/box/ide
+  200 access!: enum(expired|no_token|off|open)
+  200 createdAt!: null|string
+  200 enabled!: boolean
+  200 expiresAt!: null|string
+  200 path!: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/box/ide
+  200 access!: enum(expired|no_token|off|open)
+  200 createdAt!: null|string
+  200 enabled!: boolean
+  200 expiresAt!: null|string
+  200 path!: string
+  400
+  401
+  404
+  body enabled!: boolean
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/box/ide/token
+  200 access!: enum(expired|no_token|off|open)
+  200 createdAt!: null|string
+  200 enabled!: boolean
+  200 expiresAt!: null|string
+  200 path!: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/box/ide/token
+  200 access!: enum(expired|no_token|off|open)
+  200 createdAt!: null|string
+  200 enabled!: boolean
+  200 expiresAt!: null|string
+  200 path!: string
+  200 token!: string
+  400
+  401
+  404
+  body expiresInHours: integer
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/box/modules
+  200 built!.base!: string
+  200 built!.configuration!: string
+  200 built!.matrixRevision!: string
+  200 built!.modules!: object
+  200 dockerfile!: string
+  200 history![].actionId!: string
+  200 history![].actorEmail!: null|string
+  200 history![].at!: string
+  200 history![].changes![].from!: null|string
+  200 history![].changes![].kind!: enum(configuration|modules|security|upgrade)
+  200 history![].changes![].subject!: string
+  200 history![].changes![].to!: null|string
+  200 history![].error!: null|string
+  200 history![].imageId!: null|string
+  200 history![].matrixRevision!: string
+  200 history![].reason!: enum(configuration|first|forced|modules|security|unchanged|upgrade)
+  200 history![].status!: enum(cancelled|failed|succeeded)
+  200 hooks!.build: string
+  200 hooks!.start: string
+  200 issues![].field!: string
+  200 issues![].message!: string
+  200 matrixRevision!: string
+  200 modules!.nginx.documentRoot: string
+  200 modules!.node.extensions[]: string
+  200 modules!.node.version!: string
+  200 modules!.php.extensions[]: string
+  200 modules!.php.version!: string
+  200 modules!.python.extensions[]: string
+  200 modules!.python.version!: string
+  200 modules!.ruby.extensions[]: string
+  200 modules!.ruby.version!: string
+  200 pendingChanges![].from!: null|string
+  200 pendingChanges![].kind!: enum(configuration|modules|security|upgrade)
+  200 pendingChanges![].subject!: string
+  200 pendingChanges![].to!: null|string
+  200 preset!: enum(node-service|null|php-site|python-service|ruby-service|static-site)
+  200 processes![].command!: string
+  200 processes![].directory: string
+  200 processes![].enabled: boolean
+  200 processes![].name!: string
+  200 runtime!.gid!: integer
+  200 runtime!.uid!: integer
+  200 runtime!.user!: string
+  200 runtime!.workspacePath!: string
+  200 runtime!.workspaceVolume!: string
+  400
+  401
+  404
+  body nginx.documentRoot: string
+  body node.extensions[]: string
+  body node.version!: string
+  body php.extensions[]: string
+  body php.version!: string
+  body python.extensions[]: string
+  body python.version!: string
+  body ruby.extensions[]: string
+  body ruby.version!: string
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/box/preset
+  200 built!.base!: string
+  200 built!.configuration!: string
+  200 built!.matrixRevision!: string
+  200 built!.modules!: object
+  200 dockerfile!: string
+  200 history![].actionId!: string
+  200 history![].actorEmail!: null|string
+  200 history![].at!: string
+  200 history![].changes![].from!: null|string
+  200 history![].changes![].kind!: enum(configuration|modules|security|upgrade)
+  200 history![].changes![].subject!: string
+  200 history![].changes![].to!: null|string
+  200 history![].error!: null|string
+  200 history![].imageId!: null|string
+  200 history![].matrixRevision!: string
+  200 history![].reason!: enum(configuration|first|forced|modules|security|unchanged|upgrade)
+  200 history![].status!: enum(cancelled|failed|succeeded)
+  200 hooks!.build: string
+  200 hooks!.start: string
+  200 issues![].field!: string
+  200 issues![].message!: string
+  200 matrixRevision!: string
+  200 modules!.nginx.documentRoot: string
+  200 modules!.node.extensions[]: string
+  200 modules!.node.version!: string
+  200 modules!.php.extensions[]: string
+  200 modules!.php.version!: string
+  200 modules!.python.extensions[]: string
+  200 modules!.python.version!: string
+  200 modules!.ruby.extensions[]: string
+  200 modules!.ruby.version!: string
+  200 pendingChanges![].from!: null|string
+  200 pendingChanges![].kind!: enum(configuration|modules|security|upgrade)
+  200 pendingChanges![].subject!: string
+  200 pendingChanges![].to!: null|string
+  200 preset!: enum(node-service|null|php-site|python-service|ruby-service|static-site)
+  200 processes![].command!: string
+  200 processes![].directory: string
+  200 processes![].enabled: boolean
+  200 processes![].name!: string
+  200 runtime!.gid!: integer
+  200 runtime!.uid!: integer
+  200 runtime!.user!: string
+  200 runtime!.workspacePath!: string
+  200 runtime!.workspaceVolume!: string
+  400
+  401
+  404
+  body preset!: enum(node-service|php-site|python-service|ruby-service|static-site)
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/box/processes
+  200 built!.base!: string
+  200 built!.configuration!: string
+  200 built!.matrixRevision!: string
+  200 built!.modules!: object
+  200 dockerfile!: string
+  200 history![].actionId!: string
+  200 history![].actorEmail!: null|string
+  200 history![].at!: string
+  200 history![].changes![].from!: null|string
+  200 history![].changes![].kind!: enum(configuration|modules|security|upgrade)
+  200 history![].changes![].subject!: string
+  200 history![].changes![].to!: null|string
+  200 history![].error!: null|string
+  200 history![].imageId!: null|string
+  200 history![].matrixRevision!: string
+  200 history![].reason!: enum(configuration|first|forced|modules|security|unchanged|upgrade)
+  200 history![].status!: enum(cancelled|failed|succeeded)
+  200 hooks!.build: string
+  200 hooks!.start: string
+  200 issues![].field!: string
+  200 issues![].message!: string
+  200 matrixRevision!: string
+  200 modules!.nginx.documentRoot: string
+  200 modules!.node.extensions[]: string
+  200 modules!.node.version!: string
+  200 modules!.php.extensions[]: string
+  200 modules!.php.version!: string
+  200 modules!.python.extensions[]: string
+  200 modules!.python.version!: string
+  200 modules!.ruby.extensions[]: string
+  200 modules!.ruby.version!: string
+  200 pendingChanges![].from!: null|string
+  200 pendingChanges![].kind!: enum(configuration|modules|security|upgrade)
+  200 pendingChanges![].subject!: string
+  200 pendingChanges![].to!: null|string
+  200 preset!: enum(node-service|null|php-site|python-service|ruby-service|static-site)
+  200 processes![].command!: string
+  200 processes![].directory: string
+  200 processes![].enabled: boolean
+  200 processes![].name!: string
+  200 runtime!.gid!: integer
+  200 runtime!.uid!: integer
+  200 runtime!.user!: string
+  200 runtime!.workspacePath!: string
+  200 runtime!.workspaceVolume!: string
+  400
+  401
+  404
+  body processes![].command!: string
+  body processes![].directory: string
+  body processes![].enabled: boolean
+  body processes![].name!: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/box/processes/status
+  200 processes![].lastExit!: integer|null
+  200 processes![].name!: string
+  200 processes![].restarts!: integer
+  200 processes![].since!: null|string
+  200 processes![].state!: enum(disabled|restarting|running|stopped|unknown)
+  200 processes![].system!: boolean
+  200 reachable!: boolean
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/box/processes/{process}/restart
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  path process!: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/companions
+  200 companions![].enabled!: boolean
+  200 companions![].tool!: enum(dbgate|mongo-express|pgweb|phpmyadmin|redis-commander)
+  200 companions![].url!: null|string
+  200 companions![].username!: null|string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/companions/{tool}
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  path project!: string
+  path service!: string
+  path tool!: enum(dbgate|mongo-express|pgweb|phpmyadmin|redis-commander)
+POST /api/v1/projects/{project}/services/{service}/companions/{tool}
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  path project!: string
+  path service!: string
+  path tool!: enum(dbgate|mongo-express|pgweb|phpmyadmin|redis-commander)
+POST /api/v1/projects/{project}/services/{service}/companions/{tool}/reveal
+  200 token!: string
+  400
+  401
+  404
+  409
+  path project!: string
+  path service!: string
+  path tool!: enum(dbgate|mongo-express|pgweb|phpmyadmin|redis-commander)
+GET /api/v1/projects/{project}/services/{service}/compose
+  200 acknowledged!: boolean
+  200 acknowledgementRequired!: boolean
+  200 content!: null|string
+  200 envFile!: boolean
+  200 issues![].code!: enum(capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_network|host_namespace|host_path|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|security_options|unknown_dependency|unroutable_name)
+  200 issues![].detail!: null|string
+  200 issues![].service!: null|string
+  200 issues![].severity!: enum(error|host|warning)
+  200 parseError!: null|string
+  200 services![]: string
+  200 source!.content!: string
+  200 source!.file!: string
+  200 source!.path!: string
+  200 source!.ref!: string
+  200 source!.type!: enum(git)
+  200 source!.type!: enum(inline)
+  200 source!.url!: string
+  200 source!: null
+  200 sshPublicKey!: null|string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/compose/acknowledge
+  200 acknowledged!: boolean
+  200 acknowledgementRequired!: boolean
+  200 content!: null|string
+  200 envFile!: boolean
+  200 issues![].code!: enum(capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_network|host_namespace|host_path|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|security_options|unknown_dependency|unroutable_name)
+  200 issues![].detail!: null|string
+  200 issues![].service!: null|string
+  200 issues![].severity!: enum(error|host|warning)
+  200 parseError!: null|string
+  200 services![]: string
+  200 source!.content!: string
+  200 source!.file!: string
+  200 source!.path!: string
+  200 source!.ref!: string
+  200 source!.type!: enum(git)
+  200 source!.type!: enum(inline)
+  200 source!.url!: string
+  200 source!: null
+  200 sshPublicKey!: null|string
+  400
+  401
+  403
+  404
+  409
+  body content!: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/compose/children
+  200 addresses!: object
+  200 children![].containers![].exitCode!: integer|null
+  200 children![].containers![].id!: string
+  200 children![].containers![].image!: string
+  200 children![].containers![].name!: string
+  200 children![].containers![].ports![]: string
+  200 children![].containers![].state!: enum(completed|failed|running|starting|stopped|unhealthy)
+  200 children![].containers![].status!: string
+  200 children![].name!: string
+  200 children![].state!: enum(completed|failed|running|starting|stopped|unhealthy)
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/compose/env-file
+  200 acknowledged!: boolean
+  200 acknowledgementRequired!: boolean
+  200 content!: null|string
+  200 envFile!: boolean
+  200 issues![].code!: enum(capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_network|host_namespace|host_path|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|security_options|unknown_dependency|unroutable_name)
+  200 issues![].detail!: null|string
+  200 issues![].service!: null|string
+  200 issues![].severity!: enum(error|host|warning)
+  200 parseError!: null|string
+  200 services![]: string
+  200 source!.content!: string
+  200 source!.file!: string
+  200 source!.path!: string
+  200 source!.ref!: string
+  200 source!.type!: enum(git)
+  200 source!.type!: enum(inline)
+  200 source!.url!: string
+  200 source!: null
+  200 sshPublicKey!: null|string
+  400
+  401
+  404
+  body enabled!: boolean
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/compose/source
+  200 acknowledged!: boolean
+  200 acknowledgementRequired!: boolean
+  200 content!: null|string
+  200 envFile!: boolean
+  200 issues![].code!: enum(capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_network|host_namespace|host_path|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|security_options|unknown_dependency|unroutable_name)
+  200 issues![].detail!: null|string
+  200 issues![].service!: null|string
+  200 issues![].severity!: enum(error|host|warning)
+  200 parseError!: null|string
+  200 services![]: string
+  200 source!.content!: string
+  200 source!.file!: string
+  200 source!.path!: string
+  200 source!.ref!: string
+  200 source!.type!: enum(git)
+  200 source!.type!: enum(inline)
+  200 source!.url!: string
+  200 source!: null
+  200 sshPublicKey!: null|string
+  400
+  401
+  404
+  503
+  body content!: string
+  body file: string
+  body path: string
+  body ref!: string
+  body type!: enum(git)
+  body type!: enum(inline)
+  body url!: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/console
+  200 scripts![]: string
+  200 tasks![].id!: string
+  200 tasks![].name!: string
+  200 tasks![].programs![]: enum(bash|sh)
+  200 tasks![].slot!: integer|null
+  400
+  401
+  403
+  404
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/credentials
+  200 databaseName!: null|string
+  200 engine!: enum(mariadb|mongo|mysql|postgres|redis)
+  200 external!.host!: string
+  200 external!.maskedUrl!: string
+  200 external!.port!: integer
+  200 hasRootPassword!: boolean
+  200 internal!.host!: string
+  200 internal!.maskedUrl!: string
+  200 internal!.port!: integer
+  200 rotationUnresolved!: boolean
+  200 user!: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/credentials
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  body password: string
+  body rootPassword: string
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/credentials/check
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/credentials/reveal
+  200 value!: string
+  400
+  401
+  404
+  409
+  body secret!: enum(externalUrl|internalUrl|password|rootPassword)
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/database
+  200 engine!: enum(mariadb|mongo|mysql|postgres|redis)
+  200 exposedPort!: integer
+  200 image!: string
+  200 internalHost!: string
+  200 internalPort!: integer
+  200 versions!.configured!: string
+  200 versions!.proposed!: string
+  200 versions!.running!.digest!: null|string
+  200 versions!.running!.image!: string
+  200 versions!.running!.imageId!: string
+  200 volume!: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/database-advanced
+  200 command: string
+  200 configFile: string
+  200 envNames![]: string
+  200 image!: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/database-advanced
+  200 command: string
+  200 configFile: string
+  200 envNames![]: string
+  200 image!: string
+  400
+  401
+  404
+  409
+  body command: string
+  body configFile: string
+  body confirm: string
+  body env: string
+  body image!: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/database-resources
+  200 cpuLimit: number
+  200 cpuReservation: number
+  200 memoryLimit: number
+  200 memoryReservation: number
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/database-resources
+  200 cpuLimit: number
+  200 cpuReservation: number
+  200 memoryLimit: number
+  200 memoryReservation: number
+  400
+  401
+  404
+  body cpuLimit: number
+  body cpuReservation: number
+  body memoryLimit: number
+  body memoryReservation: number
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/database/availability
+  200 checkedAt!: string
+  200 detail!: null|string
+  200 process!: enum(not-running|running)
+  200 signIn!: enum(accepted|refused|unknown)
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/deploy
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  body force: boolean
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/deployments
+  200 items![].actorEmail!: null|string
+  200 items![].createdAt!: string
+  200 items![].deployment!.answering!: boolean|null
+  200 items![].deployment!.builtCommit!: null|string
+  200 items![].deployment!.desiredTasks!: integer|null
+  200 items![].deployment!.digest!: null|string
+  200 items![].deployment!.image!: null|string
+  200 items![].deployment!.imageId!: null|string
+  200 items![].deployment!.ociRevision!: null|string
+  200 items![].deployment!.release!: integer|null
+  200 items![].deployment!.requestedRef!: null|string
+  200 items![].deployment!.rollbackOf!: integer|null
+  200 items![].deployment!.runningTasks!: integer|null
+  200 items![].error!: null|string
+  200 items![].finishedAt!: null|string
+  200 items![].hasLog!: boolean
+  200 items![].id!: string
+  200 items![].origin: enum(api_key|session|system|trigger|webhook)
+  200 items![].originDetail: null|string
+  200 items![].phase: null|string
+  200 items![].projectName!: null|string
+  200 items![].serviceName!: null|string
+  200 items![].startedAt!: null|string
+  200 items![].status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  200 items![].title!: string
+  200 items![].type!: string
+  200 nextCursor!: null|string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+  query cursor: string
+  query limit: integer
+GET /api/v1/projects/{project}/services/{service}/deployments/pending
+  200 changes![].after!: null|string
+  200 changes![].area!: enum(advanced|build|command|compose|environment|files|image|ports|replicas|resources|source|volumes)
+  200 changes![].before!: null|string
+  200 changes![].kind!: enum(added|changed|removed)
+  200 changes![].name!: string
+  200 known!: boolean
+  200 refetches!: enum(code|image|null|stack)
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/deployments/trigger
+  200 createdAt!: null|string
+  200 hasToken!: boolean
+  200 legacyUrl!: boolean
+  200 path!: string
+  200 webhook!.createdAt!: null|string
+  200 webhook!.legacy!: boolean
+  200 webhook!.managed!: boolean
+  200 webhook!.path!: string
+  200 webhook!.paused!: boolean
+  200 webhook!.ref!: string
+  200 webhook!.repository!: string
+  200 webhookAvailable!: boolean
+  400
+  401
+  404
+  502
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/deployments/trigger
+  200 createdAt!: null|string
+  200 hasToken!: boolean
+  200 legacyUrl!: boolean
+  200 path!: string
+  200 webhook!.createdAt!: null|string
+  200 webhook!.legacy!: boolean
+  200 webhook!.managed!: boolean
+  200 webhook!.path!: string
+  200 webhook!.paused!: boolean
+  200 webhook!.ref!: string
+  200 webhook!.repository!: string
+  200 webhookAvailable!: boolean
+  400
+  401
+  404
+  502
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/deployments/trigger/rotate
+  200 createdAt!: null|string
+  200 hasToken!: boolean
+  200 legacyUrl!: boolean
+  200 path!: string
+  200 token!: string
+  200 webhook!.createdAt!: null|string
+  200 webhook!.legacy!: boolean
+  200 webhook!.managed!: boolean
+  200 webhook!.path!: string
+  200 webhook!.paused!: boolean
+  200 webhook!.ref!: string
+  200 webhook!.repository!: string
+  200 webhookAvailable!: boolean
+  400
+  401
+  404
+  502
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/deployments/webhook
+  200 createdAt!: null|string
+  200 hasToken!: boolean
+  200 legacyUrl!: boolean
+  200 path!: string
+  200 webhook!.createdAt!: null|string
+  200 webhook!.legacy!: boolean
+  200 webhook!.managed!: boolean
+  200 webhook!.path!: string
+  200 webhook!.paused!: boolean
+  200 webhook!.ref!: string
+  200 webhook!.repository!: string
+  200 webhookAvailable!: boolean
+  400
+  401
+  404
+  502
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/deployments/webhook/rotate
+  200 secret!: null|string
+  200 webhook!.createdAt!: null|string
+  200 webhook!.legacy!: boolean
+  200 webhook!.managed!: boolean
+  200 webhook!.path!: string
+  200 webhook!.paused!: boolean
+  200 webhook!.ref!: string
+  200 webhook!.repository!: string
+  400
+  401
+  404
+  502
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/domains
+  200 domains![].certificateResolver!: null|string
+  200 domains![].composeService: null|string
+  200 domains![].destinationPath!: string
+  200 domains![].destinationProtocol!: enum(http|https)
+  200 domains![].host!: string
+  200 domains![].https!: boolean
+  200 domains![].id!: string
+  200 domains![].internalUrl!: string
+  200 domains![].middlewares![]: string
+  200 domains![].path!: string
+  200 domains![].port!: integer
+  200 domains![].primary!: boolean
+  200 domains![].stripPath!: boolean
+  200 domains![].upstreamCa!: null|string
+  200 domains![].upstreamServerName!: null|string
+  200 domains![].url!: string
+  200 domains![].wildcard!: boolean
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/domains
+  201 certificateResolver!: null|string
+  201 composeService: null|string
+  201 destinationPath!: string
+  201 destinationProtocol!: enum(http|https)
+  201 host!: string
+  201 https!: boolean
+  201 id!: string
+  201 internalUrl!: string
+  201 middlewares![]: string
+  201 path!: string
+  201 port!: integer
+  201 primary!: boolean
+  201 stripPath!: boolean
+  201 upstreamCa!: null|string
+  201 upstreamServerName!: null|string
+  201 url!: string
+  201 wildcard!: boolean
+  400
+  401
+  404
+  409
+  body certificateResolver: null|string
+  body composeService: string
+  body destinationPath: string
+  body destinationProtocol: enum(http|https)
+  body host!: string
+  body https: boolean
+  body middlewares[]: string
+  body path: string
+  body port: integer
+  body stripPath: boolean
+  body upstreamCa: null|string
+  body upstreamServerName: null|string
+  body wildcard: boolean
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/domains/exposed-ports
+  200 ports![]: integer
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/domains/{domain}
+  200 id!: string
+  400
+  401
+  404
+  path domain!: string
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/domains/{domain}
+  200 certificateResolver!: null|string
+  200 composeService: null|string
+  200 destinationPath!: string
+  200 destinationProtocol!: enum(http|https)
+  200 host!: string
+  200 https!: boolean
+  200 id!: string
+  200 internalUrl!: string
+  200 middlewares![]: string
+  200 path!: string
+  200 port!: integer
+  200 primary!: boolean
+  200 stripPath!: boolean
+  200 upstreamCa!: null|string
+  200 upstreamServerName!: null|string
+  200 url!: string
+  200 wildcard!: boolean
+  400
+  401
+  404
+  409
+  body certificateResolver: null|string
+  body composeService: string
+  body destinationPath: string
+  body destinationProtocol: enum(http|https)
+  body host!: string
+  body https: boolean
+  body middlewares[]: string
+  body path: string
+  body port: integer
+  body stripPath: boolean
+  body upstreamCa: null|string
+  body upstreamServerName: null|string
+  body wildcard: boolean
+  path domain!: string
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/domains/{domain}/primary
+  200 certificateResolver!: null|string
+  200 composeService: null|string
+  200 destinationPath!: string
+  200 destinationProtocol!: enum(http|https)
+  200 host!: string
+  200 https!: boolean
+  200 id!: string
+  200 internalUrl!: string
+  200 middlewares![]: string
+  200 path!: string
+  200 port!: integer
+  200 primary!: boolean
+  200 stripPath!: boolean
+  200 upstreamCa!: null|string
+  200 upstreamServerName!: null|string
+  200 url!: string
+  200 wildcard!: boolean
+  400
+  401
+  404
+  409
+  path domain!: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/environment
+  200 interpolation!: boolean
+  200 names![]: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/environment
+  200 interpolation!: boolean
+  200 names![]: string
+  400
+  401
+  404
+  body env: string
+  body interpolation: boolean
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/environment/build
+  200 inheritsRuntime!: boolean
+  200 secrets![].name!: string
+  200 secrets![].updatedAt!: string
+  200 variables![]: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/environment/build
+  200 inheritsRuntime!: boolean
+  200 secrets![].name!: string
+  200 secrets![].updatedAt!: string
+  200 variables![]: string
+  400
+  401
+  404
+  body env!: string
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/environment/build/inherited
+  200 inheritsRuntime!: boolean
+  200 secrets![].name!: string
+  200 secrets![].updatedAt!: string
+  200 variables![]: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/environment/build/reveal
+  200 env!: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/environment/build/secrets/{name}
+  200 inheritsRuntime!: boolean
+  200 secrets![].name!: string
+  200 secrets![].updatedAt!: string
+  200 variables![]: string
+  400
+  401
+  404
+  path name!: string
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/environment/build/secrets/{name}
+  200 inheritsRuntime!: boolean
+  200 secrets![].name!: string
+  200 secrets![].updatedAt!: string
+  200 variables![]: string
+  400
+  401
+  404
+  409
+  body value!: string
+  path name!: string
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/environment/reveal
+  200 env!: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/expose
+  200 port!: integer
+  200 publishedPort!: integer|null
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/expose
+  200 port!: integer
+  400
+  401
+  404
+  409
+  body port!: integer
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/logs/search
+  200 lines![].at!: null|string
+  200 lines![].gap: enum(true)
+  200 lines![].line!: string
+  200 lines![].seq!: integer
+  200 lines![].stream!: enum(stderr|stdout)
+  200 scanned!: integer
+  200 truncated!: boolean
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+  query level: enum(any|debug|error|info|warn)
+  query limit: integer
+  query q: string
+  query since: integer
+  query stream: enum(all|stderr|stdout)
+GET /api/v1/projects/{project}/services/{service}/maintenance
+  200 customCss: string
+  200 customLogo: null|string
+  200 enabled: boolean
+  200 hideLinks: boolean
+  200 hideLogo: boolean
+  200 subtitle: string
+  200 title: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/maintenance
+  200 customCss: string
+  200 customLogo: null|string
+  200 enabled: boolean
+  200 hideLinks: boolean
+  200 hideLogo: boolean
+  200 subtitle: string
+  200 title: string
+  400
+  401
+  404
+  body customCss: string
+  body customLogo: null|string
+  body enabled: boolean
+  body hideLinks: boolean
+  body hideLogo: boolean
+  body subtitle: string
+  body title: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/metrics
+  200 available: boolean
+  200 cpuCapacityPercent: null|number
+  200 cpuPercent!: null|number
+  200 lastReadAt: null|string
+  200 memoryLimitBytes: integer|null
+  200 memoryUsedBytes!: integer|null
+  200 networkRxBytes!: integer|null
+  200 networkTxBytes!: integer|null
+  200 origin: enum(docker|host|simulated)
+  200 readAt!: null|string
+  200 scope: enum(containers|host|service)
+  200 tasks: integer
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/metrics/history
+  200 origin: enum(docker|host|simulated)
+  200 points![].at!: string
+  200 points![].cpu!: null|number
+  200 points![].diskTotal!: null|number
+  200 points![].diskUsed!: null|number
+  200 points![].memoryTotal!: null|number
+  200 points![].memoryUsed!: null|number
+  200 points![].rx!: null|number
+  200 points![].tx!: null|number
+  200 range!: enum(12h|24h|48h|4h|7d)
+  200 scope: enum(containers|host|service)
+  200 step!: enum(15m|1h|1m|30m|5m)
+  200 stepSeconds!: integer
+  200 units.cpu!: enum(percent)
+  200 units.disk!: enum(bytes)
+  200 units.memory!: enum(bytes)
+  200 units.network!: enum(bytes-per-second)
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+  query range: enum(12h|24h|48h|4h|7d)
+  query step: enum(15m|1h|1m|30m|5m)
+PUT /api/v1/projects/{project}/services/{service}/notes
+  200 notes!: string
+  400
+  401
+  404
+  body notes!: string
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/notes/visibility
+  200 hidden!: boolean
+  400
+  401
+  404
+  409
+  body hidden!: boolean
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/redirects
+  200 redirects![].enabled!: boolean
+  200 redirects![].id!: string
+  200 redirects![].permanent!: boolean
+  200 redirects![].regex!: string
+  200 redirects![].replacement!: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/redirects
+  201 enabled!: boolean
+  201 id!: string
+  201 permanent!: boolean
+  201 regex!: string
+  201 replacement!: string
+  400
+  401
+  404
+  body enabled: boolean
+  body permanent: boolean
+  body regex!: string
+  body replacement!: string
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/redirects/{redirect}
+  200 id!: string
+  400
+  401
+  404
+  path project!: string
+  path redirect!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/redirects/{redirect}
+  200 enabled!: boolean
+  200 id!: string
+  200 permanent!: boolean
+  200 regex!: string
+  200 replacement!: string
+  400
+  401
+  404
+  body enabled: boolean
+  body permanent: boolean
+  body regex!: string
+  body replacement!: string
+  path project!: string
+  path redirect!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/releases
+  200 available!: boolean
+  200 items![].actionId!: null|string
+  200 items![].active!: boolean
+  200 items![].actorEmail!: null|string
+  200 items![].builtCommit!: null|string
+  200 items![].createdAt!: string
+  200 items![].digest!: null|string
+  200 items![].image!: string
+  200 items![].imageId!: string
+  200 items![].number!: integer
+  200 items![].ociRevision!: null|string
+  200 items![].refusal!: enum(active|image_altered|image_missing|not_deployed|null|renamed|volumes_differ)
+  200 items![].requestedRef!: null|string
+  200 items![].rollbackOf!: integer|null
+  200 items![].sizeBytes!: null|number
+  200 keep!: integer
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/releases/{number}
+  200 actionId!: null|string
+  200 active!: boolean
+  200 actorEmail!: null|string
+  200 builtCommit!: null|string
+  200 changes![].after!: null|string
+  200 changes![].area!: enum(advanced|build|command|compose|environment|files|image|ports|replicas|resources|source|volumes)
+  200 changes![].before!: null|string
+  200 changes![].kind!: enum(added|changed|removed)
+  200 changes![].name!: string
+  200 createdAt!: string
+  200 digest!: null|string
+  200 image!: string
+  200 imageId!: string
+  200 number!: integer
+  200 ociRevision!: null|string
+  200 refusal!: enum(active|image_altered|image_missing|not_deployed|null|renamed|volumes_differ)
+  200 requestedRef!: null|string
+  200 rollbackOf!: integer|null
+  200 sizeBytes!: null|number
+  400
+  401
+  404
+  path number!: integer
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/releases/{number}/rollback
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  403
+  404
+  409
+  body confirm!: string
+  path number!: integer
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/rename
+  200 activeAction!.id!: string
+  200 activeAction!.type!: string
+  200 answering!: boolean|null
+  200 createdAt!: string
+  200 lastDeployedAt!: null|string
+  200 name!: string
+  200 notes!: string
+  200 notesHidden: boolean
+  200 pendingChanges!: boolean
+  200 primaryUrl!: null|string
+  200 projectName!: string
+  200 replicas!.desired!: integer
+  200 replicas!.running!: integer
+  200 runtimeUncertain!: enum(interrupted|null|restore_failed)
+  200 source!.autoDeploy!: boolean
+  200 source!.dockerfile!: string
+  200 source!.fileName!: string
+  200 source!.hasPassword!: boolean
+  200 source!.image!: string
+  200 source!.path!: string
+  200 source!.ref!: string
+  200 source!.repository!: string
+  200 source!.sizeBytes!: integer
+  200 source!.type!: enum(dockerfile)
+  200 source!.type!: enum(git)
+  200 source!.type!: enum(github)
+  200 source!.type!: enum(image)
+  200 source!.type!: enum(upload)
+  200 source!.uploadedAt!: string
+  200 source!.url!: string
+  200 source!.username!: null|string
+  200 source!: null
+  200 status!: enum(failing|running|starting|stopped|undeployed|unknown)
+  200 stopped!: boolean
+  200 type!: string
+  200 wake![]: enum(cancelled|failed|running|succeeded|uncertain)
+  400
+  401
+  404
+  409
+  body name!: string
+  body projectName!: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/resources
+  200 cpuLimit: number
+  200 cpuReservation: number
+  200 memoryLimit: number
+  200 memoryReservation: number
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/resources
+  200 cpuLimit: number
+  200 cpuReservation: number
+  200 memoryLimit: number
+  200 memoryReservation: number
+  400
+  401
+  404
+  body cpuLimit: number
+  body cpuReservation: number
+  body memoryLimit: number
+  body memoryReservation: number
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/restart
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/script-runs
+  200 items![].actorEmail!: null|string
+  200 items![].createdAt!: string
+  200 items![].dueAt!: null|string
+  200 items![].exitCode!: integer|null
+  200 items![].finishedAt!: null|string
+  200 items![].id!: string
+  200 items![].maxDurationSeconds!: integer
+  200 items![].note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
+  200 items![].note!.message!: string
+  200 items![].origin!: enum(api|console|hook|manual|schedule)
+  200 items![].originDetail!: null|string
+  200 items![].outputComplete!: boolean
+  200 items![].outputTruncated!: boolean
+  200 items![].scriptName!: string
+  200 items![].startedAt!: null|string
+  200 items![].status!: enum(cancelled|failed|queued|running|skipped|succeeded|timed_out|unknown)
+  200 items![].task!.id!: string
+  200 items![].task!.slot!: integer|null
+  200 nextCursor!: null|string
+  400
+  401
+  403
+  404
+  path project!: string
+  path service!: string
+  query cursor: string
+  query limit: integer
+  query script: string
+POST /api/v1/projects/{project}/services/{service}/script-runs
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 run!.actorEmail!: null|string
+  202 run!.createdAt!: string
+  202 run!.dueAt!: null|string
+  202 run!.exitCode!: integer|null
+  202 run!.finishedAt!: null|string
+  202 run!.id!: string
+  202 run!.maxDurationSeconds!: integer
+  202 run!.note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
+  202 run!.note!.message!: string
+  202 run!.origin!: enum(api|console|hook|manual|schedule)
+  202 run!.originDetail!: null|string
+  202 run!.outputComplete!: boolean
+  202 run!.outputTruncated!: boolean
+  202 run!.scriptName!: string
+  202 run!.startedAt!: null|string
+  202 run!.status!: enum(cancelled|failed|queued|running|skipped|succeeded|timed_out|unknown)
+  202 run!.task!.id!: string
+  202 run!.task!.slot!: integer|null
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  403
+  404
+  409
+  body script!: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/script-runs/{id}
+  200 actorEmail!: null|string
+  200 createdAt!: string
+  200 dueAt!: null|string
+  200 exitCode!: integer|null
+  200 finishedAt!: null|string
+  200 id!: string
+  200 maxDurationSeconds!: integer
+  200 note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
+  200 note!.message!: string
+  200 origin!: enum(api|console|hook|manual|schedule)
+  200 originDetail!: null|string
+  200 output!: string
+  200 outputComplete!: boolean
+  200 outputTruncated!: boolean
+  200 scriptName!: string
+  200 startedAt!: null|string
+  200 status!: enum(cancelled|failed|queued|running|skipped|succeeded|timed_out|unknown)
+  200 task!.id!: string
+  200 task!.slot!: integer|null
+  400
+  401
+  403
+  404
+  path id!: string
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/script-runs/{id}/cancel
+  200 actorEmail!: null|string
+  200 createdAt!: string
+  200 dueAt!: null|string
+  200 exitCode!: integer|null
+  200 finishedAt!: null|string
+  200 id!: string
+  200 maxDurationSeconds!: integer
+  200 note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
+  200 note!.message!: string
+  200 origin!: enum(api|console|hook|manual|schedule)
+  200 originDetail!: null|string
+  200 outputComplete!: boolean
+  200 outputTruncated!: boolean
+  200 scriptName!: string
+  200 startedAt!: null|string
+  200 status!: enum(cancelled|failed|queued|running|skipped|succeeded|timed_out|unknown)
+  200 task!.id!: string
+  200 task!.slot!: integer|null
+  400
+  401
+  403
+  404
+  409
+  path id!: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/scripts
+  200 scripts![].lastRun.actorEmail!: null|string
+  200 scripts![].lastRun.createdAt!: string
+  200 scripts![].lastRun.dueAt!: null|string
+  200 scripts![].lastRun.exitCode!: integer|null
+  200 scripts![].lastRun.finishedAt!: null|string
+  200 scripts![].lastRun.id!: string
+  200 scripts![].lastRun.maxDurationSeconds!: integer
+  200 scripts![].lastRun.note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
+  200 scripts![].lastRun.note!.message!: string
+  200 scripts![].lastRun.origin!: enum(api|console|hook|manual|schedule)
+  200 scripts![].lastRun.originDetail!: null|string
+  200 scripts![].lastRun.outputComplete!: boolean
+  200 scripts![].lastRun.outputTruncated!: boolean
+  200 scripts![].lastRun.scriptName!: string
+  200 scripts![].lastRun.startedAt!: null|string
+  200 scripts![].lastRun.status!: enum(cancelled|failed|queued|running|skipped|succeeded|timed_out|unknown)
+  200 scripts![].lastRun.task!.id!: string
+  200 scripts![].lastRun.task!.slot!: integer|null
+  200 scripts![].maxDurationSeconds: integer
+  200 scripts![].name!: string
+  200 scripts![].nextRunAt: null|string
+  200 scripts![].runAfterDeploy: boolean
+  200 scripts![].schedule.cron!: string
+  200 scripts![].schedule.timeZone!: string
+  200 scripts![].script: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/scripts
+  201 scripts![].lastRun.actorEmail!: null|string
+  201 scripts![].lastRun.createdAt!: string
+  201 scripts![].lastRun.dueAt!: null|string
+  201 scripts![].lastRun.exitCode!: integer|null
+  201 scripts![].lastRun.finishedAt!: null|string
+  201 scripts![].lastRun.id!: string
+  201 scripts![].lastRun.maxDurationSeconds!: integer
+  201 scripts![].lastRun.note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
+  201 scripts![].lastRun.note!.message!: string
+  201 scripts![].lastRun.origin!: enum(api|console|hook|manual|schedule)
+  201 scripts![].lastRun.originDetail!: null|string
+  201 scripts![].lastRun.outputComplete!: boolean
+  201 scripts![].lastRun.outputTruncated!: boolean
+  201 scripts![].lastRun.scriptName!: string
+  201 scripts![].lastRun.startedAt!: null|string
+  201 scripts![].lastRun.status!: enum(cancelled|failed|queued|running|skipped|succeeded|timed_out|unknown)
+  201 scripts![].lastRun.task!.id!: string
+  201 scripts![].lastRun.task!.slot!: integer|null
+  201 scripts![].maxDurationSeconds: integer
+  201 scripts![].name!: string
+  201 scripts![].nextRunAt: null|string
+  201 scripts![].runAfterDeploy: boolean
+  201 scripts![].schedule.cron!: string
+  201 scripts![].schedule.timeZone!: string
+  201 scripts![].script: string
+  400
+  401
+  404
+  409
+  body maxDurationSeconds: integer
+  body name!: string
+  body runAfterDeploy: boolean
+  body schedule.cron!: string
+  body schedule.timeZone!: string
+  body script: string
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/scripts/{index}
+  200 scripts![].lastRun.actorEmail!: null|string
+  200 scripts![].lastRun.createdAt!: string
+  200 scripts![].lastRun.dueAt!: null|string
+  200 scripts![].lastRun.exitCode!: integer|null
+  200 scripts![].lastRun.finishedAt!: null|string
+  200 scripts![].lastRun.id!: string
+  200 scripts![].lastRun.maxDurationSeconds!: integer
+  200 scripts![].lastRun.note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
+  200 scripts![].lastRun.note!.message!: string
+  200 scripts![].lastRun.origin!: enum(api|console|hook|manual|schedule)
+  200 scripts![].lastRun.originDetail!: null|string
+  200 scripts![].lastRun.outputComplete!: boolean
+  200 scripts![].lastRun.outputTruncated!: boolean
+  200 scripts![].lastRun.scriptName!: string
+  200 scripts![].lastRun.startedAt!: null|string
+  200 scripts![].lastRun.status!: enum(cancelled|failed|queued|running|skipped|succeeded|timed_out|unknown)
+  200 scripts![].lastRun.task!.id!: string
+  200 scripts![].lastRun.task!.slot!: integer|null
+  200 scripts![].maxDurationSeconds: integer
+  200 scripts![].name!: string
+  200 scripts![].nextRunAt: null|string
+  200 scripts![].runAfterDeploy: boolean
+  200 scripts![].schedule.cron!: string
+  200 scripts![].schedule.timeZone!: string
+  200 scripts![].script: string
+  400
+  401
+  404
+  path index!: integer
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/scripts/{index}
+  200 scripts![].lastRun.actorEmail!: null|string
+  200 scripts![].lastRun.createdAt!: string
+  200 scripts![].lastRun.dueAt!: null|string
+  200 scripts![].lastRun.exitCode!: integer|null
+  200 scripts![].lastRun.finishedAt!: null|string
+  200 scripts![].lastRun.id!: string
+  200 scripts![].lastRun.maxDurationSeconds!: integer
+  200 scripts![].lastRun.note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
+  200 scripts![].lastRun.note!.message!: string
+  200 scripts![].lastRun.origin!: enum(api|console|hook|manual|schedule)
+  200 scripts![].lastRun.originDetail!: null|string
+  200 scripts![].lastRun.outputComplete!: boolean
+  200 scripts![].lastRun.outputTruncated!: boolean
+  200 scripts![].lastRun.scriptName!: string
+  200 scripts![].lastRun.startedAt!: null|string
+  200 scripts![].lastRun.status!: enum(cancelled|failed|queued|running|skipped|succeeded|timed_out|unknown)
+  200 scripts![].lastRun.task!.id!: string
+  200 scripts![].lastRun.task!.slot!: integer|null
+  200 scripts![].maxDurationSeconds: integer
+  200 scripts![].name!: string
+  200 scripts![].nextRunAt: null|string
+  200 scripts![].runAfterDeploy: boolean
+  200 scripts![].schedule.cron!: string
+  200 scripts![].schedule.timeZone!: string
+  200 scripts![].script: string
+  400
+  401
+  404
+  409
+  body maxDurationSeconds: integer
+  body name!: string
+  body runAfterDeploy: boolean
+  body schedule.cron!: string
+  body schedule.timeZone!: string
+  body script: string
+  path index!: integer
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/source
+  200 build!.aptPackages: string
+  200 build!.buildAptPackages: string
+  200 build!.buildCommand: string
+  200 build!.builder: string
+  200 build!.deployAptPackages: string
+  200 build!.file: string
+  200 build!.installCommand: string
+  200 build!.misePackages: string
+  200 build!.nixPackages: string
+  200 build!.startCommand: string
+  200 build!.type!: enum(buildpacks)
+  200 build!.type!: enum(dockerfile)
+  200 build!.type!: enum(nixpacks)
+  200 build!.type!: enum(railpack)
+  200 build!.version: string
+  200 build!: null
+  200 githubConfigured!: boolean
+  200 source!.autoDeploy!: boolean
+  200 source!.dockerfile!: string
+  200 source!.fileName!: string
+  200 source!.hasPassword!: boolean
+  200 source!.image!: string
+  200 source!.path!: string
+  200 source!.ref!: string
+  200 source!.repository!: string
+  200 source!.sizeBytes!: integer
+  200 source!.type!: enum(dockerfile)
+  200 source!.type!: enum(git)
+  200 source!.type!: enum(github)
+  200 source!.type!: enum(image)
+  200 source!.type!: enum(upload)
+  200 source!.uploadedAt!: string
+  200 source!.url!: string
+  200 source!.username!: null|string
+  200 source!: null
+  200 sshKey!.boundTo!: null|string
+  200 sshKey!.createdAt!: null|string
+  200 sshKey!.fingerprint!: string
+  200 sshPublicKey!: null|string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/source
+  200 autoDeploy!: boolean
+  200 dockerfile!: string
+  200 fileName!: string
+  200 hasPassword!: boolean
+  200 image!: string
+  200 path!: string
+  200 ref!: string
+  200 repository!: string
+  200 sizeBytes!: integer
+  200 type!: enum(dockerfile)
+  200 type!: enum(git)
+  200 type!: enum(github)
+  200 type!: enum(image)
+  200 type!: enum(upload)
+  200 uploadedAt!: string
+  200 url!: string
+  200 username!: null|string
+  400
+  401
+  404
+  503
+  body build.aptPackages: string
+  body build.buildAptPackages: string
+  body build.buildCommand: string
+  body build.builder: string
+  body build.deployAptPackages: string
+  body build.file: string
+  body build.installCommand: string
+  body build.misePackages: string
+  body build.nixPackages: string
+  body build.startCommand: string
+  body build.type!: enum(buildpacks)
+  body build.type!: enum(dockerfile)
+  body build.type!: enum(nixpacks)
+  body build.type!: enum(railpack)
+  body build.version: string
+  body build: null
+  body dockerfile!: string
+  body image!: string
+  body password: string
+  body path!: string
+  body ref!: string
+  body repository!: string
+  body type!: enum(dockerfile)
+  body type!: enum(git)
+  body type!: enum(github)
+  body type!: enum(upload)
+  body type: enum(image)
+  body url!: string
+  body username: string
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/source/auto-deploy
+  200 autoDeploy!: boolean
+  200 dockerfile!: string
+  200 fileName!: string
+  200 hasPassword!: boolean
+  200 image!: string
+  200 path!: string
+  200 ref!: string
+  200 repository!: string
+  200 sizeBytes!: integer
+  200 type!: enum(dockerfile)
+  200 type!: enum(git)
+  200 type!: enum(github)
+  200 type!: enum(image)
+  200 type!: enum(upload)
+  200 uploadedAt!: string
+  200 url!: string
+  200 username!: null|string
+  400
+  401
+  404
+  502
+  body enabled!: boolean
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/source/build
+  200 build!.aptPackages: string
+  200 build!.buildAptPackages: string
+  200 build!.buildCommand: string
+  200 build!.builder: string
+  200 build!.deployAptPackages: string
+  200 build!.file: string
+  200 build!.installCommand: string
+  200 build!.misePackages: string
+  200 build!.nixPackages: string
+  200 build!.startCommand: string
+  200 build!.type!: enum(buildpacks)
+  200 build!.type!: enum(dockerfile)
+  200 build!.type!: enum(nixpacks)
+  200 build!.type!: enum(railpack)
+  200 build!.version: string
+  200 build!: null
+  400
+  401
+  404
+  body build!.aptPackages: string
+  body build!.buildAptPackages: string
+  body build!.buildCommand: string
+  body build!.builder: string
+  body build!.deployAptPackages: string
+  body build!.file: string
+  body build!.installCommand: string
+  body build!.misePackages: string
+  body build!.nixPackages: string
+  body build!.startCommand: string
+  body build!.type!: enum(buildpacks)
+  body build!.type!: enum(dockerfile)
+  body build!.type!: enum(nixpacks)
+  body build!.type!: enum(railpack)
+  body build!.version: string
+  body build!: null
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/source/env-file
+  200 inImage!: boolean
+  200 path!: null|string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/source/env-file
+  200 inImage!: boolean
+  200 path!: null|string
+  400
+  401
+  404
+  body inImage: boolean
+  body path!: null|string
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/source/ssh-key
+  200 build!.aptPackages: string
+  200 build!.buildAptPackages: string
+  200 build!.buildCommand: string
+  200 build!.builder: string
+  200 build!.deployAptPackages: string
+  200 build!.file: string
+  200 build!.installCommand: string
+  200 build!.misePackages: string
+  200 build!.nixPackages: string
+  200 build!.startCommand: string
+  200 build!.type!: enum(buildpacks)
+  200 build!.type!: enum(dockerfile)
+  200 build!.type!: enum(nixpacks)
+  200 build!.type!: enum(railpack)
+  200 build!.version: string
+  200 build!: null
+  200 githubConfigured!: boolean
+  200 source!.autoDeploy!: boolean
+  200 source!.dockerfile!: string
+  200 source!.fileName!: string
+  200 source!.hasPassword!: boolean
+  200 source!.image!: string
+  200 source!.path!: string
+  200 source!.ref!: string
+  200 source!.repository!: string
+  200 source!.sizeBytes!: integer
+  200 source!.type!: enum(dockerfile)
+  200 source!.type!: enum(git)
+  200 source!.type!: enum(github)
+  200 source!.type!: enum(image)
+  200 source!.type!: enum(upload)
+  200 source!.uploadedAt!: string
+  200 source!.url!: string
+  200 source!.username!: null|string
+  200 source!: null
+  200 sshKey!.boundTo!: null|string
+  200 sshKey!.createdAt!: null|string
+  200 sshKey!.fingerprint!: string
+  200 sshPublicKey!: null|string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/source/ssh-key
+  200 publicKey!: string
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/source/ssh-key/test
+  200 detail!: string
+  200 ok!: boolean
+  400
+  401
+  404
+  503
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/source/upload
+  200 autoDeploy!: boolean
+  200 dockerfile!: string
+  200 fileName!: string
+  200 hasPassword!: boolean
+  200 image!: string
+  200 path!: string
+  200 ref!: string
+  200 repository!: string
+  200 sizeBytes!: integer
+  200 type!: enum(dockerfile)
+  200 type!: enum(git)
+  200 type!: enum(github)
+  200 type!: enum(image)
+  200 type!: enum(upload)
+  200 uploadedAt!: string
+  200 url!: string
+  200 username!: null|string
+  400
+  401
+  404
+  413
+  503
+  path project!: string
+  path service!: string
+  query fileName!: string
+  query path: string
+POST /api/v1/projects/{project}/services/{service}/start
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/stop
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/storage
+  200 mounts![].acknowledgeRisk: boolean
+  200 mounts![].content: string
+  200 mounts![].hostPath!: string
+  200 mounts![].mountPath!: string
+  200 mounts![].name!: string
+  200 mounts![].risk!: enum(data-directory|docker-socket|null)
+  200 mounts![].type!: enum(bind)
+  200 mounts![].type!: enum(file)
+  200 mounts![].type!: enum(volume)
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/storage/mounts
+  201 mounts![].acknowledgeRisk: boolean
+  201 mounts![].content: string
+  201 mounts![].hostPath!: string
+  201 mounts![].mountPath!: string
+  201 mounts![].name!: string
+  201 mounts![].risk!: enum(data-directory|docker-socket|null)
+  201 mounts![].type!: enum(bind)
+  201 mounts![].type!: enum(file)
+  201 mounts![].type!: enum(volume)
+  400
+  401
+  403
+  404
+  409
+  body acknowledgeRisk: boolean
+  body content: string
+  body hostPath!: string
+  body mountPath!: string
+  body name!: string
+  body type!: enum(bind)
+  body type!: enum(file)
+  body type!: enum(volume)
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/storage/mounts/{index}
+  200 mounts![].acknowledgeRisk: boolean
+  200 mounts![].content: string
+  200 mounts![].hostPath!: string
+  200 mounts![].mountPath!: string
+  200 mounts![].name!: string
+  200 mounts![].risk!: enum(data-directory|docker-socket|null)
+  200 mounts![].type!: enum(bind)
+  200 mounts![].type!: enum(file)
+  200 mounts![].type!: enum(volume)
+  400
+  401
+  404
+  path index!: integer
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/storage/mounts/{index}
+  200 mounts![].acknowledgeRisk: boolean
+  200 mounts![].content: string
+  200 mounts![].hostPath!: string
+  200 mounts![].mountPath!: string
+  200 mounts![].name!: string
+  200 mounts![].risk!: enum(data-directory|docker-socket|null)
+  200 mounts![].type!: enum(bind)
+  200 mounts![].type!: enum(file)
+  200 mounts![].type!: enum(volume)
+  400
+  401
+  403
+  404
+  409
+  body acknowledgeRisk: boolean
+  body content: string
+  body hostPath!: string
+  body mountPath!: string
+  body name!: string
+  body type!: enum(bind)
+  body type!: enum(file)
+  body type!: enum(volume)
+  path index!: integer
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/templates
+  200 installs![].category!: enum(automation|communication|data|development|documents|infrastructure|media|monitoring|productivity|security)
+  200 installs![].components![].kind!: enum(app|compose|database)
+  200 installs![].components![].role!: string
+  200 installs![].components![].service!.activeAction!.id!: string
+  200 installs![].components![].service!.activeAction!.type!: string
+  200 installs![].components![].service!.createdAt!: string
+  200 installs![].components![].service!.lastDeployedAt!: null|string
+  200 installs![].components![].service!.name!: string
+  200 installs![].components![].service!.projectName!: string
+  200 installs![].components![].service!.replicas!.desired!: integer
+  200 installs![].components![].service!.replicas!.running!: integer
+  200 installs![].components![].service!.runtimeUncertain!: enum(interrupted|null|restore_failed)
+  200 installs![].components![].service!.status!: enum(failing|running|starting|stopped|undeployed|unknown)
+  200 installs![].components![].service!.type!: string
+  200 installs![].components![].service!.wake![]: enum(cancelled|failed|running|succeeded|uncertain)
+  200 installs![].components![].url!: null|string
+  200 installs![].createdAt!: string
+  200 installs![].custom!: boolean
+  200 installs![].id!: string
+  200 installs![].instructions!.en!: string
+  200 installs![].instructions!.fr!: string
+  200 installs![].projectName!: string
+  200 installs![].secrets![].label!.en!: string
+  200 installs![].secrets![].label!.fr!: string
+  200 installs![].secrets![].name!: string
+  200 installs![].secrets![].service!: string
+  200 installs![].templateId!: string
+  200 installs![].templateName!: string
+  200 installs![].templateVersion!: string
+  400
+  401
+  404
+  path project!: string
+POST /api/v1/projects/{project}/templates
+  201 category!: enum(automation|communication|data|development|documents|infrastructure|media|monitoring|productivity|security)
+  201 components![].kind!: enum(app|compose|database)
+  201 components![].role!: string
+  201 components![].service!.activeAction!.id!: string
+  201 components![].service!.activeAction!.type!: string
+  201 components![].service!.createdAt!: string
+  201 components![].service!.lastDeployedAt!: null|string
+  201 components![].service!.name!: string
+  201 components![].service!.projectName!: string
+  201 components![].service!.replicas!.desired!: integer
+  201 components![].service!.replicas!.running!: integer
+  201 components![].service!.runtimeUncertain!: enum(interrupted|null|restore_failed)
+  201 components![].service!.status!: enum(failing|running|starting|stopped|undeployed|unknown)
+  201 components![].service!.type!: string
+  201 components![].service!.wake![]: enum(cancelled|failed|running|succeeded|uncertain)
+  201 components![].url!: null|string
+  201 createdAt!: string
+  201 custom!: boolean
+  201 id!: string
+  201 instructions!.en!: string
+  201 instructions!.fr!: string
+  201 projectName!: string
+  201 secrets![].label!.en!: string
+  201 secrets![].label!.fr!: string
+  201 secrets![].name!: string
+  201 secrets![].service!: string
+  201 templateId!: string
+  201 templateName!: string
+  201 templateVersion!: string
+  400
+  401
+  403
+  404
+  409
+  body acknowledgeHostAccess: boolean
+  body params: object
+  body services!: object
+  body source!.id!: string
+  body source!.schema!: string
+  body source!.type!: enum(catalogue)
+  body source!.type!: enum(schema)
+  path project!: string
+DELETE /api/v1/projects/{project}/templates/{install}
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  body confirm!: string
+  path install!: string
+  path project!: string
+GET /api/v1/projects/{project}/templates/{install}
+  200 category!: enum(automation|communication|data|development|documents|infrastructure|media|monitoring|productivity|security)
+  200 components![].kind!: enum(app|compose|database)
+  200 components![].role!: string
+  200 components![].service!.activeAction!.id!: string
+  200 components![].service!.activeAction!.type!: string
+  200 components![].service!.createdAt!: string
+  200 components![].service!.lastDeployedAt!: null|string
+  200 components![].service!.name!: string
+  200 components![].service!.projectName!: string
+  200 components![].service!.replicas!.desired!: integer
+  200 components![].service!.replicas!.running!: integer
+  200 components![].service!.runtimeUncertain!: enum(interrupted|null|restore_failed)
+  200 components![].service!.status!: enum(failing|running|starting|stopped|undeployed|unknown)
+  200 components![].service!.type!: string
+  200 components![].service!.wake![]: enum(cancelled|failed|running|succeeded|uncertain)
+  200 components![].url!: null|string
+  200 createdAt!: string
+  200 custom!: boolean
+  200 id!: string
+  200 instructions!.en!: string
+  200 instructions!.fr!: string
+  200 projectName!: string
+  200 secrets![].label!.en!: string
+  200 secrets![].label!.fr!: string
+  200 secrets![].name!: string
+  200 secrets![].service!: string
+  200 templateId!: string
+  200 templateName!: string
+  200 templateVersion!: string
+  400
+  401
+  404
+  path install!: string
+  path project!: string
+POST /api/v1/projects/{project}/templates/{install}/deploy
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  404
+  409
+  body scope: enum(all|pending)
+  path install!: string
+  path project!: string
+POST /api/v1/projects/{project}/templates/{install}/secrets/reveal
+  200 value!: string
+  400
+  401
+  404
+  body name!: string
+  body service!: string
+  path install!: string
+  path project!: string
+GET /api/v1/retained-volumes
+  200 volumes![].kind!: enum(app|compose|database)
+  200 volumes![].name!: string
+  200 volumes![].projectName!: string
+  200 volumes![].retainedAt!: string
+  200 volumes![].serviceName!: string
+  401
+  403
+  502
+DELETE /api/v1/retained-volumes/{name}
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  403
+  404
+  409
+  body confirm!: string
+  path name!: string
+GET /api/v1/server-purpose
+  200 confirmation!: string
+  200 domains![].host!: string
+  200 domains![].path!: string
+  200 domains![].project!: string
+  200 domains![].service!: string
+  200 domains![].status!: enum(exposed|protected|public)
+  200 domains![].wildcard!: boolean
+  200 problems![].code!: enum(no_credentials|panel_exposed|unreadable_file)
+  200 problems![].file: string
+  200 protectedCount!: integer
+  200 protection!: boolean
+  200 purpose!: enum(development|null|production|staging)
+  200 totalCount!: integer
+  401
+PUT /api/v1/server-purpose
+  200 credentials!.password!: string
+  200 credentials!.username!: string
+  200 state!.confirmation!: string
+  200 state!.domains![].host!: string
+  200 state!.domains![].path!: string
+  200 state!.domains![].project!: string
+  200 state!.domains![].service!: string
+  200 state!.domains![].status!: enum(exposed|protected|public)
+  200 state!.domains![].wildcard!: boolean
+  200 state!.problems![].code!: enum(no_credentials|panel_exposed|unreadable_file)
+  200 state!.problems![].file: string
+  200 state!.protectedCount!: integer
+  200 state!.protection!: boolean
+  200 state!.purpose!: enum(development|null|production|staging)
+  200 state!.totalCount!: integer
+  400
+  401
+  403
+  409
+  500
+  body confirm: string
+  body purpose!: enum(development|production|staging)
+GET /api/v1/server-purpose/allowlist
+  200 entries![].createdAt!: string
+  200 entries![].id!: string
+  200 entries![].kind!: enum(ip|path)
+  200 entries![].project!: string
+  200 entries![].service!: string
+  200 entries![].value!: string
+  200 services![].project!: string
+  200 services![].service!: string
+  401
+  403
+POST /api/v1/server-purpose/allowlist
+  201 createdAt!: string
+  201 id!: string
+  201 kind!: enum(ip|path)
+  201 project!: string
+  201 service!: string
+  201 value!: string
+  400
+  401
+  403
+  404
+  409
+  500
+  body kind!: enum(ip)
+  body kind!: enum(path)
+  body project!: string
+  body service!: string
+  body value!: string
+DELETE /api/v1/server-purpose/allowlist/{id}
+  200 id!: string
+  400
+  401
+  403
+  404
+  500
+  path id!: string
+GET /api/v1/server-purpose/users
+  200 users![].createdAt!: string
+  200 users![].id!: string
+  200 users![].username!: string
+  401
+  403
+POST /api/v1/server-purpose/users
+  201 credentials!.password!: string
+  201 credentials!.username!: string
+  201 user!.createdAt!: string
+  201 user!.id!: string
+  201 user!.username!: string
+  400
+  401
+  403
+  409
+  500
+  body password: string
+  body username!: string
+DELETE /api/v1/server-purpose/users/{id}
+  200 id!: string
+  400
+  401
+  403
+  404
+  409
+  500
+  path id!: string
+PUT /api/v1/server-purpose/users/{id}
+  200 credentials!.password!: string
+  200 credentials!.username!: string
+  200 user!.createdAt!: string
+  200 user!.id!: string
+  200 user!.username!: string
+  400
+  401
+  403
+  404
+  500
+  body password: string
+  path id!: string
+PUT /api/v1/server/daily-cleanup
+  200 enabled!: boolean
+  400
+  401
+  403
+  body enabled!: boolean
+GET /api/v1/server/disk
+  200 entries![].directory!: boolean
+  200 entries![].name!: string
+  200 entries![].path!: string
+  200 entries![].sizeBytes!: number
+  200 parent!: null|string
+  200 path!: string
+  200 scope!: enum(data|host)
+  200 sizeBytes!: number
+  200 truncated!: boolean
+  400
+  401
+  403
+  409
+  query path: string
+GET /api/v1/server/docker
+  200 apiVersion!: null|string
+  200 available!: boolean
+  200 minimumApiVersion!: string
+  200 minimumVersion!: string
+  200 missing![]: enum(api|buildx|compose|overlay|swarm|version|volumes)
+  200 swarm!: null|string
+  200 version!: null|string
+  200 warnings![]: enum(swarm-inactive|too-old|unavailable|unsupported)
+  401
+  403
+GET /api/v1/server/docker/cleanup/{kind}
+  200 foreignCount!: integer
+  200 items![].id!: string
+  200 items![].label!: string
+  200 items![].sizeBytes!: null|number
+  200 items![].type!: enum(build-cache|container|image|network)
+  200 kind!: enum(builder|images|system)
+  200 reclaimableBytes!: number
+  200 retained![].label!: string
+  200 retained![].reason!: enum(in-use|rollback|shared)
+  400
+  401
+  403
+  path kind!: enum(builder|images|system)
+POST /api/v1/server/docker/cleanup/{kind}
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  403
+  409
+  body confirm!: string
+  body items![]: string
+  path kind!: enum(builder|images|system)
+GET /api/v1/server/docker/update
+  200 checkedAt!: string
+  200 current!: string
+  200 engine!.apiVersion!: null|string
+  200 engine!.available!: boolean
+  200 engine!.minimumApiVersion!: string
+  200 engine!.minimumVersion!: string
+  200 engine!.missing![]: enum(api|buildx|compose|overlay|swarm|version|volumes)
+  200 engine!.swarm!: null|string
+  200 engine!.version!: null|string
+  200 engine!.warnings![]: enum(swarm-inactive|too-old|unavailable|unsupported)
+  200 latest!: null|string
+  200 notes!: null|string
+  200 problem!: null|string
+  200 upToDate!: boolean|null
+  401
+  403
+GET /api/v1/server/letsencrypt-email
+  200 email!: string
+  401
+  403
+PUT /api/v1/server/letsencrypt-email
+  200 email!: string
+  400
+  401
+  403
+  body email!: string
+DELETE /api/v1/server/opsifier-address
+  200 available!: boolean
+  200 certificate!: enum(expired|expiring|issued|null|pending)
+  200 domain!: null|string
+  200 ip!: null|string
+  200 lastHeartbeatAt!: null|string
+  200 panelUrl!: null|string
+  200 registeredAt!: null|string
+  200 status!: enum(active|disabled|lost|off|unreachable)
+  200 wildcard!: null|string
+  400
+  401
+  403
+  409
+  body confirm!: string
+GET /api/v1/server/opsifier-address
+  200 available!: boolean
+  200 certificate!: enum(expired|expiring|issued|null|pending)
+  200 domain!: null|string
+  200 ip!: null|string
+  200 lastHeartbeatAt!: null|string
+  200 panelUrl!: null|string
+  200 registeredAt!: null|string
+  200 status!: enum(active|disabled|lost|off|unreachable)
+  200 wildcard!: null|string
+  401
+  403
+POST /api/v1/server/opsifier-address/register
+  200 available!: boolean
+  200 certificate!: enum(expired|expiring|issued|null|pending)
+  200 domain!: null|string
+  200 ip!: null|string
+  200 lastHeartbeatAt!: null|string
+  200 panelUrl!: null|string
+  200 registeredAt!: null|string
+  200 status!: enum(active|disabled|lost|off|unreachable)
+  200 wildcard!: null|string
+  401
+  403
+  409
+  502
+GET /api/v1/server/overview
+  200 dailyCleanup!: boolean
+  200 docker!.apiVersion!: null|string
+  200 docker!.available!: boolean
+  200 docker!.minimumApiVersion!: string
+  200 docker!.minimumVersion!: string
+  200 docker!.missing![]: enum(api|buildx|compose|overlay|swarm|version|volumes)
+  200 docker!.swarm!: null|string
+  200 docker!.version!: null|string
+  200 docker!.warnings![]: enum(swarm-inactive|too-old|unavailable|unsupported)
+  200 hostname!: string
+  200 panel!.managed!: boolean
+  200 panel!.version!: string
+  200 proxy!.state!: enum(failing|missing|running|starting|unknown)
+  200 releasesKept!: integer
+  200 uptimeSeconds!: null|number
+  401
+  403
+GET /api/v1/server/panel-domain
+  200 customDomain!: null|string
+  200 defaultDomain!: null|string
+  200 serveOnIp!: boolean
+  200 url!: null|string
+  401
+  403
+PUT /api/v1/server/panel-domain
+  200 customDomain!: null|string
+  200 defaultDomain!: null|string
+  200 serveOnIp!: boolean
+  200 url!: null|string
+  400
+  401
+  403
+  body customDomain!: enum()
+  body customDomain!: null
+  body customDomain!: string
+  body serveOnIp!: boolean
+POST /api/v1/server/panel/refresh-ip
+  200 actorEmail!: null|string
+  200 createdAt!: string
+  200 error!: null|string
+  200 finishedAt!: null|string
+  200 hasLog!: boolean
+  200 id!: string
+  200 origin: enum(api_key|session|system|trigger|webhook)
+  200 originDetail: null|string
+  200 phase: null|string
+  200 projectName!: null|string
+  200 serviceName!: null|string
+  200 startedAt!: null|string
+  200 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  200 title!: string
+  200 type!: string
+  401
+  403
+  409
+POST /api/v1/server/panel/restart
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  403
+  409
+  body confirm!: string
+GET /api/v1/server/proxy/custom-config
+  200 yaml!: string
+  401
+  403
+PUT /api/v1/server/proxy/custom-config
+  200 yaml!: string
+  400
+  401
+  403
+  body yaml!: string
+DELETE /api/v1/server/proxy/dashboard
+  200 ok!: enum(true)
+  401
+  403
+GET /api/v1/server/proxy/dashboard
+  200 open!: boolean
+  200 url!: null|string
+  401
+  403
+POST /api/v1/server/proxy/dashboard
+  200 password!: string
+  200 url!: string
+  200 username!: string
+  401
+  403
+  409
+GET /api/v1/server/proxy/environment
+  200 names![]: string
+  401
+  403
+PUT /api/v1/server/proxy/environment
+  200 names![]: string
+  400
+  401
+  403
+  body env!: string
+POST /api/v1/server/proxy/environment/reveal
+  200 env!: string
+  401
+  403
+POST /api/v1/server/proxy/restart
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  403
+  409
+  body confirm!: string
+GET /api/v1/server/proxy/trusted-proxies
+  200 entries![]: string
+  200 trustAll!: boolean
+  401
+  403
+PUT /api/v1/server/proxy/trusted-proxies
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  403
+  409
+  body entries![]: string
+  body trustAll!: boolean
+POST /api/v1/server/reboot
+  200 actorEmail!: null|string
+  200 createdAt!: string
+  200 error!: null|string
+  200 finishedAt!: null|string
+  200 hasLog!: boolean
+  200 id!: string
+  200 origin: enum(api_key|session|system|trigger|webhook)
+  200 originDetail: null|string
+  200 phase: null|string
+  200 projectName!: null|string
+  200 serviceName!: null|string
+  200 startedAt!: null|string
+  200 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  200 title!: string
+  200 type!: string
+  400
+  401
+  403
+  409
+  body confirm!: string
+PUT /api/v1/server/releases-kept
+  200 keep!: integer
+  400
+  401
+  403
+  body keep!: integer
+GET /api/v1/server/service-domain
+  200 customDomain!: null|string
+  200 defaultDomain!: null|string
+  401
+  403
+PUT /api/v1/server/service-domain
+  200 customDomain!: null|string
+  200 defaultDomain!: null|string
+  400
+  401
+  403
+  body customDomain!: enum()
+  body customDomain!: null
+  body customDomain!: string
+DELETE /api/v1/settings/github
+  200 configured!: boolean
+  200 login!: null|string
+  200 method!: enum(null|oauth|token)
+  200 oauthApp!.clientId!: string
+  200 updatedAt!: null|string
+  401
+GET /api/v1/settings/github
+  200 configured!: boolean
+  200 login!: null|string
+  200 method!: enum(null|oauth|token)
+  200 oauthApp!.clientId!: string
+  200 updatedAt!: null|string
+  401
+PUT /api/v1/settings/github
+  200 configured!: boolean
+  200 login!: null|string
+  200 method!: enum(null|oauth|token)
+  200 oauthApp!.clientId!: string
+  200 updatedAt!: null|string
+  400
+  401
+  502
+  body token!: string
+DELETE /api/v1/settings/github/oauth
+  200 configured!: boolean
+  200 login!: null|string
+  200 method!: enum(null|oauth|token)
+  200 oauthApp!.clientId!: string
+  200 updatedAt!: null|string
+  401
+PUT /api/v1/settings/github/oauth
+  200 configured!: boolean
+  200 login!: null|string
+  200 method!: enum(null|oauth|token)
+  200 oauthApp!.clientId!: string
+  200 updatedAt!: null|string
+  400
+  401
+  body clientId!: string
+  body clientSecret!: string
+GET /api/v1/settings/github/oauth/callback
+  302
+  query code: string
+  query error: string
+  query state: string
+POST /api/v1/settings/github/oauth/start
+  200 authorizationUrl!: string
+  400
+  401
+GET /api/v1/settings/known-hosts
+  200 items![].addedBy!: null|string
+  200 items![].createdAt!: string
+  200 items![].fingerprint!: string
+  200 items![].host!: string
+  200 items![].id!: string
+  200 items![].keyType!: string
+  200 items![].port!: integer
+  200 items![].publicKey!: string
+  401
+POST /api/v1/settings/known-hosts
+  201 addedBy!: null|string
+  201 createdAt!: string
+  201 fingerprint!: string
+  201 host!: string
+  201 id!: string
+  201 keyType!: string
+  201 port!: integer
+  201 publicKey!: string
+  400
+  401
+  body host!: string
+  body port: integer
+  body publicKey!: string
+POST /api/v1/settings/known-hosts/scan
+  200 items![].fingerprint!: string
+  200 items![].keyType!: string
+  200 items![].publicKey!: string
+  400
+  401
+  502
+  503
+  body host!: string
+  body port: integer
+DELETE /api/v1/settings/known-hosts/{id}
+  200 items![].addedBy!: null|string
+  200 items![].createdAt!: string
+  200 items![].fingerprint!: string
+  200 items![].host!: string
+  200 items![].id!: string
+  200 items![].keyType!: string
+  200 items![].port!: integer
+  200 items![].publicKey!: string
+  401
+  404
+  path id!: string
+GET /api/v1/settings/monitoring
+  200 logStore!.approximateBytes!: number
+  200 logStore!.newestAt!: null|string
+  200 logStore!.oldestAt!: null|string
+  200 logStore!.rows!: integer
+  200 logs!.enabled!: boolean
+  200 logs!.maxSizeMb!: integer
+  200 logs!.retention!: number
+  200 logs!.retentionUnit!: enum(days|hours)
+  200 metrics!.enabled!: boolean
+  200 metrics!.retention!: number
+  200 metrics!.retentionUnit!: enum(days|gb)
+  200 metrics!.scrapeSeconds!: enum(10)
+  200 metrics!.scrapeSeconds!: enum(15)
+  200 metrics!.scrapeSeconds!: enum(30)
+  200 metrics!.scrapeSeconds!: enum(300)
+  200 metrics!.scrapeSeconds!: enum(5)
+  200 metrics!.scrapeSeconds!: enum(60)
+  200 store!.approximateBytes!: number
+  200 store!.newestAt!: null|string
+  200 store!.oldestAt!: null|string
+  200 store!.rows!: integer
+  401
+  403
+PUT /api/v1/settings/monitoring
+  200 logStore!.approximateBytes!: number
+  200 logStore!.newestAt!: null|string
+  200 logStore!.oldestAt!: null|string
+  200 logStore!.rows!: integer
+  200 logs!.enabled!: boolean
+  200 logs!.maxSizeMb!: integer
+  200 logs!.retention!: number
+  200 logs!.retentionUnit!: enum(days|hours)
+  200 metrics!.enabled!: boolean
+  200 metrics!.retention!: number
+  200 metrics!.retentionUnit!: enum(days|gb)
+  200 metrics!.scrapeSeconds!: enum(10)
+  200 metrics!.scrapeSeconds!: enum(15)
+  200 metrics!.scrapeSeconds!: enum(30)
+  200 metrics!.scrapeSeconds!: enum(300)
+  200 metrics!.scrapeSeconds!: enum(5)
+  200 metrics!.scrapeSeconds!: enum(60)
+  200 store!.approximateBytes!: number
+  200 store!.newestAt!: null|string
+  200 store!.oldestAt!: null|string
+  200 store!.rows!: integer
+  400
+  401
+  403
+  body logs!.enabled!: boolean
+  body logs!.maxSizeMb!: integer
+  body logs!.retention!: number
+  body logs!.retentionUnit!: enum(days|hours)
+  body metrics!.enabled!: boolean
+  body metrics!.retention!: number
+  body metrics!.retentionUnit!: enum(days|gb)
+  body metrics!.scrapeSeconds!: enum(10)
+  body metrics!.scrapeSeconds!: enum(15)
+  body metrics!.scrapeSeconds!: enum(30)
+  body metrics!.scrapeSeconds!: enum(300)
+  body metrics!.scrapeSeconds!: enum(5)
+  body metrics!.scrapeSeconds!: enum(60)
+GET /api/v1/storage-providers
+  200 oauthRedirectUrl!: string
+  200 providers![].builtIn!: boolean
+  200 providers![].config!.accessKeyId!: string
+  200 providers![].config!.account!: null|string
+  200 providers![].config!.bucket!: string
+  200 providers![].config!.clientId!: string
+  200 providers![].config!.endpoint!: null|string
+  200 providers![].config!.host!: string
+  200 providers![].config!.hostKey!: null|string
+  200 providers![].config!.kind!: enum(aws-s3|backblaze-b2|cloudflare-r2|digitalocean-spaces|generic-s3|wasabi)
+  200 providers![].config!.kind!: enum(dropbox|google-drive)
+  200 providers![].config!.kind!: enum(ftp)
+  200 providers![].config!.kind!: enum(local)
+  200 providers![].config!.kind!: enum(sftp)
+  200 providers![].config!.path!: string
+  200 providers![].config!.port!: integer
+  200 providers![].config!.prefix!: string
+  200 providers![].config!.region!: string
+  200 providers![].config!.rootPath!: string
+  200 providers![].config!.storageClass!: null|string
+  200 providers![].config!.tls!: boolean
+  200 providers![].config!.username!: string
+  200 providers![].createdAt!: string
+  200 providers![].id!: string
+  200 providers![].kind!: enum(aws-s3|backblaze-b2|cloudflare-r2|digitalocean-spaces|dropbox|ftp|generic-s3|google-drive|local|sftp|wasabi)
+  200 providers![].lastCheckAt!: null|string
+  200 providers![].lastCheckError!: null|string
+  200 providers![].location!: string
+  200 providers![].name!: string
+  200 providers![].offHost!: boolean
+  200 providers![].requiredPermissions![]: string
+  200 providers![].status!: enum(disconnected|ready)
+  200 providers![].updatedAt!: string
+  200 providers![].usedBy!: integer
+  401
+  403
+POST /api/v1/storage-providers
+  201 builtIn!: boolean
+  201 config!.accessKeyId!: string
+  201 config!.account!: null|string
+  201 config!.bucket!: string
+  201 config!.clientId!: string
+  201 config!.endpoint!: null|string
+  201 config!.host!: string
+  201 config!.hostKey!: null|string
+  201 config!.kind!: enum(aws-s3|backblaze-b2|cloudflare-r2|digitalocean-spaces|generic-s3|wasabi)
+  201 config!.kind!: enum(dropbox|google-drive)
+  201 config!.kind!: enum(ftp)
+  201 config!.kind!: enum(local)
+  201 config!.kind!: enum(sftp)
+  201 config!.path!: string
+  201 config!.port!: integer
+  201 config!.prefix!: string
+  201 config!.region!: string
+  201 config!.rootPath!: string
+  201 config!.storageClass!: null|string
+  201 config!.tls!: boolean
+  201 config!.username!: string
+  201 createdAt!: string
+  201 id!: string
+  201 kind!: enum(aws-s3|backblaze-b2|cloudflare-r2|digitalocean-spaces|dropbox|ftp|generic-s3|google-drive|local|sftp|wasabi)
+  201 lastCheckAt!: null|string
+  201 lastCheckError!: null|string
+  201 location!: string
+  201 name!: string
+  201 offHost!: boolean
+  201 requiredPermissions![]: string
+  201 status!: enum(disconnected|ready)
+  201 updatedAt!: string
+  201 usedBy!: integer
+  400
+  401
+  403
+  409
+  body accessKeyId!: string
+  body bucket!: string
+  body clientId!: string
+  body clientSecret!: string
+  body endpoint: string
+  body host!: string
+  body kind!: enum(aws-s3)
+  body kind!: enum(backblaze-b2)
+  body kind!: enum(cloudflare-r2)
+  body kind!: enum(digitalocean-spaces)
+  body kind!: enum(dropbox)
+  body kind!: enum(ftp)
+  body kind!: enum(generic-s3)
+  body kind!: enum(google-drive)
+  body kind!: enum(local)
+  body kind!: enum(sftp)
+  body kind!: enum(wasabi)
+  body name!: string
+  body password!: string
+  body path!: string
+  body port: integer|null
+  body prefix: null|string
+  body region!: string
+  body rootPath: null|string
+  body secretAccessKey!: string
+  body storageClass: string
+  body tls: boolean
+  body username!: string
+GET /api/v1/storage-providers/oauth/callback
+  302
+  query code: string
+  query error: string
+  query state: string
+GET /api/v1/storage-providers/options
+  200 options![].id!: string
+  200 options![].kind!: enum(aws-s3|backblaze-b2|cloudflare-r2|digitalocean-spaces|dropbox|ftp|generic-s3|google-drive|local|sftp|wasabi)
+  200 options![].name!: string
+  200 options![].offHost!: boolean
+  401
+DELETE /api/v1/storage-providers/{id}
+  200 id!: string
+  401
+  403
+  404
+  409
+  path id!: string
+PUT /api/v1/storage-providers/{id}
+  200 builtIn!: boolean
+  200 config!.accessKeyId!: string
+  200 config!.account!: null|string
+  200 config!.bucket!: string
+  200 config!.clientId!: string
+  200 config!.endpoint!: null|string
+  200 config!.host!: string
+  200 config!.hostKey!: null|string
+  200 config!.kind!: enum(aws-s3|backblaze-b2|cloudflare-r2|digitalocean-spaces|generic-s3|wasabi)
+  200 config!.kind!: enum(dropbox|google-drive)
+  200 config!.kind!: enum(ftp)
+  200 config!.kind!: enum(local)
+  200 config!.kind!: enum(sftp)
+  200 config!.path!: string
+  200 config!.port!: integer
+  200 config!.prefix!: string
+  200 config!.region!: string
+  200 config!.rootPath!: string
+  200 config!.storageClass!: null|string
+  200 config!.tls!: boolean
+  200 config!.username!: string
+  200 createdAt!: string
+  200 id!: string
+  200 kind!: enum(aws-s3|backblaze-b2|cloudflare-r2|digitalocean-spaces|dropbox|ftp|generic-s3|google-drive|local|sftp|wasabi)
+  200 lastCheckAt!: null|string
+  200 lastCheckError!: null|string
+  200 location!: string
+  200 name!: string
+  200 offHost!: boolean
+  200 requiredPermissions![]: string
+  200 status!: enum(disconnected|ready)
+  200 updatedAt!: string
+  200 usedBy!: integer
+  400
+  401
+  403
+  404
+  409
+  body accessKeyId!: string
+  body bucket!: string
+  body endpoint: string
+  body host!: string
+  body kind!: enum(aws-s3)
+  body kind!: enum(backblaze-b2)
+  body kind!: enum(cloudflare-r2)
+  body kind!: enum(digitalocean-spaces)
+  body kind!: enum(dropbox)
+  body kind!: enum(ftp)
+  body kind!: enum(generic-s3)
+  body kind!: enum(google-drive)
+  body kind!: enum(local)
+  body kind!: enum(sftp)
+  body kind!: enum(wasabi)
+  body name!: string
+  body password: string
+  body path!: string
+  body port: integer|null
+  body prefix: null|string
+  body region!: string
+  body rootPath: null|string
+  body secretAccessKey: string
+  body storageClass: string
+  body tls: boolean
+  body trustNewHostKey: boolean
+  body username!: string
+  path id!: string
+POST /api/v1/storage-providers/{id}/check
+  200 error!: null|string
+  200 ok!: boolean
+  401
+  403
+  404
+  path id!: string
+POST /api/v1/storage-providers/{id}/connect
+  200 authorizationUrl!: string
+  400
+  401
+  403
+  404
+  path id!: string
+POST /api/v1/storage-providers/{id}/disconnect
+  200 builtIn!: boolean
+  200 config!.accessKeyId!: string
+  200 config!.account!: null|string
+  200 config!.bucket!: string
+  200 config!.clientId!: string
+  200 config!.endpoint!: null|string
+  200 config!.host!: string
+  200 config!.hostKey!: null|string
+  200 config!.kind!: enum(aws-s3|backblaze-b2|cloudflare-r2|digitalocean-spaces|generic-s3|wasabi)
+  200 config!.kind!: enum(dropbox|google-drive)
+  200 config!.kind!: enum(ftp)
+  200 config!.kind!: enum(local)
+  200 config!.kind!: enum(sftp)
+  200 config!.path!: string
+  200 config!.port!: integer
+  200 config!.prefix!: string
+  200 config!.region!: string
+  200 config!.rootPath!: string
+  200 config!.storageClass!: null|string
+  200 config!.tls!: boolean
+  200 config!.username!: string
+  200 createdAt!: string
+  200 id!: string
+  200 kind!: enum(aws-s3|backblaze-b2|cloudflare-r2|digitalocean-spaces|dropbox|ftp|generic-s3|google-drive|local|sftp|wasabi)
+  200 lastCheckAt!: null|string
+  200 lastCheckError!: null|string
+  200 location!: string
+  200 name!: string
+  200 offHost!: boolean
+  200 requiredPermissions![]: string
+  200 status!: enum(disconnected|ready)
+  200 updatedAt!: string
+  200 usedBy!: integer
+  400
+  401
+  403
+  404
+  path id!: string
+GET /api/v1/system/info
+  200 serverIp!: null
+  200 serverIp!: string
+  200 simulated!: boolean
+  200 version!: string
+  401
+GET /api/v1/system/storage
+  200 reason!: enum(failed|full|locked|null|read_only)
+  200 since!: null|string
+  200 writable!: boolean
+  401
+GET /api/v1/system/update
+  200 activeVersion!: string
+  200 checkError!: null|string
+  200 checkedAt!: null|string
+  200 checksEnabled!: boolean
+  200 deployedImage!: null|string
+  200 inProgress!.actionId!: null|string
+  200 inProgress!.kind!: enum(rollback|update)
+  200 inProgress!.state!: enum(applying|verifying)
+  200 inProgress!.toVersion!: string
+  200 last!.digest!: null|string
+  200 last!.finishedAt!: null|string
+  200 last!.fromVersion!: string
+  200 last!.kind!: enum(rollback|update)
+  200 last!.message!: null|string
+  200 last!.result!: enum(failed|rolled-back|succeeded)
+  200 last!.sizeBytes!: integer|null
+  200 last!.toVersion!: string
+  200 latest!.image!: string
+  200 latest!.migrations![]: string
+  200 latest!.notes!: string
+  200 latest!.publishedAt!: null|string
+  200 latest!.version!: string
+  200 managed!: boolean
+  200 rollback!.restoresData!: boolean
+  200 rollback!.savedAt!: string
+  200 rollback!.version!: string
+  200 updateAvailable!: boolean
+  401
+  403
+POST /api/v1/system/update
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  403
+  409
+  503
+  body confirm!: string
+  body version!: string
+POST /api/v1/system/update/check
+  200 activeVersion!: string
+  200 checkError!: null|string
+  200 checkedAt!: null|string
+  200 checksEnabled!: boolean
+  200 deployedImage!: null|string
+  200 inProgress!.actionId!: null|string
+  200 inProgress!.kind!: enum(rollback|update)
+  200 inProgress!.state!: enum(applying|verifying)
+  200 inProgress!.toVersion!: string
+  200 last!.digest!: null|string
+  200 last!.finishedAt!: null|string
+  200 last!.fromVersion!: string
+  200 last!.kind!: enum(rollback|update)
+  200 last!.message!: null|string
+  200 last!.result!: enum(failed|rolled-back|succeeded)
+  200 last!.sizeBytes!: integer|null
+  200 last!.toVersion!: string
+  200 latest!.image!: string
+  200 latest!.migrations![]: string
+  200 latest!.notes!: string
+  200 latest!.publishedAt!: null|string
+  200 latest!.version!: string
+  200 managed!: boolean
+  200 rollback!.restoresData!: boolean
+  200 rollback!.savedAt!: string
+  200 rollback!.version!: string
+  200 updateAvailable!: boolean
+  401
+  403
+POST /api/v1/system/update/rollback
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  403
+  409
+  503
+  body confirm!: string
+GET /api/v1/templates
+  200 templates![].category!: enum(automation|communication|data|development|documents|infrastructure|media|monitoring|productivity|security)
+  200 templates![].description!.en!: string
+  200 templates![].description!.fr!: string
+  200 templates![].id!: string
+  200 templates![].instructions.en!: string
+  200 templates![].instructions.fr!: string
+  200 templates![].links[].kind!: enum(docs|source|website)
+  200 templates![].links[].url!: string
+  200 templates![].name!: string
+  200 templates![].params[].default: boolean
+  200 templates![].params[].default: number
+  200 templates![].params[].default: string
+  200 templates![].params[].generate.alphabet: enum(alphanumeric|hex)
+  200 templates![].params[].generate.length: integer
+  200 templates![].params[].help.en!: string
+  200 templates![].params[].help.fr!: string
+  200 templates![].params[].key!: string
+  200 templates![].params[].label!.en!: string
+  200 templates![].params[].label!.fr!: string
+  200 templates![].params[].options[].label!.en!: string
+  200 templates![].params[].options[].label!.fr!: string
+  200 templates![].params[].options[].value!: string
+  200 templates![].params[].required: boolean
+  200 templates![].params[].type: enum(boolean|email|number|secret|select|text|url)
+  200 templates![].secrets[].alphabet: enum(alphanumeric|hex)
+  200 templates![].secrets[].key!: string
+  200 templates![].secrets[].label.en!: string
+  200 templates![].secrets[].label.fr!: string
+  200 templates![].secrets[].length: integer
+  200 templates![].services![].command: null|string
+  200 templates![].services![].databaseName: string
+  200 templates![].services![].dependsOn[]: string
+  200 templates![].services![].domain.child!: string
+  200 templates![].services![].domain.https: boolean
+  200 templates![].services![].domain.path: string
+  200 templates![].services![].domain.port!: integer
+  200 templates![].services![].engine!: enum(mariadb|mongo|mysql|postgres|redis)
+  200 templates![].services![].env: object
+  200 templates![].services![].file!: string
+  200 templates![].services![].image!: string
+  200 templates![].services![].key!: string
+  200 templates![].services![].kind!: enum(app)
+  200 templates![].services![].kind!: enum(compose)
+  200 templates![].services![].kind!: enum(database)
+  200 templates![].services![].mounts[].content!: string
+  200 templates![].services![].mounts[].name!: string
+  200 templates![].services![].mounts[].path!: string
+  200 templates![].services![].mounts[].type!: enum(docker-socket)
+  200 templates![].services![].mounts[].type!: enum(file)
+  200 templates![].services![].mounts[].type!: enum(volume)
+  200 templates![].services![].name!: string
+  200 templates![].services![].ports[].protocol: enum(tcp|udp)
+  200 templates![].services![].ports[].published!: integer
+  200 templates![].services![].ports[].published!: string
+  200 templates![].services![].ports[].target!: integer
+  200 templates![].services![].source!.build.aptPackages: string
+  200 templates![].services![].source!.build.buildAptPackages: string
+  200 templates![].services![].source!.build.buildCommand: string
+  200 templates![].services![].source!.build.builder: string
+  200 templates![].services![].source!.build.deployAptPackages: string
+  200 templates![].services![].source!.build.file: string
+  200 templates![].services![].source!.build.installCommand: string
+  200 templates![].services![].source!.build.misePackages: string
+  200 templates![].services![].source!.build.nixPackages: string
+  200 templates![].services![].source!.build.startCommand: string
+  200 templates![].services![].source!.build.type!: enum(buildpacks)
+  200 templates![].services![].source!.build.type!: enum(dockerfile)
+  200 templates![].services![].source!.build.type!: enum(nixpacks)
+  200 templates![].services![].source!.build.type!: enum(railpack)
+  200 templates![].services![].source!.build.version: string
+  200 templates![].services![].source!.build: null
+  200 templates![].services![].source!.image!: string
+  200 templates![].services![].source!.path: string
+  200 templates![].services![].source!.ref!: string
+  200 templates![].services![].source!.type!: enum(git)
+  200 templates![].services![].source!.type!: enum(image)
+  200 templates![].services![].source!.url!: string
+  200 templates![].services![].startup.expect![]: integer
+  200 templates![].services![].startup.path!: string
+  200 templates![].services![].user: string
+  200 templates![].summary!.en!: string
+  200 templates![].summary!.fr!: string
+  200 templates![].tags[]: string
+  200 templates![].verified: boolean
+  200 templates![].version!: string
+  401
+POST /api/v1/templates/preview
+  200 category!: enum(automation|communication|data|development|documents|infrastructure|media|monitoring|productivity|security)
+  200 description!.en!: string
+  200 description!.fr!: string
+  200 id!: string
+  200 instructions.en!: string
+  200 instructions.fr!: string
+  200 links[].kind!: enum(docs|source|website)
+  200 links[].url!: string
+  200 name!: string
+  200 params[].default: boolean
+  200 params[].default: number
+  200 params[].default: string
+  200 params[].generate.alphabet: enum(alphanumeric|hex)
+  200 params[].generate.length: integer
+  200 params[].help.en!: string
+  200 params[].help.fr!: string
+  200 params[].key!: string
+  200 params[].label!.en!: string
+  200 params[].label!.fr!: string
+  200 params[].options[].label!.en!: string
+  200 params[].options[].label!.fr!: string
+  200 params[].options[].value!: string
+  200 params[].required: boolean
+  200 params[].type: enum(boolean|email|number|secret|select|text|url)
+  200 secrets[].alphabet: enum(alphanumeric|hex)
+  200 secrets[].key!: string
+  200 secrets[].label.en!: string
+  200 secrets[].label.fr!: string
+  200 secrets[].length: integer
+  200 services![].command: null|string
+  200 services![].databaseName: string
+  200 services![].dependsOn[]: string
+  200 services![].domain.child!: string
+  200 services![].domain.https: boolean
+  200 services![].domain.path: string
+  200 services![].domain.port!: integer
+  200 services![].engine!: enum(mariadb|mongo|mysql|postgres|redis)
+  200 services![].env: object
+  200 services![].file!: string
+  200 services![].image!: string
+  200 services![].key!: string
+  200 services![].kind!: enum(app)
+  200 services![].kind!: enum(compose)
+  200 services![].kind!: enum(database)
+  200 services![].mounts[].content!: string
+  200 services![].mounts[].name!: string
+  200 services![].mounts[].path!: string
+  200 services![].mounts[].type!: enum(docker-socket)
+  200 services![].mounts[].type!: enum(file)
+  200 services![].mounts[].type!: enum(volume)
+  200 services![].name!: string
+  200 services![].ports[].protocol: enum(tcp|udp)
+  200 services![].ports[].published!: integer
+  200 services![].ports[].published!: string
+  200 services![].ports[].target!: integer
+  200 services![].source!.build.aptPackages: string
+  200 services![].source!.build.buildAptPackages: string
+  200 services![].source!.build.buildCommand: string
+  200 services![].source!.build.builder: string
+  200 services![].source!.build.deployAptPackages: string
+  200 services![].source!.build.file: string
+  200 services![].source!.build.installCommand: string
+  200 services![].source!.build.misePackages: string
+  200 services![].source!.build.nixPackages: string
+  200 services![].source!.build.startCommand: string
+  200 services![].source!.build.type!: enum(buildpacks)
+  200 services![].source!.build.type!: enum(dockerfile)
+  200 services![].source!.build.type!: enum(nixpacks)
+  200 services![].source!.build.type!: enum(railpack)
+  200 services![].source!.build.version: string
+  200 services![].source!.build: null
+  200 services![].source!.image!: string
+  200 services![].source!.path: string
+  200 services![].source!.ref!: string
+  200 services![].source!.type!: enum(git)
+  200 services![].source!.type!: enum(image)
+  200 services![].source!.url!: string
+  200 services![].startup.expect![]: integer
+  200 services![].startup.path!: string
+  200 services![].user: string
+  200 summary!.en!: string
+  200 summary!.fr!: string
+  200 tags[]: string
+  200 verified: boolean
+  200 version!: string
+  400
+  401
+  body schema!: string
+GET /api/v1/users
+  200 users![].active!: boolean
+  200 users![].apiKeyCount!: integer
+  200 users![].createdAt!: string
+  200 users![].email!: string
+  200 users![].hostAdmin: boolean
+  200 users![].id!: string
+  200 users![].name!: string
+  200 users![].owner!: boolean
+  200 users![].projects![].project!: string
+  200 users![].projects![].role!: enum(operator|viewer)
+  200 users![].role!: enum(admin|member)
+  200 users![].twoFactorEnabled!: boolean
+  401
+  403
+POST /api/v1/users
+  201 active!: boolean
+  201 apiKeyCount!: integer
+  201 createdAt!: string
+  201 email!: string
+  201 hostAdmin: boolean
+  201 id!: string
+  201 name!: string
+  201 owner!: boolean
+  201 projects![].project!: string
+  201 projects![].role!: enum(operator|viewer)
+  201 role!: enum(admin|member)
+  201 twoFactorEnabled!: boolean
+  400
+  401
+  403
+  409
+  body email!: string
+  body password!: string
+  body projects[].project!: string
+  body projects[].role!: enum(operator|viewer)
+  body role: enum(admin|member)
+DELETE /api/v1/users/{user}
+  200 ok!: enum(true)
+  400
+  401
+  403
+  404
+  409
+  body confirm!: string
+  path user!: string
+PUT /api/v1/users/{user}
+  200 active!: boolean
+  200 apiKeyCount!: integer
+  200 createdAt!: string
+  200 email!: string
+  200 hostAdmin: boolean
+  200 id!: string
+  200 name!: string
+  200 owner!: boolean
+  200 projects![].project!: string
+  200 projects![].role!: enum(operator|viewer)
+  200 role!: enum(admin|member)
+  200 twoFactorEnabled!: boolean
+  400
+  401
+  403
+  404
+  409
+  body email!: string
+  body hostAdmin: boolean
+  body password: string
+  body projects![].project!: string
+  body projects![].role!: enum(operator|viewer)
+  body role!: enum(admin|member)
+  path user!: string
+POST /api/v1/users/{user}/active
+  200 active!: boolean
+  200 apiKeyCount!: integer
+  200 createdAt!: string
+  200 email!: string
+  200 hostAdmin: boolean
+  200 id!: string
+  200 name!: string
+  200 owner!: boolean
+  200 projects![].project!: string
+  200 projects![].role!: enum(operator|viewer)
+  200 role!: enum(admin|member)
+  200 twoFactorEnabled!: boolean
+  400
+  401
+  403
+  404
+  409
+  body active!: boolean
+  path user!: string
+GET /api/v1/users/{user}/api-keys
+  200 keys![].createdAt!: string
+  200 keys![].expiresAt!: string
+  200 keys![].id!: string
+  200 keys![].lastUsedAt!: null|string
+  200 keys![].level!: enum(read|write)
+  200 keys![].name!: string
+  200 keys![].prefix!: string
+  200 keys![].projects!: array|null
+  400
+  401
+  403
+  404
+  path user!: string
+DELETE /api/v1/users/{user}/api-keys/{key}
+  200 ok!: enum(true)
+  400
+  401
+  403
+  404
+  path key!: string
+  path user!: string

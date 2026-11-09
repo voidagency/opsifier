@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `sealed_retired` text;

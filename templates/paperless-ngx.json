@@ -1,0 +1,143 @@
+{
+  "id": "paperless-ngx",
+  "version": "1.0.0",
+  "name": "Paperless-ngx",
+  "summary": {
+    "en": "Scan your paper and find it again in seconds.",
+    "fr": "Numérisez votre papier et retrouvez-le en quelques secondes."
+  },
+  "description": {
+    "en": "OCR, tagging and full-text search for every document you own. The first start applies its database migrations and takes a little while.",
+    "fr": "Reconnaissance de texte, classement et recherche plein texte pour tous vos documents. Le premier démarrage applique ses migrations et prend un moment."
+  },
+  "instructions": {
+    "en": "Sign in as {{params.adminUser}} with the password shown below.",
+    "fr": "Connectez-vous avec {{params.adminUser}} et le mot de passe affiché ci-dessous."
+  },
+  "category": "documents",
+  "tags": ["documents", "ocr", "archive"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://docs.paperless-ngx.com"
+    },
+    {
+      "kind": "docs",
+      "url": "https://docs.paperless-ngx.com/setup/"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/paperless-ngx/paperless-ngx"
+    }
+  ],
+  "verified": false,
+  "params": [
+    {
+      "key": "adminUser",
+      "label": {
+        "en": "Admin user",
+        "fr": "Utilisateur administrateur"
+      },
+      "type": "text",
+      "required": true,
+      "default": "admin"
+    },
+    {
+      "key": "adminPassword",
+      "label": {
+        "en": "Admin password",
+        "fr": "Mot de passe administrateur"
+      },
+      "type": "secret",
+      "required": false,
+      "help": {
+        "en": "Leave empty to generate one.",
+        "fr": "Laissez vide pour en générer un."
+      },
+      "generate": {
+        "length": 24,
+        "alphabet": "alphanumeric"
+      }
+    }
+  ],
+  "secrets": [
+    {
+      "key": "secretKey",
+      "length": 64,
+      "alphabet": "hex"
+    }
+  ],
+  "services": [
+    {
+      "key": "db",
+      "name": "paperless-db",
+      "kind": "database",
+      "engine": "postgres",
+      "image": "postgres:17.11-alpine",
+      "databaseName": "paperless",
+      "user": "paperless"
+    },
+    {
+      "key": "cache",
+      "name": "paperless-cache",
+      "kind": "database",
+      "engine": "redis",
+      "image": "redis:8.8.4-alpine"
+    },
+    {
+      "key": "app",
+      "name": "paperless-ngx",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "ghcr.io/paperless-ngx/paperless-ngx:3.4.2"
+      },
+      "env": {
+        "PAPERLESS_REDIS": "{{services.cache.url}}",
+        "PAPERLESS_DBENGINE": "postgresql",
+        "PAPERLESS_DBHOST": "{{services.db.host}}",
+        "PAPERLESS_DBPORT": "{{services.db.port}}",
+        "PAPERLESS_DBNAME": "{{services.db.database}}",
+        "PAPERLESS_DBUSER": "{{services.db.user}}",
+        "PAPERLESS_DBPASS": "{{services.db.password}}",
+        "PAPERLESS_SECRET_KEY": "{{secrets.secretKey}}",
+        "PAPERLESS_ADMIN_USER": "{{params.adminUser}}",
+        "PAPERLESS_ADMIN_PASSWORD": "{{params.adminPassword}}",
+        "PAPERLESS_URL": "{{services.app.url}}"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/usr/src/paperless/data"
+        },
+        {
+          "type": "volume",
+          "name": "media",
+          "path": "/usr/src/paperless/media"
+        },
+        {
+          "type": "volume",
+          "name": "export",
+          "path": "/usr/src/paperless/export"
+        },
+        {
+          "type": "volume",
+          "name": "consume",
+          "path": "/usr/src/paperless/consume"
+        }
+      ],
+      "domain": {
+        "port": 8000,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/",
+        "expect": [200, 302]
+      },
+      "dependsOn": ["db", "cache"]
+    }
+  ]
+}

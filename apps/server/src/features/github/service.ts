@@ -1,19 +1,56 @@
-import type { GithubBranchList, GithubRepositoryList, GithubStatus } from "@opsifier/contract";
+import { randomBytes } from "node:crypto";
+import {
+  type GithubBranchList,
+  type GithubOauthStart,
+  type GithubRepositoryList,
+  type GithubStatus,
+  githubOauthCallbackPath,
+  type SaveGithubOauthAppRequest,
+} from "@opsifier/contract";
 import type { AppDeps } from "../../core/context";
-import { AppError, badRequest } from "../../core/errors";
+import { AppError, badRequest, forbidden } from "../../core/errors";
 import { getSetting, putSetting } from "../system/repo";
-import { fetchLogin, GithubError, listBranches, listRepositories } from "./client";
+import {
+  exchangeOauthCode,
+  fetchLogin,
+  GithubError,
+  listBranches,
+  listRepositories,
+  oauthAuthorizeUrl,
+  revokeOauthGrant,
+} from "./client";
 import { deleteSetting } from "./repo";
 
 const TOKEN_KEY = "github_token";
 const TOKEN_CONTEXT = "github-token";
+const OAUTH_APP_KEY = "github_oauth_app";
+const OAUTH_APP_CONTEXT = "github-oauth-app";
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const MAX_PENDING_CONNECTIONS = 16;
 const MAX_RESULTS = 30;
 
 interface StoredToken {
   sealed: string;
   login: string;
   updatedAt: string;
+  /** Left out of tokens saved before there was another way to get one. */
+  method?: "token" | "oauth";
 }
+
+interface StoredOauthApp {
+  clientId: string;
+  sealedSecret: string;
+  updatedAt: string;
+}
+
+/** A grant someone has started, valid for one trip to GitHub and back. */
+interface PendingConnection {
+  redirectUri: string;
+  actorEmail: string | undefined;
+  expiresAt: number;
+}
+
+const pendingConnections = new Map<string, PendingConnection>();
 
 function readStored(deps: Pick<AppDeps, "db">): StoredToken | null {
   return (getSetting(deps.db, TOKEN_KEY) as StoredToken | undefined) ?? null;
@@ -28,12 +65,19 @@ export function getGithubToken(deps: Pick<AppDeps, "db" | "secrets">): string | 
   return stored === null ? null : deps.secrets.unseal(stored.sealed, TOKEN_CONTEXT);
 }
 
+function readOauthApp(deps: Pick<AppDeps, "db">): StoredOauthApp | null {
+  return (getSetting(deps.db, OAUTH_APP_KEY) as StoredOauthApp | undefined) ?? null;
+}
+
 export function getGithubStatus(deps: Pick<AppDeps, "db">): GithubStatus {
   const stored = readStored(deps);
+  const app = readOauthApp(deps);
   return {
     configured: stored !== null,
     login: stored?.login ?? null,
     updatedAt: stored?.updatedAt ?? null,
+    method: stored === null ? null : (stored.method ?? "token"),
+    oauthApp: app === null ? null : { clientId: app.clientId },
   };
 }
 
@@ -53,25 +97,151 @@ export async function saveGithubToken(
       token: "GitHub did not accept this token",
     });
   }
+  storeToken(deps, token, login, "token");
+  return getGithubStatus(deps);
+}
+
+function storeToken(
+  deps: Pick<AppDeps, "db" | "secrets" | "now">,
+  token: string,
+  login: string,
+  method: "token" | "oauth",
+): void {
   const updatedAt = new Date(deps.now());
   const stored: StoredToken = {
     sealed: deps.secrets.seal(token, TOKEN_CONTEXT),
     login,
     updatedAt: updatedAt.toISOString(),
+    method,
   };
   putSetting(deps.db, TOKEN_KEY, stored, updatedAt);
+}
+
+/** Forgets the token. One granted through the OAuth app is also given back, as far as GitHub will allow. */
+export async function removeGithubToken(
+  deps: Pick<AppDeps, "db" | "secrets" | "logger">,
+): Promise<GithubStatus> {
+  const stored = readStored(deps);
+  const app = readOauthApp(deps);
+  if (stored?.method === "oauth" && app !== null) {
+    try {
+      await revokeOauthGrant(
+        app.clientId,
+        deps.secrets.unseal(app.sealedSecret, OAUTH_APP_CONTEXT),
+        deps.secrets.unseal(stored.sealed, TOKEN_CONTEXT),
+      );
+    } catch (error) {
+      deps.logger.warn({ err: error }, "Could not give the GitHub grant back");
+    }
+  }
+  deleteSetting(deps.db, TOKEN_KEY);
   return getGithubStatus(deps);
 }
 
-export function removeGithubToken(deps: Pick<AppDeps, "db">): GithubStatus {
-  deleteSetting(deps.db, TOKEN_KEY);
+/** Saves the OAuth app the owner registered on GitHub. Its secret never leaves the server again. */
+export function saveOauthApp(
+  deps: Pick<AppDeps, "db" | "secrets" | "now">,
+  input: SaveGithubOauthAppRequest,
+): GithubStatus {
+  const updatedAt = new Date(deps.now());
+  const stored: StoredOauthApp = {
+    clientId: input.clientId,
+    sealedSecret: deps.secrets.seal(input.clientSecret, OAUTH_APP_CONTEXT),
+    updatedAt: updatedAt.toISOString(),
+  };
+  putSetting(deps.db, OAUTH_APP_KEY, stored, updatedAt);
   return getGithubStatus(deps);
+}
+
+export function removeOauthApp(deps: Pick<AppDeps, "db">): GithubStatus {
+  deleteSetting(deps.db, OAUTH_APP_KEY);
+  return getGithubStatus(deps);
+}
+
+/** The address of GitHub's consent screen, good for one attempt within ten minutes. */
+export function startOauthConnection(
+  deps: Pick<AppDeps, "db" | "now">,
+  origin: string,
+  actorEmail: string | undefined,
+): GithubOauthStart {
+  const app = readOauthApp(deps);
+  if (app === null) {
+    throw badRequest("github_oauth_app_missing", "Save a GitHub OAuth app first.");
+  }
+  const now = deps.now();
+  for (const [key, value] of pendingConnections) {
+    if (value.expiresAt <= now) {
+      pendingConnections.delete(key);
+    }
+  }
+  while (pendingConnections.size >= MAX_PENDING_CONNECTIONS) {
+    pendingConnections.delete(pendingConnections.keys().next().value as string);
+  }
+  const state = randomBytes(32).toString("base64url");
+  const redirectUri = `${origin}${githubOauthCallbackPath}`;
+  pendingConnections.set(state, { redirectUri, actorEmail, expiresAt: now + OAUTH_STATE_TTL_MS });
+  return { authorizationUrl: oauthAuthorizeUrl(app.clientId, redirectUri, state) };
+}
+
+export type OauthFailure = "invalid_state" | "denied" | "not_configured" | "exchange_failed";
+
+/**
+ * Where GitHub sends the browser back to, with nothing but what it was given. The state is what proves
+ * that this is the answer to a grant the panel itself started, and it only works once.
+ */
+export async function completeOauthConnection(
+  deps: Pick<AppDeps, "db" | "secrets" | "now" | "logger" | "actions">,
+  query: { state?: string; code?: string; error?: string },
+): Promise<{ ok: true } | { ok: false; reason: OauthFailure }> {
+  const pending = query.state === undefined ? undefined : pendingConnections.get(query.state);
+  if (query.state !== undefined) {
+    pendingConnections.delete(query.state);
+  }
+  if (pending === undefined || pending.expiresAt <= deps.now()) {
+    return { ok: false, reason: "invalid_state" };
+  }
+  if (query.error !== undefined || query.code === undefined) {
+    return { ok: false, reason: "denied" };
+  }
+  const app = readOauthApp(deps);
+  if (app === null) {
+    return { ok: false, reason: "not_configured" };
+  }
+  try {
+    const token = await exchangeOauthCode(
+      app.clientId,
+      deps.secrets.unseal(app.sealedSecret, OAUTH_APP_CONTEXT),
+      query.code,
+      pending.redirectUri,
+    );
+    storeToken(deps, token, await fetchLogin(token), "oauth");
+  } catch (error) {
+    deps.logger.warn({ err: error }, "A GitHub connection could not be completed");
+    return { ok: false, reason: "exchange_failed" };
+  }
+  deps.actions.record({ type: "github.connect", title: "Connect GitHub", actorEmail: pending.actorEmail });
+  return { ok: true };
 }
 
 export function requireGithubToken(deps: Pick<AppDeps, "db" | "secrets">): string {
   const token = getGithubToken(deps);
   if (token === null) {
     throw badRequest("github_token_missing", "Save a GitHub token in Settings first.");
+  }
+  return token;
+}
+
+/** What the panel's token may do for this service: read and manage the one repository it was granted. */
+export function requireTokenFor(
+  deps: Pick<AppDeps, "db" | "secrets">,
+  source: { repository: string; tokenRepository: string | null },
+): string {
+  const token = requireGithubToken(deps);
+  if (source.tokenRepository?.toLowerCase() !== source.repository.toLowerCase()) {
+    throw forbidden(
+      "github_token_not_granted",
+      "An administrator has to save this source before the panel's GitHub token can be used for this repository.",
+    );
   }
   return token;
 }

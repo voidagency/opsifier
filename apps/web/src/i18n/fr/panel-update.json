@@ -1,0 +1,61 @@
+{
+  "details": {
+    "open": "Détails de la version",
+    "title": "Version du panneau",
+    "active": "En cours d'exécution",
+    "deployed": "Prévue",
+    "unmanaged": "Non géré par Swarm ici",
+    "checked": "Dernière vérification",
+    "neverChecked": "Pas encore",
+    "last": "Dernière mise à jour"
+  },
+  "outcome": {
+    "update": {
+      "succeeded": "Mis à jour de {{from}} vers {{to}}",
+      "failed": "Échec de la mise à jour vers {{to}}",
+      "rolled-back": "Retour à {{from}} après l'échec de {{to}}"
+    },
+    "rollback": {
+      "succeeded": "Retour de {{from}} à {{to}}",
+      "failed": "Impossible de revenir à {{to}}",
+      "rolled-back": "Impossible de revenir à {{to}}"
+    }
+  },
+  "check": {
+    "action": "Rechercher des mises à jour",
+    "checking": "Recherche de mises à jour…",
+    "none": "Aucune mise à jour disponible",
+    "available": "La version {{version}} est disponible",
+    "failed": "La recherche de mises à jour a échoué"
+  },
+  "update": {
+    "action": "Mettre à jour vers {{version}}",
+    "title": "Mettre à jour vers la version {{version}}",
+    "description": "Ceci remplace la version {{current}}. Le panneau redémarre pendant l'opération : vos services continuent de fonctionner.",
+    "confirm": "Mettre à jour le panneau",
+    "noNotes": "Cette version n'a pas de notes.",
+    "migrations": "Modifications des données",
+    "safety": "La base de données et la clé du panneau sont d'abord sauvegardées. Si la nouvelle version ne démarre pas, Swarm rétablit l'ancienne et les données sauvegardées sont restaurées."
+  },
+  "rollback": {
+    "open": "Revenir à {{version}}",
+    "explain": "La version {{version}} peut être rétablie. Vos données restent telles quelles.",
+    "explainData": "La version {{version}} peut être rétablie, avec les données sauvegardées le {{at}}.",
+    "title": "Revenir à la version {{version}}",
+    "description": "Le panneau redémarre sur la version précédente. Vos données restent telles quelles et vos services continuent de fonctionner.",
+    "descriptionData": "Ceci restaure aussi les données sauvegardées le {{at}} : les modifications faites depuis dans le panneau sont perdues. Vos services continuent de fonctionner.",
+    "confirm": "Revenir en arrière"
+  },
+  "restart": {
+    "title": "Mise à jour vers {{version}}",
+    "progress": "En cours",
+    "applying": "Sauvegarde des données du panneau et démarrage de {{version}}…",
+    "verifying": "La version {{version}} a démarré. Vérification de sa stabilité…",
+    "explain": "Le panneau redémarre pendant l'opération et cette page se reconnecte d'elle-même. Vos services continuent de fonctionner."
+  },
+  "result": {
+    "success": "Le panneau est en version {{version}}",
+    "failure": "La version {{version}} n'a pas démarré. Le panneau est revenu à {{active}}.",
+    "notStarted": "La mise à jour n'a pas pu démarrer"
+  }
+}

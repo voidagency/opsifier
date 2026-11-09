@@ -1,0 +1,70 @@
+{
+  "tabs": {
+    "label": "Box tabs",
+    "overview": "Overview",
+    "modules": "Modules",
+    "processes": "Processes",
+    "hooks": "Hooks",
+    "ide": "IDE",
+    "deployments": "Deployments",
+    "environment": "Environment",
+    "domains": "Domains",
+    "redirects": "Redirects",
+    "scripts": "Scripts",
+    "security": "Security",
+    "resources": "Resources",
+    "maintenance": "Maintenance",
+    "storage": "Storage"
+  },
+  "create": {
+    "title": "Add a box",
+    "description": "Choose runtimes and processes for it in {{project}}.",
+    "submit": "Add box",
+    "created": "{{name}} is ready to set up",
+    "preset": "Start from",
+    "presetHint": "Sets up modules, processes and hooks. Your files are never replaced.",
+    "noPreset": "Nothing, I'll choose"
+  },
+  "presets": {
+    "static-site": {
+      "name": "Static site",
+      "hint": "A web server, serving a folder of the workspace."
+    },
+    "node-service": {
+      "name": "Node.js service",
+      "hint": "A Node.js process, listening on the service's port."
+    },
+    "php-site": {
+      "name": "PHP site",
+      "hint": "PHP behind a web server, with Composer and OPcache."
+    },
+    "python-service": {
+      "name": "Python service",
+      "hint": "A Python process in a virtual environment."
+    },
+    "ruby-service": {
+      "name": "Ruby service",
+      "hint": "A Ruby process, with its gems in the workspace."
+    }
+  },
+  "overview": {
+    "running": "Processes",
+    "noProcesses": "No processes yet. Add one on the Processes tab, or enable a web server on the Modules tab.",
+    "howItRuns": "How this box runs",
+    "identity": {
+      "title": "Who it runs as",
+      "body": "Everything in a box runs as the user {{user}} (uid {{uid}}, gid {{gid}}), never as root. The build hook is the one exception: it runs as root while the image is built."
+    },
+    "storage": {
+      "title": "What is kept",
+      "body": "Only {{path}} is kept across deploys and rebuilds. It is the box's workspace, a volume of this service. Anything else in the container is replaced at every deploy."
+    },
+    "ide": {
+      "title": "How the IDE is reached",
+      "off": "The browser IDE is turned off, so nothing can open this box's files.",
+      "no_token": "The browser IDE is on, but no token exists yet, so nothing can get in.",
+      "expired": "The browser IDE's token has expired, so nothing can get in until a new one is issued.",
+      "open": "The browser IDE is open to whoever holds its token, for the workspace's files and nothing else."
+    }
+  }
+}

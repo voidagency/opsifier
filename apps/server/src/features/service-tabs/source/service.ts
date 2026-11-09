@@ -9,24 +9,31 @@ import {
   type BuildConfig,
   type EnvFileSettings,
   isBuildableSourceType,
+  isSshRemote,
   MAX_UPLOAD_BYTES,
+  type SaveEnvFileRequest,
   type SaveSourceRequest,
   type ServiceSource,
   type SourceSettings,
+  type SshKeyTestResult,
   type UploadSourceQuery,
 } from "@opsifier/contract";
 import type { AppDeps } from "../../../core/context";
-import { AppError, badRequest } from "../../../core/errors";
+import { AppError, badRequest, conflict, notFound } from "../../../core/errors";
 import { ToolNotFoundError } from "../../../core/tools";
 import { deleteRepositoryHook } from "../../github/hooks";
 import { isGithubConfigured } from "../../github/service";
+import { isHostKnown } from "../../known-hosts/service";
+import { type RetiredValue, SECRET_VALUE, sealRetired } from "../../services/env-store";
 import { type ServiceRecord, saveServiceSpec } from "../../services/repo";
 import { requireService, type ServiceTarget } from "../../services/service";
 import { REGISTRY_PASSWORD_CONTEXT } from "../../services/spec";
 import { inspectArchive, UnsafeArchiveError } from "./build/archive";
-import { probeRemote } from "./build/git";
+import { type GitFailureKind, type ProbeResult, probeRemote } from "./build/git";
 import { gitRemoteOf, uploadedArchive } from "./build/pipeline";
-import { generateSshKeyPair } from "./build/ssh-key";
+import { generateSshKeyPair, sshFingerprint } from "./build/ssh-key";
+import { gitSourceOf, imageRepositoryOf, repositoryKey, sourceIdentity, sshHostOf } from "./identity";
+import { claimDeployKey } from "./key-binding";
 import { toPublicSource } from "./public";
 import {
   SSH_KEY_CONTEXT,
@@ -44,6 +51,14 @@ export function getSourceSettings(deps: AppDeps, target: ServiceTarget): SourceS
     source: source === null ? null : toPublicSource(source),
     build: build.config,
     sshPublicKey: build.sshKey?.publicKey ?? null,
+    sshKey:
+      build.sshKey === null
+        ? null
+        : {
+            fingerprint: sshFingerprint(build.sshKey.publicKey),
+            boundTo: build.sshKey.boundTo,
+            createdAt: build.sshKey.createdAt,
+          },
     githubConfigured: isGithubConfigured(deps),
   };
 }
@@ -53,7 +68,10 @@ const invalid = (fields: Record<string, string>) =>
 
 type ImageRequest = Extract<SaveSourceRequest, { image: string }>;
 
-/** Works out what to store: a new password, the one already sealed, or none at all. */
+/**
+ * Works out what to store: a new password, the one already sealed, or none at all. A sealed password
+ * was given for one image repository, so it does not follow the source to another.
+ */
 function resolveCredentials(
   deps: AppDeps,
   previous: StoredSource | null,
@@ -74,38 +92,139 @@ function resolveCredentials(
   if (previous?.type !== "image" || previous.sealedPassword === null) {
     throw invalid({ password: "Required with a username" });
   }
+  if (imageRepositoryOf(previous.image) !== imageRepositoryOf(request.image)) {
+    throw invalid({ password: "Enter the password for this repository again" });
+  }
   return { username, sealedPassword: previous.sealedPassword };
 }
 
-/** Git's own explanation goes in as `reason`, so a person can see what to fix. */
+/**
+ * What an SSH address needs before anything is sent to it: a server the registry knows, and a deploy
+ * key free for this repository. Returns the build state with the key tied to it, the first time.
+ */
+export function prepareSshAccess(
+  deps: Pick<AppDeps, "db">,
+  url: string,
+  build: StoredBuildState,
+): StoredBuildState {
+  if (!isSshRemote(url)) {
+    return build;
+  }
+  const { host, port } = sshHostOf(url);
+  if (!isHostKnown(deps, host, port)) {
+    throw badRequest(
+      "ssh_host_unknown",
+      `Opsifier does not know the identity of ${host}. An administrator can add it under Settings, Known hosts.`,
+      { url: "This server's identity is not on the list of known hosts" },
+    );
+  }
+  const key = build.sshKey;
+  if (key === null) {
+    return build;
+  }
+  const repository = repositoryKey(url);
+  if (key.boundTo !== null && key.boundTo !== repository) {
+    throw badRequest(
+      "ssh_key_bound",
+      `This service's deploy key is tied to ${key.boundTo}. Delete it and generate a new one to use another repository.`,
+      { url: "The deploy key is tied to another repository" },
+    );
+  }
+  return { ...build, sshKey: { ...key, boundTo: repository } };
+}
+
+/** The binding decided a moment ago, on whichever key is current by now. */
+export function withKeyBinding(build: StoredBuildState, bound: StoredBuildState["sshKey"]): StoredBuildState {
+  if (build.sshKey === null || bound === null || build.sshKey.boundTo !== null) {
+    return build;
+  }
+  return { ...build, sshKey: { ...build.sshKey, boundTo: bound.boundTo } };
+}
+
+const PROBE_REFUSALS: Record<Exclude<GitFailureKind, "ref-missing">, { code: string; message: string }> = {
+  access: {
+    code: "repository_access_denied",
+    message:
+      "This repository refused access, or isn't at that address. Check the address, and that the deploy key or GitHub token can read it, then save again.",
+  },
+  network: {
+    code: "repository_unreachable",
+    message: "This repository could not be reached. Check that this server can reach it, then save again.",
+  },
+  size: {
+    code: "repository_too_large",
+    message: "This repository is too large to fetch. Remove large files from it, then save again.",
+  },
+  unreachable: {
+    code: "repository_unreachable",
+    message: "Opsifier could not read this repository. Check the address and its access rights.",
+  },
+};
+
+/** What a failed probe answers. Git's own explanation goes in as `reason`, so a person can see what to fix. */
+export function probeRefusal(result: Extract<ProbeResult, { ok: false }>): AppError {
+  if (result.reason === "ref-missing") {
+    return badRequest(
+      "ref_not_found",
+      "This repository has no branch, tag or commit with that name. Choose one that exists, then save again.",
+      {
+        ref: "No branch, tag or commit with this name",
+      },
+    );
+  }
+  const refusal = PROBE_REFUSALS[result.reason];
+  return badRequest(
+    refusal.code,
+    refusal.message,
+    result.detail === "" ? undefined : { reason: result.detail },
+  );
+}
+
+/** Checks a source can be read before it is saved, in the same words it would be refused later on. */
 async function assertReachable(
   deps: AppDeps,
-  target: ServiceTarget,
   source: StoredGithubSource | StoredGitSource,
   build: StoredBuildState,
 ): Promise<void> {
   let result: Awaited<ReturnType<typeof probeRemote>>;
   try {
-    result = await probeRemote(deps, gitRemoteOf(deps, target, source, build), source.ref);
+    result = await probeRemote(deps, gitRemoteOf(deps, source, build), source.ref);
   } catch (error) {
     if (error instanceof ToolNotFoundError) {
       throw new AppError(503, "git_unavailable", "git is not installed on this server.");
     }
     throw error;
   }
-  if (result.ok) {
-    return;
+  if (!result.ok) {
+    throw probeRefusal(result);
   }
-  if (result.reason === "ref-missing") {
-    throw badRequest("ref_not_found", "This repository has no branch, tag or commit with that name.", {
-      ref: "No branch, tag or commit with this name",
+}
+
+/** A registry password or a deploy key that is being replaced goes on being hidden from output. */
+function replacedCredentials(
+  deps: AppDeps,
+  record: ServiceRecord,
+  change: { source?: StoredSource | null; build?: StoredBuildState },
+): RetiredValue[] {
+  const gone: RetiredValue[] = [];
+  const before = record.spec.source;
+  const after = change.source === undefined ? before : change.source;
+  if (
+    before?.type === "image" &&
+    before.sealedPassword !== null &&
+    (after?.type !== "image" || after.sealedPassword !== before.sealedPassword)
+  ) {
+    gone.push({
+      name: SECRET_VALUE,
+      value: deps.secrets.unseal(before.sealedPassword, REGISTRY_PASSWORD_CONTEXT),
     });
   }
-  throw badRequest(
-    "repository_unreachable",
-    "Opsifier could not read this repository. Check the address and its access rights.",
-    result.detail === "" ? undefined : { reason: result.detail },
-  );
+  const key = record.spec.build.sshKey;
+  const nextKey = change.build === undefined ? key : change.build.sshKey;
+  if (key !== null && nextKey?.sealedPrivateKey !== key.sealedPrivateKey) {
+    gone.push({ name: SECRET_VALUE, value: deps.secrets.unseal(key.sealedPrivateKey, SSH_KEY_CONTEXT) });
+  }
+  return gone;
 }
 
 function persist(
@@ -120,6 +239,7 @@ function persist(
     ...record.spec,
     ...(change.source === undefined ? {} : { source: change.source }),
     ...(change.build === undefined ? {} : { build: change.build }),
+    sealedRetired: sealRetired(deps, record.spec.sealedRetired, replacedCredentials(deps, record, change)),
   };
   saveServiceSpec(deps.db, target.projectName, target.serviceName, spec, new Date(deps.now()));
   return spec.build;
@@ -134,19 +254,67 @@ function recordSourceChange(deps: AppDeps, target: ServiceTarget, actorEmail: st
   });
 }
 
+/**
+ * What a change of source does to what was issued for the old one. The token stops working and the
+ * webhook stops being accepted, so whatever held them for the old repository has to be given a new
+ * one. Before a first source there is nothing to withdraw from.
+ */
+export function withdrawAuthority(
+  build: StoredBuildState,
+  before: string | null,
+  after: string | null,
+  hookRemoved: boolean,
+): { build: StoredBuildState; withdrawn: boolean } {
+  if (before === null || before === after) {
+    return { build, withdrawn: false };
+  }
+  const withdrawn = build.deployToken !== null || build.webhook !== null;
+  return {
+    build: {
+      ...build,
+      deployToken: null,
+      webhook: build.webhook === null || hookRemoved ? null : { ...build.webhook, paused: true },
+    },
+    withdrawn,
+  };
+}
+
+export function recordWithdrawal(deps: AppDeps, target: ServiceTarget, actorEmail: string | undefined): void {
+  deps.actions.record({
+    type: "service.trigger",
+    title: `Revoke the deployment token and pause the webhook of ${target.projectName}/${target.serviceName}: its source changed`,
+    ...target,
+    actorEmail,
+  });
+}
+
 /** The last thing a push webhook should do is point at a service that no longer builds from it. */
 async function dropStaleHook(
   deps: AppDeps,
   previous: StoredSource | null,
   next: StoredSource,
-): Promise<void> {
+): Promise<boolean> {
   if (previous?.type !== "github" || previous.webhookId === null) {
-    return;
+    return false;
   }
   if (next.type === "github" && next.repository === previous.repository) {
-    return;
+    return false;
   }
   await deleteRepositoryHook(deps, previous.repository, previous.webhookId);
+  return true;
+}
+
+/** A box's source is generated from its modules, so anything saved here would be overwritten. */
+function assertNotBox(record: ServiceRecord): void {
+  if (record.spec.box !== null) {
+    throw conflict("box_source_managed", "A box builds from its modules. Change them on its Modules tab.");
+  }
+}
+
+export interface SourceAuthor {
+  actorEmail: string | undefined;
+  /** Only an administrator can point the panel's own GitHub token at a repository. */
+  isAdmin: boolean;
 }
 
 /**
@@ -157,14 +325,26 @@ export async function saveServiceSource(
   deps: AppDeps,
   target: ServiceTarget,
   request: SaveSourceRequest,
-  actorEmail: string | undefined,
+  author: SourceAuthor,
 ): Promise<ServiceSource> {
+  const { actorEmail } = author;
   const record = requireService(deps, target);
+  if (record.spec.database !== null) {
+    throw conflict(
+      "database_image_managed",
+      "A database's image is changed from its Advanced tab, where a new version is checked first.",
+    );
+  }
+  assertNotBox(record);
   const previous = record.spec.source;
   let source: StoredSource;
+  let keyed = record.spec.build;
 
   switch (request.type) {
     case "github": {
+      const unchanged =
+        previous?.type === "github" &&
+        previous.tokenRepository?.toLowerCase() === request.repository.toLowerCase();
       source = {
         type: "github",
         repository: request.repository,
@@ -174,13 +354,15 @@ export async function saveServiceSource(
           previous?.type === "github" && previous.repository === request.repository
             ? previous.webhookId
             : null,
+        tokenRepository: author.isAdmin || unchanged ? request.repository : null,
       };
-      await assertReachable(deps, target, source, record.spec.build);
+      await assertReachable(deps, source, keyed);
       break;
     }
     case "git": {
       source = { type: "git", url: request.url, ref: request.ref, path: request.path };
-      await assertReachable(deps, target, source, record.spec.build);
+      keyed = prepareSshAccess(deps, request.url, keyed);
+      await assertReachable(deps, source, keyed);
       break;
     }
     case "dockerfile":
@@ -197,13 +379,26 @@ export async function saveServiceSource(
       source = { type: "image", image: request.image, ...resolveCredentials(deps, previous, request) };
   }
 
-  await dropStaleHook(deps, previous, source);
+  const hookRemoved = await dropStaleHook(deps, previous, source);
   const build = "build" in request ? request.build : undefined;
-  persist(deps, target, (current) => ({
-    source,
-    ...(build === undefined ? {} : { build: { ...current.spec.build, config: build } }),
-  }));
+  let withdrawn = false;
+  persist(deps, target, (current) => {
+    const settled = withdrawAuthority(
+      withKeyBinding(
+        { ...current.spec.build, ...(build === undefined ? {} : { config: build }) },
+        keyed.sshKey,
+      ),
+      sourceIdentity(current.spec),
+      sourceIdentity({ source, compose: null }),
+      hookRemoved,
+    );
+    withdrawn = settled.withdrawn;
+    return { source, build: settled.build };
+  });
   recordSourceChange(deps, target, actorEmail);
+  if (withdrawn) {
+    recordWithdrawal(deps, target, actorEmail);
+  }
   return toPublicSource(source);
 }
 
@@ -223,38 +418,97 @@ export function saveBuildSettings(
   return config;
 }
 
-/** Makes a new deploy key. Replacing one invalidates the old, and everything else stays as it was. */
+/**
+ * Makes a new deploy key. Replacing one invalidates the old, and it stays tied to the same repository.
+ * A first key is tied to nothing yet: the repository it is first used for claims it.
+ */
 export function generateDeployKey(deps: AppDeps, target: ServiceTarget): string {
   const pair = generateSshKeyPair(`opsifier-${target.projectName}-${target.serviceName}`);
   const sealedPrivateKey = deps.secrets.seal(pair.privateKey, SSH_KEY_CONTEXT);
+  const createdAt = new Date(deps.now()).toISOString();
   persist(deps, target, (current) => ({
-    build: { ...current.spec.build, sshKey: { sealedPrivateKey, publicKey: pair.publicKey } },
+    build: {
+      ...current.spec.build,
+      sshKey: {
+        sealedPrivateKey,
+        publicKey: pair.publicKey,
+        boundTo: current.spec.build.sshKey?.boundTo ?? null,
+        createdAt,
+      },
+    },
   }));
   return pair.publicKey;
 }
 
+/**
+ * Forgets the key, so that nothing here can use it again. The copy of its public half at the Git host
+ * is out of reach, so that part of revoking it is up to whoever installed it.
+ */
+export function deleteDeployKey(
+  deps: AppDeps,
+  target: ServiceTarget,
+  actorEmail: string | undefined,
+): SourceSettings {
+  if (requireService(deps, target).spec.build.sshKey === null) {
+    throw notFound("This service has no deploy key.");
+  }
+  persist(deps, target, (current) => ({ build: { ...current.spec.build, sshKey: null } }));
+  deps.actions.record({
+    type: "service.source",
+    title: `Delete the deploy key of ${target.projectName}/${target.serviceName}`,
+    ...target,
+    actorEmail,
+  });
+  return getSourceSettings(deps, target);
+}
+
+/** Connects to the exact repository the source names, with the key a build would use. */
+export async function testDeployKey(deps: AppDeps, target: ServiceTarget): Promise<SshKeyTestResult> {
+  const { spec } = requireService(deps, target);
+  const git = gitSourceOf(spec);
+  if (git === null || git.github || !isSshRemote(git.display)) {
+    throw badRequest("source_not_ssh", "Save an SSH repository address first.");
+  }
+  try {
+    claimDeployKey(deps, target, git.display);
+    const remote = gitRemoteOf(deps, { type: "git", url: git.display, ref: git.ref, path: "/" }, spec.build);
+    const result = await probeRemote(deps, remote, git.ref);
+    return result.ok ? { ok: true, detail: "" } : { ok: false, detail: result.detail };
+  } catch (error) {
+    if (error instanceof ToolNotFoundError) {
+      throw new AppError(503, "git_unavailable", "git is not installed on this server.");
+    }
+    throw error;
+  }
+}
+
 export function getEnvFile(deps: AppDeps, target: ServiceTarget): EnvFileSettings {
-  return { path: requireService(deps, target).spec.build.envFilePath };
+  const { envFilePath, envFileInImage } = requireService(deps, target).spec.build;
+  return { path: envFilePath, inImage: envFileInImage };
 }
 
 export function saveEnvFile(
   deps: AppDeps,
   target: ServiceTarget,
-  settings: EnvFileSettings,
+  settings: SaveEnvFileRequest,
   actorEmail: string | undefined,
 ): EnvFileSettings {
   const { source } = requireService(deps, target).spec;
   if (settings.path !== null && (source === null || source.type === "image")) {
     throw badRequest("source_not_buildable", "A Docker image has no source tree to write to.");
   }
-  persist(deps, target, (current) => ({ build: { ...current.spec.build, envFilePath: settings.path } }));
+  // Having no file decides nothing, so the next one is asked again.
+  const inImage = settings.path !== null && settings.inImage === true;
+  persist(deps, target, (current) => ({
+    build: { ...current.spec.build, envFilePath: settings.path, envFileInImage: inImage },
+  }));
   deps.actions.record({
     type: "service.env",
     title: `Update the environment of ${target.projectName}/${target.serviceName}`,
     ...target,
     actorEmail,
   });
-  return settings;
+  return { path: settings.path, inImage };
 }
 
 class UploadTooLargeError extends Error {}
@@ -277,6 +531,7 @@ export async function receiveUpload(
   maxBytes: number = MAX_UPLOAD_BYTES,
 ): Promise<ServiceSource> {
   const record = requireService(deps, target);
+  assertNotBox(record);
   if (declaredBytes !== undefined && declaredBytes > maxBytes) {
     throw uploadTooLarge();
   }
@@ -331,8 +586,21 @@ export async function receiveUpload(
     uploadedAt: new Date(deps.now()).toISOString(),
     path: query.path,
   };
-  await dropStaleHook(deps, record.spec.source, source);
-  persist(deps, target, () => ({ source }));
+  const hookRemoved = await dropStaleHook(deps, record.spec.source, source);
+  let withdrawn = false;
+  persist(deps, target, (current) => {
+    const settled = withdrawAuthority(
+      current.spec.build,
+      sourceIdentity(current.spec),
+      sourceIdentity({ source, compose: null }),
+      hookRemoved,
+    );
+    withdrawn = settled.withdrawn;
+    return { source, build: settled.build };
+  });
   recordSourceChange(deps, target, actorEmail);
+  if (withdrawn) {
+    recordWithdrawal(deps, target, actorEmail);
+  }
   return toPublicSource(source);
 }

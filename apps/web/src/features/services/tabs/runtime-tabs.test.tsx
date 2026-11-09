@@ -33,13 +33,17 @@ const service = {
   status: "running",
   replicas: { running: 1, desired: 1 },
   activeAction: null,
+  runtimeUncertain: null,
   wake: [],
   lastDeployedAt: null,
   createdAt: "2026-01-01T00:00:00.000Z",
   source: { type: "image", image: "nginx:alpine", username: null, hasPassword: false },
   notes: "",
+  notesHidden: false,
   stopped: false,
   primaryUrl: null,
+  pendingChanges: false,
+  answering: null,
 };
 
 const base = (extra: FakeRoute = {}): FakeRoute => ({
@@ -133,6 +137,9 @@ describe("the scripts tab", () => {
     expect(server.calls.find((call) => call.method === "POST")?.body).toEqual({
       name: "Clear cache",
       script: "rm -rf /tmp/cache",
+      maxDurationSeconds: 3600,
+      schedule: null,
+      runAfterDeploy: false,
     });
   });
 
@@ -219,6 +226,7 @@ describe("the storage tab", () => {
     expect(screen.getByText("BIND")).toBeTruthy();
     expect(screen.getByText("VOLUME")).toBeTruthy();
     expect(screen.getByText("FILE")).toBeTruthy();
+    expect(document.querySelector('li svg[data-pictogram="volume"]')).toBeTruthy();
   });
 
   it("adds a bind mount and reminds you to deploy", async () => {
@@ -389,6 +397,8 @@ describe("the advanced tab", () => {
     zeroDowntime: true,
     tiniInit: false,
     command: null,
+    stopSignal: null,
+    stopGraceSeconds: 10,
     capAdd: [],
     capDrop: [],
     sysctls: {},
@@ -407,6 +417,7 @@ describe("the advanced tab", () => {
 
     setValue(await screen.findByRole("spinbutton", { name: "Replicas" }), "2");
     setValue(screen.getByRole("textbox", { name: /^Command/ }), "nginx -g 'daemon off;'");
+    setValue(screen.getByRole("spinbutton", { name: /^Time to stop/ }), "45");
     setValue(screen.getByRole("textbox", { name: /^Add capabilities/ }), "net_admin, CAP_SYS_PTRACE");
     setValue(screen.getByRole("textbox", { name: /^Drop capabilities/ }), "MKNOD");
     setValue(
@@ -424,6 +435,8 @@ describe("the advanced tab", () => {
       zeroDowntime: false,
       tiniInit: true,
       command: "nginx -g 'daemon off;'",
+      stopSignal: null,
+      stopGraceSeconds: 45,
       capAdd: ["NET_ADMIN", "SYS_PTRACE"],
       capDrop: ["MKNOD"],
       sysctls: { "net.ipv4.ip_unprivileged_port_start": "0", "net.core.somaxconn": "1024" },
@@ -440,6 +453,7 @@ describe("the advanced tab", () => {
     ],
     [/^Sysctls/, "vm.swappiness=1", "Use namespaced key=value pairs such as net.core.somaxconn=1024."],
     [/^Extra groups/, "wheel", "Use numeric group IDs."],
+    [/^Time to stop/, "-5", "Use a whole number of seconds, from 0 to 3600."],
   ])("refuses a bad value for %s before sending anything", async (name, value, message) => {
     const server = installFakeServer(base({ [`GET ${SERVICE}/advanced`]: document() }));
     renderApp("/projects/shop/app/web/advanced");
@@ -535,7 +549,7 @@ describe("the advanced tab", () => {
     setValue(dialog.getByRole("spinbutton", { name: /^Target/ }), "80");
     fireEvent.click(dialog.getByRole("button", { name: "Add" }));
 
-    expect(await dialog.findByText("Another service already publishes this port.")).toBeTruthy();
+    expect(await dialog.findByText("This port is already in use on this server.")).toBeTruthy();
   });
 
   it("removes every port after asking", async () => {
@@ -552,5 +566,180 @@ describe("the advanced tab", () => {
 
     await screen.findByText("Ports removed");
     expect(server.calls.some((call) => call.method === "DELETE" && call.path.endsWith("/ports"))).toBe(true);
+  });
+});
+
+describe("script runs", () => {
+  const finishedRun = {
+    id: "run-1",
+    scriptName: "Backup",
+    status: "failed",
+    origin: "schedule",
+    actorEmail: null,
+    originDetail: null,
+    exitCode: 3,
+    task: { id: "task-1", slot: 1 },
+    maxDurationSeconds: 60,
+    dueAt: "2026-06-01T02:00:00.000Z",
+    createdAt: "2026-06-01T02:00:00.000Z",
+    startedAt: "2026-06-01T02:00:01.000Z",
+    finishedAt: "2026-06-01T02:00:05.000Z",
+    note: null,
+    outputComplete: true,
+    outputTruncated: false,
+  };
+  const script = {
+    name: "Backup",
+    script: "tar c",
+    maxDurationSeconds: 60,
+    schedule: null,
+    runAfterDeploy: false,
+  };
+  const empty = { items: [], nextCursor: null };
+
+  it("starts a run and shows what became of it", async () => {
+    const running = { ...finishedRun, status: "running", exitCode: null, finishedAt: null };
+    const server = installFakeServer(
+      base({
+        [`GET ${SERVICE}/scripts`]: { scripts: [{ ...script, nextRunAt: null, lastRun: null }] },
+        [`GET ${SERVICE}/script-runs`]: empty,
+        [`POST ${SERVICE}/script-runs`]: {
+          id: "run-1",
+          type: "service.script",
+          title: "Run Backup",
+          status: "queued",
+          projectName: "shop",
+          serviceName: "web",
+          createdAt: finishedRun.createdAt,
+          startedAt: null,
+          finishedAt: null,
+          error: null,
+          hasLog: false,
+          actorEmail: null,
+          origin: "session",
+          originDetail: null,
+          run: running,
+        },
+        [`GET ${SERVICE}/script-runs/run-1`]: { ...finishedRun, output: "tar: nothing\n" },
+      }),
+    );
+    renderApp("/projects/shop/app/web/scripts");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Run Backup now" }));
+
+    const dialog = within(await screen.findByRole("dialog", { name: "Run of Backup" }));
+    expect(await dialog.findByText("tar: nothing")).toBeTruthy();
+    expect(dialog.getByText("Failed")).toBeTruthy();
+    expect(dialog.getByText("3")).toBeTruthy();
+    expect(server.calls.find((call) => call.method === "POST")?.body).toEqual({ script: "Backup" });
+  });
+
+  it("says when a script is already running", async () => {
+    installFakeServer(
+      base({
+        [`GET ${SERVICE}/scripts`]: { scripts: [{ ...script, nextRunAt: null, lastRun: null }] },
+        [`GET ${SERVICE}/script-runs`]: empty,
+        [`POST ${SERVICE}/script-runs`]: error(409, "script_already_running"),
+      }),
+    );
+    renderApp("/projects/shop/app/web/scripts");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Run Backup now" }));
+
+    expect(
+      await screen.findByText(
+        "This script is already running. Wait for it to finish or stop it, then try again.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("lists past runs with how they started and ended, and shows what cannot be known", async () => {
+    const lost = {
+      ...finishedRun,
+      id: "run-2",
+      status: "unknown",
+      origin: "api",
+      actorEmail: "ci@example.com",
+      exitCode: null,
+      outputComplete: false,
+      note: { code: "panel_restarted_unknown", message: "english" },
+    };
+    installFakeServer(
+      base({
+        [`GET ${SERVICE}/scripts`]: { scripts: [{ ...script, nextRunAt: null, lastRun: lost }] },
+        [`GET ${SERVICE}/script-runs`]: { items: [lost, finishedRun], nextCursor: null },
+        [`GET ${SERVICE}/script-runs/run-2`]: { ...lost, output: "partial\n" },
+      }),
+    );
+    renderApp("/projects/shop/app/web/scripts");
+
+    const row = (await screen.findByText("API")).closest("tr") as HTMLElement;
+    expect(within(row).getAllByText("Unknown").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Schedule").length).toBeGreaterThan(0);
+
+    fireEvent.click(within(row).getByRole("button", { name: "See this run" }));
+
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(await dialog.findByText("partial")).toBeTruthy();
+    expect(dialog.getByText(/Docker no longer knows this process/)).toBeTruthy();
+    expect(dialog.getByText(/not complete/)).toBeTruthy();
+  });
+
+  it("offers to stop a run that is still going, and stops it", async () => {
+    const running = { ...finishedRun, status: "running", exitCode: null, finishedAt: null };
+    const server = installFakeServer(
+      base({
+        [`GET ${SERVICE}/scripts`]: { scripts: [{ ...script, nextRunAt: null, lastRun: running }] },
+        [`GET ${SERVICE}/script-runs`]: { items: [running], nextCursor: null },
+        [`POST ${SERVICE}/script-runs/run-1/cancel`]: running,
+      }),
+    );
+    renderApp("/projects/shop/app/web/scripts");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Stop this run" }));
+
+    await waitFor(() => expect(server.calls.some((call) => call.path.endsWith("/cancel"))).toBe(true));
+  });
+
+  it("does not offer to start a script that is running", async () => {
+    const running = { ...finishedRun, status: "running", exitCode: null, finishedAt: null };
+    installFakeServer(
+      base({
+        [`GET ${SERVICE}/scripts`]: { scripts: [{ ...script, nextRunAt: null, lastRun: running }] },
+        [`GET ${SERVICE}/script-runs`]: { items: [running], nextCursor: null },
+      }),
+    );
+    renderApp("/projects/shop/app/web/scripts");
+
+    const button = await screen.findByRole("button", { name: "Run Backup now" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("shows a schedule's time zone and refuses a bad one before anything is sent", async () => {
+    const server = installFakeServer(
+      base({
+        [`GET ${SERVICE}/scripts`]: {
+          scripts: [
+            {
+              ...script,
+              schedule: { cron: "0 3 * * *", timeZone: "Asia/Tokyo" },
+              nextRunAt: "2030-01-01T18:00:00.000Z",
+              lastRun: null,
+            },
+          ],
+        },
+        [`GET ${SERVICE}/script-runs`]: empty,
+      }),
+    );
+    renderApp("/projects/shop/app/web/scripts");
+
+    expect(await screen.findByText("Asia/Tokyo")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit this script" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    setValue(dialog.getByRole("combobox", { name: "Time zone" }), "Mars/Olympus");
+    fireEvent.click(dialog.getByRole("button", { name: "Save" }));
+
+    expect(await dialog.findByText("Enter a time zone name such as Europe/Paris or UTC.")).toBeTruthy();
+    expect(server.calls.some((call) => call.method === "PUT")).toBe(false);
   });
 });

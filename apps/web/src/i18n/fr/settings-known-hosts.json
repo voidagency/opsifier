@@ -1,0 +1,30 @@
+{
+  "title": "Hôtes connus",
+  "description": "Les serveurs SSH auxquels Git peut se connecter. Avant toute connexion, la clé du serveur doit correspondre à l'une de celles listées ici : une clé absente ou modifiée est refusée.",
+  "emptyTitle": "Aucun hôte pour le moment",
+  "emptyDescription": "Ajoutez les serveurs Git depuis lesquels vos services clonent en SSH. HTTPS ne nécessite rien ici.",
+  "add": "Ajouter un hôte",
+  "addTitle": "Ajouter un hôte connu",
+  "host": "Hôte",
+  "hostHint": "Tel qu'il apparaît dans l'adresse du dépôt, par exemple git.example.com.",
+  "port": "Port",
+  "scan": "Lire les clés du serveur",
+  "found": "Comparez-les avec celles que publie votre hébergeur Git avant de leur faire confiance.",
+  "trust": "Faire confiance à cette clé",
+  "trusted": "Clé approuvée",
+  "publicKey": "Clé publique",
+  "publicKeyHint": "Ou collez la clé publiée par votre hébergeur Git, ou une ligne d'un fichier known_hosts.",
+  "fingerprint": "Empreinte",
+  "addedByImported": "Apprise avant l'existence du registre",
+  "remove": "Retirer",
+  "removeTitle": "Ne plus faire confiance à cette clé ?",
+  "removeDescription": "Les connexions à ce serveur échouent, sauf si une autre de ses clés est listée.",
+  "removed": "Clé retirée",
+  "errors": {
+    "hostRequired": "Indiquez un nom d'hôte.",
+    "hostInvalid": "Indiquez un nom d'hôte comme git.example.com.",
+    "portInvalid": "Entre 1 et 65535.",
+    "keyRequired": "Collez une clé publique comme ssh-ed25519 AAAA..."
+  },
+  "portHint": "Le port SSH du serveur, généralement 22."
+}

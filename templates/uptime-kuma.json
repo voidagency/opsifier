@@ -1,0 +1,66 @@
+{
+  "id": "uptime-kuma",
+  "version": "1.0.0",
+  "name": "Uptime Kuma",
+  "summary": {
+    "en": "Watch websites and services, and get told when they go down.",
+    "fr": "Surveillez sites et services, et soyez prévenu quand ils tombent."
+  },
+  "description": {
+    "en": "A self-hosted monitor for HTTP, TCP, ping and more, with status pages and notifications. Everything lives in one SQLite file on a volume.",
+    "fr": "Un moniteur auto-hébergé pour HTTP, TCP, ping et d'autres, avec pages de statut et notifications. Tout tient dans un fichier SQLite sur un volume."
+  },
+  "instructions": {
+    "en": "Open the site and create the first administrator on the setup page.",
+    "fr": "Ouvrez le site et créez le premier administrateur sur la page de configuration."
+  },
+  "category": "monitoring",
+  "tags": ["monitoring", "uptime", "status-page"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://uptime.kuma.pet"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/louislam/uptime-kuma/wiki/%F0%9F%94%A7-How-to-Install"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/louislam/uptime-kuma"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "uptime-kuma",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "louislam/uptime-kuma:2.5.9"
+      },
+      "env": {},
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/app/data"
+        }
+      ],
+      "domain": {
+        "port": 3001,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/",
+        "expect": [200, 302]
+      },
+      "dependsOn": []
+    }
+  ]
+}

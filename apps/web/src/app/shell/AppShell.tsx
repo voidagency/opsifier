@@ -2,9 +2,12 @@ import { Outlet, useRouterState } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useLiveServiceData } from "../../features/services/api";
+import { usePlatformCommands } from "../../features/settings/usePlatformCommands";
 import { realtime } from "../../lib/realtime";
 import { ActivityTape } from "./ActivityTape";
 import { CommandPalette } from "./CommandPalette";
+import { SimulationNotice } from "./SimulationNotice";
+import { StorageBanner } from "./StorageBanner";
 import { TopBar } from "./TopBar";
 import { useAppCommands } from "./useAppCommands";
 
@@ -13,6 +16,7 @@ export function AppShell() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const main = useRef<HTMLElement>(null);
   useAppCommands();
+  usePlatformCommands();
   useLiveServiceData();
 
   // The page scrolls inside <main>, so a new screen has to be brought back to the top by hand.
@@ -34,11 +38,13 @@ export function AppShell() {
     <div className="flex h-dvh flex-col">
       <a
         href="#main"
-        className="sr-only z-50 rounded-sm bg-accent px-3 py-1.5 text-sm text-on-accent focus:not-sr-only focus:absolute focus:top-2 focus:left-2"
+        className="sr-only z-50 rounded-sm bg-accent px-3 py-2 text-sm text-on-accent focus:not-sr-only focus:absolute focus:top-2 focus:left-2"
       >
         {t("skipToContent")}
       </a>
       <TopBar />
+      <StorageBanner />
+      <SimulationNotice />
       <main
         ref={main}
         id="main"

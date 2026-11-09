@@ -1,0 +1,66 @@
+{
+  "id": "prometheus",
+  "version": "1.0.0",
+  "name": "Prometheus",
+  "summary": {
+    "en": "Collects metrics and answers questions about them.",
+    "fr": "Collecte des métriques et répond aux questions à leur sujet."
+  },
+  "description": {
+    "en": "A time-series database that scrapes metrics over HTTP. The image's own configuration scrapes Prometheus itself, a good start before pointing it at your services.",
+    "fr": "Une base de séries temporelles qui récupère des métriques en HTTP. La configuration de l'image surveille Prometheus lui-même, un bon point de départ avant d'y ajouter vos services."
+  },
+  "instructions": {
+    "en": "Prometheus has no login of its own. Protect it with basic authentication on the Security tab before sharing the address.",
+    "fr": "Prometheus n'a pas d'authentification propre. Protégez-le par mot de passe dans l'onglet Sécurité avant de partager son adresse."
+  },
+  "category": "monitoring",
+  "tags": ["metrics", "alerting", "time-series"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://prometheus.io"
+    },
+    {
+      "kind": "docs",
+      "url": "https://prometheus.io/docs/prometheus/latest/installation/"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/prometheus/prometheus"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "prometheus",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "prom/prometheus:v3.16.0"
+      },
+      "env": {},
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/prometheus"
+        }
+      ],
+      "domain": {
+        "port": 9090,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/-/healthy",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

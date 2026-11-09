@@ -5,7 +5,7 @@ import pino from "pino";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RETAINED_ACTIONS } from "./core/actions";
 import { hashPassword } from "./core/auth";
-import { type Config, loadConfig } from "./core/config";
+import { type Config, ConfigError, loadConfig } from "./core/config";
 import { actions, users } from "./core/db/schema";
 import { FakeDriver } from "./core/docker";
 import { SecretsError } from "./core/secrets";
@@ -54,6 +54,29 @@ afterEach(async () => {
     await runtime.close();
   }
   rmSync(dataDir, { recursive: true, force: true });
+});
+
+describe("the data directory", () => {
+  it("cannot be shared with a panel that is already running", async () => {
+    await boot();
+
+    expect(() => createRuntime(config, { docker: new FakeDriver() })).toThrow(ConfigError);
+    expect(() => createRuntime(config, { docker: new FakeDriver() })).toThrow(/already using/);
+  });
+
+  it("is free again once the panel has stopped", async () => {
+    await shutDown(await boot());
+
+    await expect(boot()).resolves.toBeDefined();
+  });
+
+  it("is let go of when a panel fails to start, so the next attempt is not refused", () => {
+    rmSync(config.secretKeyFile, { force: true });
+    writeFileSync(config.databaseFile, "this is not a database");
+
+    expect(() => createRuntime(config, { docker: new FakeDriver() })).toThrow();
+    expect(() => createRuntime(config, { docker: new FakeDriver() })).not.toThrow(ConfigError);
+  });
 });
 
 describe("the setup token at boot", () => {

@@ -100,10 +100,13 @@ describe("the domain request", () => {
     expect(result.data).toEqual({
       host: "a.example.test",
       path: "/",
+      stripPath: false,
       https: true,
       port: 80,
       destinationProtocol: "http",
       destinationPath: "/",
+      upstreamServerName: null,
+      upstreamCa: null,
       certificateResolver: null,
       wildcard: false,
       middlewares: [],
@@ -124,6 +127,50 @@ describe("the domain request", () => {
     [{ host: "a.example.test", wildcard: true }],
   ])("refuses %j", (body) => {
     expect(parse(body).success).toBe(false);
+  });
+
+  it.each([
+    ["bücher.example.com", "xn--bcher-kva.example.com"],
+    ["BÜCHER.Example.COM", "xn--bcher-kva.example.com"],
+    ["  bücher.example.com ", "xn--bcher-kva.example.com"],
+    ["日本語.example.com", "xn--wgv71a119e.example.com"],
+    ["xn--bcher-kva.example.com", "xn--bcher-kva.example.com"],
+    ["ÉTÉ。example。com", "xn--t-9fab.example.com"],
+  ])("turns the international name %j into the one DNS uses", (host, ascii) => {
+    expect(parse({ host }).data?.host).toBe(ascii);
+  });
+
+  it.each([
+    ["bücher.example.com/path"],
+    ["user@bücher.example.com"],
+    ["bücher.example.com:8080"],
+    ["bü cher.example.com"],
+    ["bücher.example.com?x=1"],
+    ["bücher\t.example.com"],
+    ["１２７.０.０.１"],
+    ["evil`é.example.com"],
+  ])("does not let the URL parser tidy up %j", (host) => {
+    expect(parse({ host }).success).toBe(false);
+  });
+
+  it.each([
+    [{ host: "a.example.test", upstreamServerName: "not a name" }],
+    [{ host: "a.example.test", upstreamCa: "not a certificate" }],
+    [{ host: "a.example.test", upstreamCa: "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----" }],
+  ])("refuses %j", (body) => {
+    expect(parse(body).success).toBe(false);
+  });
+
+  it("accepts an upstream's certificate name and a chain of certificates", () => {
+    const pem = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n";
+    const result = parse({
+      host: "a.example.test",
+      upstreamServerName: "Backend.Internal",
+      upstreamCa: `${pem}${pem}`,
+    });
+
+    expect(result.data?.upstreamServerName).toBe("backend.internal");
+    expect(result.success).toBe(true);
   });
 
   it("accepts a wildcard over plain HTTP, or with a named resolver", () => {

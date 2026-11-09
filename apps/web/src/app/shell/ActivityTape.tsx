@@ -5,42 +5,17 @@ import { ChevronUp } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActionLog } from "../../features/activity/ActionLog";
+import { actionPhase } from "../../features/activity/labels";
 import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
+import { formatDuration } from "../../lib/format";
 import { useConnectionStatus, useTopic } from "../../lib/realtime";
-import { StatusLamp } from "../../ui";
+import { Lamp, stateFromAction, type VisualState } from "../../ui";
 
 const finishedLingerMs = 5000;
 
 function isActive(action: ActionEntry): boolean {
   return action.status === "queued" || action.status === "running";
-}
-
-function lampFor(action: ActionEntry) {
-  switch (action.status) {
-    case "queued":
-      return "off" as const;
-    case "running":
-      return "busy" as const;
-    case "succeeded":
-      return "ok" as const;
-    case "failed":
-      return "bad" as const;
-    default:
-      return "off" as const;
-  }
-}
-
-function formatElapsed(fromIso: string | null, now: number): string {
-  if (!fromIso) {
-    return "--:--";
-  }
-  const seconds = Math.max(0, Math.floor((now - Date.parse(fromIso)) / 1000));
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const mm = String(minutes % 60).padStart(2, "0");
-  const ss = String(seconds % 60).padStart(2, "0");
-  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
 function useNow(enabled: boolean, intervalMs = 1000): number {
@@ -149,7 +124,7 @@ function ActionRow({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const { t } = useTranslation("shell");
+  const { t } = useTranslation(["shell", "activity"]);
   const target = [action.projectName, action.serviceName].filter(Boolean).join("/");
   return (
     <button
@@ -158,13 +133,16 @@ function ActionRow({
       aria-pressed={selected}
       className="flex w-full items-center gap-2.5 border-b px-4 py-2 text-left hover:bg-wash aria-pressed:bg-wash"
     >
-      <StatusLamp status={lampFor(action)} label={t(`tape.status.${action.status}`)} />
+      <Lamp state={stateFromAction(action.status)} label={t(`tape.status.${action.status}`)} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm">{action.title}</span>
         {target && <span className="block truncate font-mono text-xs text-muted">{target}</span>}
+        {action.phase !== null && (
+          <span className="block truncate text-xs text-muted">{actionPhase(action, t)}</span>
+        )}
       </span>
       <span className="font-mono text-xs text-muted">
-        {formatElapsed(action.startedAt ?? action.createdAt, now)}
+        {formatDuration(action.startedAt ?? action.createdAt, null, now)}
       </span>
     </button>
   );
@@ -203,7 +181,7 @@ function TapeDrawer({
         </div>
       ) : (
         <div className="grid h-full grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[320px_minmax(0,1fr)] md:grid-rows-none">
-          <div className="max-h-[132px] overflow-y-auto border-b md:max-h-none md:border-r md:border-b-0">
+          <div className="max-h-[170px] overflow-y-auto border-b md:max-h-none md:border-r md:border-b-0">
             {actions.map((action) => (
               <ActionRow
                 key={action.id}
@@ -235,7 +213,7 @@ const drawerId = "activity-tape-drawer";
 
 /** Running actions along the bottom edge, expanding into a live log. */
 export function ActivityTape() {
-  const { t } = useTranslation("shell");
+  const { t } = useTranslation(["shell", "activity"]);
   const actions = useTapeActions();
   const connection = useConnectionStatus();
   const [expanded, setExpanded] = useState(false);
@@ -265,6 +243,7 @@ export function ActivityTape() {
 
   const connectionLabel =
     connection === "open" ? t("tape.connection.live") : t("tape.connection.reconnecting");
+  const connectionState: VisualState = connection === "open" ? "running" : "progress";
 
   return (
     <footer className="relative z-40 shrink-0 border-t bg-bg">
@@ -290,31 +269,36 @@ export function ActivityTape() {
         <span className="flex min-w-0 flex-1 items-center gap-2.5">
           {running.length > 0 && current ? (
             <>
-              <StatusLamp status="busy" label={t("tape.status.running")} />
+              <Lamp state="progress" label={t("tape.status.running")} />
               <span className="shrink-0 font-mono text-xs">
                 {t("tape.running", { count: running.length })}
               </span>
               <span aria-hidden="true" className="h-3 w-px shrink-0 bg-rule" />
               <span className="min-w-0 truncate text-xs">{current.title}</span>
+              {current.phase !== null && (
+                <span className="hidden min-w-0 shrink-0 truncate text-xs text-muted sm:inline">
+                  {actionPhase(current, t)}
+                </span>
+              )}
               <span className="shrink-0 font-mono text-xs text-muted">
-                {formatElapsed(current.startedAt ?? current.createdAt, now)}
+                {formatDuration(current.startedAt ?? current.createdAt, null, now)}
               </span>
             </>
           ) : current ? (
             <>
-              <StatusLamp status={lampFor(current)} label={t(`tape.status.${current.status}`)} />
+              <Lamp state={stateFromAction(current.status)} label={t(`tape.status.${current.status}`)} />
               <span className="min-w-0 truncate text-xs">{current.title}</span>
             </>
           ) : (
             <>
-              <StatusLamp status="off" label={t("tape.status.idle")} />
+              <Lamp state="stopped" label={t("tape.status.idle")} />
               <span className="min-w-0 truncate text-xs text-muted">{t("tape.idle")}</span>
             </>
           )}
         </span>
         <span className="flex shrink-0 items-center gap-3">
           <span className="flex items-center gap-1.5">
-            <StatusLamp status={connection === "open" ? "ok" : "busy"} label={connectionLabel} />
+            <Lamp state={connectionState} label={connectionLabel} />
             <span aria-hidden="true" className="hidden text-xs text-muted sm:inline">
               {connectionLabel}
             </span>

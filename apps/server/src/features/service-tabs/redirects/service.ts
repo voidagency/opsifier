@@ -4,8 +4,26 @@ import type { AppDeps } from "../../../core/context";
 import { badRequest, notFound } from "../../../core/errors";
 import { saveServiceSpec } from "../../services/repo";
 import { requireService, type ServiceTarget, writeProxyConfig } from "../../services/service";
+import { listServiceDomains } from "../domains/repo";
+import { findRedirectLoop } from "./loops";
 
 type RuleFields = Required<SaveRedirectRequest>;
+
+/** Only on saving a rule: a loop that is already there has to stay removable. */
+function assertNoLoop(
+  deps: AppDeps,
+  target: ServiceTarget,
+  rule: RedirectRule,
+  rules: readonly RedirectRule[],
+): void {
+  const domains = listServiceDomains(deps.db, target.projectName, target.serviceName);
+  const start = findRedirectLoop({ rule }, rules, domains);
+  if (start !== null) {
+    throw badRequest("redirect_loop", "This rule would send clients round in a loop.", {
+      replacement: `Following this rule from ${start} never reaches a page`,
+    });
+  }
+}
 
 /** Rules take effect at once. The Docker service never hears about them. */
 async function apply(deps: AppDeps, target: ServiceTarget, redirects: RedirectRule[]): Promise<void> {
@@ -31,6 +49,7 @@ export async function addRedirect(
     });
   }
   const rule: RedirectRule = { id: nanoid(), ...fields };
+  assertNoLoop(deps, target, rule, [...redirects, rule]);
   await apply(deps, target, [...redirects, rule]);
   return rule;
 }
@@ -52,11 +71,9 @@ export async function updateRedirect(
   const { redirects } = requireService(deps, target).spec;
   requireRule(redirects, id);
   const updated: RedirectRule = { id, ...fields };
-  await apply(
-    deps,
-    target,
-    redirects.map((rule) => (rule.id === id ? updated : rule)),
-  );
+  const rules = redirects.map((rule) => (rule.id === id ? updated : rule));
+  assertNoLoop(deps, target, updated, rules);
+  await apply(deps, target, rules);
   return updated;
 }
 

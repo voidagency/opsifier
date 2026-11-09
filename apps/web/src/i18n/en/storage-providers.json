@@ -1,0 +1,156 @@
+{
+  "title": "Storage providers",
+  "description": "Where backups can be sent. A folder on this server is quick, but it goes with the server if the server is lost, so keep important copies elsewhere too.",
+  "summary": "Destinations by state",
+  "listLabel": "Storage providers",
+  "create": "Add",
+  "edit": "Edit",
+  "checkNow": "Check now",
+  "disconnectAction": "Disconnect",
+  "deleteAction": "Delete",
+  "connect": "Connect",
+  "menuFor": "Options for {{name}}",
+  "onServer": "On this server",
+  "notConnectedHint": "Not offered to backups until it is connected.",
+  "created": "Destination added",
+  "updated": "Destination updated",
+  "kinds": {
+    "local": "Local",
+    "sftp": "SFTP",
+    "ftp": "FTP",
+    "dropbox": "Dropbox",
+    "google-drive": "Google Drive",
+    "aws-s3": "AWS S3",
+    "cloudflare-r2": "Cloudflare R2",
+    "digitalocean-spaces": "DigitalOcean Spaces",
+    "backblaze-b2": "Backblaze B2",
+    "wasabi": "Wasabi",
+    "generic-s3": "Generic S3"
+  },
+  "state": {
+    "failed": "Not working",
+    "degraded": "Last check failed",
+    "unknown": "Not checked",
+    "progress": "Checking",
+    "running": "Ready",
+    "stopped": "Not connected"
+  },
+  "check": {
+    "ok": "{{name}} works",
+    "failed": "{{name}} did not answer as expected"
+  },
+  "delete": {
+    "title": "Delete this destination?",
+    "description": "Backups set to send files to {{name}} stop running until you pick another one. Files already stored there stay where they are.",
+    "confirm": "Delete",
+    "done": "{{name}} deleted"
+  },
+  "disconnect": {
+    "title": "Disconnect this destination?",
+    "description": "The panel gives up its access to {{name}}. Backups stop using it until it is connected again, and its files stay where they are.",
+    "confirm": "Disconnect",
+    "done": "{{name}} disconnected"
+  },
+  "oauth": {
+    "connected": "Connected",
+    "failed": "Could not connect",
+    "editHint": "Only the name can be changed here. To use another account, disconnect and connect again.",
+    "errors": {
+      "missing_state": "The answer from the provider was incomplete. Try connecting again.",
+      "invalid_state": "That attempt has expired. Try connecting again.",
+      "denied": "Access was not granted.",
+      "provider_missing": "This destination no longer exists.",
+      "exchange_failed": "The provider did not accept this sign-in. Try connecting again."
+    }
+  },
+  "dialog": {
+    "createTitle": "Add {{kind}}",
+    "editTitle": "Edit {{kind}}",
+    "create": "Add",
+    "save": "Save",
+    "saveAndConnect": "Save and connect",
+    "description": {
+      "local": "A folder the panel writes to on this server.",
+      "server": "The connection is tried before it is saved.",
+      "s3": "The connection is tried before it is saved. The key needs to list, read, write and delete files in this bucket.",
+      "oauth": "Use your own app's credentials, registered with the provider. You are sent there to grant access right after saving."
+    }
+  },
+  "fields": {
+    "name": "Name",
+    "path": "Folder",
+    "host": "Host",
+    "port": "Port",
+    "username": "Username",
+    "password": "Password",
+    "rootPath": "Folder",
+    "tls": "Use TLS (FTPS)",
+    "trustNewHostKey": "Trust the server's new key",
+    "hostKey": "Server key",
+    "accessKeyId": "Access key ID",
+    "secretAccessKey": "Secret access key",
+    "bucket": "Bucket",
+    "region": "Region",
+    "endpoint": "Endpoint",
+    "storageClass": "Storage class",
+    "prefix": "Prefix",
+    "clientId": "Client ID",
+    "clientSecret": "Client secret",
+    "redirectUrl": "Redirect URL",
+    "hostKeyHint": "The key this server identified itself with.",
+    "clientSecretHint": "From your own OAuth app. Kept sealed.",
+    "clientIdHint": "From your own OAuth app.",
+    "regionHint": "The region of that bucket.",
+    "bucketHint": "The bucket backups go into.",
+    "accessKeyIdHint": "From your storage account.",
+    "usernameHint": "The account to sign in with.",
+    "portHint": "The port it listens on.",
+    "hostHint": "The server's address.",
+    "nameHint": "How it appears in the list of destinations."
+  },
+  "hints": {
+    "path": "An absolute path on this server, used for nothing but backups.",
+    "keepSecret": "Leave empty to keep the current one.",
+    "rootPath": "Where on the server everything is kept. Empty means where the login starts.",
+    "tls": "Plain FTP sends the password unencrypted.",
+    "trustNewHostKey": "The server presented a different key from the one on record. Turn this on only if you know why it changed.",
+    "endpointRequired": "The address of this store.",
+    "endpointOptional": "Leave empty to use the provider's usual address.",
+    "storageClass": "Common values: {{classes}}. Leave empty for the bucket's default.",
+    "prefix": "A folder inside the bucket that all files go under.",
+    "redirectUrl": {
+      "dropbox": "Register this exact address in your Dropbox app's settings.",
+      "google-drive": "Register this exact address in your Google Cloud OAuth client."
+    }
+  },
+  "placeholders": {
+    "local": "local",
+    "sftp": "backups-sftp",
+    "ftp": "backups-ftp",
+    "dropbox": "Dropbox",
+    "google-drive": "Google Drive",
+    "default": "Default"
+  },
+  "errors": {
+    "name": "Give it a name",
+    "path": "Use an absolute path with no . or .. in it",
+    "host": "Enter a hostname or IP address",
+    "port": "Use a port from 1 to 65535",
+    "username": "Enter a username",
+    "password": "Enter a password",
+    "rootPath": "Use a folder path with no . or .. in it",
+    "accessKeyId": "Enter the access key ID",
+    "secretAccessKey": "Enter the secret access key",
+    "bucket": "Enter the bucket's name",
+    "region": "Enter the region",
+    "endpoint": "Enter a full URL with no path",
+    "storageClass": "Use letters, digits and underscores",
+    "prefix": "Use a folder path with no . or .. in it",
+    "clientId": "Enter the client ID",
+    "clientSecret": "Enter the client secret"
+  },
+  "permissions": {
+    "title": "Permissions needed",
+    "hint": "The panel tries these when you save: it lists, writes, reads back and deletes a small file."
+  }
+}

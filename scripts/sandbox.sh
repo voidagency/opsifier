@@ -72,6 +72,16 @@ down() {
   fi
   rm -rf "$DATA_DIR"
   rmdir "$(dirname "$DATA_DIR")" 2>/dev/null || true
+
+  # Removing is one thing and being gone is another: check what is left, and only what this made.
+  if exists; then
+    echo "The container ${NAME} is still there after removing it." >&2
+    exit 1
+  fi
+  if [ -e "$DATA_DIR" ]; then
+    echo "The data directory ${DATA_DIR} is still there after removing it." >&2
+    exit 1
+  fi
   echo "Sandbox removed." >&2
 }
 

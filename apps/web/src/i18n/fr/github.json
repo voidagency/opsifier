@@ -11,6 +11,34 @@
   "remove": "Retirer",
   "removed": "Jeton GitHub retiré",
   "errors": {
-    "tokenRequired": "Collez un jeton GitHub."
+    "tokenRequired": "Collez un jeton GitHub.",
+    "clientIdRequired": "Collez l'identifiant client de l'application OAuth.",
+    "clientSecretRequired": "Collez le secret client de l'application OAuth."
+  },
+  "connectedOauth": "Connecté en tant que {{login}}, par l'application OAuth",
+  "oauth": {
+    "title": "Application OAuth",
+    "description": "Au lieu d'un jeton, enregistrez une application OAuth sur GitHub et laissez Opsifier demander son propre accès. Enregistrez-en une avec l'URL de rappel ci-dessous, puis renseignez ici son identifiant et son secret.",
+    "callback": "URL de rappel",
+    "callbackHint": "GitHub ne renvoie les personnes que vers l'adresse enregistrée pour l'application : ce panneau doit donc être joignable à cette adresse.",
+    "copyCallback": "Copier l'URL de rappel",
+    "clientId": "Identifiant client",
+    "clientSecret": "Secret client",
+    "register": "En enregistrer une sur GitHub",
+    "saved": "Application OAuth enregistrée",
+    "app": "Application OAuth",
+    "connect": "Se connecter avec GitHub",
+    "removeApp": "Retirer l'application",
+    "removed": "Application OAuth retirée",
+    "connected": "GitHub connecté",
+    "failed": "Impossible de connecter GitHub",
+    "errors": {
+      "invalid_state": "Cette connexion a expiré ou a déjà été utilisée. Réessayez.",
+      "denied": "L'accès n'a pas été accordé à GitHub.",
+      "not_configured": "L'application OAuth a été retirée entre-temps.",
+      "exchange_failed": "GitHub n'a pas délivré de jeton. Vérifiez le secret client et l'URL de rappel de l'application."
+    },
+    "saveApp": "Enregistrer l'application",
+    "clientSecretHint": "Reste sur ce serveur une fois enregistré, et n'est plus affiché."
   }
 }

@@ -1,0 +1,84 @@
+{
+  "id": "metabase",
+  "version": "1.0.0",
+  "name": "Metabase",
+  "summary": {
+    "en": "Ask questions of your data, no SQL needed.",
+    "fr": "Interrogez vos données, sans écrire de SQL."
+  },
+  "description": {
+    "en": "Business intelligence for everyone on the team: charts, dashboards and scheduled reports on top of your databases. Allow about 2 GB of memory; the first start takes a few minutes.",
+    "fr": "De l'informatique décisionnelle pour toute l'équipe : graphiques, tableaux de bord et rapports planifiés sur vos bases. Prévoyez environ 2 Go de mémoire ; le premier démarrage prend quelques minutes."
+  },
+  "instructions": {
+    "en": "Open the site and create the first administrator in the setup wizard.",
+    "fr": "Ouvrez le site et créez le premier administrateur dans l'assistant de configuration."
+  },
+  "category": "data",
+  "tags": ["analytics", "business-intelligence", "dashboards"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://www.metabase.com"
+    },
+    {
+      "kind": "docs",
+      "url": "https://www.metabase.com/docs/latest/installation-and-operation/running-metabase-on-docker"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/metabase/metabase"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [
+    {
+      "key": "encryptionKey",
+      "length": 44,
+      "alphabet": "alphanumeric"
+    }
+  ],
+  "services": [
+    {
+      "key": "db",
+      "name": "metabase-db",
+      "kind": "database",
+      "engine": "postgres",
+      "image": "postgres:17.11-alpine",
+      "databaseName": "metabase",
+      "user": "metabase"
+    },
+    {
+      "key": "app",
+      "name": "metabase",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "metabase/metabase:v0.65.3.6"
+      },
+      "env": {
+        "MB_DB_TYPE": "postgres",
+        "MB_DB_HOST": "{{services.db.host}}",
+        "MB_DB_PORT": "{{services.db.port}}",
+        "MB_DB_DBNAME": "{{services.db.database}}",
+        "MB_DB_USER": "{{services.db.user}}",
+        "MB_DB_PASS": "{{services.db.password}}",
+        "MB_SITE_URL": "{{services.app.url}}",
+        "MB_ENCRYPTION_SECRET_KEY": "{{secrets.encryptionKey}}"
+      },
+      "command": null,
+      "mounts": [],
+      "domain": {
+        "port": 3000,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/api/health",
+        "expect": [200]
+      },
+      "dependsOn": ["db"]
+    }
+  ]
+}

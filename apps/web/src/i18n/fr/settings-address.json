@@ -1,0 +1,48 @@
+{
+  "title": "Adresse",
+  "description": "Un nom prêt à l'emploi pour ce serveur, avec un seul certificat pour tout ce qui se trouve dessous. C'est le seul appel de ce serveur vers l'extérieur : l'enregistrement et une vérification quotidienne, sans rien d'autre. Pour l'arrêter, libérez l'adresse ici.",
+  "status": {
+    "active": "Active",
+    "unreachable": "Service injoignable",
+    "lost": "Plus valide",
+    "disabled": "Désactivée",
+    "off": "Désactivée"
+  },
+  "problem": {
+    "unreachable": "La dernière vérification quotidienne n'a pas abouti. Les noms déjà attribués continuent de fonctionner, et elle sera retentée.",
+    "lost": "Le service ne connaît plus ce serveur : les noms de cette adresse ne répondent plus. Enregistrez-le à nouveau pour en obtenir une autre.",
+    "disabled": "Cette adresse a été désactivée par l'exploitant du service. Enregistrez à nouveau pour en obtenir une autre, ou libérez-la pour utiliser les noms générés."
+  },
+  "copyAddress": "Copier l'adresse",
+  "panel": "Panneau",
+  "certificate": "Certificat",
+  "certificateState": {
+    "issued": "Émis",
+    "expiring": "Expire bientôt",
+    "expired": "Expiré",
+    "pending": "En attente"
+  },
+  "certificateHint": {
+    "issued": "Un seul certificat sert tous les noms de cette adresse.",
+    "expiring": "Le proxy le renouvellera de lui-même.",
+    "expired": "Le proxy n'a pas pu le renouveler. Consultez ses journaux.",
+    "pending": "Le proxy le demande dès qu'il démarre, ce qui peut prendre quelques minutes."
+  },
+  "ip": "Pointe vers",
+  "unknownIp": "Inconnue",
+  "lastCheck": "Dernière vérification",
+  "never": "Pas encore",
+  "register": "Enregistrer",
+  "registered": "Ce serveur est maintenant {{domain}}",
+  "registerAgain": "Enregistrer à nouveau",
+  "registerAgainTitle": "Obtenir une nouvelle adresse ?",
+  "registerAgainDescription": "Ce serveur reçoit un nouveau nom à la place de celui-ci, et tous les noms de l'ancienne adresse y sont déplacés. Les favoris et liens vers les anciens noms cessent de fonctionner.",
+  "release": "Libérer",
+  "released": "L'adresse a été libérée",
+  "releaseTitle": "Libérer cette adresse ?",
+  "releaseDescription": "Ses enregistrements sont supprimés définitivement et le nom ne sera plus jamais attribué. Les noms générés repassent sur sslip.io, et ce serveur cesse d'appeler le service.",
+  "movedTo": "Le panneau répond maintenant à",
+  "emptyTitle": "Aucune adresse",
+  "emptyDescription": "Les noms générés utilisent sslip.io. Enregistrez ce serveur pour lui donner son propre nom et un seul certificat pour tout ce qui se trouve dessous.",
+  "emptyDescriptionOff": "Ce serveur est réglé pour ne jamais appeler le service d'adresses : les noms générés utilisent donc sslip.io."
+}

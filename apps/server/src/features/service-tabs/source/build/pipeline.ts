@@ -1,30 +1,44 @@
-import { access, constants, lstat, mkdir, mkdtemp, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
-import { type BuildConfig, buildConfig, isSshRemote } from "@opsifier/contract";
+import { type BuildConfig, buildConfig, isPinnedBuilder, isSshRemote } from "@opsifier/contract";
 import type { ActionContext } from "../../../../core/actions";
 import type { AppDeps } from "../../../../core/context";
-import { Redactor, ToolTimeoutError } from "../../../../core/tools";
+import { assertCliFeature, assertEngineSupported } from "../../../../core/docker";
+import { ToolNotFoundError, ToolTimeoutError } from "../../../../core/tools";
 import { getGithubToken } from "../../../github/service";
-import { compileEnv } from "../../../services/compile/env";
+import { knownHostLines } from "../../../known-hosts/service";
+import { rememberBuildCache, snapshotBuildCache } from "../../../server/docker-admin";
+import { resolveEnvPairs } from "../../../services/compile/env";
 import { builtImageName } from "../../../services/compile/names";
+import { BUILD_SECRET_CONTEXT, envNames, openEnv } from "../../../services/env-store";
+import { serviceRedactor } from "../../../services/masking";
 import type { ServiceRecord } from "../../../services/repo";
 import { requireProject, type ServiceTarget, serviceDir } from "../../../services/service";
 import { listDomainRows, toCompileDomains } from "../../domains/service";
-import {
-  SSH_KEY_CONTEXT,
-  type StoredBuildState,
-  type StoredGithubSource,
-  type StoredGitSource,
-} from "../stored";
+import { repositoryKey, sshHostOf } from "../identity";
+import { claimDeployKey } from "../key-binding";
+import type { StoredBuildState, StoredGithubSource, StoredGitSource } from "../stored";
 import { unpackArchive, unwrapSingleFolder } from "./archive";
-import { type BuildVariable, planBuild } from "./builders";
-import { dockerCliEnv, isReservedBuildVariable } from "./environment";
+import {
+  type BuildCommand,
+  type BuildVariable,
+  declaredBuildArgs,
+  explainBuildFailure,
+  forcedRebuildNote,
+  needsBuildx,
+  planBuild,
+  REVISION_DOCKERFILE,
+  revisionCommand,
+} from "./builders";
+import { dockerCliEnv, inheritedEnv, isReservedBuildVariable } from "./environment";
 import { checkoutRemote, type GitRemote } from "./git";
 import { assertDirectory, assertFile, isInside, resolveInside, SourcePathError } from "./paths";
 
 export interface BuildOptions {
   /** Skip every build cache. */
   force: boolean;
+  /** Build exactly this commit, instead of what the source's ref points at. */
+  commit?: string;
 }
 
 export interface BuiltImage {
@@ -39,30 +53,36 @@ export const codeDir = (deps: Pick<AppDeps, "config">, target: ServiceTarget): s
 export const uploadedArchive = (deps: Pick<AppDeps, "config">, target: ServiceTarget): string =>
   join(serviceDir(deps, target.projectName, target.serviceName), "upload", "archive");
 
-const knownHostsFile = (deps: Pick<AppDeps, "config">, target: ServiceTarget): string =>
-  join(serviceDir(deps, target.projectName, target.serviceName), "known_hosts");
-
-/** Where git reads from and with what credentials. A key or token is only ever used for its own kind of remote. */
+/**
+ * Where git reads from and with what credentials. The panel's token is only for the repository it was
+ * granted for, a deploy key only for the repository it is bound to, and neither follows a source
+ * anywhere else.
+ */
 export function gitRemoteOf(
-  deps: Pick<AppDeps, "config" | "db" | "secrets">,
-  target: ServiceTarget,
+  deps: Pick<AppDeps, "db" | "secrets">,
   source: StoredGithubSource | StoredGitSource,
   build: StoredBuildState,
 ): GitRemote {
-  const hosts = knownHostsFile(deps, target);
   if (source.type === "github") {
+    const granted = source.tokenRepository?.toLowerCase() === source.repository.toLowerCase();
     return {
       url: `https://github.com/${source.repository}.git`,
       sealedKey: null,
-      token: getGithubToken(deps),
-      knownHostsFile: hosts,
+      token: granted ? getGithubToken(deps) : null,
+      knownHosts: "",
     };
   }
+  if (!isSshRemote(source.url)) {
+    return { url: source.url, sealedKey: null, token: null, knownHosts: "" };
+  }
+  const { host, port } = sshHostOf(source.url);
+  const key = build.sshKey;
+  const usable = key !== null && (key.boundTo === null || key.boundTo === repositoryKey(source.url));
   return {
     url: source.url,
-    sealedKey: isSshRemote(source.url) ? (build.sshKey?.sealedPrivateKey ?? null) : null,
+    sealedKey: usable ? key.sealedPrivateKey : null,
     token: null,
-    knownHostsFile: hosts,
+    knownHosts: knownHostLines(deps, host, port),
   };
 }
 
@@ -84,6 +104,7 @@ async function prepareCode(
   target: ServiceTarget,
   record: ServiceRecord,
   ctx: ActionContext,
+  commit: string | undefined,
 ): Promise<{ code: string; gitSha: string | null }> {
   const { source, build } = record.spec;
   const directory = serviceDir(deps, target.projectName, target.serviceName);
@@ -106,12 +127,16 @@ async function prepareCode(
       await unpackArchive(deps, uploadedArchive(deps, target), tree, { signal: ctx.signal });
       prepared = await unwrapSingleFolder(tree);
     } else if (source?.type === "git" || source?.type === "github") {
-      const remote = gitRemoteOf(deps, target, source, build);
-      ctx.log(`Fetching ${source.type === "git" ? source.url : source.repository} at ${source.ref}`);
+      if (source.type === "git") {
+        claimDeployKey(deps, target, source.url);
+      }
+      const remote = gitRemoteOf(deps, source, build);
+      const wanted = commit ?? source.ref;
+      ctx.log(`Fetching ${source.type === "git" ? source.url : source.repository} at ${wanted}`);
       const { sha } = await checkoutRemote(
         deps,
         remote,
-        source.ref,
+        wanted,
         { gitDir: join(staging, "git"), workTree: tree },
         { signal: ctx.signal, onLine: ctx.log },
       );
@@ -128,37 +153,146 @@ async function prepareCode(
   }
 }
 
-/** The variables of the build: the same ones the container gets, minus what would steer the tools. */
-function buildVariables(
+/** What a build is given. The runtime environment is not part of it, unless this says so. */
+interface BuildValues {
+  variables: BuildVariable[];
+  secrets: BuildVariable[];
+  /** Which of the variables are only there because the service built before build variables existed. */
+  inherited: ReadonlySet<string>;
+}
+
+const SEALED_REFERENCE = /\$\((?:secret|db)\.[A-Za-z0-9._-]+\)/;
+/** Docker hands these to RUN steps without an ARG line asking for them. */
+const PREDEFINED_ARGS = /^(?:HTTP_PROXY|HTTPS_PROXY|FTP_PROXY|NO_PROXY|ALL_PROXY)$/i;
+
+/**
+ * Only what was set aside for the build reaches it: the commit, the port, and its own variables and
+ * secrets. A service that was building before these existed keeps getting its runtime variables, so that
+ * it goes on building, except anything sealed, which never goes through a build argument.
+ */
+function buildValues(
   deps: AppDeps,
   target: ServiceTarget,
   record: ServiceRecord,
   gitSha: string | null,
   log: (line: string) => void,
-): BuildVariable[] {
+): BuildValues {
   const project = requireProject(deps, target.projectName);
   const primary = toCompileDomains(listDomainRows(deps.db, target)).find((domain) => domain.primary);
-  const merged = new Map<string, string>();
-  for (const entry of compileEnv({
+  const { build } = record.spec;
+  const placeholders = {
     project: target.projectName,
     service: target.serviceName,
-    projectEnv: project.env,
-    serviceEnv: record.spec.env,
     primaryHost: primary?.host ?? "",
-    port: primary?.port ?? 80,
-    gitSha,
-  })) {
-    const separator = entry.indexOf("=");
-    merged.set(entry.slice(0, separator), entry.slice(separator + 1));
+    references: {},
+    interpolate: record.spec.envInterpolation,
+  };
+
+  const merged = new Map<string, string>([["PORT", String(primary?.port ?? 80)]]);
+  if (gitSha) {
+    merged.set("GIT_SHA", gitSha);
   }
 
-  const skipped = [...merged.keys()].filter(isReservedBuildVariable);
+  const inherited = new Set<string>();
+  if (build.inheritsRuntime) {
+    const runtime = resolveEnvPairs({
+      ...placeholders,
+      projectEnv: openEnv(deps, project.sealedEnv),
+      serviceEnv: openEnv(deps, record.spec.sealedEnv),
+    });
+    const sealed = runtime.filter(({ value }) => SEALED_REFERENCE.test(value)).map(({ key }) => key);
+    if (sealed.length > 0) {
+      log(`Not passing to the build, these hold sealed values: ${sealed.join(", ")}`);
+    }
+    for (const { key, value } of runtime) {
+      if (!sealed.includes(key)) {
+        merged.set(key, value);
+        inherited.add(key);
+      }
+    }
+  }
+
+  for (const { key, value } of resolveEnvPairs({
+    ...placeholders,
+    projectEnv: "",
+    serviceEnv: openEnv(deps, build.sealedVariables),
+  })) {
+    merged.set(key, value);
+    inherited.delete(key);
+  }
+
+  const secrets = Object.entries(build.secrets).map(([key, secret]) => ({
+    key,
+    value: deps.secrets.unseal(secret.sealed, BUILD_SECRET_CONTEXT),
+  }));
+  for (const { key } of secrets) {
+    merged.delete(key);
+    inherited.delete(key);
+  }
+
+  const skipped = [...merged.keys(), ...secrets.map(({ key }) => key)].filter(isReservedBuildVariable);
   if (skipped.length > 0) {
     log(`Not passing to the build, these names steer the build tools: ${skipped.join(", ")}`);
   }
-  return [...merged.entries()]
-    .filter(([key]) => !isReservedBuildVariable(key))
-    .map(([key, value]) => ({ key, value }));
+  return {
+    variables: [...merged.entries()]
+      .filter(([key]) => !isReservedBuildVariable(key))
+      .map(([key, value]) => ({ key, value })),
+    secrets: secrets.filter(({ key }) => !isReservedBuildVariable(key)),
+    inherited,
+  };
+}
+
+/**
+ * Says what happens to a Dockerfile's ARG lines. An inherited variable it doesn't declare has no effect
+ * on it, so it is simply left out: nothing can depend on it, and no ARG can start to record it later.
+ */
+function narrowToDockerfile(
+  dockerfile: string,
+  values: BuildValues,
+  runtimeNames: readonly string[],
+  log: (line: string) => void,
+): BuildVariable[] {
+  const declared = declaredBuildArgs(dockerfile);
+  const given = new Set([...values.variables, ...values.secrets].map(({ key }) => key));
+  const unmet = [...declared].filter((name) => runtimeNames.includes(name) && !given.has(name));
+  if (unmet.length > 0) {
+    log(
+      `This Dockerfile declares ${unmet.join(", ")}, which only the container gets. Add what the build needs to its build variables.`,
+    );
+  }
+  return values.variables.filter(
+    ({ key }) => !values.inherited.has(key) || declared.has(key) || PREDEFINED_ARGS.test(key),
+  );
+}
+
+function runtimeVariableNames(deps: AppDeps, target: ServiceTarget, record: ServiceRecord): string[] {
+  const project = requireProject(deps, target.projectName);
+  return [...envNames(openEnv(deps, project.sealedEnv)), ...envNames(openEnv(deps, record.spec.sealedEnv))];
+}
+
+function announceBuildValues(
+  config: BuildConfig,
+  variables: readonly BuildVariable[],
+  values: BuildValues,
+  log: (line: string) => void,
+): void {
+  log(`Build variables: ${variables.map(({ key }) => key).join(", ")}`);
+  if (values.secrets.length > 0) {
+    const names = values.secrets.map(({ key }) => key).join(", ");
+    log(
+      config.type === "nixpacks"
+        ? `Not passing the build secrets ${names}: Nixpacks would write them into the image.`
+        : `Build secrets: ${names}`,
+    );
+  }
+  const inherited = variables.filter(({ key }) => values.inherited.has(key)).map(({ key }) => key);
+  if (inherited.length > 0) {
+    log(
+      `Still passing runtime variables to this build, as before build variables existed: ${inherited.join(", ")}. ` +
+        "A value a Dockerfile declares as ARG stays in the image's history. Choose what the build needs on the Environment tab.",
+    );
+  }
 }
 
 /** Writes dotenv content inside the source, replacing a link rather than following it. */
@@ -186,32 +320,66 @@ export async function writeEnvFile(
   }
   await mkdir(dirname(target), { recursive: true });
   await rm(target, { force: true });
+  await writeFile(target, dotenvText(variables), { mode: 0o644, flag: "wx" });
+}
+
+function dotenvText(variables: readonly BuildVariable[]): string {
   const quote = (value: string) =>
     /[\s#"'\\$]/.test(value) ? `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"` : value;
-  const content = variables.map(({ key, value }) => `${key}=${quote(value)}\n`).join("");
-  await writeFile(target, content, { mode: 0o644, flag: "wx" });
+  return variables.map(({ key, value }) => `${key}=${quote(value)}\n`).join("");
 }
 
-async function isExecutable(file: string): Promise<boolean> {
-  return access(file, constants.X_OK).then(
-    () => true,
-    () => false,
-  );
+/** Kept out of the context altogether: no COPY can reach it, and only a step that mounts it can read it. */
+async function writeEnvFileOutsideContext(
+  workDir: string,
+  values: BuildValues,
+  config: BuildConfig,
+  log: (line: string) => void,
+): Promise<string | undefined> {
+  if (config.type !== "dockerfile") {
+    log("Not writing the file of variables: only a Dockerfile can read one that stays out of the image.");
+    return undefined;
+  }
+  const file = join(workDir, "env-file");
+  await writeFile(file, dotenvText([...values.variables, ...values.secrets]), { mode: 0o600, flag: "wx" });
+  log("The file of variables stays out of the build context. A step reads it as the build secret env-file");
+  return file;
 }
 
-/** A version the panel ships under its builders folder, or else whatever is on the PATH. */
+const BUILDER_NAMES = { nixpacks: "Nixpacks", railpack: "Railpack" } as const;
+const NOT_REPLACED = "Nothing was built, and what is running was left alone.";
+
+/**
+ * The binary of exactly this version. There is no other one to fall back to: a build with a different
+ * version from the one that was chosen would be a different build, and it would not say so anywhere.
+ */
 async function resolveBuilderTool(
-  deps: Pick<AppDeps, "config">,
+  deps: Pick<AppDeps, "config" | "tools">,
   name: "nixpacks" | "railpack",
   version: string,
   log: (line: string) => void,
 ): Promise<string> {
-  const versioned = join(deps.config.buildersDir, name, version, name);
-  if (await isExecutable(versioned)) {
-    return versioned;
+  const tool = join(deps.config.buildersDir, name, version, name);
+  const result = await deps.tools
+    .run({ command: tool, args: ["--version"], env: inheritedEnv(), timeoutMs: 15_000 })
+    .catch((error: unknown) => {
+      if (error instanceof ToolNotFoundError) {
+        return null;
+      }
+      throw error;
+    });
+  if (result === null || result.exitCode !== 0) {
+    const installed = await readdir(join(deps.config.buildersDir, name)).catch(() => []);
+    throw new Error(
+      `${BUILDER_NAMES[name]} ${version} is not installed on this server, and a build never uses any other version. ${NOT_REPLACED} ${
+        installed.length === 0
+          ? "Install it, or choose another builder on the Source tab."
+          : `Choose one of ${installed.sort().join(", ")} on the Source tab.`
+      }`,
+    );
   }
-  log(`Using ${name} from the PATH: version ${version} is not installed under ${deps.config.buildersDir}.`);
-  return name;
+  log(`Using ${result.tail.at(-1) ?? `${BUILDER_NAMES[name]} ${version}`}`);
+  return tool;
 }
 
 const DETECTED_NIXPACKS: BuildConfig = buildConfig.parse({ type: "nixpacks" });
@@ -233,20 +401,19 @@ async function chooseBuild(
   return hasDockerfile ? { type: "dockerfile", file: "" } : DETECTED_NIXPACKS;
 }
 
-/** The build never receives these, but a stray line in its output must not be able to show them. */
-function redactorFor(deps: Pick<AppDeps, "db" | "secrets">, record: ServiceRecord): Redactor {
-  const redact = new Redactor();
-  const { source, build } = record.spec;
-  if (build.sshKey !== null) {
-    redact.add(deps.secrets.unseal(build.sshKey.sealedPrivateKey, SSH_KEY_CONTEXT));
+/** Records in the image itself which commit it came from, and lets go of the copy without it. */
+async function stampRevision(
+  deps: Pick<AppDeps, "docker">,
+  build: { image: string; workDir: string },
+  revision: string,
+  run: (command: BuildCommand) => Promise<void>,
+): Promise<void> {
+  const unstamped = await deps.docker.inspectImage(build.image);
+  await writeFile(join(build.workDir, REVISION_DOCKERFILE), `FROM ${build.image}\n`);
+  await run(revisionCommand(build, revision));
+  if (unstamped !== null && (await deps.docker.inspectImage(build.image))?.id !== unstamped.id) {
+    await deps.docker.removeImage(unstamped.id).catch(() => undefined);
   }
-  if (source?.type === "github") {
-    const token = getGithubToken(deps);
-    if (token !== null) {
-      redact.addToken(token);
-    }
-  }
-  return redact;
 }
 
 function relativePath(path: string): string {
@@ -268,17 +435,18 @@ export async function buildServiceImage(
   if (source === null || source.type === "image") {
     throw new Error("This source has nothing to build.");
   }
+  await assertEngineSupported(deps.docker);
 
-  const { code, gitSha } = await prepareCode(deps, target, record, ctx);
+  const { code, gitSha } = await prepareCode(deps, target, record, ctx, options.commit);
 
   const buildPath = source.type === "dockerfile" ? "" : relativePath(source.path);
   const context = await resolveInside(code, buildPath, "The build path");
   await assertDirectory(context, "The build path", `/${buildPath}`);
 
-  const variables = buildVariables(deps, target, record, gitSha, ctx.log);
-  if (build.envFilePath !== null) {
-    ctx.log(`Writing the environment to ${build.envFilePath}`);
-    await writeEnvFile(context, build.envFilePath, variables);
+  const values = buildValues(deps, target, record, gitSha, ctx.log);
+  if (build.envFilePath !== null && build.envFileInImage) {
+    ctx.log(`Writing the build variables to ${build.envFilePath}, in the build context`);
+    await writeEnvFile(context, build.envFilePath, values.variables);
   }
 
   const config = await chooseBuild(
@@ -288,18 +456,44 @@ export async function buildServiceImage(
   );
 
   let dockerfile: string | undefined;
+  let variables = values.variables;
   if (config.type === "dockerfile") {
     const file = config.file || "Dockerfile";
     dockerfile = await resolveInside(code, join(buildPath, file), "The Dockerfile");
     await assertFile(dockerfile, "The Dockerfile", file);
+    variables = narrowToDockerfile(
+      await readFile(dockerfile, "utf8"),
+      values,
+      runtimeVariableNames(deps, target, record),
+      ctx.log,
+    );
+  }
+  announceBuildValues(config, variables, values, ctx.log);
+
+  if (config.type === "buildpacks" && !isPinnedBuilder(config.builder)) {
+    throw new Error(
+      `${config.builder} is not pinned, so a later build could come out differently from this one. ${NOT_REPLACED} Choose a pinned builder on the Source tab.`,
+    );
+  }
+  if (needsBuildx(config)) {
+    await assertCliFeature(deps.docker, { tools: deps.tools, env: dockerCliEnv(deps) }, "buildx");
+  }
+  if (options.force) {
+    ctx.log(forcedRebuildNote(config));
   }
 
   const image = builtImageName(target.projectName, target.serviceName);
   const workDir = await makeWorkDir(deps, "build-");
+  const cacheBefore = await snapshotBuildCache(deps, ctx.signal);
   try {
     const tool =
       config.type === "nixpacks" || config.type === "railpack"
         ? await resolveBuilderTool(deps, config.type, config.version, ctx.log)
+        : undefined;
+    const secrets = config.type === "nixpacks" ? [] : values.secrets;
+    const envFile =
+      build.envFilePath !== null && !build.envFileInImage
+        ? await writeEnvFileOutsideContext(workDir, values, config, ctx.log)
         : undefined;
     const commands = planBuild(config, {
       image,
@@ -307,16 +501,22 @@ export async function buildServiceImage(
       dockerfile,
       force: options.force,
       variables,
+      secrets,
+      envFile,
       workDir,
       tool,
+      secretsHash: deps.secrets.fingerprint(
+        JSON.stringify([...variables, ...secrets].sort((a, b) => a.key.localeCompare(b.key))),
+        "build-values",
+      ),
     });
-    const env = {
-      ...dockerCliEnv(deps),
+    const given = {
       ...Object.fromEntries(variables.map(({ key, value }) => [key, value])),
+      ...Object.fromEntries(secrets.map(({ key, value }) => [key, value])),
     };
 
-    const redact = redactorFor(deps, record);
-    for (const command of commands) {
+    const redact = serviceRedactor(deps, target);
+    const run = async (command: BuildCommand, step = commands.length) => {
       ctx.log(`$ ${command.label}`);
       let result: Awaited<ReturnType<AppDeps["tools"]["run"]>>;
       try {
@@ -324,7 +524,7 @@ export async function buildServiceImage(
           command: command.command,
           args: command.args,
           cwd: context,
-          env,
+          env: { ...dockerCliEnv(deps), ...command.env, ...given },
           signal: ctx.signal,
           timeoutMs: deps.config.buildTimeoutMs,
           redact,
@@ -337,10 +537,19 @@ export async function buildServiceImage(
         throw error;
       }
       if (result.exitCode !== 0) {
-        throw new Error(`The build failed with exit code ${result.exitCode}. Its log has the details.`);
+        throw new Error(
+          `The build failed with exit code ${result.exitCode}, and what is running was left alone. ${explainBuildFailure(config, step, result.tail)}`,
+        );
       }
+    };
+    for (const [step, command] of commands.entries()) {
+      await run(command, step);
+    }
+    if (gitSha !== null) {
+      await stampRevision(deps, { image, workDir }, gitSha, run);
     }
   } finally {
+    await rememberBuildCache(deps, cacheBefore);
     await rm(workDir, { recursive: true, force: true });
   }
 

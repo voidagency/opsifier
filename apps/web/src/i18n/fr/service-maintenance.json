@@ -29,5 +29,8 @@
     "logo": "Choisissez une image PNG, JPEG, GIF, WebP ou SVG.",
     "logoTooLarge": "Cette image dépasse 128 Ko.",
     "logoUnreadable": "Ce fichier n'a pas pu être lu."
-  }
+  },
+  "stateOff": "Désactivée : les visiteurs voient l'application",
+  "subtitleHint": "Une seconde ligne sous le titre.",
+  "hideLogoHint": "Masquer la marque Opsifier sur la page vue par les visiteurs."
 }

@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { isApiError } from "../../../../lib/api";
 import { schemaErrors, useForm } from "../../../../lib/forms";
 import { Button, CodeEditor, ConfirmDialog, Dialog, Field, FormBanner, Input, toast } from "../../../../ui";
+import { useCurrentUser } from "../../../auth/session";
 import { storageApi } from "./api";
 
 export type MountKind = MountSpec["type"];
@@ -56,6 +57,7 @@ const schemas = { bind: bindMountSpec, volume: volumeMountSpec, file: fileMountS
 export function MountDialog({ project, service, kind, editing, onClose, onSaved }: MountDialogProps) {
   const { t } = useTranslation(["service-storage", "common"]);
   const [riskCode, setRiskCode] = useState<RiskCode | null>(null);
+  const isAdmin = useCurrentUser()?.role === "admin";
   // An edit that keeps the same dangerous path keeps its confirmation.
   const confirmed =
     editing?.mount.type === "bind" && editing.mount.risk !== null ? editing.mount.hostPath : null;
@@ -120,13 +122,18 @@ export function MountDialog({ project, service, kind, editing, onClose, onSaved 
         <div className="grid gap-4">
           {form.banner && <FormBanner>{form.banner}</FormBanner>}
           {kind === "bind" && (
-            <Field label={t("dialog.hostPath")} hint={t("dialog.hostPathHint")} error={form.errors.hostPath}>
+            <Field
+              label={t("dialog.hostPath")}
+              hint={isAdmin ? t("dialog.hostPathHint") : t("dialog.hostPathAdminOnly")}
+              error={form.errors.hostPath}
+            >
               <Input
                 {...form.field("hostPath")}
                 mono
                 autoComplete="off"
                 spellCheck={false}
                 placeholder="/srv/app"
+                disabled={!isAdmin}
               />
             </Field>
           )}
@@ -135,7 +142,7 @@ export function MountDialog({ project, service, kind, editing, onClose, onSaved 
               <Input {...form.field("name")} mono autoComplete="off" spellCheck={false} placeholder="data" />
             </Field>
           )}
-          <Field label={t("dialog.mountPath")} error={form.errors.mountPath}>
+          <Field label={t("dialog.mountPath")} error={form.errors.mountPath} hint={t("dialog.mountPathHint")}>
             <Input
               {...form.field("mountPath")}
               mono
@@ -145,7 +152,12 @@ export function MountDialog({ project, service, kind, editing, onClose, onSaved 
             />
           </Field>
           {kind === "file" && (
-            <Field label={t("dialog.content")} optional error={form.errors.content}>
+            <Field
+              label={t("dialog.content")}
+              optional
+              error={form.errors.content}
+              hint={t("dialog.contentHint")}
+            >
               <CodeEditor
                 value={form.values.content}
                 onChange={(value) => form.set("content", value)}

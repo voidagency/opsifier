@@ -6,7 +6,8 @@
     "starting": "En démarrage",
     "running": "En marche",
     "failing": "En échec",
-    "unknown": "État indisponible"
+    "unknown": "État indisponible",
+    "uncertain": "État incertain"
   },
   "tabs": {
     "label": "Sections du service",
@@ -42,7 +43,24 @@
     "cpu": "CPU",
     "memory": "Mémoire",
     "networkIn": "Entrée",
-    "networkOut": "Sortie"
+    "networkOut": "Sortie",
+    "label": "Mesures en direct",
+    "cpuText": "{{used}} sur {{total}} cœurs",
+    "memoryText": "{{used}} sur {{total}}",
+    "trend": "Tendance : {{metric}}",
+    "neverRead": "aucune mesure pour l'instant",
+    "lastRead": "dernière mesure {{when}}",
+    "dockerAway": "Docker indisponible",
+    "notRunning": "Rien en cours",
+    "scope_one": "{{count}} tâche en cours",
+    "scope_other": "{{count}} tâches en cours",
+    "scopeHint": "Somme des tâches en cours du service, telles que Docker les rapporte. Les totaux réseau comptent depuis le démarrage de chaque tâche.",
+    "origins": {
+      "docker": "Statistiques Docker",
+      "host": "Ce serveur",
+      "simulated": "Chiffres simulés"
+    },
+    "scopeHintSimulated": "Somme des tâches en cours du service, d'après le Docker simulé du mode développement. Les totaux réseau comptent depuis le démarrage de chaque tâche."
   },
   "toolbar": {
     "deploy": "Déployer",
@@ -52,7 +70,7 @@
     "open": "Ouvrir ce site",
     "more": "Plus d'actions",
     "notes": "Notes",
-    "rebuild": "Déployer sans cache",
+    "rebuild": "Reconstruire de zéro",
     "destroy": "Supprimer le service",
     "deployed": "Déploiement terminé",
     "deployFailed": "Le déploiement n'a pas abouti",
@@ -61,7 +79,11 @@
     "stopped": "Le service est arrêté",
     "stopFailed": "Le service ne s'est pas arrêté",
     "restarted": "De nouvelles tâches tournent",
-    "restartFailed": "Le redémarrage n'a pas abouti"
+    "restartFailed": "Le redémarrage n'a pas abouti",
+    "busy": "Attendez la fin du travail en cours.",
+    "notDeployed": "Déployez-le d'abord.",
+    "startFirst": "Démarrez-le d'abord.",
+    "noDomain": "Il n'a pas encore de domaine."
   },
   "create": {
     "pageTitle": "Ajouter à ce projet",
@@ -99,7 +121,7 @@
       },
       "box": {
         "name": "Box",
-        "hint": "Un simple conteneur pour travailler."
+        "hint": "Des environnements au choix, des processus maintenus en marche."
       },
       "compose": {
         "name": "Compose",
@@ -109,14 +131,6 @@
         "name": "WordPress",
         "hint": "Un site avec sa base de données."
       }
-    },
-    "templates": {
-      "title": "Les modèles arrivent bientôt",
-      "description": "Des piles prêtes à l'emploi pour démarrer seront listées ici."
-    },
-    "custom": {
-      "title": "Les créations personnalisées arrivent bientôt",
-      "description": "La création de services depuis une description enregistrée se fera ici."
     },
     "title": "Ajouter une application",
     "description": "Elle démarre à vide : choisissez ensuite une image.",
@@ -136,10 +150,12 @@
   },
   "destroy": {
     "title": "Supprimer ce service ?",
-    "description": "Ses conteneurs, ses routes et son dossier de données seront supprimés.",
+    "description": "Vous allez supprimer",
     "confirm": "Supprimer",
     "copyName": "Copier le nom du service",
-    "started": "Suppression de {{name}}"
+    "started": "Suppression de {{name}}",
+    "removed": "Ses conteneurs, domaines, routes, réglages et fichiers sources sur ce serveur.",
+    "kept": "Ses volumes nommés et ses sauvegardes. Supprimez les volumes conservés plus tard dans Supervision, Stockage. Un nouveau service du même nom et avec le même volume retrouve les données."
   },
   "rename": {
     "open": "Renommer ou déplacer ce service",
@@ -148,7 +164,8 @@
     "project": "Projet",
     "name": "Nom",
     "submit": "Enregistrer",
-    "done": "Le service s'appelle désormais {{name}}"
+    "done": "Le service s'appelle désormais {{name}}",
+    "projectHint": "Le projet vers lequel il est déplacé."
   },
   "notes": {
     "title": "Notes",
@@ -158,14 +175,49 @@
     "label": "Vos notes",
     "save": "Enregistrer",
     "saved": "Notes enregistrées",
-    "tooLong": "C'est trop long."
+    "tooLong": "C'est trop long.",
+    "empty": "Aucune pour l'instant",
+    "add": "Ajouter",
+    "hidden": "Masquées",
+    "show": "Afficher",
+    "hide": "Masquer",
+    "labelHint": "Le Markdown fonctionne. Toute personne ayant accès à ce service peut le lire."
   },
-  "placeholder": {
-    "title": "{{tab}} n'est pas encore configurable",
-    "descriptions": {
-      "redirects": "Les règles de réécriture de tous les domaines de ce service seront gérées ici.",
-      "security": "La protection par mot de passe des domaines de ce service se réglera ici.",
-      "maintenance": "Une page de maintenance à afficher à la place de l'application se réglera ici."
+  "types": {
+    "app": "App",
+    "compose": "Compose",
+    "box": "Box",
+    "wordpress": "WordPress",
+    "postgres": "Postgres",
+    "mysql": "MySQL",
+    "mariadb": "MariaDB",
+    "mongo": "Mongo",
+    "redis": "Redis"
+  },
+  "notice": {
+    "stopped": {
+      "title": "Ce service est arrêté",
+      "description": "Rien ne tourne tant que vous ne le redémarrez pas."
+    },
+    "undeployed": {
+      "title": "Pas encore déployé",
+      "description": "Appuyez sur Déployer pour le lancer."
+    },
+    "uncertain": {
+      "interrupted": {
+        "title": "Un déploiement n'a pas abouti",
+        "description": "Personne ne peut dire avec certitude ce que ce service exécute. Les sauvegardes, restaurations, renommages, la suppression et les changements de ports ou de domaines sont refusés jusqu'à ce qu'un déploiement réussisse."
+      },
+      "restore_failed": {
+        "title": "La version précédente n'a pas pu être rétablie",
+        "description": "Un déploiement a échoué et le retour à la version précédente aussi. Les sauvegardes, restaurations, renommages, la suppression et les changements de ports ou de domaines sont refusés jusqu'à ce qu'un déploiement réussisse."
+      }
     }
+  },
+  "flags": {
+    "pending": "Changements en attente",
+    "pendingHint": "Des réglages enregistrés que la version en marche n'a pas encore. Ils arrivent au prochain déploiement. Cliquez pour les voir.",
+    "silent": "Ne répond pas",
+    "silentHint": "Ses tâches tournent, mais rien n'a répondu sur son port au dernier déploiement. Un conteneur démarré ne prouve pas que l'application fonctionne."
   }
 }

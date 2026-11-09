@@ -1,0 +1,38 @@
+{
+  "title": "Supervision",
+  "description": "L'historique conservé par le panneau, et ce qu'il coûte.",
+  "retention": "Rétention",
+  "unit": "Unité",
+  "units": {
+    "days": "Jours",
+    "gb": "Go",
+    "hours": "Heures"
+  },
+  "metrics": {
+    "title": "Métriques",
+    "enabled": "Enregistrer les métriques",
+    "interval": "Toutes les",
+    "intervalHint": "À quelle fréquence le serveur est mesuré.",
+    "enabledHint": "Enregistrer les relevés de CPU, mémoire et disque dans le temps."
+  },
+  "logs": {
+    "title": "Journaux",
+    "enabled": "Stocker les journaux des services",
+    "enabledHint": "Les garde consultables après la rotation de Docker.",
+    "maxSize": "Taille max (Mo)",
+    "maxSizeHint": "L'espace disque maximal occupé par les journaux, en Mo."
+  },
+  "everySeconds": "{{count}} secondes",
+  "everyMinutes_one": "{{count}} minute",
+  "everyMinutes_other": "{{count}} minutes",
+  "usage": "Utilisé",
+  "oldest": "Plus ancien",
+  "save": "Enregistrer",
+  "saved": "Réglages enregistrés",
+  "errors": {
+    "retention": "Doit être supérieur à zéro.",
+    "size": "10 Mo au minimum."
+  },
+  "unitHint": "Des jours d'historique, ou une limite de taille.",
+  "retentionHint": "Durée de conservation des relevés."
+}

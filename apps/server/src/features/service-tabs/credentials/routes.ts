@@ -78,14 +78,14 @@ const auditEmail = (principal: ReturnType<typeof requirePrincipal>) => principal
 
 export const feature: Feature = {
   register(app, deps) {
-    app.openapi(getRoute, (c) =>
-      c.json(getCredentials(deps, target(c.req.valid("param")), c.req.header("host")), 200),
+    app.openapi(getRoute, async (c) =>
+      c.json(await getCredentials(deps, target(c.req.valid("param")), c.req.header("host")), 200),
     );
 
-    app.openapi(revealRoute, (c) => {
+    app.openapi(revealRoute, async (c) => {
       c.header("Cache-Control", "no-store");
       return c.json(
-        revealSecret(
+        await revealSecret(
           deps,
           target(c.req.valid("param")),
           c.req.valid("json").secret,

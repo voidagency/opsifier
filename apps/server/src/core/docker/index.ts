@@ -7,6 +7,7 @@ export { DockerodeDriver } from "./dockerode";
 export * from "./driver";
 export { FakeDriver, type FakeDriverOptions, type FakeExec } from "./fake";
 export * from "./rollout";
+export * from "./support";
 
 /** `config.driver` has already refused `fake` in production: nothing here falls back. */
 export function createDockerDriver(

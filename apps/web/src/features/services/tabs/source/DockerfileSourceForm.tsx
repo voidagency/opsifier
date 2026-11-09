@@ -25,7 +25,7 @@ export function DockerfileSourceForm({ project, service, source, onSaved, submit
   });
 
   return (
-    <form onSubmit={form.handleSubmit} noValidate className="grid max-w-[720px] gap-4">
+    <form onSubmit={form.handleSubmit} noValidate className="grid max-w-[900px] gap-4">
       {form.banner && <FormBanner>{form.banner}</FormBanner>}
       <div className="grid gap-1.5">
         <p className="text-sm font-medium">{t("dockerfile.label")}</p>

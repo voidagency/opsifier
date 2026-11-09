@@ -35,7 +35,17 @@ describe("the scripts tab", () => {
 
     const added = await api<ScriptList>(PATH, "POST", { name: "Clear cache", script: "rm -rf /tmp/cache" });
     expect(added.status).toBe(201);
-    expect(added.body.scripts).toEqual([{ name: "Clear cache", script: "rm -rf /tmp/cache" }]);
+    expect(added.body.scripts).toMatchObject([
+      {
+        name: "Clear cache",
+        script: "rm -rf /tmp/cache",
+        maxDurationSeconds: 3600,
+        schedule: null,
+        runAfterDeploy: false,
+        nextRunAt: null,
+        lastRun: null,
+      },
+    ]);
 
     await api(`${PATH}/0`, "PUT", { name: "Clear cache", script: "rm -rf /var/cache" });
     expect((await api<ScriptList>(PATH)).body.scripts[0]?.script).toBe("rm -rf /var/cache");
@@ -74,6 +84,19 @@ describe("the scripts tab", () => {
     await api(PATH, "POST", { name: "Backup", script: "tar" });
 
     expect((await api(`${PATH}/0`, "PUT", { name: "Backup", script: "zip" })).status).toBe(200);
+  });
+
+  it.each([
+    ["hexadecimal", "0x0"],
+    ["an exponent", "0e0"],
+    ["a negative number", "-1"],
+    ["a fraction", "0.5"],
+    ["past the maximum", "1000"],
+    ["a word", "first"],
+  ])("refuses %s as a position", async (_label, value) => {
+    await api(PATH, "POST", { name: "one", script: "ls" });
+
+    expect((await api(`${PATH}/${value}`, "DELETE")).status).toBe(400);
   });
 
   it("answers 404 for a position that does not exist", async () => {

@@ -18,11 +18,11 @@ export function Switch({ label, hint, className, id, ...props }: SwitchProps) {
       aria-describedby={hint ? hintId : undefined}
       {...props}
       className={cn(
-        "group relative inline-flex h-[18px] w-8 shrink-0 cursor-pointer items-center rounded-sm border border-off bg-raised hover:border-ink disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-accent data-[state=checked]:bg-accent",
+        "group relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-sm border border-off bg-raised hover:border-ink disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-accent data-[state=checked]:bg-accent",
         !label && className,
       )}
     >
-      <RadixSwitch.Thumb className="block size-3 translate-x-[2px] rounded-[2px] bg-off transition-transform duration-[140ms] ease-out group-hover:bg-ink data-[state=checked]:translate-x-[16px] data-[state=checked]:bg-on-accent data-[state=checked]:group-hover:bg-on-accent" />
+      <RadixSwitch.Thumb className="block size-3.5 translate-x-[3px] rounded-[3px] bg-off transition-transform duration-[140ms] ease-out group-hover:bg-ink data-[state=checked]:translate-x-[22.5px] data-[state=checked]:bg-on-accent data-[state=checked]:group-hover:bg-on-accent" />
     </RadixSwitch.Root>
   );
 

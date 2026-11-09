@@ -1,6 +1,6 @@
 {
   "image": "Image",
-  "imageHint": "Changing the version can make existing data unreadable. Move between major versions with care.",
+  "imageHint": "A fixed version only. A move to another major version is confirmed, and backed up first.",
   "imageRequired": "Choose an image.",
   "invalidImage": "Enter an image such as name:tag.",
   "command": "Command",
@@ -12,10 +12,17 @@
   "envHint": "One NAME=value per line, added to the engine's own variables.",
   "invalidEnv": "Each line must look like NAME=value.",
   "configFile": "Config file",
-  "configFileHint": "Kept beside the server's own configuration. Takes effect when the database restarts.",
-  "restartNote": "Saving restarts the database right away.",
-  "save": "Save and restart",
-  "restarting": "Restarting the database…",
-  "saved": "Advanced settings are in place",
-  "failed": "The new settings weren't applied"
+  "configFileHint": "Kept beside the server's own configuration. Takes effect at the next deployment.",
+  "deployNote": "Saving only stores these settings. Redeploying is what applies them, and it restarts the database.",
+  "save": "Save",
+  "saved": "Settings saved",
+  "savedHint": "Redeploy the database to apply them.",
+  "envReveal": "Show and edit",
+  "fixedImage": "Name a fixed version, such as postgres:18.6, or pin a digest.",
+  "majorChange": {
+    "title": "Move to another major version?",
+    "description": "{{from}} becomes {{to}} at the next deployment, which may need the data to be migrated. That deployment takes a backup of the whole server first and stops if the backup fails. If the new version does not start, the previous one comes back.",
+    "descriptionRedis": "{{from}} becomes {{to}} at the next deployment. Redis has no backups in the panel, so its data stays only on its volume. If the new version does not start, the previous one comes back.",
+    "confirm": "Save this version"
+  }
 }

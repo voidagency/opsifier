@@ -31,6 +31,7 @@ export const CLOSE_SESSION_ENDED = 4401;
 interface Client {
   socket: WebSocket;
   sessionId: string;
+  userId: string;
   topics: Set<string>;
   alive: boolean;
   violations: number;
@@ -72,6 +73,14 @@ export interface TopicProvider {
   open(topic: string, channel: TopicChannel): TopicFeed;
 }
 
+/** Decides who may listen to what. Without one, any session may subscribe to anything. */
+export interface TopicGuard {
+  /** Checked at subscribe time. A refused subscription is silently ignored, like a topic with no data. */
+  allow(userId: string, topic: string): boolean;
+  /** Checked for each frame of a shared topic, for feeds that mix several people's data. */
+  deliver?(userId: string, topic: string, payload: unknown): boolean;
+}
+
 export interface RealtimeHubOptions {
   db: Db;
   config: Pick<Config, "allowedOrigins" | "trustedProxies">;
@@ -97,6 +106,7 @@ export class RealtimeHub {
   private readonly providers: TopicProvider[] = [];
   private readonly feeds = new Map<string, TopicFeed>();
   private readonly heartbeat: NodeJS.Timeout;
+  private guard: TopicGuard | undefined;
 
   constructor(options: RealtimeHubOptions) {
     this.db = options.db;
@@ -121,8 +131,15 @@ export class RealtimeHub {
     }
     const frame = JSON.stringify({ t: "data", topic, payload });
     for (const client of subscribers) {
-      this.send(client, frame);
+      if (this.guard?.deliver === undefined || this.guard.deliver(client.userId, topic, payload)) {
+        this.send(client, frame);
+      }
     }
+  }
+
+  /** Puts a check on subscriptions and frames. */
+  setGuard(guard: TopicGuard): void {
+    this.guard = guard;
   }
 
   subscriberCount(topic: string): number {
@@ -227,21 +244,21 @@ export class RealtimeHub {
         return;
       }
       custom.server.handleUpgrade(request, socket, head, (webSocket) => {
-        this.track(webSocket, sessionId);
+        this.track(webSocket, sessionId, principal.user.id);
         admission.connect(webSocket);
       });
       return;
     }
 
     this.server.handleUpgrade(request, socket, head, (webSocket) => {
-      const client = this.track(webSocket, sessionId);
+      const client = this.track(webSocket, sessionId, principal.user.id);
       webSocket.on("message", (data, isBinary) => this.receive(client, data, isBinary));
     });
   }
 
   /** Puts a connection under the heartbeat and the session checks. */
-  private track(socket: WebSocket, sessionId: string): Client {
-    const client: Client = { socket, sessionId, topics: new Set(), alive: true, violations: 0 };
+  private track(socket: WebSocket, sessionId: string, userId: string): Client {
+    const client: Client = { socket, sessionId, userId, topics: new Set(), alive: true, violations: 0 };
     this.clients.add(client);
 
     socket.on("pong", () => {
@@ -279,6 +296,9 @@ export class RealtimeHub {
 
     const { t, topic } = frame.data;
     if (t === "sub") {
+      if (this.guard !== undefined && !this.guard.allow(client.userId, topic)) {
+        return;
+      }
       if (client.topics.size >= MAX_TOPICS_PER_CLIENT && !client.topics.has(topic)) {
         this.reject(client, "too_many_topics", "Unsubscribe from something first.");
         return;

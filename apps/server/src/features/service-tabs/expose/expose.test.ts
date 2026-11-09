@@ -23,28 +23,54 @@ const endpointOf = async () => (await context.docker.inspectService("shop_db"))?
 describe("DAT-07: exposing a database on a public port", () => {
   it("defaults to not exposed", async () => {
     await suite.deployed({ engine: "redis" });
-    expect((await suite.api<ExposeSettings>(exposePath())).body).toEqual({ port: 0 });
+    expect((await suite.api<ExposeSettings>(exposePath())).body).toEqual({ port: 0, publishedPort: 0 });
     expect(await endpointOf()).toEqual({ Mode: "dnsrr" });
+  });
+
+  it("only stores a port when saved: nothing is published and no restart happens until a deployment", async () => {
+    await suite.deployed({ engine: "redis" });
+    const before = await context.docker.inspectService("shop_db");
+    const tasks = await context.docker.listTasks({ service: "shop_db" });
+
+    const saved = await suite.api<ExposeSettings>(exposePath(), "PUT", { port: 16379 });
+
+    expect(saved.status).toBe(200);
+    expect(saved.body).toEqual({ port: 16379 });
+    expect(await context.docker.inspectService("shop_db")).toEqual(before);
+    expect(await context.docker.listTasks({ service: "shop_db" })).toEqual(tasks);
+    expect(context.deps.actions.isIdle()).toBe(true);
+    expect((await suite.api<ExposeSettings>(exposePath())).body).toEqual({ port: 16379, publishedPort: 0 });
+
+    expect((await suite.run(`${suite.service()}/deploy`)).status).toBe("succeeded");
+
+    expect(await endpointOf()).toMatchObject({ Ports: [{ PublishedPort: 16379 }] });
+    expect((await suite.api<ExposeSettings>(exposePath())).body).toEqual({
+      port: 16379,
+      publishedPort: 16379,
+    });
   });
 
   it("publishes the engine port on the host in host mode, then reports it", async () => {
     await suite.deployed({ engine: "redis" });
 
-    const action = await suite.run(exposePath(), "PUT", { port: 16379 });
+    const action = await suite.saveThenDeploy(exposePath(), { port: 16379 });
 
     expect(action.status).toBe("succeeded");
     expect(await endpointOf()).toEqual({
       Mode: "dnsrr",
       Ports: [{ Protocol: "tcp", TargetPort: 6379, PublishedPort: 16379, PublishMode: "host" }],
     });
-    expect((await suite.api<ExposeSettings>(exposePath())).body).toEqual({ port: 16379 });
+    expect((await suite.api<ExposeSettings>(exposePath())).body).toEqual({
+      port: 16379,
+      publishedPort: 16379,
+    });
   });
 
   it("removes the published port on 0", async () => {
     await suite.deployed({ engine: "redis" });
-    await suite.run(exposePath(), "PUT", { port: 16379 });
+    await suite.saveThenDeploy(exposePath(), { port: 16379 });
 
-    expect((await suite.run(exposePath(), "PUT", { port: 0 })).status).toBe("succeeded");
+    expect((await suite.saveThenDeploy(exposePath(), { port: 0 })).status).toBe("succeeded");
     expect(await endpointOf()).toEqual({ Mode: "dnsrr" });
   });
 
@@ -88,7 +114,7 @@ describe("DAT-07: exposing a database on a public port", () => {
 
   it("detects a conflict with another database, even a stopped one", async () => {
     await suite.deployed({ engine: "redis", name: "other" });
-    await suite.run(`${suite.service("other")}/expose`, "PUT", { port: 16379 });
+    await suite.saveThenDeploy(`${suite.service("other")}/expose`, { port: 16379 });
     await suite.run(`${suite.service("other")}/stop`);
     await suite.deployed({ engine: "redis" });
 
@@ -98,6 +124,25 @@ describe("DAT-07: exposing a database on a public port", () => {
     expect(apiErrorOf(result).code).toBe("port_in_use");
     expect(apiErrorOf(result).fields).toEqual({ port: "Already used by shop/other" });
     expect(await endpointOf()).toEqual({ Mode: "dnsrr" });
+  });
+
+  it("never says what another project holds, only that the port is taken", async () => {
+    await suite.api("/projects", "POST", { name: "beta" });
+    const other = await suite.api<{ activeAction: { id: string } }>("/projects/beta/databases", "POST", {
+      name: "cache",
+      engine: "redis",
+    });
+    await suite.waitFor(other.body.activeAction.id);
+    await suite.saveThenDeploy("/projects/beta/services/cache/expose", { port: 16379 });
+    await suite.deployed({ engine: "redis" });
+
+    const result = await suite.api(exposePath(), "PUT", { port: 16379 });
+
+    expect(result.status).toBe(409);
+    expect(apiErrorOf(result).code).toBe("port_in_use");
+    expect(JSON.stringify(result.body)).not.toContain("beta");
+    expect(JSON.stringify(result.body)).not.toContain("cache");
+    expect(apiErrorOf(result).fields).toEqual({ port: "Already used by another service" });
   });
 
   it("detects a conflict with something published outside the panel", async () => {
@@ -113,15 +158,24 @@ describe("DAT-07: exposing a database on a public port", () => {
     const result = await suite.api(exposePath(), "PUT", { port: 18080 });
 
     expect(result.status).toBe(409);
-    expect(apiErrorOf(result).fields).toEqual({ port: "Already used by foreign" });
+    expect(apiErrorOf(result).fields).toEqual({ port: "Already used by another service" });
   });
 
   it("allows re-saving its own port", async () => {
     await suite.deployed({ engine: "redis" });
-    await suite.run(exposePath(), "PUT", { port: 16379 });
+    await suite.saveThenDeploy(exposePath(), { port: 16379 });
 
-    const action = await suite.run(exposePath(), "PUT", { port: 16379 });
+    const action = await suite.saveThenDeploy(exposePath(), { port: 16379 });
     expect(action.status).toBe("succeeded");
+  });
+
+  it("leaves the running database alone when a port is refused at save time", async () => {
+    await suite.deployed({ engine: "redis" });
+    const before = await context.docker.inspectService("shop_db");
+
+    await suite.api(exposePath(), "PUT", { port: context.deps.config.port });
+
+    expect(await context.docker.inspectService("shop_db")).toEqual(before);
   });
 
   it("fails visibly and restores the previous state when the host has the port in use", async () => {
@@ -153,12 +207,12 @@ describe("DAT-07: exposing a database on a public port", () => {
         : tasks;
     });
 
-    const action = await suite.run(exposePath(), "PUT", { port: 16379 });
+    const action = await suite.saveThenDeploy(exposePath(), { port: 16379 });
 
     expect(action.status).toBe("failed");
     expect(action.error).toContain("Port 16379 is already in use on this server");
     expect(await endpointOf()).toEqual({ Mode: "dnsrr" });
-    expect((await suite.api<ExposeSettings>(exposePath())).body).toEqual({ port: 0 });
+    expect((await suite.api<ExposeSettings>(exposePath())).body).toEqual({ port: 0, publishedPort: 0 });
   });
 
   it("answers 404 for a service that is not a database", async () => {

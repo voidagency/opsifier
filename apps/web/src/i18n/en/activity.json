@@ -1,6 +1,5 @@
 {
   "title": "Activity",
-  "description": "A record of everything the panel has done on this server.",
   "empty": {
     "title": "The log is empty",
     "description": "Deploys, restarts and backups are recorded here as they run, with their full output."
@@ -15,12 +14,25 @@
     "running": "Running",
     "succeeded": "Succeeded",
     "failed": "Failed",
-    "cancelled": "Cancelled"
-  },
-  "logDialog": {
-    "description": "Output of this action, line by line."
+    "cancelled": "Cancelled",
+    "uncertain": "Uncertain"
   },
   "types": {
+    "backup": {
+      "database": "Database backup",
+      "volume": "Volume backup",
+      "restore-database": "Database restore",
+      "restore-volume": "Volume restore",
+      "delete": "Backup deleted",
+      "config": "Backup settings changed"
+    },
+    "storage-provider": {
+      "create": "Storage provider added",
+      "update": "Storage provider changed",
+      "delete": "Storage provider removed",
+      "connect": "Storage provider connected",
+      "disconnect": "Storage provider disconnected"
+    },
     "auth": {
       "setup": "Administrator account created",
       "login": "Signed in",
@@ -30,7 +42,14 @@
     "project": {
       "create": "Project created",
       "env": "Shared variables changed",
-      "destroy": "Project destroyed"
+      "destroy": "Project destroyed",
+      "env-reveal": "Shared variables shown"
+    },
+    "template": {
+      "install": "Template installed",
+      "deploy": "Template deployment",
+      "remove": "Template removed",
+      "reveal": "Template secret shown"
     },
     "service": {
       "create": "Service created",
@@ -49,9 +68,12 @@
       "console": "Console session",
       "resources": "Resources changed",
       "scripts": "Scripts changed",
+      "script": "Script run",
       "mounts": "Mounts changed",
       "deploy-settings": "Deploy settings changed",
-      "ports": "Published ports changed"
+      "ports": "Published ports changed",
+      "trigger": "Deployment trigger changed",
+      "env-reveal": "Variables shown"
     },
     "database": {
       "create": "Database created",
@@ -63,6 +85,47 @@
       "companion-enable": "Web admin tool enabled",
       "companion-disable": "Web admin tool disabled",
       "companion-reveal": "Web admin tool token revealed"
+    },
+    "server": {
+      "purpose": "Server role changed",
+      "known-host": "Known hosts changed"
+    },
+    "volume": {
+      "delete": "Kept volume deleted"
+    },
+    "box": {
+      "preset": "Box preset applied",
+      "process-restart": "Box process restarted",
+      "ide-access": "Box IDE access changed",
+      "ide-open": "Box IDE opened"
     }
-  }
+  },
+  "healthLabel": "Recent actions by outcome",
+  "noMatch": "Nothing with this outcome in the entries shown.",
+  "origin": {
+    "session": "Signed in",
+    "api_key": "API key",
+    "trigger": "CI trigger",
+    "webhook": "Webhook",
+    "system": "Automated"
+  },
+  "phases": {
+    "pull": "Pulling the image",
+    "build": "Building",
+    "fetch": "Fetching the source",
+    "rollout": "Rolling out",
+    "verify": "Checking it stays up",
+    "export": "Exporting the data",
+    "pack": "Packing the volume",
+    "upload": "Uploading the copy",
+    "verifying": "Checking the backup",
+    "safety": "Taking a safety copy",
+    "importing": "Importing",
+    "checking": "Checking the data",
+    "staging": "Unpacking the copy",
+    "swapping": "Swapping the data in",
+    "starting": "Starting the service"
+  },
+  "resume": "Deploy again",
+  "resumed": "Deployment started"
 }

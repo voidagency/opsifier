@@ -1,0 +1,116 @@
+{
+  "type": "Pile Compose",
+  "tabs": {
+    "label": "Sections de la pile",
+    "overview": "Vue d'ensemble",
+    "source": "Source",
+    "deployments": "Déploiements",
+    "environment": "Environnement",
+    "domains": "Domaines",
+    "redirects": "Redirections",
+    "security": "Sécurité",
+    "maintenance": "Maintenance"
+  },
+  "create": {
+    "title": "Ajouter une pile Compose",
+    "description": "Elle démarre vide : collez ensuite un fichier Compose.",
+    "submit": "Ajouter",
+    "created": "Pile {{name}} ajoutée"
+  },
+  "destroy": {
+    "title": "Détruire cette pile ?",
+    "description": "Vous allez détruire",
+    "confirm": "Détruire",
+    "removed": "Ses conteneurs, réseaux, routes et le dossier de la pile, y compris ce qui y a été écrit par un montage relatif.",
+    "kept": "Ses volumes nommés et ses sauvegardes. Supprimez les volumes conservés plus tard dans Supervision, Stockage."
+  },
+  "states": {
+    "running": "En marche",
+    "starting": "Démarrage",
+    "unhealthy": "Défaillant",
+    "failed": "En échec",
+    "stopped": "Arrêté",
+    "completed": "Terminé"
+  },
+  "overview": {
+    "children": "Services",
+    "noChildren": "Rien ne tourne encore. Enregistrez un fichier Compose, puis lancez Déployer.",
+    "filter": "Afficher les journaux de",
+    "all": "Tout",
+    "copyAddress": "Copier l'adresse de ce service"
+  },
+  "source": {
+    "title": "Fichier Compose",
+    "description": "Lancé avec docker compose sur ce serveur. Tout le fichier s'applique, et les valeurs ${...} viennent de l'onglet Environnement.",
+    "kind": "Origine du fichier",
+    "inline": "En ligne",
+    "git": "Git",
+    "content": "Fichier Compose",
+    "url": "URL du dépôt",
+    "ref": "Branche",
+    "path": "Chemin de build",
+    "pathHint": "Le dossier du dépôt qui contient le fichier.",
+    "file": "Fichier Compose",
+    "save": "Enregistrer",
+    "saved": "Fichier Compose enregistré",
+    "savedHint": "Il s'applique au prochain déploiement.",
+    "fileHint": "Chemin du fichier Compose dans le dépôt.",
+    "refHint": "Une branche, une étiquette ou un commit.",
+    "urlHint": "L'adresse HTTPS ou SSH du dépôt."
+  },
+  "issues": {
+    "title": "Vérifications de ce fichier",
+    "view": "Voir",
+    "banner_one": "{{count}} point à regarder dans ce fichier",
+    "banner_other": "{{count}} points à regarder dans ce fichier",
+    "bannerError": "Ce fichier ne peut pas être déployé tel quel",
+    "bannerHost": "Cette pile peut sortir de ses conteneurs",
+    "bannerHostConfirmed": "Vous avez confirmé que cette pile peut atteindre le serveur",
+    "severity": {
+      "error": "Bloque le déploiement",
+      "host": "Accès à l'hôte",
+      "warning": "Avertissement"
+    },
+    "codes": {
+      "no_services": "ne définit aucun service.",
+      "unknown_dependency": "dépend d'un service absent de ce fichier.",
+      "escapes_stack": "pointe hors du dossier de la pile.",
+      "foreign_network": "rejoint un réseau qui n'appartient pas à ce projet. Les projets sont isolés : retirez-le. Pour utiliser une base d'un autre projet, publiez son port dans son onglet Exposition et connectez-vous par l'adresse du serveur.",
+      "privileged": "tourne en mode privilégié, avec le contrôle total du serveur.",
+      "docker_socket": "monte le socket Docker, ce qui lui donne le contrôle du serveur.",
+      "data_directory": "monte les données du panneau, secrets compris.",
+      "host_path": "monte un dossier du serveur, ou un chemin connu seulement au déploiement.",
+      "host_namespace": "partage un espace de noms avec le serveur ou un autre conteneur.",
+      "capabilities": "ajoute des capacités noyau.",
+      "devices": "accède directement à des périphériques du serveur.",
+      "security_options": "assouplit la sécurité du conteneur.",
+      "container_name": "fixe container_name, ce qui peut entrer en conflit avec un autre conteneur.",
+      "published_port": "publie un port directement sur le serveur, sans passer par le proxy.",
+      "port_taken": "publie un port déjà utilisé par autre chose.",
+      "no_restart_policy": "n'a pas de politique de redémarrage et reste arrêté après un redémarrage du serveur.",
+      "external_resource": "accède à un volume ou un conteneur hors de cette pile.",
+      "profiles": "est derrière un profil : un déploiement simple ne le lance pas.",
+      "network_mode": "utilise son propre mode réseau : les domaines ne l'atteignent pas.",
+      "unroutable_name": "a un nom inutilisable comme cible de domaine."
+    },
+    "hostTitle": "Cette pile peut prendre le contrôle du serveur",
+    "hostBody": "Monter le socket Docker, tourner en mode privilégié ou accéder aux fichiers du serveur donne à cette pile le pouvoir de contrôler la machine. Ne confirmez que si vous faites confiance à tout ce qu'elle exécute.",
+    "confirmLabel": "J'ai compris et je fais confiance à ce fichier",
+    "adminOnly": "Seul un administrateur peut confirmer ce fichier.",
+    "confirm": "Confirmer",
+    "confirmed": "Confirmé pour cette version du fichier",
+    "confirmFirst": "Cochez d'abord la case."
+  },
+  "domains": {
+    "chooseChild": "Choisissez quel service de la pile chaque domaine atteint. D'ici là, ces domaines répondent 503.",
+    "child": "Service de la pile",
+    "none": "Choisir plus tard",
+    "childHint": "Le conteneur de cette pile qui reçoit le trafic."
+  },
+  "environment": {
+    "fileLabel": "Créer un fichier .env",
+    "fileHint": "Écrit aussi ces variables dans .env à côté du fichier Compose avant chaque déploiement.",
+    "saved": "Enregistré",
+    "savedHint": "Cela s'applique au prochain déploiement."
+  }
+}

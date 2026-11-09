@@ -2,7 +2,7 @@ import { type ResourcesSpec, resourcesSpec } from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { errorMessage, schemaErrors, useForm } from "../../../../lib/forms";
-import { Button, Field, FormBanner, Input, Skeleton, toast } from "../../../../ui";
+import { Button, ErrorState, Field, FormBanner, Input, SectionIntro, Skeleton, toast } from "../../../../ui";
 import { useServiceParams } from "../../api";
 import { resourcesApi, resourcesQuery } from "./api";
 
@@ -65,11 +65,16 @@ function ResourcesForm({
   });
 
   return (
-    <form onSubmit={form.handleSubmit} noValidate className="grid max-w-[520px] gap-4">
+    <form onSubmit={form.handleSubmit} noValidate className="grid max-w-[650px] gap-4">
       {form.banner && <FormBanner>{form.banner}</FormBanner>}
       <div className="grid gap-4 sm:grid-cols-2">
         {fields.map(({ name, step }) => (
-          <Field key={name} label={t(`fields.${name}`)} error={form.errors[name]}>
+          <Field
+            key={name}
+            label={t(`fields.${name}`)}
+            error={form.errors[name]}
+            hint={t(`fieldHints.${name}`)}
+          >
             <Input {...form.field(name)} mono type="number" min="0" step={step} inputMode="decimal" />
           </Field>
         ))}
@@ -91,17 +96,11 @@ export function ResourcesTab() {
 
   return (
     <section className="grid gap-x-10 gap-y-4 px-4 py-6 md:px-6 lg:grid-cols-[minmax(0,260px)_minmax(0,620px)] lg:px-8">
-      <div>
-        <h2 className="text-md font-medium">{t("title")}</h2>
-        <p className="mt-1 text-sm text-muted">{t("description")}</p>
-      </div>
+      <SectionIntro pictogram="cpu" title={t("title")} description={t("description")} />
       {isPending ? (
         <Skeleton className="h-40" />
       ) : isError ? (
-        <div className="grid justify-items-start gap-3">
-          <FormBanner>{errorMessage(error, t)}</FormBanner>
-          <Button onClick={() => refetch()}>{t("common:actions.retry")}</Button>
-        </div>
+        <ErrorState message={errorMessage(error, t)} onRetry={() => refetch()} />
       ) : (
         <ResourcesForm key={service} project={project} service={service} initial={data} />
       )}

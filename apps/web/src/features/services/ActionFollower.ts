@@ -19,7 +19,7 @@ export function useActionFollower(): (id: string, messages: FollowMessages) => v
     followed.current.delete(action.id);
     if (action.status === "succeeded") {
       messages.success();
-    } else if (action.status === "failed") {
+    } else if (action.status === "failed" || action.status === "uncertain") {
       messages.failure(action);
     }
   });

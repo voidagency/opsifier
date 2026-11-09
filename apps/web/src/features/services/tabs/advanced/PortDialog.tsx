@@ -65,7 +65,7 @@ export function PortDialog({ project, service, editing, onClose, onSaved }: Port
     >
       <div className="grid gap-4">
         {form.banner && <FormBanner>{form.banner}</FormBanner>}
-        <Field label={t("ports.protocol")}>
+        <Field label={t("ports.protocol")} hint={t("ports.protocolHint")}>
           <Select
             value={form.values.protocol}
             onValueChange={(value) => form.set("protocol", value)}

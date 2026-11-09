@@ -24,6 +24,15 @@ describe("the system feature", () => {
     expect(result.body.serverIp).toBe("203.0.113.10");
   });
 
+  it("says when the panel runs on the simulated driver", async () => {
+    const simulated = await call<SystemInfo>(context.app, "/api/v1/system/info", { cookie });
+    expect(simulated.body.simulated).toBe(true);
+
+    Object.defineProperty(context.docker, "kind", { value: "dockerode" });
+    const real = await call<SystemInfo>(context.app, "/api/v1/system/info", { cookie });
+    expect(real.body.simulated).toBe(false);
+  });
+
   it("uses a configured server IP over a detected one", async () => {
     const configured = await createTestContext({ env: { OPSIFIER_SERVER_IP: "198.51.100.7" } });
     const session = await setupAdmin(configured.app);

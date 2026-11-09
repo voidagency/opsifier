@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useSyncExternalStore } from "react";
+import type { PictogramName } from "../ui";
 
 export interface PaletteCommand {
   /** Unique across the palette. Registering the same id again replaces the earlier command. */
@@ -11,8 +12,12 @@ export interface PaletteCommand {
   /** Extra words the search should match, such as synonyms. */
   keywords?: string[];
   icon?: LucideIcon;
+  /** Drawn instead of `icon`, for commands about something the pictogram set has a drawing of. */
+  pictogram?: PictogramName;
   /** A machine value or shortcut to show on the right. */
   hint?: string;
+  /** Opens this list in place of the current one, keeping the palette open, instead of `run`. */
+  children?: () => readonly PaletteCommand[];
   run: () => void;
 }
 

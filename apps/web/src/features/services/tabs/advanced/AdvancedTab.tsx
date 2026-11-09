@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { errorMessage } from "../../../../lib/forms";
-import { Button, FormBanner, Skeleton } from "../../../../ui";
+import { ErrorState, SectionIntro, Skeleton } from "../../../../ui";
 import { useServiceParams } from "../../api";
 import { advancedQuery } from "./api";
 import { DeployForm } from "./DeployForm";
@@ -18,15 +18,14 @@ export function AdvancedTab() {
   if (isPending) {
     return (
       <div className="grid gap-3 px-4 py-6 md:px-6 lg:px-8">
-        <Skeleton className="h-40 max-w-[720px]" />
+        <Skeleton className="h-40 max-w-[900px]" />
       </div>
     );
   }
   if (isError) {
     return (
-      <div className="grid max-w-[520px] justify-items-start gap-3 px-4 py-6 md:px-6 lg:px-8">
-        <FormBanner>{errorMessage(error, t)}</FormBanner>
-        <Button onClick={() => refetch()}>{t("common:actions.retry")}</Button>
+      <div className="px-4 py-6 md:px-6 lg:px-8">
+        <ErrorState message={errorMessage(error, t)} onRetry={() => refetch()} />
       </div>
     );
   }
@@ -34,17 +33,11 @@ export function AdvancedTab() {
   return (
     <div>
       <section className={sectionClass}>
-        <div>
-          <h2 className="text-md font-medium">{t("ports.title")}</h2>
-          <p className="mt-1 text-sm text-muted">{t("ports.description")}</p>
-        </div>
+        <SectionIntro pictogram="port" title={t("ports.title")} description={t("ports.description")} />
         <PortsSection project={project} service={service} ports={data.ports} />
       </section>
       <section className={sectionClass}>
-        <div>
-          <h2 className="text-md font-medium">{t("deploy.title")}</h2>
-          <p className="mt-1 text-sm text-muted">{t("deploy.description")}</p>
-        </div>
+        <SectionIntro pictogram="settings" title={t("deploy.title")} description={t("deploy.description")} />
         <DeployForm
           key={`${service}:${data.ports.length > 0}`}
           project={project}

@@ -1,0 +1,18 @@
+{
+  "title": "Certificates",
+  "description": "What the proxy holds. It asks for them by itself as domains need them.",
+  "emptyTitle": "No certificates yet",
+  "emptyDescription": "A certificate appears here once a domain with HTTPS has been issued one.",
+  "unknownIssuer": "Unknown issuer",
+  "expiry": "Time left",
+  "remove": "Remove",
+  "removed": "Certificate removed, proxy restarting",
+  "removeTitle": "Remove this certificate?",
+  "removeDescription": "The proxy forgets it and restarts. A new one is requested the next time it's needed.",
+  "state": {
+    "valid": "Valid",
+    "expiring": "Expiring soon",
+    "expired": "Expired",
+    "unreadable": "Unreadable"
+  }
+}

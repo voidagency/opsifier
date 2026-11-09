@@ -25,6 +25,71 @@ function expectErrorShape(result: { body: unknown }) {
   expect(apiError.safeParse(result.body).success).toBe(true);
 }
 
+describe("numbers in a URL", () => {
+  const list = (query: string) => call<ActionPage>(context.app, `/api/v1/actions${query}`, { cookie });
+
+  it.each([
+    ["zero", "0"],
+    ["a negative number", "-1"],
+    ["NaN", "NaN"],
+    ["Infinity", "Infinity"],
+    ["a fraction", "1.5"],
+    ["past the maximum", "101"],
+    ["a huge number", "99999999999999999999"],
+    ["hexadecimal", "0x5"],
+    ["an exponent", "1e1"],
+    ["a sign", "+5"],
+    ["padding", "%205"],
+    ["a leading zero", "05"],
+    ["nothing at all", ""],
+    ["a word", "ten"],
+  ])("refuses %s as a page size", async (_label, value) => {
+    const result = await list(`?limit=${value}`);
+
+    expect(result.status).toBe(400);
+    expect(apiErrorOf(result).fields).toHaveProperty("limit");
+  });
+
+  it.each([
+    ["the smallest", "1", 1],
+    ["the largest", "100", 100],
+  ])("accepts %s page size", async (_label, value, expected) => {
+    for (let index = 0; index < 3; index += 1) {
+      context.deps.actions.record({ type: "x", title: `Note ${index}`, projectName: "shop" });
+    }
+
+    const result = await list(`?type=x&limit=${value}`);
+
+    expect(result.status).toBe(200);
+    expect(result.body.items).toHaveLength(Math.min(expected, 3));
+  });
+
+  it("keeps a page out of another's: no gaps and no repeats across every page", async () => {
+    for (let index = 0; index < 7; index += 1) {
+      context.deps.actions.record({ type: "x", title: `Note ${index}`, projectName: "shop" });
+    }
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const query: string = cursor === null ? "?type=x&limit=3" : `?type=x&limit=3&cursor=${cursor}`;
+      const page: ActionPage = (await list(query)).body;
+      expect(page.items.length).toBeLessThanOrEqual(3);
+      seen.push(...page.items.map((item) => item.id));
+      cursor = page.nextCursor;
+    } while (cursor !== null);
+
+    expect(seen).toHaveLength(7);
+    expect(new Set(seen).size).toBe(7);
+    expect((await list("?type=x&limit=100")).body.items.map((item) => item.id)).toEqual(seen);
+  });
+
+  it("refuses a cursor that is not a position", async () => {
+    expect((await list("?cursor=abc")).status).toBe(400);
+    expect((await list("?cursor=-1")).status).toBe(400);
+  });
+});
+
 describe("the actions feature", () => {
   const run = (index: number) =>
     context.deps.actions.enqueue({

@@ -1,8 +1,9 @@
 import type { LogLevelFilter, LogSearchResult, LogStreamFilter } from "@opsifier/contract";
 import { Search } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/cn";
+import { formatDateTime } from "../../lib/format";
 import { errorMessage } from "../../lib/forms";
 import { Button, EmptyState, Field, FormBanner, Input, Select, Skeleton } from "../../ui";
 import { searchLogs } from "./api";
@@ -17,6 +18,13 @@ interface LogSearchProps {
   service: string;
 }
 
+/** What a search covered, kept with its result since the form can have changed since. */
+interface Finished {
+  found: LogSearchResult;
+  range: Range;
+  limit: string;
+}
+
 /** Looks through what Docker still holds for a service. */
 export function LogSearch({ project, service }: LogSearchProps) {
   const { t } = useTranslation(["service-runtime", "common"]);
@@ -26,26 +34,43 @@ export function LogSearch({ project, service }: LogSearchProps) {
   const [range, setRange] = useState<Range>("1h");
   const [limit, setLimit] = useState<(typeof LIMITS)[number]>("500");
   const [pending, setPending] = useState(false);
-  const [result, setResult] = useState<LogSearchResult | null>(null);
+  const [result, setResult] = useState<Finished | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const latest = useRef<AbortController | null>(null);
+
+  // Whatever is still on its way when this search is left behind has nowhere to land.
+  useEffect(() => () => latest.current?.abort(), []);
 
   const run = async () => {
+    latest.current?.abort();
+    const controller = new AbortController();
+    latest.current = controller;
     setPending(true);
     setFailure(null);
     try {
-      setResult(
-        await searchLogs(project, service, {
+      const found = await searchLogs(
+        project,
+        service,
+        {
           q: text,
           stream,
           level,
           since: range === "all" ? undefined : RANGE_SECONDS[range],
           limit: Number(limit),
-        }),
+        },
+        controller.signal,
       );
+      if (!controller.signal.aborted) {
+        setResult({ found, range, limit });
+      }
     } catch (error) {
-      setFailure(errorMessage(error, t));
+      if (!controller.signal.aborted) {
+        setFailure(errorMessage(error, t));
+      }
     } finally {
-      setPending(false);
+      if (latest.current === controller) {
+        setPending(false);
+      }
     }
   };
 
@@ -72,7 +97,7 @@ export function LogSearch({ project, service }: LogSearchProps) {
           void run();
         }}
       >
-        <Field label={t("search.text")}>
+        <Field label={t("search.text")} hint={t("search.textHint")}>
           <Input
             mono
             value={text}
@@ -83,24 +108,24 @@ export function LogSearch({ project, service }: LogSearchProps) {
             placeholder={t("search.placeholder")}
           />
         </Field>
-        <Field label={t("search.stream")}>
+        <Field label={t("search.stream")} hint={t("search.streamHint")}>
           <Select
             value={stream}
             onValueChange={(next) => setStream(next as LogStreamFilter)}
             options={streamOptions}
           />
         </Field>
-        <Field label={t("search.level")}>
+        <Field label={t("search.level")} hint={t("search.levelHint")}>
           <Select
             value={level}
             onValueChange={(next) => setLevel(next as LogLevelFilter)}
             options={levelOptions}
           />
         </Field>
-        <Field label={t("search.range")}>
+        <Field label={t("search.range")} hint={t("search.rangeHint")}>
           <Select value={range} onValueChange={(next) => setRange(next as Range)} options={rangeOptions} />
         </Field>
-        <Field label={t("search.limit")}>
+        <Field label={t("search.limit")} hint={t("search.limitHint")}>
           <Select
             value={limit}
             onValueChange={(next) => setLimit(next as (typeof LIMITS)[number])}
@@ -118,13 +143,21 @@ export function LogSearch({ project, service }: LogSearchProps) {
       </form>
 
       {failure !== null && <FormBanner>{failure}</FormBanner>}
-      <SearchResults result={result} pending={pending} />
+      <SearchResults result={result} pending={pending} service={`${project}/${service}`} />
     </div>
   );
 }
 
-function SearchResults({ result, pending }: { result: LogSearchResult | null; pending: boolean }) {
-  const { t } = useTranslation("service-runtime");
+function SearchResults({
+  result,
+  pending,
+  service,
+}: {
+  result: Finished | null;
+  pending: boolean;
+  service: string;
+}) {
+  const { t, i18n } = useTranslation("service-runtime");
 
   if (pending && result === null) {
     return <Skeleton className="h-40" />;
@@ -132,20 +165,35 @@ function SearchResults({ result, pending }: { result: LogSearchResult | null; pe
   if (result === null) {
     return <p className="text-sm text-muted">{t("search.intro")}</p>;
   }
-  if (result.lines.length === 0) {
-    return <EmptyState title={t("search.empty.title")} description={t("search.empty.description")} />;
+  const { found } = result;
+  if (found.lines.length === 0) {
+    return (
+      <EmptyState
+        illustration="no-activity"
+        title={t("search.empty.title")}
+        description={t("search.empty.description")}
+      />
+    );
   }
 
   return (
     <>
       <p className="text-xs text-muted">
-        {t(result.truncated ? "search.summaryTruncated" : "search.summary", {
-          shown: result.lines.length,
-          scanned: result.scanned,
+        <span className="font-mono text-ink">{service}</span>
+        {" · "}
+        {t("search.scope", { range: t(`search.ranges.${result.range}`), limit: result.limit })}
+        {" · "}
+        {t(found.truncated ? "search.summaryTruncated" : "search.summary", {
+          shown: found.lines.length,
+          scanned: found.scanned,
         })}
       </p>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-sm border bg-raised py-2 font-mono text-xs">
-        {result.lines.map((line) => (
+      <div
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: it scrolls, so the keyboard has to reach it
+        tabIndex={0}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-sm border bg-raised py-2 font-mono text-xs"
+      >
+        {found.lines.map((line) => (
           <div
             key={line.seq}
             className={cn(
@@ -155,7 +203,7 @@ function SearchResults({ result, pending }: { result: LogSearchResult | null; pe
             )}
           >
             <span aria-hidden="true" className="shrink-0 select-none text-muted tabular-nums">
-              {line.at === null ? "" : new Date(line.at).toLocaleString()}
+              {line.at === null ? "" : formatDateTime(line.at, i18n.language)}
             </span>
             <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{line.line}</span>
           </div>

@@ -46,11 +46,14 @@
     "name": "Nom",
     "nameHint": "Lettres minuscules, chiffres, tirets et underscores.",
     "mountPath": "Chemin dans le conteneur",
-    "content": "Contenu"
+    "content": "Contenu",
+    "hostPathAdminOnly": "Seul un administrateur peut monter un chemin du serveur.",
+    "contentHint": "Le contenu du fichier.",
+    "mountPathHint": "L'endroit où il apparaît dans le conteneur."
   },
   "deleteDialog": {
     "title": "Retirer ce montage ?",
-    "description": "{{path}} ne sera plus monté après le prochain déploiement. Les données d'un volume restent sur le serveur jusqu'à la destruction du service.",
+    "description": "{{path}} ne sera plus monté après le prochain déploiement. Le volume et ses données restent sur le serveur, même après la suppression du service, jusqu'à ce que vous les supprimiez dans Supervision, Stockage.",
     "confirm": "Retirer le montage"
   },
   "risk": {

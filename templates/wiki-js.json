@@ -1,0 +1,105 @@
+{
+  "id": "wiki-js",
+  "version": "1.0.0",
+  "name": "Wiki.js",
+  "summary": {
+    "en": "A modern wiki for your team.",
+    "fr": "Un wiki moderne pour votre équipe."
+  },
+  "description": {
+    "en": "Write pages in Markdown or a visual editor, organise them in a tree and search everything. The first administrator is created from the values below.",
+    "fr": "Rédigez en Markdown ou avec un éditeur visuel, organisez vos pages en arborescence et cherchez partout. Le premier administrateur est créé à partir des valeurs ci-dessous."
+  },
+  "instructions": {
+    "en": "Sign in as {{params.adminEmail}} with the password shown below.",
+    "fr": "Connectez-vous avec {{params.adminEmail}} et le mot de passe affiché ci-dessous."
+  },
+  "category": "documents",
+  "tags": ["wiki", "documentation", "knowledge-base"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://js.wiki"
+    },
+    {
+      "kind": "docs",
+      "url": "https://docs.js.wiki/setup/installation"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/requarks/wiki"
+    }
+  ],
+  "verified": false,
+  "params": [
+    {
+      "key": "adminEmail",
+      "label": {
+        "en": "Admin email",
+        "fr": "E-mail administrateur"
+      },
+      "type": "email",
+      "required": true,
+      "default": "admin@example.com"
+    },
+    {
+      "key": "adminPassword",
+      "label": {
+        "en": "Admin password",
+        "fr": "Mot de passe administrateur"
+      },
+      "type": "secret",
+      "required": false,
+      "help": {
+        "en": "Leave empty to generate one.",
+        "fr": "Laissez vide pour en générer un."
+      },
+      "generate": {
+        "length": 24,
+        "alphabet": "alphanumeric"
+      }
+    }
+  ],
+  "secrets": [],
+  "services": [
+    {
+      "key": "db",
+      "name": "wiki-db",
+      "kind": "database",
+      "engine": "postgres",
+      "image": "postgres:17.11-alpine",
+      "databaseName": "wiki",
+      "user": "wiki"
+    },
+    {
+      "key": "app",
+      "name": "wiki-js",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "ghcr.io/requarks/wiki:3.1.1"
+      },
+      "env": {
+        "DB_HOST": "{{services.db.host}}",
+        "DB_PORT": "{{services.db.port}}",
+        "DB_NAME": "{{services.db.database}}",
+        "DB_USER": "{{services.db.user}}",
+        "DB_PASS": "{{services.db.password}}",
+        "ADMIN_EMAIL": "{{params.adminEmail}}",
+        "ADMIN_PASS": "{{params.adminPassword}}"
+      },
+      "command": null,
+      "mounts": [],
+      "domain": {
+        "port": 3000,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/",
+        "expect": [200, 302]
+      },
+      "dependsOn": ["db"]
+    }
+  ]
+}

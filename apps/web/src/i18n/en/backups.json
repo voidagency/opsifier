@@ -1,0 +1,223 @@
+{
+  "title": {
+    "database": "Backups",
+    "volume": "Volume backups"
+  },
+  "description": {
+    "database": "Copies of this database, made on a schedule or by hand. Each one is an export of a single database, checked before it can be restored. Backup files are not encrypted by the panel: use a destination you trust.",
+    "volume": "Copies of this service's named volumes. Files are read while the application runs, so a copy taken at a busy moment may not be consistent: stop the application first if it has to be exact. Backup files are not encrypted by the panel."
+  },
+  "actions": {
+    "restore": "Restore",
+    "create": "Add backup",
+    "run": "Run now",
+    "edit": "Edit",
+    "delete": "Remove",
+    "restoreThis": "Restore this backup",
+    "deleteBackup": "Delete the stored file",
+    "discardEarlier": "Delete the earlier copy",
+    "viewLog": "See the output",
+    "noVolumes": "This service has no named volume.",
+    "destinationNotReady": "Its destination can't be reached right now.",
+    "download": "Download this file"
+  },
+  "history": {
+    "summary": "Backups and restores by state",
+    "title": "History",
+    "noneForFilter": "Nothing here is in that state.",
+    "state": "State",
+    "run": "Run",
+    "file": "File",
+    "size": "Size",
+    "destination": "Destination",
+    "when": "When",
+    "origin": {
+      "manual": "Manual",
+      "schedule": "Scheduled",
+      "safety": "Safety copy"
+    },
+    "restore": {
+      "database": "Restore",
+      "volume": "Volume restore"
+    },
+    "safetyDetail": "Taken before a restore",
+    "status": {
+      "running": "In progress",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "removed": "Removed",
+      "unresolved": "Needs attention"
+    }
+  },
+  "schedule": {
+    "presets": {
+      "everyMinute": "Every minute",
+      "everyHour": "Every hour",
+      "every6Hours": "Every 6 hours",
+      "daily2": "Daily at 2:00",
+      "daily0": "Daily at 0:00",
+      "custom": "Custom"
+    }
+  },
+  "config": {
+    "listLabel": "Backup configurations",
+    "create": {
+      "database": "Add a database backup",
+      "volume": "Add a volume backup"
+    },
+    "edit": {
+      "database": "Edit this backup",
+      "volume": "Edit this volume backup"
+    },
+    "enabled": "On a schedule",
+    "enabledHint": "Off means it only runs by hand. If the panel was down at a scheduled time, it runs once when it comes back, never once per missed time.",
+    "schedule": "Schedule",
+    "cron": "Cron",
+    "cronHint": "Minute, hour, day, month, weekday. Runs in the server's time zone.",
+    "databaseName": "Database",
+    "databasePlaceholder": "app",
+    "volume": "Volume",
+    "volumePlaceholder": "Pick a volume",
+    "provider": "Destination",
+    "providerLocalHint": "This destination is on this server, so a copy here is lost with the server.",
+    "providerPlaceholder": "Pick a destination",
+    "path": "Folder",
+    "pathHint": "Inside the destination. Letters, digits, dashes, dots and slashes.",
+    "retention": "Keep",
+    "retentionHint": "How many scheduled runs to keep. Manual backups and safety copies are never counted.",
+    "retentionPlaceholder": "Unlimited",
+    "save": "Save",
+    "created": "Backup added",
+    "updated": "Backup updated",
+    "deleteTitle": "Remove this backup configuration?",
+    "deleteDescription": "No more backups of this kind will be taken. Files already stored stay where they are.",
+    "deleteConfirm": "Remove",
+    "deleted": "Backup configuration removed",
+    "state": {
+      "failed": "Last run failed",
+      "degraded": "Destination missing or not connected",
+      "unknown": "Not run yet",
+      "progress": "Running now",
+      "running": "Last run succeeded",
+      "stopped": "Paused"
+    },
+    "notScheduled": "Not scheduled",
+    "dueNow": "Due now",
+    "nextRun": "Next {{when}}",
+    "nextRunDetail": "{{at}} ({{zone}})",
+    "noDestination": "No destination",
+    "manualOnly": "Manual only",
+    "keepAll": "Keeps all",
+    "keepLast_one": "Keeps the last {{count}}",
+    "keepLast_other": "Keeps the last {{count}}",
+    "scope": "What it holds",
+    "scopeHint": {
+      "database": "One database and nothing else. Accounts are not part of it.",
+      "instance": "Every database on this server, with its users and roles.",
+      "accounts": "Users and roles only, with no data."
+    },
+    "volumeHint": "The named volume to copy.",
+    "databaseNameHint": "The database to copy.",
+    "scheduleHint": "When it runs, in the server's time zone.",
+    "providerHint": "Where the backup file is kept."
+  },
+  "run": {
+    "title": "Run this backup now",
+    "description": "{{target}} is copied to its destination right away.",
+    "submit": "Run",
+    "name": "Name",
+    "nameHint": "Shown in the history next to this run.",
+    "started": "Backup started",
+    "done": "Backup finished",
+    "failed": "The backup failed"
+  },
+  "restore": {
+    "title": {
+      "database": "Restore this database?",
+      "volume": "Restore this volume?",
+      "instance": "Restore this whole server?",
+      "accounts": "Restore these users and roles?"
+    },
+    "description": {
+      "database": "Tables and data in {{target}} that are also in the backup are replaced. The current data stays in place until the backup has been verified and a safety copy is taken first.",
+      "volume": "The contents of {{target}} are replaced. The service stops briefly for the swap, and the old contents are kept in a folder next to the volume.",
+      "instance": "Every database on {{target}} is replaced by what this file holds, including its users and roles. The backup is imported into a new, separate server and the service only moves over once that has worked. The current data is kept on its own volume, listed under Monitor, Storage.",
+      "accounts": "The users and roles of {{target}} that are in this file are put back as they were. Data is not touched, the panel's own account stays as it is, and any account added since stays too."
+    },
+    "confirm": "Restore",
+    "file": "File",
+    "destination": "From",
+    "checksum": "SHA-256",
+    "done": "Restore finished",
+    "failed": "The restore failed",
+    "started": "Restore started",
+    "confirmRequired": "Type the name to confirm",
+    "fromPath": {
+      "title": "Restore from a file",
+      "description": {
+        "database": "For a backup this panel has no record of. A manifest must sit next to the file, and it is checked before anything changes.",
+        "volume": "For a backup this panel has no record of. A manifest must sit next to the file, and it is checked before anything changes."
+      },
+      "path": "File",
+      "pathHint": "The full path inside the destination, ending in the file's name.",
+      "scope": "What the file holds",
+      "scopeHint": "It has to match the manifest next to the file."
+    },
+    "confirmHint": "Typing the exact name confirms this is the right one.",
+    "targetHint": "What the backup replaces. Its current content is overwritten."
+  },
+  "errors": {
+    "schedule": "Enter a valid cron expression, or pick a preset",
+    "retention": "Enter a whole number, or leave it empty",
+    "databaseName": "Enter the database's name",
+    "volumeName": "Pick a volume",
+    "provider": "Pick a destination",
+    "path": "Use letters, digits, dashes, dots and slashes",
+    "restorePath": "Enter the path of a file",
+    "runName": "This is too long",
+    "scope": "Pick what this holds"
+  },
+  "empty": {
+    "title": {
+      "database": "No backups yet",
+      "volume": "No volume backups yet"
+    },
+    "description": {
+      "database": "Add one to copy this database to a destination you choose, on a schedule or by hand.",
+      "volume": "Add one to copy a named volume to a destination you choose, on a schedule or by hand."
+    }
+  },
+  "unresolved": {
+    "title": "A restore needs attention",
+    "description": "The panel could not tell how the last restore ended, so backups and restores on this service are held back until someone has checked it.",
+    "useSafety": "Restore the safety copy",
+    "markChecked": "Mark as checked",
+    "resolveTitle": "Is the data as you expect?",
+    "resolveDescription": "Only continue once you have looked at the database or volume yourself. This lifts the hold on backups and restores for this service.",
+    "resolved": "Marked as checked"
+  },
+  "deleteBackup": {
+    "title": "Delete this stored file?",
+    "description": "{{file}} is removed from its destination for good. Its line stays in the history.",
+    "confirm": "Delete file",
+    "done": "Backup deleted",
+    "failed": "Could not delete the backup"
+  },
+  "discard": {
+    "title": "Delete the earlier copy?",
+    "description": "{{folder}} held the volume's contents before the restore. This removes it for good.",
+    "confirm": "Delete it",
+    "done": "Earlier copy deleted"
+  },
+  "notAvailable": "This engine has no backups.",
+  "log": {
+    "failed": "Could not open the output"
+  },
+  "scope": {
+    "database": "One database",
+    "instance": "Whole server",
+    "accounts": "Users and roles",
+    "volume": "Volume"
+  }
+}

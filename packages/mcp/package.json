@@ -1,0 +1,24 @@
+{
+  "name": "@opsifier/mcp",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Model Context Protocol server for an Opsifier panel. Talks only to its API.",
+  "type": "module",
+  "bin": {
+    "opsifier-mcp": "dist/opsifier-mcp.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/opsifier-mcp.mjs \"--banner:js=#!/usr/bin/env node\" && chmod +x dist/opsifier-mcp.mjs",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "@opsifier/client": "workspace:*",
+    "@opsifier/contract": "workspace:*"
+  }
+}

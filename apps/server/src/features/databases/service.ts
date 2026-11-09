@@ -2,26 +2,35 @@ import { randomInt } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import {
   type CreateDatabaseRequest,
+  type DatabaseAvailability,
   type DatabaseDetail,
   type DatabaseEngine,
   databaseEngineInfo,
+  databaseImageRule,
+  isFixedDatabaseImage,
   type ServiceDetail,
 } from "@opsifier/contract";
 import type { AppDeps } from "../../core/context";
 import { badRequest, conflict, notFound } from "../../core/errors";
 import { type CompiledService, qualifiedName } from "../services/compile";
 import { compileDatabaseService, type DatabaseSecrets } from "../services/compile/database";
+import { openEnvironment } from "../services/env-store";
 import { enqueueDeploy } from "../services/lifecycle";
+import { assertNameFreeInDocker } from "../services/ownership";
 import { findService, insertService, listServiceRecords, type ServiceRecord } from "../services/repo";
 import {
+  assertAddressFree,
   assertNameFits,
+  assertRoomForServices,
   getServiceDetail,
   requireProject,
   requireService,
   type ServiceTarget,
   serviceDir,
 } from "../services/service";
-import { appServiceSpec } from "../services/spec";
+import { type AppServiceSpec, appServiceSpec } from "../services/spec";
+import { type OpsTarget, opsFor } from "./engine-ops";
+import { redactSecrets, runInDatabase } from "./exec";
 import { DATABASE_PASSWORD_CONTEXT, DATABASE_ROOT_PASSWORD_CONTEXT, type StoredDatabase } from "./spec";
 
 export type DatabaseRecord = ServiceRecord & {
@@ -89,9 +98,11 @@ export function compileDatabaseRecord(
   return compileDatabaseService({
     project,
     service: {
+      id: record.id,
       name: target.serviceName,
       spec: { ...record.spec, stopped: overrides.stopped ?? record.spec.stopped },
     },
+    env: openEnvironment(deps, project, record.spec),
     secrets: unsealSecrets(deps, record.spec.database),
     dataDir: deps.config.dataDir,
     forceUpdate,
@@ -170,23 +181,19 @@ async function pickVolumeName(deps: AppDeps, project: string, service: string): 
   });
 }
 
-export async function createDatabase(
+/** The stored spec of a new database: credentials generated and sealed, volume reserved. Nothing runs. */
+export async function prepareDatabaseSpec(
   deps: AppDeps,
   projectName: string,
   request: CreateDatabaseRequest,
-  actorEmail: string | undefined,
-): Promise<ServiceDetail> {
-  const target = { projectName, serviceName: request.name };
-  requireProject(deps, projectName);
-  assertNameFits(projectName, request.name);
+): Promise<AppServiceSpec> {
   assertFieldsFit(request);
-  if (findService(deps.db, projectName, request.name) !== undefined) {
-    throw conflict("service_exists", "A service with this name already exists.", {
-      name: "This name is taken in this project",
-    });
-  }
-
   const info = databaseEngineInfo[request.engine];
+  const image = request.image ?? info.defaultImage;
+  // The same rule for every way in: a template's form can offer its own image here too.
+  if (!isFixedDatabaseImage(image)) {
+    throw badRequest("validation_failed", "Some fields need attention.", { image: databaseImageRule });
+  }
   const database: StoredDatabase = {
     engine: request.engine,
     databaseName: info.hasDatabaseName ? (request.databaseName ?? projectName) : null,
@@ -202,10 +209,10 @@ export async function createDatabase(
     rotation: null,
   };
 
-  const spec = appServiceSpec.parse({
+  return appServiceSpec.parse({
     source: {
       type: "image",
-      image: request.image ?? info.defaultImage,
+      image,
       username: null,
       sealedPassword: null,
     },
@@ -213,6 +220,27 @@ export async function createDatabase(
     scripts: [{ name: databaseClientName[request.engine], script: engineClientScript[request.engine] }],
     database,
   });
+}
+
+export async function createDatabase(
+  deps: AppDeps,
+  projectName: string,
+  request: CreateDatabaseRequest,
+  actorEmail: string | undefined,
+): Promise<ServiceDetail> {
+  const target = { projectName, serviceName: request.name };
+  requireProject(deps, projectName);
+  assertNameFits(projectName, request.name);
+  assertRoomForServices(deps, projectName);
+  if (findService(deps.db, projectName, request.name) !== undefined) {
+    throw conflict("service_exists", "A service with this name already exists.", {
+      name: "This name is taken in this project",
+    });
+  }
+  assertAddressFree(deps, target);
+  await assertNameFreeInDocker(deps, target);
+
+  const spec = await prepareDatabaseSpec(deps, projectName, request);
   const now = new Date(deps.now());
   deps.db.transaction((tx) => {
     insertService(tx, projectName, request.name, request.engine, spec, now);
@@ -230,15 +258,92 @@ export async function createDatabase(
   return getServiceDetail(deps, target);
 }
 
+/**
+ * The port Docker publishes for this database right now, zero if none. What is saved only says what
+ * the next deployment will do. Null while Docker can't be asked.
+ */
+export async function publishedPort(
+  deps: Pick<AppDeps, "docker">,
+  target: ServiceTarget,
+): Promise<number | null> {
+  try {
+    const swarm = await deps.docker.inspectService(qualifiedName(target.projectName, target.serviceName));
+    return swarm?.spec.EndpointSpec?.Ports?.[0]?.PublishedPort ?? 0;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Asks the running engine to accept the credentials the panel holds. A task can be running and
+ * healthy while nobody can sign in to it, so this is a separate question from whether it started.
+ */
+export async function databaseAvailability(
+  deps: AppDeps,
+  target: ServiceTarget,
+  signal?: AbortSignal,
+): Promise<DatabaseAvailability> {
+  const record = requireDatabase(deps, target);
+  const { database } = record.spec;
+  const service = qualifiedName(target.projectName, target.serviceName);
+  const checkedAt = new Date(deps.now()).toISOString();
+  const answer = (
+    process: DatabaseAvailability["process"],
+    signIn: DatabaseAvailability["signIn"],
+    detail: string | null,
+  ) => ({
+    process,
+    signIn,
+    detail,
+    checkedAt,
+  });
+
+  const tasks = await deps.docker.listTasks({ service }).catch(() => null);
+  if (tasks === null || !tasks.some((task) => task.state === "running" && task.desiredState === "running")) {
+    return answer("not-running", "unknown", null);
+  }
+  if (database.rotation !== null) {
+    return answer("running", "unknown", "A password change has not been settled yet.");
+  }
+
+  const credentials = unsealSecrets(deps, database);
+  const secrets = [credentials.password, credentials.rootPassword].filter(
+    (value): value is string => value !== null,
+  );
+  const opsTarget: OpsTarget = { host: service, user: database.user, databaseName: database.databaseName };
+  for (const plan of opsFor(database.engine).probe(opsTarget, credentials)) {
+    const outcome = await runInDatabase(deps, service, plan, { signal, timeoutMs: 15_000 }).catch(
+      (error: unknown) => ({ ok: false, output: (error as Error).message }),
+    );
+    if (!outcome.ok) {
+      const detail = redactSecrets(outcome.output, secrets)
+        .split("\n")
+        .find((line) => line.trim() !== "");
+      return answer("running", "refused", detail ?? "The database did not explain why.");
+    }
+  }
+  return answer("running", "accepted", null);
+}
+
 export function databaseDetail(record: DatabaseRecord): DatabaseDetail {
   const { database, source } = record.spec;
   const info = databaseEngineInfo[database.engine];
+  const image = source?.type === "image" ? source.image : info.defaultImage;
+  const { deployed } = record;
   return {
     engine: database.engine,
-    image: source?.type === "image" ? source.image : info.defaultImage,
+    image,
     volume: database.volume,
     exposedPort: database.exposedPort,
     internalHost: qualifiedName(record.projectName, record.name),
     internalPort: info.port,
+    versions: {
+      proposed: info.defaultImage,
+      configured: image,
+      running:
+        deployed === null
+          ? null
+          : { image: deployed.image, digest: deployed.digest, imageId: deployed.imageId },
+    },
   };
 }

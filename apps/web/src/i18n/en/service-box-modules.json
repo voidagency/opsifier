@@ -1,0 +1,100 @@
+{
+  "title": "Modules",
+  "description": "What this box's image contains. Edition {{revision}} of the module matrix. Each version is pinned, so the same choice always builds the same image.",
+  "toggle": "Use {{name}}",
+  "version": "Version",
+  "versionOf": "Version of {{name}}",
+  "pinHint": "Exactly what this version installs.",
+  "documentRoot": "Web root",
+  "documentRootHint": "A folder inside the workspace, served by the web server.",
+  "extensions": {
+    "label": "Extensions",
+    "notOn": "Not available on version {{version}}. Works with {{versions}}."
+  },
+  "state": {
+    "built": "In the current image",
+    "waiting": "Waiting for a build",
+    "off": "Off"
+  },
+  "modules": {
+    "node": {
+      "name": "Node.js",
+      "hint": "JavaScript on the server, with npm."
+    },
+    "php": {
+      "name": "PHP",
+      "hint": "PHP with the FPM process manager."
+    },
+    "python": {
+      "name": "Python",
+      "hint": "Python 3, with pip."
+    },
+    "ruby": {
+      "name": "Ruby",
+      "hint": "Ruby, with Bundler."
+    },
+    "nginx": {
+      "name": "Web server",
+      "hint": "Serves a folder of the workspace, and PHP when PHP is on."
+    }
+  },
+  "nothingElse": "Nothing outside this list can be added to a box.",
+  "saved": "Saved. The next deploy builds it.",
+  "save": "Save modules",
+  "pending": {
+    "title": "Waiting for a build",
+    "description": "What the next deploy will rebuild, and why. Nothing changes in what is running until then."
+  },
+  "changes": {
+    "none": "none",
+    "kind": {
+      "security": "Security update",
+      "upgrade": "Version change",
+      "modules": "Module change",
+      "configuration": "Settings change"
+    }
+  },
+  "reasons": {
+    "first": "First build",
+    "security": "Security update",
+    "upgrade": "Version change",
+    "modules": "Module change",
+    "configuration": "Settings change",
+    "forced": "Forced rebuild",
+    "unchanged": "No changes"
+  },
+  "presets": {
+    "title": "Presets",
+    "description": "A fast way to fill in modules, processes and hooks. Files already in the workspace are never changed: only files that don't exist are added.",
+    "current": "Current",
+    "apply": "Apply preset",
+    "applied": "Preset applied. The next deploy builds it.",
+    "confirmTitle": "Apply this preset?",
+    "confirmBody": "This replaces this box's modules, processes and hooks. No file in its workspace is changed or removed."
+  },
+  "history": {
+    "title": "Builds",
+    "description": "Every build of this box, with what triggered it.",
+    "outcome": "Outcome",
+    "reason": "Why",
+    "changes": "What moved",
+    "when": "When",
+    "by": "By",
+    "status": {
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "noChange": "Nothing",
+    "nobody": "The panel",
+    "emptyTitle": "No builds yet",
+    "emptyBody": "The first deploy builds this box's image."
+  },
+  "dockerfile": {
+    "title": "Generated image",
+    "description": "The Dockerfile built from these settings. It is shown, not edited: change the modules and hooks instead.",
+    "show": "Show the Dockerfile"
+  },
+  "matrixFootnote": "Matrix edition {{revision}}.",
+  "versionHint": "From the module matrix."
+}

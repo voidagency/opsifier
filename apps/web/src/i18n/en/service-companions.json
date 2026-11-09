@@ -40,5 +40,9 @@
       "name": "Redis Commander",
       "description": "Browse and change keys from the browser."
     }
+  },
+  "state": {
+    "on": "On",
+    "off": "Off"
   }
 }

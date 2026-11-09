@@ -1,12 +1,13 @@
 import { cn } from "../lib/cn";
 
-export type WakeOutcome = "succeeded" | "failed" | "running" | "cancelled";
+export type WakeOutcome = "succeeded" | "failed" | "running" | "cancelled" | "uncertain";
 
 const colors: Record<WakeOutcome, string> = {
   succeeded: "bg-ok",
   failed: "bg-bad",
   running: "bg-busy animate-pulse",
   cancelled: "bg-off",
+  uncertain: "bg-muted",
 };
 
 export interface WakeStripProps {
@@ -30,7 +31,8 @@ export function WakeStrip({ outcomes, capacity = 24, label, className }: WakeStr
     <span role="img" aria-label={label} className={cn("inline-flex h-3.5 items-end gap-0.5", className)}>
       {Array.from({ length: capacity }, (_, index) => {
         const outcome = index < missing ? undefined : recent[index - missing];
-        const height = outcome === "failed" ? 100 : 46 + (54 * index) / Math.max(capacity - 1, 1);
+        const standsOut = outcome === "failed" || outcome === "uncertain";
+        const height = standsOut ? 100 : 46 + (54 * index) / Math.max(capacity - 1, 1);
         return (
           <span
             // The position in the strip is the segment's identity.

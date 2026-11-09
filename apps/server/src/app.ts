@@ -8,6 +8,8 @@ import type { ApiApp, AppDeps, AppEnv, Feature } from "./core/context";
 import { createErrorHandler, errorBody, notFoundHandler, validationHook } from "./core/errors";
 import { PROXY_PAGES_PREFIX } from "./core/proxy";
 import * as featureModules from "./features";
+import { authorizeRequests, guardPanelHost } from "./features/access/guard";
+import { noindexPanelResponses } from "./features/server-purpose/routes";
 
 const API_PREFIX = "/api/v1";
 const OPENAPI_PATH = `${API_PREFIX}/openapi.json`;
@@ -31,6 +33,20 @@ function logRequests(deps: Pick<AppDeps, "logger">): MiddlewareHandler<AppEnv> {
     } else {
       deps.logger.debug(entry, "Request");
     }
+  };
+}
+
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+/** Stopping work in progress can only help, and it changes nothing the panel would have to save. */
+const CANCEL_ACTION = /^\/api\/v1\/actions\/[^/]+\/cancel$/;
+
+/** Once the panel has failed to save its state, it makes no further changes until that is fixed. */
+function refuseChangesWhileStorageFails(deps: Pick<AppDeps, "storage">): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    if (UNSAFE_METHODS.has(c.req.method) && !CANCEL_ACTION.test(c.req.path)) {
+      deps.storage.assertWritable();
+    }
+    return next();
   };
 }
 
@@ -70,7 +86,8 @@ function serveWebApp(app: ApiApp, webDir: string): void {
 export function createApp(deps: AppDeps, featureList: Feature[] = features): ApiApp {
   const app: ApiApp = new OpenAPIHono<AppEnv>({ defaultHook: validationHook });
 
-  app.onError(createErrorHandler(deps.logger));
+  const handleError = createErrorHandler(deps.logger);
+  app.onError((error, c) => handleError(deps.storage.asAppError(error), c));
   app.notFound(notFoundHandler);
 
   app.use("*", logRequests(deps));
@@ -98,6 +115,8 @@ export function createApp(deps: AppDeps, featureList: Feature[] = features): Api
     }),
   );
 
+  app.use("*", noindexPanelResponses(deps));
+  app.use("*", guardPanelHost(deps));
   app.use(`${API_PREFIX}/*`, forbidCaching());
   const limitBody = bodyLimit({
     maxSize: MAX_BODY_BYTES,
@@ -108,7 +127,10 @@ export function createApp(deps: AppDeps, featureList: Feature[] = features): Api
   );
 
   const publicPaths = new Set([OPENAPI_PATH, ...featureList.flatMap((feature) => feature.publicPaths ?? [])]);
-  app.use(`${API_PREFIX}/*`, authenticate(deps));
+  app.use(
+    `${API_PREFIX}/*`,
+    authenticate(deps, (path) => featureList.some((feature) => feature.readsOwnBearer?.(path))),
+  );
   app.use(`${API_PREFIX}/*`, originGuard(deps.config));
   app.use(
     `${API_PREFIX}/*`,
@@ -116,6 +138,9 @@ export function createApp(deps: AppDeps, featureList: Feature[] = features): Api
       (path) => publicPaths.has(path) || featureList.some((feature) => feature.isPublicPath?.(path)),
     ),
   );
+
+  app.use(`${API_PREFIX}/*`, authorizeRequests(deps));
+  app.use(`${API_PREFIX}/*`, refuseChangesWhileStorageFails(deps));
 
   for (const feature of featureList) {
     feature.register(app, deps);

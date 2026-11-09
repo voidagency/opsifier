@@ -1,12 +1,11 @@
 import { deployActionType, type ServiceDetail } from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate } from "@tanstack/react-router";
-import { ExternalLink, MoreHorizontal, Pencil, Play, Rocket, RotateCw, Square } from "lucide-react";
+import { ExternalLink, MoreHorizontal, Play, Rocket, RotateCw, Square } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { errorMessage } from "../../lib/forms";
 import {
-  Badge,
   Button,
   ConfirmDialog,
   DropdownMenu,
@@ -14,44 +13,39 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  FormBanner,
+  ErrorState,
   MonoValue,
-  PageHeader,
+  RetentionSummary,
   Skeleton,
-  StatusLamp,
   Tooltip,
   toast,
   useDocumentTitle,
 } from "../../ui";
-import { actionLabel } from "../activity/labels";
 import { projectsKey } from "../projects/api";
-import { MetricsRow } from "../service-runtime/MetricsRow";
 import { ConsoleButton, LogsButton } from "../service-runtime/RuntimeButtons";
 import { useActionFollower } from "./ActionFollower";
-import {
-  lampForService,
-  serviceKey,
-  serviceQuery,
-  servicesApi,
-  statusLabelKey,
-  useServiceParams,
-} from "./api";
+import { serviceKey, serviceQuery, servicesApi, useServiceParams } from "./api";
 import { NotesDialog } from "./NotesDialog";
 import { RenameDialog } from "./RenameDialog";
+import { ServiceHeader, TabPictogram, tabLinkClass } from "./ServiceHeader";
 import { serviceTabs } from "./tabs";
 
 function TabNav({ project, service }: { project: string; service: string }) {
   const { t } = useTranslation("services");
   return (
-    <nav aria-label={t("tabs.label")} className="-mb-px flex gap-5 overflow-x-auto [scrollbar-width:none]">
+    <nav
+      aria-label={t("tabs.label")}
+      className="-mb-px flex gap-x-5 overflow-x-auto [scrollbar-width:none] md:flex-wrap md:overflow-visible"
+    >
       {serviceTabs.map((tab) => (
         <Link
           key={tab.key}
           to={tab.to}
           params={{ project, service }}
           activeOptions={{ exact: tab.key === "overview", includeHash: false, includeSearch: false }}
-          className="relative h-9 shrink-0 whitespace-nowrap text-sm leading-9 text-muted after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:origin-left after:scale-x-0 after:bg-highlight after:transition-transform after:duration-[160ms] after:ease-out hover:text-ink data-[status=active]:font-medium data-[status=active]:text-ink data-[status=active]:after:scale-x-100"
+          className={tabLinkClass}
         >
+          <TabPictogram tab={tab.key} />
           {t(`tabs.${tab.key}`)}
         </Link>
       ))}
@@ -59,7 +53,7 @@ function TabNav({ project, service }: { project: string; service: string }) {
   );
 }
 
-function ServiceToolbar({ detail }: { detail: ServiceDetail }) {
+export function ServiceToolbar({ detail }: { detail: ServiceDetail }) {
   const { t } = useTranslation(["services", "activity", "common"]);
   const { project, service } = useServiceParams();
   const queryClient = useQueryClient();
@@ -108,45 +102,46 @@ function ServiceToolbar({ detail }: { detail: ServiceDetail }) {
     await navigate({ to: "/projects/$project", params: { project } });
   };
 
+  const busyReason = busy ? t("toolbar.busy") : undefined;
+  const startStopReason = deployed ? busyReason : t("toolbar.notDeployed");
+
   return (
     <>
       <Button
         variant="primary"
         icon={<Rocket aria-hidden="true" className="size-4" />}
         pending={deploying}
-        disabled={busy && !deploying}
+        disabledReason={deploying ? undefined : busyReason}
         onClick={() => deploy()}
       >
         {t("toolbar.deploy")}
       </Button>
-      <Tooltip content={stopped ? t("toolbar.start") : t("toolbar.stop")}>
-        <Button
-          size="icon"
-          aria-label={stopped ? t("toolbar.start") : t("toolbar.stop")}
-          disabled={busy || !deployed}
-          onClick={stopped ? startService : stop}
-        >
-          {stopped ? (
-            <Play aria-hidden="true" className="size-4" />
-          ) : (
-            <Square aria-hidden="true" className="size-4" />
-          )}
-        </Button>
-      </Tooltip>
-      <Tooltip content={t("toolbar.restart")}>
-        <Button
-          size="icon"
-          aria-label={t("toolbar.restart")}
-          disabled={busy || stopped || !deployed}
-          onClick={restart}
-        >
-          <RotateCw aria-hidden="true" className="size-4" />
-        </Button>
-      </Tooltip>
+      <Button
+        size="icon"
+        aria-label={stopped ? t("toolbar.start") : t("toolbar.stop")}
+        tooltip={stopped ? t("toolbar.start") : t("toolbar.stop")}
+        disabledReason={startStopReason}
+        onClick={stopped ? startService : stop}
+      >
+        {stopped ? (
+          <Play aria-hidden="true" className="size-4" />
+        ) : (
+          <Square aria-hidden="true" className="size-4" />
+        )}
+      </Button>
+      <Button
+        size="icon"
+        aria-label={t("toolbar.restart")}
+        tooltip={t("toolbar.restart")}
+        disabledReason={startStopReason ?? (stopped ? t("toolbar.startFirst") : undefined)}
+        onClick={restart}
+      >
+        <RotateCw aria-hidden="true" className="size-4" />
+      </Button>
       <LogsButton project={project} service={service} />
       <ConsoleButton project={project} service={service} running={detail.replicas.running > 0} />
       {detail.primaryUrl === null ? (
-        <Button size="icon" aria-label={t("toolbar.open")} disabled>
+        <Button size="icon" aria-label={t("toolbar.open")} disabledReason={t("toolbar.noDomain")}>
           <ExternalLink aria-hidden="true" className="size-4" />
         </Button>
       ) : (
@@ -171,7 +166,7 @@ function ServiceToolbar({ detail }: { detail: ServiceDetail }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent>
           <DropdownMenuItem onSelect={() => setNotesOpen(true)}>{t("toolbar.notes")}</DropdownMenuItem>
-          <DropdownMenuItem disabled={busy} onSelect={() => deploy({ force: true })}>
+          <DropdownMenuItem disabledReason={busyReason} onSelect={() => deploy({ force: true })}>
             {t("toolbar.rebuild")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -199,14 +194,16 @@ function ServiceToolbar({ detail }: { detail: ServiceDetail }) {
         confirmLabel={t("destroy.confirm")}
         confirmText={service}
         onConfirm={destroy}
-      />
+      >
+        <RetentionSummary removed={t("destroy.removed")} kept={t("destroy.kept")} />
+      </ConfirmDialog>
     </>
   );
 }
 
 /** The frame of every service tab: identity, toolbar, readings and the tab strip. */
 export function ServiceLayout() {
-  const { t } = useTranslation(["services", "common"]);
+  const { t } = useTranslation("services");
   const { project, service } = useServiceParams();
   const {
     data: detail,
@@ -220,10 +217,7 @@ export function ServiceLayout() {
     return (
       <div className="px-4 py-6 md:px-6 lg:px-8">
         {error ? (
-          <div className="grid max-w-[520px] justify-items-start gap-3">
-            <FormBanner>{errorMessage(error, t)}</FormBanner>
-            <Button onClick={() => refetch()}>{t("common:actions.retry")}</Button>
-          </div>
+          <ErrorState message={errorMessage(error, t)} onRetry={() => refetch()} />
         ) : (
           <Skeleton className="h-16" />
         )}
@@ -233,43 +227,14 @@ export function ServiceLayout() {
 
   return (
     <>
-      <PageHeader
-        title={
-          <span className="inline-flex flex-wrap items-center gap-x-2.5 gap-y-1">
-            <StatusLamp
-              status={lampForService(detail.status, detail.activeAction)}
-              label={t(statusLabelKey(detail.status))}
-            />
-            <span className="font-mono">{service}</span>
-            <Badge mono>{detail.type}</Badge>
-            <Tooltip content={t("rename.open")}>
-              <button
-                type="button"
-                aria-label={t("rename.open")}
-                onClick={() => setRenaming(true)}
-                className="flex size-7 items-center justify-center rounded-sm text-muted hover:bg-wash hover:text-ink"
-              >
-                <Pencil aria-hidden="true" className="size-3.5" />
-              </button>
-            </Tooltip>
-          </span>
-        }
-        description={
-          detail.activeAction !== null ? (
-            t("activeAction", {
-              label: actionLabel({ type: detail.activeAction.type, title: detail.activeAction.type }, t),
-            })
-          ) : (
-            <span className="font-mono text-sm">
-              {t(statusLabelKey(detail.status))} · {detail.replicas.running}/{detail.replicas.desired}
-            </span>
-          )
-        }
-        actions={<ServiceToolbar detail={detail} />}
-      >
-        <MetricsRow project={project} service={service} />
-        <TabNav project={project} service={service} />
-      </PageHeader>
+      <ServiceHeader
+        project={project}
+        service={service}
+        detail={detail}
+        toolbar={<ServiceToolbar detail={detail} />}
+        tabs={<TabNav project={project} service={service} />}
+        onRename={() => setRenaming(true)}
+      />
       <Outlet />
       <RenameDialog project={project} service={service} open={renaming} onOpenChange={setRenaming} />
     </>

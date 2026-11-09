@@ -1,77 +1,113 @@
-import { firstInvalidEnvLine } from "@opsifier/contract";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { errorMessage, useForm } from "../../../../lib/forms";
-import { Button, CodeEditor, FormBanner, Skeleton, toast } from "../../../../ui";
-import { environmentQuery, servicesApi, useServiceParams } from "../../api";
+import { errorMessage } from "../../../../lib/forms";
+import { ErrorState, SectionIntro, Skeleton, Switch, toast } from "../../../../ui";
+import { environmentQuery, serviceKey, serviceQuery, servicesApi, useServiceParams } from "../../api";
 import { EnvFileForm } from "../source/EnvFileForm";
+import { BuildSection } from "./BuildSection";
+import { VariablesEditor } from "./VariablesEditor";
 
-function EnvironmentForm({
+const sectionClass =
+  "grid gap-x-10 gap-y-4 px-4 py-6 md:px-6 lg:grid-cols-[minmax(0,260px)_minmax(0,720px)] lg:px-8";
+
+/**
+ * Applies by itself, unlike the variables next to it: their values stay sealed until someone asks, and
+ * turning this on or off is no reason to have to.
+ */
+function PlaceholderSwitch({
   project,
   service,
-  initial,
+  checked,
 }: {
   project: string;
   service: string;
-  initial: string;
+  checked: boolean;
 }) {
-  const { t } = useTranslation("service-environment");
-  const form = useForm({
-    t,
-    initialValues: { env: initial },
-    validate: ({ env }) => {
-      const line = firstInvalidEnvLine(env);
-      return line === null ? {} : { env: t("invalidLine", { line }) };
-    },
-    onSubmit: async ({ env }) => {
-      await servicesApi.saveEnvironment(project, service, env);
-      toast.success(t("saved"), t("savedHint"));
-    },
-  });
+  const { t } = useTranslation(["service-environment", "common"]);
+  const queryClient = useQueryClient();
+  const [pending, setPending] = useState(false);
+
+  const change = async (interpolation: boolean) => {
+    setPending(true);
+    try {
+      await servicesApi.saveEnvironment(project, service, { interpolation });
+      await queryClient.invalidateQueries({
+        queryKey: [...serviceKey(project, service), "environment"],
+      });
+      toast.success(t("interpolation.saved"), t("savedHint"));
+    } catch (error) {
+      toast.error(t("interpolation.failed"), errorMessage(error, t));
+    } finally {
+      setPending(false);
+    }
+  };
 
   return (
-    <form onSubmit={form.handleSubmit} noValidate className="grid max-w-[720px] gap-4">
-      {form.banner && <FormBanner>{form.banner}</FormBanner>}
-      {form.errors.env && <FormBanner>{form.errors.env}</FormBanner>}
-      <CodeEditor
-        value={form.values.env}
-        onChange={(value) => form.set("env", value)}
-        label={t("title")}
-        invalid={form.errors.env !== undefined}
-      />
-      <div>
-        <Button type="submit" variant="primary" pending={form.pending}>
-          {t("submit")}
-        </Button>
-      </div>
-    </form>
+    <Switch
+      label={t("interpolation.label")}
+      hint={t("interpolation.hint")}
+      checked={checked}
+      disabled={pending}
+      onCheckedChange={(next) => void change(next)}
+    />
   );
 }
 
 export function EnvironmentTab() {
   const { t } = useTranslation(["service-environment", "common"]);
   const { project, service } = useServiceParams();
+  const queryClient = useQueryClient();
   const { data, isPending, isError, error, refetch } = useQuery(environmentQuery(project, service));
+  const { data: detail } = useQuery(serviceQuery(project, service));
+  const built = detail?.source != null && detail.source.type !== "image";
 
   return (
-    <section className="grid gap-x-10 gap-y-4 px-4 py-6 md:px-6 lg:grid-cols-[minmax(0,260px)_minmax(0,720px)] lg:px-8">
-      <div>
-        <h2 className="text-md font-medium">{t("title")}</h2>
-        <p className="mt-1 text-sm text-muted">{t("description")}</p>
-      </div>
-      {isPending ? (
-        <Skeleton className="h-52" />
-      ) : isError ? (
-        <div className="grid justify-items-start gap-3">
-          <FormBanner>{errorMessage(error, t)}</FormBanner>
-          <Button onClick={() => refetch()}>{t("common:actions.retry")}</Button>
-        </div>
-      ) : (
-        <div className="grid gap-6">
-          <EnvironmentForm key={service} project={project} service={service} initial={data.env} />
-          <EnvFileForm project={project} service={service} />
-        </div>
+    <div className="grid">
+      <section className={sectionClass}>
+        <SectionIntro
+          pictogram="environment"
+          title={t("title")}
+          description={t(built ? "descriptionBuilt" : "description")}
+        />
+        {isPending ? (
+          <Skeleton className="h-52" />
+        ) : isError ? (
+          <ErrorState message={errorMessage(error, t)} onRetry={() => refetch()} />
+        ) : (
+          <div className="grid max-w-[900px] gap-6">
+            <VariablesEditor
+              key={service}
+              names={data.names}
+              label={t("title")}
+              submitLabel={t("submit")}
+              savedTitle={t("saved")}
+              savedHint={t("savedHint")}
+              reveal={() => servicesApi.revealEnvironment(project, service)}
+              save={(env) => servicesApi.saveEnvironment(project, service, { env })}
+              onSaved={() => {
+                void queryClient.invalidateQueries({
+                  queryKey: [...serviceKey(project, service), "environment"],
+                });
+              }}
+            />
+            <PlaceholderSwitch project={project} service={service} checked={data.interpolation} />
+          </div>
+        )}
+      </section>
+      {built && (
+        <section className={`${sectionClass} border-t`}>
+          <SectionIntro
+            pictogram="deployment"
+            title={t("build.title")}
+            description={t("build.description")}
+          />
+          <div className="grid max-w-[900px] gap-6">
+            <BuildSection key={service} project={project} service={service} />
+            <EnvFileForm project={project} service={service} />
+          </div>
+        </section>
       )}
-    </section>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 {
-  "intro": "Publishes this database's port ({{port}}) on the server, so tools outside this server can reach it. Saving restarts the database. Inside this server, other services don't need this.",
+  "intro": "Publishes this database's port ({{port}}) on the server, so tools outside this server and services in other projects can reach it. Saving only stores the port: redeploying is what opens it, and it restarts the database. Services in this project don't need this.",
   "warning": {
     "title": "Think twice before exposing a database",
     "description": "Anyone who can reach this port can try to connect, and bots look for open databases. Keep a strong password, and limit access with a firewall if you can."
@@ -7,14 +7,18 @@
   "port": "Public port",
   "hint": "Use 0 to stop exposing it, or a free port from 1024 to 65535.",
   "invalid": "Use 0, or a whole number from 1024 to 65535.",
-  "save": "Save and restart",
-  "restarting": "Restarting the database…",
-  "exposed": "Port {{port}} is open",
-  "removed": "The database is no longer exposed",
-  "failed": "The port was not changed",
+  "save": "Save",
+  "exposed": "Port {{port}} saved",
+  "removed": "Public port removed",
   "confirm": {
     "title": "Expose this database?",
     "description": "Port {{port}} will be reachable from outside this server. Keep a strong password.",
     "submit": "Expose it"
-  }
+  },
+  "state": {
+    "off": "Not exposed",
+    "on": "Open on port {{port}}"
+  },
+  "savedHint": "Redeploy the database to apply it.",
+  "notPublishedYet": "Port {{port}} is saved but not published yet. Redeploy the database to open it."
 }

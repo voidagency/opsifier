@@ -92,7 +92,7 @@ export function ChangePasswordDialog({
     >
       <div className="grid gap-4">
         {form.banner && <FormBanner>{form.banner}</FormBanner>}
-        <Field label={t("change.password")} error={form.errors.password}>
+        <Field label={t("change.password")} error={form.errors.password} hint={t("change.passwordHint")}>
           <PasswordInput {...form.field("password")} autoComplete="new-password" autoFocus />
         </Field>
         {hasRootPassword && (

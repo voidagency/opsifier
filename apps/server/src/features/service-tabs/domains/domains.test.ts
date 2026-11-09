@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ActionEntry, DomainEntry, DomainList, ExposedPorts, ServiceDetail } from "@opsifier/contract";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -58,6 +58,7 @@ const proxyFile = () =>
       routers: Record<string, { rule: string; middlewares?: string[]; tls?: unknown; service: string }>;
       services: Record<string, { loadBalancer: { servers: Array<{ url: string }> } }>;
       middlewares?: Record<string, unknown>;
+      serversTransports?: Record<string, unknown>;
     };
   };
 
@@ -265,6 +266,290 @@ describe("adding a domain", () => {
   });
 });
 
+describe("a route that someone else holds", () => {
+  const blogDomains = "/api/v1/projects/blog/services/api/domains";
+  const claim = (body: Record<string, unknown>) =>
+    call<DomainEntry>(context.app, blogDomains, { method: "POST", body, cookie, origin: TEST_ORIGIN });
+
+  beforeEach(async () => {
+    await start();
+    await createService();
+    await call(context.app, "/api/v1/projects", {
+      method: "POST",
+      body: { name: "blog" },
+      cookie,
+      origin: TEST_ORIGIN,
+    });
+    await call(context.app, "/api/v1/projects/blog/services", {
+      method: "POST",
+      body: { name: "api" },
+      cookie,
+      origin: TEST_ORIGIN,
+    });
+  });
+
+  it.each([
+    ["a longer path under the path it holds", { host: "app.example.test" }, { path: "/admin" }],
+    ["a longer path under a nested path", { host: "app.example.test", path: "/a" }, { path: "/a/b" }],
+    ["a shorter path over the path it holds", { host: "app.example.test", path: "/admin" }, { path: "/" }],
+    ["the identical route", { host: "app.example.test", path: "/admin" }, { path: "/admin" }],
+  ])("refuses %s, across projects", async (_name, held, wanted) => {
+    expect((await addDomain({ ...held, https: false })).status).toBe(201);
+
+    const result = await claim({ host: "app.example.test", https: false, ...wanted });
+
+    expect(result.status).toBe(409);
+    expect(apiErrorOf(result).code).toBe("domain_taken");
+    expect(JSON.stringify(result.body)).not.toMatch(/shop|blog/);
+  });
+
+  it("refuses a wildcard over an exact host another project holds", async () => {
+    await addDomain({ host: "shop.example.test", https: false });
+    const result = await claim({ host: "example.test", wildcard: true, https: false });
+
+    expect(result.status).toBe(409);
+    expect(apiErrorOf(result).code).toBe("domain_taken");
+  });
+
+  it("refuses an exact host under a wildcard another project holds", async () => {
+    await addDomain({ host: "example.test", wildcard: true, https: false });
+    const result = await claim({ host: "shop.example.test", https: false });
+
+    expect(result.status).toBe(409);
+  });
+
+  it("refuses a wildcard route on a path it shares with an exact host, and not on one it doesn't", async () => {
+    await addDomain({ host: "shop.example.test", path: "/shop", https: false });
+
+    expect(
+      (await claim({ host: "example.test", path: "/shop/x", wildcard: true, https: false })).status,
+    ).toBe(409);
+    expect((await claim({ host: "example.test", path: "/blog", wildcard: true, https: false })).status).toBe(
+      201,
+    );
+  });
+
+  it("does not count a deeper subdomain as covered, since a wildcard only reaches one level", async () => {
+    await addDomain({ host: "deep.shop.example.test", https: false });
+
+    expect((await claim({ host: "example.test", wildcard: true, https: false })).status).toBe(201);
+  });
+
+  it("keeps a boundary between paths, so /apix is free when /api is held", async () => {
+    await addDomain({ host: "app.example.test", path: "/api", https: false });
+
+    expect((await claim({ host: "app.example.test", path: "/apix", https: false })).status).toBe(201);
+  });
+
+  it("lets two projects share a host on paths that never meet", async () => {
+    await addDomain({ host: "app.example.test", path: "/shop", https: false });
+
+    expect((await claim({ host: "app.example.test", path: "/blog", https: false })).status).toBe(201);
+  });
+
+  it("lets the services of one project split a host by path", async () => {
+    await createService("api");
+    await addDomain({ host: "app.example.test", https: false });
+
+    const nested = await call(context.app, "/api/v1/projects/shop/services/api/domains", {
+      method: "POST",
+      body: { host: "app.example.test", path: "/api", https: false },
+      cookie,
+      origin: TEST_ORIGIN,
+    });
+
+    expect(nested.status).toBe(201);
+  });
+
+  it("refuses an edit that would reach into someone else's route", async () => {
+    await addDomain({ host: "app.example.test", https: false });
+    const own = await claim({ host: "own.example.test", https: false });
+
+    const result = await call(context.app, `${blogDomains}/${own.body.id}`, {
+      method: "PUT",
+      body: { host: "app.example.test", path: "/admin", https: false },
+      cookie,
+      origin: TEST_ORIGIN,
+    });
+
+    expect(result.status).toBe(409);
+  });
+
+  it("still lets a route that predates these rules be edited, as long as it stays where it is", async () => {
+    const held = (await addDomain({ host: "app.example.test", https: false })).body;
+    const { insertDomain } = await import("./repo");
+    const now = new Date();
+    insertDomain(context.deps.db, {
+      id: "old-route",
+      projectName: "blog",
+      serviceName: "api",
+      host: held.host,
+      path: "/admin",
+      port: 80,
+      https: false,
+      isPrimary: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const edit = (body: Record<string, unknown>) =>
+      call(context.app, `${blogDomains}/old-route`, {
+        method: "PUT",
+        body: { host: held.host, https: false, ...body },
+        cookie,
+        origin: TEST_ORIGIN,
+      });
+
+    expect((await edit({ path: "/admin", port: 8080 })).status).toBe(200);
+    expect((await edit({ path: "/admin/deeper" })).status).toBe(409);
+  });
+
+  it("treats a custom destination as someone else's, and refuses one over a service's route", async () => {
+    const servers = [{ url: "https://outside.example.net" }];
+    await call(context.app, "/api/v1/domains/custom", {
+      method: "POST",
+      body: { host: "ext.example.test", servers, https: false },
+      cookie,
+      origin: TEST_ORIGIN,
+    });
+    expect((await addDomain({ host: "ext.example.test", path: "/app", https: false })).status).toBe(409);
+
+    await addDomain({ host: "app.example.test", https: false });
+    const custom = await call(context.app, "/api/v1/domains/custom", {
+      method: "POST",
+      body: { host: "app.example.test", path: "/admin", servers, https: false },
+      cookie,
+      origin: TEST_ORIGIN,
+    });
+    expect(custom.status).toBe(409);
+    expect(apiErrorOf(custom).code).toBe("domain_taken");
+  });
+
+  it("gives no default name under a wildcard another project holds", async () => {
+    await call(context.app, "/api/v1/server/service-domain", {
+      method: "PUT",
+      body: { customDomain: "apps.example.test" },
+      cookie,
+      origin: TEST_ORIGIN,
+    });
+    expect((await addDomain({ host: "apps.example.test", wildcard: true, https: false })).status).toBe(201);
+
+    await call(context.app, "/api/v1/projects/blog/services", {
+      method: "POST",
+      body: { name: "late" },
+      cookie,
+      origin: TEST_ORIGIN,
+    });
+
+    const { domains } = (
+      await call<DomainList>(context.app, "/api/v1/projects/blog/services/late/domains", { cookie })
+    ).body;
+    expect(domains).toEqual([]);
+  });
+});
+
+describe("an international hostname", () => {
+  beforeEach(async () => {
+    await start();
+    await createService();
+  });
+
+  it("is stored and routed under the name DNS uses, and collides with its own punycode", async () => {
+    const result = await addDomain({ host: "BÜCHER.example.test", https: false });
+
+    expect(result.status).toBe(201);
+    expect(result.body.host).toBe("xn--bcher-kva.example.test");
+    expect(proxyFile().http.routers["http-shop_web-1"]?.rule).toContain("Host(`xn--bcher-kva.example.test`)");
+    expect((await addDomain({ host: "xn--bcher-kva.example.test", https: false })).status).toBe(409);
+  });
+});
+
+describe("taking the path off a request", () => {
+  it("is off by default, and saved with the domain and compiled when turned on", async () => {
+    await start();
+    await createService();
+
+    expect((await addDomain({ host: "a.example.test", path: "/a", https: false })).body.stripPath).toBe(
+      false,
+    );
+
+    const result = await addDomain({ host: "b.example.test", path: "/api", stripPath: true, https: false });
+    expect(result.body.stripPath).toBe(true);
+    expect(proxyFile().http.middlewares?.["opsifier-strip-shop_web-2"]).toEqual({
+      stripPrefix: { prefixes: ["/api"] },
+    });
+  });
+});
+
+describe("an HTTPS upstream's certificate", () => {
+  beforeEach(async () => {
+    await start();
+    await createService();
+  });
+
+  const upstream = { host: "tls.example.test", https: false, destinationProtocol: "https", port: 8443 };
+
+  it("is verified against the public name unless told otherwise, with nothing turned off", async () => {
+    const result = await addDomain(upstream);
+
+    expect(result.status).toBe(201);
+    expect(readFileSync(join(context.dataDir, "traefik/dynamic/shop__web.yaml"), "utf8")).not.toContain(
+      "insecureSkipVerify",
+    );
+    expect(proxyFile().http.serversTransports?.["opsifier-tls-shop_web-1"]).toEqual({
+      serverName: "tls.example.test",
+    });
+  });
+
+  it("is refused if what was pasted is not really a certificate", async () => {
+    const result = await addDomain({
+      ...upstream,
+      upstreamCa: "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----",
+    });
+
+    expect(result.status).toBe(400);
+    expect(apiErrorOf(result).fields?.upstreamCa).toBeTruthy();
+  });
+
+  it("forgets what to check when the upstream goes back to plain HTTP", async () => {
+    const created = await addDomain({ ...upstream, upstreamServerName: "backend.internal" });
+    expect(created.body.upstreamServerName).toBe("backend.internal");
+
+    const result = await api<DomainEntry>(`/domains/${created.body.id}`, "PUT", {
+      ...upstream,
+      destinationProtocol: "http",
+      upstreamServerName: "backend.internal",
+    });
+
+    expect(result.body.upstreamServerName).toBeNull();
+    expect(proxyFile().http.serversTransports).toBeUndefined();
+  });
+});
+
+describe("a route that would complete a redirect loop", () => {
+  beforeEach(async () => {
+    await start();
+    await createService();
+  });
+
+  it("is refused when it brings the rules' target to this service", async () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal text of a replacement template
+    const toOther = { regex: "^http://one.example.test/(.*)", replacement: "http://two.example.test/${1}" };
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal text of a replacement template
+    const toOne = { regex: "^http://two.example.test/(.*)", replacement: "http://one.example.test/${1}" };
+    expect((await addDomain({ host: "one.example.test", https: false })).status).toBe(201);
+    expect((await api("/redirects", "POST", toOther)).status).toBe(201);
+    // The target isn't on this service yet, so nothing can come round again.
+    expect((await api("/redirects", "POST", toOne)).status).toBe(201);
+
+    const result = await addDomain({ host: "two.example.test", https: false });
+
+    expect(result.status).toBe(409);
+    expect(apiErrorOf(result).code).toBe("domain_redirect_loop");
+    expect((await listDomains()).body.domains.map((domain) => domain.host)).not.toContain("two.example.test");
+  });
+});
+
 describe("editing a domain", () => {
   let id: string;
 
@@ -284,7 +569,7 @@ describe("editing a domain", () => {
 
     expect(result.status).toBe(200);
     const { http } = proxyFile();
-    expect(http.routers["http-shop_web-1"]?.rule).toContain("PathPrefix(`/api`)");
+    expect(http.routers["http-shop_web-1"]?.rule).toContain("(Path(`/api`) || PathPrefix(`/api/`))");
     expect(http.services["shop_web-1"]?.loadBalancer.servers).toEqual([{ url: "http://shop_web:8080/" }]);
   });
 
@@ -349,13 +634,27 @@ describe("deleting a domain", () => {
     expect(after[0]?.primary).toBe(true);
   });
 
-  it("can remove the last domain, which leaves no primary and no routers", async () => {
+  it("can remove the last domain, which leaves no primary and no routing file", async () => {
     const domains = (await listDomains()).body.domains;
+    expect(existsSync(join(context.dataDir, "traefik/dynamic/shop__web.yaml"))).toBe(true);
+
     expect((await api(`/domains/${domains[0]?.id}`, "DELETE")).status).toBe(200);
 
     expect((await listDomains()).body.domains).toEqual([]);
-    expect(proxyFile().http.routers).toEqual({});
+    // An empty `routers:` is refused by Traefik, along with every other file next to it.
+    expect(existsSync(join(context.dataDir, "traefik/dynamic/shop__web.yaml"))).toBe(false);
     expect((await api<ServiceDetail>("")).body.primaryUrl).toBeNull();
+  });
+
+  it("clears the file an earlier version left for a service with no domains, at boot", async () => {
+    const domains = (await listDomains()).body.domains;
+    await api(`/domains/${domains[0]?.id}`, "DELETE");
+    const file = join(context.dataDir, "traefik/dynamic/shop__web.yaml");
+    writeFileSync(file, "http:\n  services: {}\n  routers: {}\n");
+
+    await feature.boot?.(context.deps);
+
+    expect(existsSync(file)).toBe(false);
   });
 
   it("answers 404 for a domain that does not exist", async () => {
@@ -409,7 +708,7 @@ describe("the primary domain at the next deploy", () => {
   it("substitutes $(PRIMARY_DOMAIN) and PORT from the new primary", async () => {
     await start();
     await deployed();
-    await api("/environment", "PUT", { env: "HOST=$(PRIMARY_DOMAIN)" });
+    await api("/environment", "PUT", { env: "HOST=$(PRIMARY_DOMAIN)", interpolation: true });
     const second = await addDomain({ host: "two.example.test", https: false, port: 8080 });
     await api(`/domains/${second.body.id}/primary`, "POST");
 

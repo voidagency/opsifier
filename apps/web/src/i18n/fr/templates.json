@@ -1,0 +1,89 @@
+{
+  "categories": {
+    "monitoring": "Supervision",
+    "development": "Développement",
+    "data": "Données",
+    "documents": "Documents",
+    "productivity": "Productivité",
+    "communication": "Communication",
+    "media": "Médias",
+    "automation": "Automatisation",
+    "security": "Sécurité",
+    "infrastructure": "Infrastructure"
+  },
+  "links": {
+    "website": "Site web",
+    "docs": "Documentation",
+    "source": "Code source"
+  },
+  "catalogue": {
+    "search": "Chercher un modèle",
+    "tag": "Filtrer par étiquette",
+    "anyTag": "Toutes les étiquettes",
+    "categories": "Catégories",
+    "verified": "Vérifié",
+    "emptyTitle": "Aucun modèle ne correspond",
+    "emptyBody": "Essayez un autre mot, ou retirez les filtres.",
+    "searchHint": "Filtre la liste au fil de la saisie.",
+    "tagHint": "Seulement les modèles portant ce tag."
+  },
+  "form": {
+    "title": "Créer {{name}}",
+    "description": "Dans le projet {{project}}. Rien ne démarre tant que vous ne déployez pas.",
+    "submit": "Créer",
+    "created": "{{name}} créé. Déployez-le quand vous êtes prêt.",
+    "required": "Requis",
+    "invalidName": "Utilisez des minuscules, chiffres, tirets et tirets bas.",
+    "invalidImage": "Indiquez une version explicite, par exemple nom:1.2.3",
+    "generated": "Généré pour vous",
+    "name": "Nom",
+    "image": "Image",
+    "databaseSource": "Base de données",
+    "newDatabase": "Nouvelle base",
+    "kinds": {
+      "app": "Application",
+      "database": "Base de données",
+      "compose": "Pile Compose"
+    },
+    "hostAccessTitle": "Ce modèle peut contrôler le serveur",
+    "hostAccessBody": "Il utilise le socket Docker, ce qui lui donne le contrôle total de cette machine et de tous ses conteneurs.",
+    "hostAccessConfirm": "Je fais confiance à ce modèle",
+    "hostAccessAdminOnly": "Seul un administrateur peut installer ce modèle, car il peut contrôler le serveur.",
+    "imageHint": "L'image exécutée par cet élément.",
+    "nameHint": "Le nom de cet élément de l'installation.",
+    "databaseSourceHint": "Créer une base de données, ou en utiliser une existante."
+  },
+  "custom": {
+    "title": "Créer depuis un schéma",
+    "description": "Collez un document de modèle. Il passe par le même formulaire que le catalogue, et rien n'est créé avant votre confirmation.",
+    "body": "Pour essayer un modèle absent du catalogue, ou un modèle que vous avez écrit.",
+    "open": "Coller un schéma",
+    "dialogTitle": "Coller un modèle",
+    "schema": "Schéma",
+    "schemaHint": "JSON, au format de modèle Opsifier.",
+    "next": "Continuer",
+    "invalidJson": "Ce JSON n'est pas valide.",
+    "useExample": "Afficher un exemple"
+  },
+  "install": {
+    "projectHeading": "Modèles installés",
+    "parts": "Éléments",
+    "deploy": "Déployer",
+    "resume": "Déployer le reste",
+    "redeploy": "Tout redéployer",
+    "deployed": "Tout est en marche",
+    "deployFailed": "Le déploiement n'a pas abouti",
+    "remove": "Retirer",
+    "removing": "Retrait de {{name}}",
+    "removeTitle": "Retirer cette installation ?",
+    "removeBody": "Tous les services créés par cette installation dans ce projet disparaissent. Les autres services ne sont pas touchés.",
+    "nextSteps": "Étapes suivantes",
+    "secrets": "Mots de passe",
+    "reveal": "Afficher",
+    "copySecret": "Copier",
+    "custom": "Depuis un schéma",
+    "deployHint": "Les services démarrent selon leurs dépendances, chacun avec un déploiement que vous pouvez suivre.",
+    "removeRemoved": "Ces services, avec leurs domaines, routes et réglages.",
+    "removeKept": "Leurs volumes nommés et leurs sauvegardes. Supprimez les volumes conservés plus tard dans Supervision, Stockage."
+  }
+}

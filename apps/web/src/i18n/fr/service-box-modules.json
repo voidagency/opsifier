@@ -1,0 +1,100 @@
+{
+  "title": "Modules",
+  "description": "Ce que contient l'image de cette box. Édition {{revision}} de la matrice des modules. Chaque version est figée : le même choix construit toujours la même image.",
+  "toggle": "Utiliser {{name}}",
+  "version": "Version",
+  "versionOf": "Version de {{name}}",
+  "pinHint": "Exactement ce que cette version installe.",
+  "documentRoot": "Racine du site",
+  "documentRootHint": "Un dossier de l'espace de travail, servi par le serveur web.",
+  "extensions": {
+    "label": "Extensions",
+    "notOn": "Indisponible sur la version {{version}}. Fonctionne avec {{versions}}."
+  },
+  "state": {
+    "built": "Dans l'image actuelle",
+    "waiting": "En attente de construction",
+    "off": "Désactivé"
+  },
+  "modules": {
+    "node": {
+      "name": "Node.js",
+      "hint": "JavaScript côté serveur, avec npm."
+    },
+    "php": {
+      "name": "PHP",
+      "hint": "PHP avec le gestionnaire de processus FPM."
+    },
+    "python": {
+      "name": "Python",
+      "hint": "Python 3, avec pip."
+    },
+    "ruby": {
+      "name": "Ruby",
+      "hint": "Ruby, avec Bundler."
+    },
+    "nginx": {
+      "name": "Serveur web",
+      "hint": "Sert un dossier de l'espace de travail, et PHP si PHP est activé."
+    }
+  },
+  "nothingElse": "Rien d'autre que cette liste ne peut être ajouté à une box.",
+  "saved": "Enregistré. Le prochain déploiement le construira.",
+  "save": "Enregistrer les modules",
+  "pending": {
+    "title": "En attente de construction",
+    "description": "Ce que le prochain déploiement reconstruira, et pourquoi. Rien ne change dans ce qui tourne d'ici là."
+  },
+  "changes": {
+    "none": "aucun",
+    "kind": {
+      "security": "Mise à jour de sécurité",
+      "upgrade": "Changement de version",
+      "modules": "Changement de module",
+      "configuration": "Changement de réglages"
+    }
+  },
+  "reasons": {
+    "first": "Première construction",
+    "security": "Mise à jour de sécurité",
+    "upgrade": "Changement de version",
+    "modules": "Changement de module",
+    "configuration": "Changement de réglages",
+    "forced": "Reconstruction forcée",
+    "unchanged": "Aucun changement"
+  },
+  "presets": {
+    "title": "Préréglages",
+    "description": "Un moyen rapide de remplir les modules, les processus et les hooks. Les fichiers déjà présents dans l'espace de travail ne sont jamais modifiés : seuls les fichiers absents sont ajoutés.",
+    "current": "Actuel",
+    "apply": "Appliquer le préréglage",
+    "applied": "Préréglage appliqué. Le prochain déploiement le construira.",
+    "confirmTitle": "Appliquer ce préréglage ?",
+    "confirmBody": "Cela remplace les modules, les processus et les hooks de cette box. Aucun fichier de son espace de travail n'est modifié ni supprimé."
+  },
+  "history": {
+    "title": "Constructions",
+    "description": "Chaque construction de cette box, avec ce qui l'a déclenchée.",
+    "outcome": "Résultat",
+    "reason": "Pourquoi",
+    "changes": "Ce qui a bougé",
+    "when": "Quand",
+    "by": "Par",
+    "status": {
+      "succeeded": "Réussie",
+      "failed": "Échouée",
+      "cancelled": "Annulée"
+    },
+    "noChange": "Rien",
+    "nobody": "Le panneau",
+    "emptyTitle": "Aucune construction",
+    "emptyBody": "Le premier déploiement construit l'image de cette box."
+  },
+  "dockerfile": {
+    "title": "Image générée",
+    "description": "Le Dockerfile construit à partir de ces réglages. Il est affiché, pas modifiable : changez plutôt les modules et les hooks.",
+    "show": "Afficher le Dockerfile"
+  },
+  "matrixFootnote": "Édition {{revision}} de la matrice.",
+  "versionHint": "Dans la matrice des modules."
+}

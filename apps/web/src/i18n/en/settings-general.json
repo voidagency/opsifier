@@ -1,0 +1,169 @@
+{
+  "menus": {
+    "panel": "Panel",
+    "server": "Server",
+    "proxy": "Traefik",
+    "docker": "Docker"
+  },
+  "menu": {
+    "logs": "Logs",
+    "restart": "Restart",
+    "refreshIp": "Refresh IP",
+    "console": "Console",
+    "disk": "Disk usage",
+    "reboot": "Reboot",
+    "trusted": "Trusted proxies",
+    "custom": "Custom configuration",
+    "environment": "Environment",
+    "dashboard": "Dashboard",
+    "checkUpdates": "Check for updates",
+    "restartNotManaged": "The panel doesn't run as a Swarm service here.",
+    "restartProxyMissing": "The proxy isn't running here.",
+    "needsHostAdmin": "Needs server access, which only the owner gives."
+  },
+  "dailyCleanup": "Daily Docker cleanup",
+  "uptime": "Uptime: {{days}} days, {{hours}} hours, {{minutes}} minutes",
+  "uptimeUnknown": "Uptime unknown",
+  "saved": "Saved",
+  "save": "Save",
+  "defaultDomain": "Default domain",
+  "customDomain": "Custom domain",
+  "panelDomain": {
+    "title": "Panel domain",
+    "description": "Where this panel answers.",
+    "hint": "Must point at this server. Anyone on the server can still reach the panel on localhost.",
+    "serveOnIp": "Serve on IP",
+    "serveOnIpHint": "Off, only the domains above answer."
+  },
+  "serviceDomain": {
+    "title": "Service domain",
+    "description": "The domain new services get a hostname under.",
+    "hint": "New services are published as project-service under this domain.",
+    "dns": "This needs a wildcard DNS record, *.your-domain.com, pointing at this server."
+  },
+  "letsEncrypt": {
+    "title": "Let's Encrypt",
+    "description": "Who certificate authorities contact. Applied at the next proxy restart.",
+    "email": "Email",
+    "emailHint": "Let's Encrypt warns this address before a certificate expires."
+  },
+  "logs": {
+    "panel": "Panel logs",
+    "proxy": "Traefik logs",
+    "divider": "Add a divider",
+    "refresh": "Refresh"
+  },
+  "console": {
+    "title": "Server console",
+    "connecting": "Connecting",
+    "connected": "Connected",
+    "ended": "Ended",
+    "lost": "The connection was lost.",
+    "refused": "The console could not be opened."
+  },
+  "disk": {
+    "title": "Disk usage",
+    "up": "Up",
+    "scopeHost": "whole server",
+    "scopeData": "panel data only"
+  },
+  "docker": {
+    "unavailable": "Docker unavailable",
+    "updatesTitle": "Docker updates",
+    "checkFailed": "Couldn't check",
+    "upToDate": "Docker {{version}} is up to date",
+    "newer": "Docker {{version}} is available",
+    "tooOld": "This engine is older than the tested minimum, {{minimum}}.",
+    "swarmInactive": "Swarm isn't active on this Docker engine.",
+    "warnUnavailable": "Docker isn't answering. What depends on it is out of date.",
+    "missingIntro": "This Docker can't do what the panel needs, so anything that would use it is refused:",
+    "missing": {
+      "version": "Docker {{version}} is older than {{minimum}}, the oldest version tested with this panel.",
+      "api": "Docker's Engine API is {{apiVersion}}, and the panel needs {{minimumApi}} or later.",
+      "swarm": "Swarm isn't active and managed from this node.",
+      "overlay": "Docker has no overlay network driver.",
+      "volumes": "Docker has no local volume driver.",
+      "buildx": "The Docker CLI's buildx plugin doesn't work with this Docker, so builds are refused.",
+      "compose": "The Docker CLI's Compose plugin doesn't answer, so Compose stacks are refused."
+    },
+    "upgradeHint": "Upgrading the engine is up to you: the panel never changes the host's Docker."
+  },
+  "cleanup": {
+    "started": "Cleanup started",
+    "nothing": "Nothing to remove.",
+    "remove_one": "Remove {{count}} item",
+    "remove_other": "Remove {{count}} items",
+    "summary": "{{size}} to reclaim. Kept because in use or still needed: {{retained}}. Not created by the panel, left alone: {{foreign}}.",
+    "images": {
+      "menu": "Clean images",
+      "title": "Clean images",
+      "description": "Images the panel built or a past service used, that nothing runs anymore. The image of any service that still exists stays, even when it is stopped."
+    },
+    "builder": {
+      "menu": "Clean builder",
+      "title": "Clean builder cache",
+      "description": "Build cache the panel's own builds created and nothing is using. Cache from anyone else's builds stays."
+    },
+    "system": {
+      "menu": "System prune",
+      "title": "System prune",
+      "description": "Unused images and build cache of the panel's own, stopped containers of its services and leftover project networks. Volumes are never touched."
+    },
+    "selectFirst": "Select what to remove first.",
+    "typeFirst": "Type {{word}} to confirm.",
+    "typeHint": "Nothing is removed without this word."
+  },
+  "proxy": {
+    "restarting": "Saved, Traefik is restarting",
+    "saved": "Saved and applied",
+    "savedEnv": "Saved. It applies at the next restart.",
+    "trustedTitle": "Trusted proxies",
+    "trustAll": "Trust every source",
+    "trustAllHint": "Only for a proxy that nothing else can reach directly.",
+    "entries": "IPs and ranges",
+    "restartNote": "Saving restarts Traefik briefly. The panel keeps running.",
+    "saveAndRestart": "Save and restart Traefik",
+    "customTitle": "Custom configuration",
+    "customDescription": "YAML for Traefik's file provider. Invalid YAML is refused.",
+    "envTitle": "Environment",
+    "envDescription": "NAME=value, one per line. Applied at the next restart.",
+    "envEmpty": "No variables set.",
+    "envNames": "Set: {{names}}",
+    "envReveal": "Show values",
+    "dashboardTitle": "Traefik dashboard",
+    "dashboardDescription": "Publishes the dashboard on a generated host, behind a password.",
+    "dashboardOpen": "Open dashboard",
+    "dashboardClose": "Close",
+    "dashboardClosed": "Dashboard closed",
+    "dashboardUrl": "URL",
+    "dashboardUser": "Username",
+    "dashboardPassword": "Password",
+    "dashboardOnce": "Shown once, and replaced at each proxy restart.",
+    "presetAdded": "Already in the list.",
+    "revealFirst": "Show the values first.",
+    "dashboardUserHint": "Sign in to the dashboard with this.",
+    "dashboardUrlHint": "Where the dashboard opens."
+  },
+  "confirm": {
+    "panelTitle": "Restart the panel?",
+    "panelDescription": "The panel goes away for a few seconds. What it runs keeps running.",
+    "panelDone": "The panel is restarting",
+    "proxyTitle": "Restart Traefik?",
+    "proxyDescription": "Every site is unreachable for a few seconds, and the dashboard password changes.",
+    "proxyDone": "Traefik is restarting",
+    "rebootTitle": "Reboot the server?",
+    "rebootDescription": "Everything running on it stops until the machine is back.",
+    "rebootDone": "The server is rebooting"
+  },
+  "updates": {
+    "checking": "Checking for updates…",
+    "available": "Opsifier {{version}} is available",
+    "current": "No update available"
+  },
+  "dailyCleanupHint": "Off until you turn it on. Once a day it removes only what the cleanups in the Docker menu would offer, and never a volume.",
+  "defaultDomainHint": "Generated from the server's address.",
+  "releasesKept": "Versions kept",
+  "releasesKeptHint": "How many of the newest versions of each service stay on this server for going back to. Each one keeps its image on the disk. Lowering this removes the older ones right away.",
+  "releasesKeptSaved": "Saved",
+  "releasesKeptHintLabel": "What this keeps"
+}

@@ -1,0 +1,13 @@
+{
+  "build": {
+    "title": "Build hook",
+    "description": "Runs as root while the image is built, and has no workspace. Use it for system packages."
+  },
+  "start": {
+    "title": "Start hook",
+    "description": "Runs as the box's user every time it starts, in the workspace, before any process."
+  },
+  "failure": "If a hook fails, the deployment stops there and what is running stays as it was.",
+  "saved": "Saved. The next deploy runs them.",
+  "save": "Save hooks"
+}

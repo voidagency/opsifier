@@ -115,7 +115,7 @@ export function UploadSourceForm({
   const percent = progress === null ? null : Math.round(progress * 100);
 
   return (
-    <form onSubmit={form.handleSubmit} noValidate className="relative grid max-w-[520px] gap-4">
+    <form onSubmit={form.handleSubmit} noValidate className="relative grid max-w-[650px] gap-4">
       {form.banner && <FormBanner>{form.banner}</FormBanner>}
       <button
         type="button"

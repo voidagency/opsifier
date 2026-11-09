@@ -128,7 +128,7 @@ export function Toaster() {
   return (
     <div
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-4 bottom-12 z-[70] ml-auto flex max-w-[360px] flex-col gap-2 sm:right-4 sm:left-auto sm:w-[360px]"
+      className="pointer-events-none fixed inset-x-4 bottom-12 z-[70] ml-auto flex max-w-[450px] flex-col gap-2 sm:right-4 sm:left-auto sm:w-[450px]"
     >
       {current.map((entry) => (
         <ToastItem key={entry.id} entry={entry} />

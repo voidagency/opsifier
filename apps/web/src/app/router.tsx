@@ -14,6 +14,8 @@ import { ActivityPage } from "../features/activity/ActivityPage";
 import { LoginPage } from "../features/auth/LoginPage";
 import { SetupPage } from "../features/auth/SetupPage";
 import { sessionQuery } from "../features/auth/session";
+import { createBoxRoutes, createIdeRoute } from "../features/box/routes";
+import { createComposeRoutes } from "../features/compose/routes";
 import { servicePageLink } from "../features/databases/links";
 import { createDatabaseRoutes } from "../features/databases/routes";
 import { DomainsPage } from "../features/domains/DomainsPage";
@@ -21,6 +23,7 @@ import { MonitorPage } from "../features/monitor/MonitorPage";
 import { OverviewPage } from "../features/overview/OverviewPage";
 import { ProjectPage } from "../features/projects/ProjectPage";
 import { ProjectSettingsPage } from "../features/projects/ProjectSettingsPage";
+import { ServerPurposePage } from "../features/server-purpose/ServerPurposePage";
 import { serviceQuery } from "../features/services/api";
 import {
   CreateServicePage,
@@ -33,7 +36,11 @@ import { ServiceLayout } from "../features/services/ServiceLayout";
 import { serviceTabs } from "../features/services/tabs";
 import { AuthenticationPage } from "../features/settings/AuthenticationPage";
 import { GithubPage } from "../features/settings/GithubPage";
+import { createPlatformSettingsRoutes } from "../features/settings/routes";
 import { SettingsLayout } from "../features/settings/SettingsLayout";
+import { KnownHostsPage } from "../features/settings/server/KnownHostsPage";
+import { StorageProvidersPage } from "../features/storage-providers/StorageProvidersPage";
+import { createInstallRoute } from "../features/templates/routes";
 import { isApiError } from "../lib/api";
 import { BootScreen, NotFoundPage, RootError } from "./RouteStates";
 import { AppShell } from "./shell/AppShell";
@@ -175,11 +182,40 @@ const settingsAuthenticationRoute = createRoute({
   component: AuthenticationPage,
 });
 
+const settingsServerPurposeRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "server/purpose",
+  staticData: { crumb: "settingsNav.purpose" },
+  component: ServerPurposePage,
+});
+
+const settingsStorageProvidersRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "server/storage-providers",
+  staticData: { crumb: "settingsNav.storageProviders" },
+  validateSearch: (search: Record<string, unknown>): { connected?: string; oauthError?: string } => ({
+    ...(typeof search.connected === "string" ? { connected: search.connected } : {}),
+    ...(typeof search.oauthError === "string" ? { oauthError: search.oauthError } : {}),
+  }),
+  component: StorageProvidersPage,
+});
+
 const settingsGithubRoute = createRoute({
   getParentRoute: () => settingsRoute,
   path: "server/github",
   staticData: { crumb: "settingsNav.github" },
+  validateSearch: (search: Record<string, unknown>): { connected?: string; oauthError?: string } => ({
+    ...(typeof search.connected === "string" ? { connected: search.connected } : {}),
+    ...(typeof search.oauthError === "string" ? { oauthError: search.oauthError } : {}),
+  }),
   component: GithubPage,
+});
+
+const settingsKnownHostsRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "server/known-hosts",
+  staticData: { crumb: "settingsNav.knownHosts" },
+  component: KnownHostsPage,
 });
 
 const projectRoute = createRoute({
@@ -219,7 +255,7 @@ const serviceRoute = createRoute({
       .catch((error: unknown) => {
         throw isApiError(error) && error.status === 404 ? notFound() : error;
       });
-    if (isDatabaseEngine(detail.type)) {
+    if (isDatabaseEngine(detail.type) || detail.type === "box") {
       throw redirect({ ...servicePageLink(params.project, params.service, detail.type), replace: true });
     }
     const atInit = location.pathname.endsWith("/init/source");
@@ -257,17 +293,29 @@ const serviceTabRoutes = serviceTabs.map((tab) =>
 const routeTree = rootRoute.addChildren([
   setupRoute,
   loginRoute,
+  createIdeRoute(() => rootRoute),
   appRoute.addChildren([
     overviewRoute,
     activityRoute,
     monitorRoute,
     domainsRoute,
-    settingsRoute.addChildren([settingsIndexRoute, settingsAuthenticationRoute, settingsGithubRoute]),
+    settingsRoute.addChildren([
+      settingsIndexRoute,
+      settingsAuthenticationRoute,
+      settingsServerPurposeRoute,
+      settingsGithubRoute,
+      settingsKnownHostsRoute,
+      settingsStorageProvidersRoute,
+      ...createPlatformSettingsRoutes(() => settingsRoute),
+    ]),
     projectRoute.addChildren([
       projectIndexRoute,
       projectSettingsRoute,
       createServiceRoute,
       serviceRoute.addChildren([serviceInitRoute, serviceShellRoute.addChildren(serviceTabRoutes)]),
+      createComposeRoutes(() => projectRoute),
+      createBoxRoutes(() => projectRoute),
+      createInstallRoute(() => projectRoute),
       createDatabaseRoutes(() => projectRoute),
     ]),
   ]),

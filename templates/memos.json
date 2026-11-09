@@ -1,0 +1,66 @@
+{
+  "id": "memos",
+  "version": "1.0.0",
+  "name": "Memos",
+  "summary": {
+    "en": "A quick place for your notes.",
+    "fr": "Un endroit rapide pour vos notes."
+  },
+  "description": {
+    "en": "Short notes in Markdown, kept private and easy to search, stored in SQLite on a volume. New instances start private unless you say otherwise.",
+    "fr": "De courtes notes en Markdown, privées et faciles à retrouver, stockées dans SQLite sur un volume. Les nouvelles instances démarrent en mode privé."
+  },
+  "instructions": {
+    "en": "Open the site and create the first account.",
+    "fr": "Ouvrez le site et créez le premier compte."
+  },
+  "category": "documents",
+  "tags": ["notes", "memos", "knowledge-base"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://usememos.com"
+    },
+    {
+      "kind": "docs",
+      "url": "https://usememos.com/docs/deploy/docker"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/usememos/memos"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "memos",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "neosmemo/memos:26.11.0"
+      },
+      "env": {},
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/var/opt/memos"
+        }
+      ],
+      "domain": {
+        "port": 5230,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/healthz",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

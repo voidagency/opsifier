@@ -1,0 +1,169 @@
+{
+  "menus": {
+    "panel": "Panneau",
+    "server": "Serveur",
+    "proxy": "Traefik",
+    "docker": "Docker"
+  },
+  "menu": {
+    "logs": "Journaux",
+    "restart": "Redémarrer",
+    "refreshIp": "Actualiser l'IP",
+    "console": "Console",
+    "disk": "Espace disque",
+    "reboot": "Redémarrer le serveur",
+    "trusted": "Proxys de confiance",
+    "custom": "Configuration personnalisée",
+    "environment": "Environnement",
+    "dashboard": "Tableau de bord",
+    "checkUpdates": "Rechercher des mises à jour",
+    "restartNotManaged": "Le panneau ne tourne pas comme service Swarm ici.",
+    "restartProxyMissing": "Le proxy ne tourne pas ici.",
+    "needsHostAdmin": "Nécessite l'accès au serveur, que seul le propriétaire accorde."
+  },
+  "dailyCleanup": "Nettoyage Docker quotidien",
+  "uptime": "En marche depuis : {{days}} jours, {{hours}} heures, {{minutes}} minutes",
+  "uptimeUnknown": "Durée de fonctionnement inconnue",
+  "saved": "Enregistré",
+  "save": "Enregistrer",
+  "defaultDomain": "Domaine par défaut",
+  "customDomain": "Domaine personnalisé",
+  "panelDomain": {
+    "title": "Domaine du panneau",
+    "description": "Où répond ce panneau.",
+    "hint": "Doit pointer vers ce serveur. Le serveur lui-même reste en accès sur localhost.",
+    "serveOnIp": "Servir sur l'IP",
+    "serveOnIpHint": "Désactivé, seuls les domaines ci-dessus répondent."
+  },
+  "serviceDomain": {
+    "title": "Domaine des services",
+    "description": "Le domaine sous lequel les nouveaux services obtiennent un nom.",
+    "hint": "Les nouveaux services sont publiés en projet-service sous ce domaine.",
+    "dns": "Il faut un enregistrement DNS wildcard, *.votre-domaine.com, pointant vers ce serveur."
+  },
+  "letsEncrypt": {
+    "title": "Let's Encrypt",
+    "description": "Le contact des autorités de certification. Appliqué au prochain redémarrage du proxy.",
+    "email": "E-mail",
+    "emailHint": "Let's Encrypt prévient cette adresse avant l'expiration d'un certificat."
+  },
+  "logs": {
+    "panel": "Journaux du panneau",
+    "proxy": "Journaux de Traefik",
+    "divider": "Ajouter un séparateur",
+    "refresh": "Actualiser"
+  },
+  "console": {
+    "title": "Console du serveur",
+    "connecting": "Connexion",
+    "connected": "Connecté",
+    "ended": "Terminé",
+    "lost": "La connexion a été perdue.",
+    "refused": "La console n'a pas pu s'ouvrir."
+  },
+  "disk": {
+    "title": "Espace disque",
+    "up": "Remonter",
+    "scopeHost": "tout le serveur",
+    "scopeData": "données du panneau seulement"
+  },
+  "docker": {
+    "unavailable": "Docker indisponible",
+    "updatesTitle": "Mises à jour de Docker",
+    "checkFailed": "Vérification impossible",
+    "upToDate": "Docker {{version}} est à jour",
+    "newer": "Docker {{version}} est disponible",
+    "tooOld": "Ce moteur est plus ancien que le minimum testé, {{minimum}}.",
+    "swarmInactive": "Swarm n'est pas actif sur ce moteur Docker.",
+    "warnUnavailable": "Docker ne répond pas. Ce qui en dépend n'est plus à jour.",
+    "missingIntro": "Ce Docker ne peut pas faire ce dont le panneau a besoin, donc tout ce qui s'en servirait est refusé :",
+    "missing": {
+      "version": "Docker {{version}} est plus ancien que {{minimum}}, la plus ancienne version testée avec ce panneau.",
+      "api": "L'API du moteur Docker est en version {{apiVersion}}, et le panneau a besoin de {{minimumApi}} ou plus.",
+      "swarm": "Swarm n'est ni actif ni géré depuis ce nœud.",
+      "overlay": "Docker n'a pas de pilote de réseau overlay.",
+      "volumes": "Docker n'a pas de pilote de volume local.",
+      "buildx": "Le plugin buildx de la CLI Docker ne fonctionne pas avec ce Docker, donc les constructions sont refusées.",
+      "compose": "Le plugin Compose de la CLI Docker ne répond pas, donc les piles Compose sont refusées."
+    },
+    "upgradeHint": "La mise à jour du moteur vous revient : le panneau ne touche jamais au Docker de l'hôte."
+  },
+  "cleanup": {
+    "started": "Nettoyage lancé",
+    "nothing": "Rien à retirer.",
+    "remove_one": "Retirer {{count}} élément",
+    "remove_other": "Retirer {{count}} éléments",
+    "summary": "{{size}} à récupérer. Conservés car utilisés ou encore nécessaires : {{retained}}. Non créés par le panneau, laissés intacts : {{foreign}}.",
+    "images": {
+      "menu": "Nettoyer les images",
+      "title": "Nettoyer les images",
+      "description": "Les images construites par le panneau ou utilisées par un ancien service, que plus rien n'exécute. L'image de tout service qui existe encore reste, même s'il est arrêté."
+    },
+    "builder": {
+      "menu": "Nettoyer le builder",
+      "title": "Nettoyer le cache de build",
+      "description": "Le cache de build créé par les builds du panneau et que rien n'utilise. Le cache des autres builds reste."
+    },
+    "system": {
+      "menu": "Purge système",
+      "title": "Purge système",
+      "description": "Images et cache de build inutilisés du panneau, conteneurs arrêtés de ses services et réseaux de projets orphelins. Les volumes ne sont jamais touchés."
+    },
+    "selectFirst": "Sélectionnez d'abord quoi supprimer.",
+    "typeFirst": "Saisissez {{word}} pour confirmer.",
+    "typeHint": "Rien n'est supprimé sans ce mot."
+  },
+  "proxy": {
+    "restarting": "Enregistré, Traefik redémarre",
+    "saved": "Enregistré et appliqué",
+    "savedEnv": "Enregistré. Appliqué au prochain redémarrage.",
+    "trustedTitle": "Proxys de confiance",
+    "trustAll": "Faire confiance à toute source",
+    "trustAllHint": "Seulement pour un proxy que rien d'autre ne peut atteindre directement.",
+    "entries": "IP et plages",
+    "restartNote": "L'enregistrement redémarre brièvement Traefik. Le panneau reste actif.",
+    "saveAndRestart": "Enregistrer et redémarrer Traefik",
+    "customTitle": "Configuration personnalisée",
+    "customDescription": "YAML pour le fournisseur de fichiers de Traefik. Un YAML invalide est refusé.",
+    "envTitle": "Environnement",
+    "envDescription": "NOM=valeur, un par ligne. Appliqué au prochain redémarrage.",
+    "envEmpty": "Aucune variable définie.",
+    "envNames": "Définies : {{names}}",
+    "envReveal": "Afficher les valeurs",
+    "dashboardTitle": "Tableau de bord Traefik",
+    "dashboardDescription": "Publie le tableau de bord sur un hôte généré, protégé par un mot de passe.",
+    "dashboardOpen": "Ouvrir le tableau de bord",
+    "dashboardClose": "Fermer",
+    "dashboardClosed": "Tableau de bord fermé",
+    "dashboardUrl": "URL",
+    "dashboardUser": "Identifiant",
+    "dashboardPassword": "Mot de passe",
+    "dashboardOnce": "Affiché une fois, et remplacé à chaque redémarrage du proxy.",
+    "presetAdded": "Déjà dans la liste.",
+    "revealFirst": "Affichez d'abord les valeurs.",
+    "dashboardUserHint": "L'identifiant pour se connecter au tableau de bord.",
+    "dashboardUrlHint": "L'adresse du tableau de bord."
+  },
+  "confirm": {
+    "panelTitle": "Redémarrer le panneau ?",
+    "panelDescription": "Le panneau disparaît quelques secondes. Ce qu'il exécute continue de tourner.",
+    "panelDone": "Le panneau redémarre",
+    "proxyTitle": "Redémarrer Traefik ?",
+    "proxyDescription": "Tous les sites sont injoignables quelques secondes, et le mot de passe du tableau de bord change.",
+    "proxyDone": "Traefik redémarre",
+    "rebootTitle": "Redémarrer le serveur ?",
+    "rebootDescription": "Tout ce qui tourne dessus s'arrête jusqu'au retour de la machine.",
+    "rebootDone": "Le serveur redémarre"
+  },
+  "updates": {
+    "checking": "Recherche de mises à jour…",
+    "available": "Opsifier {{version}} est disponible",
+    "current": "Aucune mise à jour disponible"
+  },
+  "dailyCleanupHint": "Désactivé tant que vous ne l'activez pas. Une fois par jour, il ne retire que ce que proposent les nettoyages du menu Docker, et jamais un volume.",
+  "defaultDomainHint": "Généré à partir de l'adresse du serveur.",
+  "releasesKept": "Versions conservées",
+  "releasesKeptHint": "Combien des versions les plus récentes de chaque service restent sur ce serveur pour pouvoir y revenir. Chacune garde son image sur le disque. Baisser ce nombre retire aussitôt les plus anciennes.",
+  "releasesKeptSaved": "Enregistré",
+  "releasesKeptHintLabel": "À quoi cela sert"
+}

@@ -1,17 +1,19 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { HttpBindings } from "@hono/node-server";
+import { type HttpBindings, serve } from "@hono/node-server";
 import type { ApiError, SessionState, TwoFactorEnabled, TwoFactorSetup } from "@opsifier/contract";
 import { TOTP } from "otpauth";
 import { type AuthLimits, defaultAuthLimits } from "../core/auth";
 import { loadConfig } from "../core/config";
 import type { ApiApp, AppDeps } from "../core/context";
 import { FakeDriver, type RolloutTiming } from "../core/docker";
+import { seedProtection } from "../features/server-purpose/repo";
 import { createRuntime, type Runtime } from "../runtime";
 
 /** The origin of `app.request()` calls, which is what the Origin check compares against. */
 export const TEST_ORIGIN = "http://localhost";
+export const TEST_NAME = "Ada Admin";
 export const TEST_EMAIL = "admin@example.com";
 export const TEST_PASSWORD = "correct horse battery staple";
 
@@ -35,6 +37,11 @@ export interface TestContext {
   dataDir: string;
   /** Moves the injected clock forward. */
   advance(ms: number): void;
+  /**
+   * Boots a second process on the same data and the same Docker, as when the panel comes back after a
+   * hard stop: the first one never got to say goodbye, and whatever it held in memory is out of reach.
+   */
+  restart(): Promise<Runtime>;
   close(): Promise<void>;
 }
 
@@ -57,15 +64,20 @@ export async function createTestContext(options: TestContextOptions = {}): Promi
   });
   let clock = Date.now();
   const docker = new FakeDriver({ tickMs: 5 });
-  const runtime = createRuntime(config, {
-    docker,
-    now: () => clock,
-    authLimits: { ...defaultAuthLimits, ...options.authLimits },
-    rollout: { ...TEST_ROLLOUT, ...options.rollout },
-  });
+  const start = (lock?: { lockDataDirectory: () => () => void }) =>
+    createRuntime(config, {
+      ...lock,
+      docker,
+      now: () => clock,
+      authLimits: { ...defaultAuthLimits, ...options.authLimits },
+      rollout: { ...TEST_ROLLOUT, ...options.rollout },
+    });
+  const runtime = start();
+  seedProtection(runtime.deps.db, "production", new Date(clock));
   await runtime.boot();
   setupTokenFiles.set(runtime.app, config.setupTokenFile);
 
+  const restarted: Runtime[] = [];
   let closed = false;
   return {
     runtime,
@@ -76,9 +88,19 @@ export async function createTestContext(options: TestContextOptions = {}): Promi
     advance: (ms) => {
       clock += ms;
     },
+    restart: async () => {
+      // The panel before it stopped without a word, so the lock it held would be gone by now.
+      const next = start({ lockDataDirectory: () => () => {} });
+      restarted.push(next);
+      await next.boot();
+      return next;
+    },
     close: async () => {
       if (!closed) {
         closed = true;
+        for (const next of restarted) {
+          await next.close();
+        }
         await runtime.close();
         rmSync(dataDir, { recursive: true, force: true });
       }
@@ -155,11 +177,43 @@ export async function call<T = unknown>(
   };
 }
 
+/** Puts an app on a real socket on the loopback interface, for clients that speak HTTP to it. */
+export function listenOnLoopback(app: ApiApp): Promise<{ url: string; close: () => Promise<void> }> {
+  return new Promise((resolve) => {
+    const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: 0 }, (info) => {
+      resolve({
+        url: `http://127.0.0.1:${info.port}`,
+        close: () => new Promise((done) => server.close(() => done())),
+      });
+    });
+  });
+}
+
 export const authPost = <T = unknown>(app: ApiApp, path: string, body: unknown, cookie?: string) =>
   call<T>(app, `/api/v1/auth/${path}`, { method: "POST", body, cookie, origin: TEST_ORIGIN });
 
 export function apiErrorOf(result: CallResult<unknown>): ApiError["error"] {
   return (result.body as ApiError).error;
+}
+
+/** Creates an account through the API, signs it in and returns its session cookie. */
+export async function signInMember(
+  app: ApiApp,
+  admin: string,
+  email: string,
+  projects: Array<{ project: string; role: "viewer" | "operator" }>,
+): Promise<string> {
+  await call(app, "/api/v1/users", {
+    method: "POST",
+    cookie: admin,
+    origin: TEST_ORIGIN,
+    body: { email, password: TEST_PASSWORD, role: "member", projects },
+  });
+  const login = await authPost(app, "login", { email, password: TEST_PASSWORD });
+  if (login.cookie === undefined) {
+    throw new Error(`Could not sign ${email} in`);
+  }
+  return login.cookie;
 }
 
 /** Runs first-time setup and returns the admin's session cookie. */
@@ -169,6 +223,7 @@ export async function setupAdmin(
 ): Promise<string> {
   const result = await authPost<SessionState>(app, "setup", {
     token: setupTokenOf(app),
+    name: TEST_NAME,
     email: credentials.email ?? TEST_EMAIL,
     password: credentials.password ?? TEST_PASSWORD,
   });

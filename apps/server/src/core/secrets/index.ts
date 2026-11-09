@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "node:crypto";
 import {
   chmodSync,
   closeSync,
@@ -25,10 +25,18 @@ export class SecretsError extends Error {
 
 /** Seals values with AES-256-GCM. `context` binds a value to its purpose, so it cannot be moved. */
 export class Secrets {
+  private readonly fingerprintKey: Buffer;
+
   constructor(private readonly key: Buffer) {
     if (key.length !== KEY_BYTES) {
       throw new SecretsError(`The secret key must be exactly ${KEY_BYTES} bytes.`);
     }
+    this.fingerprintKey = createHmac("sha256", key).update("opsifier-fingerprint").digest();
+  }
+
+  /** Stable for one value on this server, and of no use for checking a guess without the key. */
+  fingerprint(value: string, context = ""): string {
+    return createHmac("sha256", this.fingerprintKey).update(`${context}\0${value}`).digest("hex");
   }
 
   seal(plaintext: string, context = ""): string {

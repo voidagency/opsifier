@@ -1,7 +1,8 @@
 import { memo, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/cn";
-import type { LogEntry, LogView as LogViewData } from "./logStore";
+import { formatDateTime, timeZoneLabel } from "../../lib/format";
+import { type LogEntry, type LogView as LogViewData, MAX_LOG_ENTRIES } from "./logStore";
 
 const clockFormat = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
@@ -45,16 +46,64 @@ function Separator({ entry }: { entry: Extract<LogEntry, { kind: "separator" }> 
   );
 }
 
+/** Where the feed gave up on output it could not keep up with, so a jump in the times makes sense. */
+function Gap({ entry }: { entry: Extract<LogEntry, { kind: "gap" }> }) {
+  const { t } = useTranslation("service-runtime");
+  return (
+    <div className="flex items-center gap-3 px-3 py-2 text-muted">
+      <hr className="flex-1 border-t border-dashed border-off" />
+      <span className="tabular-nums">
+        {clock(entry.at)} {t("logs.skipped")}
+      </span>
+      <hr className="flex-1 border-t border-dashed border-off" />
+    </div>
+  );
+}
+
+/** Which service this is, from when, and how much of it stays on screen. */
+export function LogScope({
+  project,
+  service,
+  view,
+}: {
+  project: string;
+  service: string;
+  view: LogViewData;
+}) {
+  const { t, i18n } = useTranslation("service-runtime");
+  const first = view.entries.find((entry) => entry.kind === "line" && entry.at !== null);
+  const limit = MAX_LOG_ENTRIES.toLocaleString(i18n.language);
+  const since = first?.kind === "line" && first.at !== null ? formatDateTime(first.at, i18n.language) : null;
+  const help =
+    view.limits === null
+      ? t("logs.scopeHelpShort", { limit })
+      : t("logs.scopeHelp", {
+          tail: view.limits.tailLines.toLocaleString(i18n.language),
+          ring: view.limits.ringLines.toLocaleString(i18n.language),
+          limit,
+        });
+  return (
+    <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-muted" title={help}>
+      <span className="min-w-0 font-mono break-all text-ink">{`${project}/${service}`}</span>
+      <span>{since === null ? t("logs.live") : t("logs.since", { when: since })}</span>
+      <span>{t("logs.latest", { limit })}</span>
+      {view.paused && <span className="font-medium text-ink">{t("logs.paused", { count: view.held })}</span>}
+    </p>
+  );
+}
+
 interface LogLinesProps {
   view: LogViewData;
   /** The Swarm service's name, shown while it isn't running. */
   name: string;
   className?: string;
+  /** Whether a filter stands between what arrived and what is shown. */
+  filtered?: boolean;
 }
 
 /** The scrolling text of a log, which follows the end unless the reader has scrolled up. */
-export function LogLines({ view, name, className }: LogLinesProps) {
-  const { t } = useTranslation("service-runtime");
+export function LogLines({ view, name, className, filtered = false }: LogLinesProps) {
+  const { t, i18n } = useTranslation("service-runtime");
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
 
@@ -83,31 +132,49 @@ export function LogLines({ view, name, className }: LogLinesProps) {
         className,
       )}
     >
-      {view.entries.map((entry) =>
-        entry.kind === "line" ? (
-          <LogLine key={entry.key} entry={entry} />
+      <p className="sticky top-0 z-10 bg-raised px-3 pb-1 font-sans text-micro text-muted">
+        {t("logs.timeZone", { zone: timeZoneLabel(i18n.language) })}
+      </p>
+      {view.entries.map((entry) => {
+        if (entry.kind === "line") {
+          return <LogLine key={entry.key} entry={entry} />;
+        }
+        return entry.kind === "gap" ? (
+          <Gap key={entry.key} entry={entry} />
         ) : (
           <Separator key={entry.key} entry={entry} />
-        ),
-      )}
-      <LogStatus state={view.state} name={name} empty={view.entries.length === 0} />
+        );
+      })}
+      <LogStatus state={view.state} name={name} empty={view.entries.length === 0} filtered={filtered} />
     </div>
   );
 }
 
-function LogStatus({ state, name, empty }: { state: LogViewData["state"]; name: string; empty: boolean }) {
+function LogStatus({
+  state,
+  name,
+  empty,
+  filtered,
+}: {
+  state: LogViewData["state"];
+  name: string;
+  empty: boolean;
+  filtered: boolean;
+}) {
   const { t } = useTranslation("service-runtime");
   if (state === "streaming" && !empty) {
     return null;
   }
   const message =
-    state === "waiting"
-      ? t("logs.waiting", { name })
-      : state === "error"
-        ? t("logs.error")
-        : state === "connecting"
-          ? t("logs.connecting")
-          : t("logs.empty");
+    empty && filtered
+      ? t("logs.noMatch")
+      : state === "waiting"
+        ? t("logs.waiting", { name })
+        : state === "error"
+          ? t("logs.error")
+          : state === "connecting"
+            ? t("logs.connecting")
+            : t("logs.empty");
   return (
     <p className="flex items-center gap-2 px-3 py-1 text-muted">
       {state === "waiting" && (

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { resourceName } from "../common";
+import { resourceName, wholeNumber } from "../common";
 import { servicePath } from "../services";
 
 const MAX_PATH_CHARS = 4096;
@@ -71,7 +71,7 @@ export const mountSpec = z.discriminatedUnion("type", [bindMountSpec, volumeMoun
 export type MountSpec = z.infer<typeof mountSpec>;
 
 /** One mount of a service, by its position in the list. */
-export const mountItemPath = servicePath.extend({ index: z.coerce.number().int().min(0).max(999) });
+export const mountItemPath = servicePath.extend({ index: wholeNumber(0, 999) });
 
 /** What a bind mount would expose. Null when it is an ordinary host path. */
 export const mountRisk = z.enum(["docker-socket", "data-directory"]);

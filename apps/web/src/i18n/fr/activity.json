@@ -1,6 +1,5 @@
 {
   "title": "Activité",
-  "description": "L'historique de tout ce que le panneau a fait sur ce serveur.",
   "empty": {
     "title": "Le journal est vide",
     "description": "Les déploiements, redémarrages et sauvegardes sont consignés ici au fil de leur exécution, avec leur sortie complète."
@@ -15,12 +14,25 @@
     "running": "En cours",
     "succeeded": "Réussie",
     "failed": "Échouée",
-    "cancelled": "Annulée"
-  },
-  "logDialog": {
-    "description": "Sortie de cette action, ligne par ligne."
+    "cancelled": "Annulée",
+    "uncertain": "Incertaine"
   },
   "types": {
+    "backup": {
+      "database": "Sauvegarde de base",
+      "volume": "Sauvegarde de volume",
+      "restore-database": "Restauration de base",
+      "restore-volume": "Restauration de volume",
+      "delete": "Sauvegarde supprimée",
+      "config": "Réglages de sauvegarde modifiés"
+    },
+    "storage-provider": {
+      "create": "Stockage ajouté",
+      "update": "Stockage modifié",
+      "delete": "Stockage supprimé",
+      "connect": "Stockage connecté",
+      "disconnect": "Stockage déconnecté"
+    },
     "auth": {
       "setup": "Compte administrateur créé",
       "login": "Connexion",
@@ -30,7 +42,14 @@
     "project": {
       "create": "Projet créé",
       "env": "Variables partagées modifiées",
-      "destroy": "Projet supprimé"
+      "destroy": "Projet supprimé",
+      "env-reveal": "Variables partagées affichées"
+    },
+    "template": {
+      "install": "Modèle installé",
+      "deploy": "Déploiement d'un modèle",
+      "remove": "Modèle retiré",
+      "reveal": "Secret de modèle affiché"
     },
     "service": {
       "create": "Service créé",
@@ -49,9 +68,12 @@
       "console": "Session de console",
       "resources": "Ressources modifiées",
       "scripts": "Scripts modifiés",
+      "script": "Exécution de script",
       "mounts": "Montages modifiés",
       "deploy-settings": "Réglages de déploiement modifiés",
-      "ports": "Ports publiés modifiés"
+      "ports": "Ports publiés modifiés",
+      "trigger": "Déclencheur de déploiement modifié",
+      "env-reveal": "Variables affichées"
     },
     "database": {
       "create": "Base de données créée",
@@ -63,6 +85,47 @@
       "companion-enable": "Outil d'administration web activé",
       "companion-disable": "Outil d'administration web désactivé",
       "companion-reveal": "Jeton de l'outil d'administration affiché"
+    },
+    "server": {
+      "purpose": "Rôle du serveur modifié",
+      "known-host": "Hôtes connus modifiés"
+    },
+    "volume": {
+      "delete": "Volume conservé supprimé"
+    },
+    "box": {
+      "preset": "Préréglage de box appliqué",
+      "process-restart": "Processus de box relancé",
+      "ide-access": "Accès à l'IDE de box modifié",
+      "ide-open": "IDE de box ouvert"
     }
-  }
+  },
+  "healthLabel": "Actions récentes par résultat",
+  "noMatch": "Aucune entrée affichée n'a ce résultat.",
+  "origin": {
+    "session": "Connecté",
+    "api_key": "Clé d'API",
+    "trigger": "Déclencheur CI",
+    "webhook": "Webhook",
+    "system": "Automatique"
+  },
+  "phases": {
+    "pull": "Récupération de l'image",
+    "build": "Construction",
+    "fetch": "Récupération de la source",
+    "rollout": "Déploiement",
+    "verify": "Vérification de la stabilité",
+    "export": "Export des données",
+    "pack": "Archivage du volume",
+    "upload": "Envoi de la copie",
+    "verifying": "Vérification de la sauvegarde",
+    "safety": "Copie de sécurité",
+    "importing": "Import",
+    "checking": "Vérification des données",
+    "staging": "Dépaquetage de la copie",
+    "swapping": "Remplacement des données",
+    "starting": "Démarrage du service"
+  },
+  "resume": "Déployer à nouveau",
+  "resumed": "Déploiement lancé"
 }

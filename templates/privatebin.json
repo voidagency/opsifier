@@ -1,0 +1,62 @@
+{
+  "id": "privatebin",
+  "version": "1.0.0",
+  "name": "PrivateBin",
+  "summary": {
+    "en": "Share text the server can't read.",
+    "fr": "Partagez du texte que le serveur ne peut pas lire."
+  },
+  "description": {
+    "en": "Pastes are encrypted in the browser before they are sent, so the server only ever stores ciphertext. Browsers need HTTPS for that, which the default domain provides.",
+    "fr": "Les textes sont chiffrés dans le navigateur avant l'envoi : le serveur ne stocke que du chiffré. Les navigateurs exigent HTTPS pour cela, fourni par le domaine par défaut."
+  },
+  "category": "security",
+  "tags": ["pastebin", "encryption", "sharing"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://privatebin.info"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/PrivateBin/docker-nginx-fpm-alpine"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/PrivateBin/PrivateBin"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "privatebin",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "privatebin/nginx-fpm-alpine:2.1.1"
+      },
+      "env": {},
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/srv/data"
+        }
+      ],
+      "domain": {
+        "port": 8080,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

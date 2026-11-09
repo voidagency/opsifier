@@ -13,6 +13,107 @@
     "memory": "Memory",
     "memoryPercent": "Memory %",
     "networkIn": "Network in",
-    "networkOut": "Network out"
+    "networkOut": "Network out",
+    "trend": "Last hour",
+    "trendOf": "CPU of {{service}}, last hour"
+  },
+  "tabs": {
+    "services": "Services",
+    "events": "Docker events",
+    "storage": "Storage"
+  },
+  "gauges": {
+    "label": "Server readings",
+    "title": "Server",
+    "cpu": "CPU",
+    "memory": "Memory",
+    "disk": "Disk",
+    "network": "Network",
+    "in": "In",
+    "out": "Out",
+    "cores_one": "{{count}} core",
+    "cores_other": "{{count}} cores",
+    "noData": "No data",
+    "unavailable": "Readings unavailable",
+    "dockerAway": "Docker down",
+    "dockerAwaySince": "Docker down since {{when}}",
+    "networkScope": "Traffic of all containers on this server"
+  },
+  "settings": {
+    "open": "Chart settings",
+    "title": "Chart settings",
+    "refresh": "Refresh",
+    "off": "Off",
+    "range": "Range",
+    "rangeHint": "Older periods are stored at a coarser step.",
+    "step": "Step",
+    "stepHint": "The spacing between a trend's points.",
+    "refreshHint": "How often the gauges read new values."
+  },
+  "chart": {
+    "noData": "no data yet"
+  },
+  "history": {
+    "title": "History of {{service}}",
+    "disk": "Disk",
+    "step": "Every {{minutes}} min"
+  },
+  "events": {
+    "type": "Type",
+    "action": "Action",
+    "time": "Time",
+    "details": "Details",
+    "detailsTitle": "Event",
+    "pause": "Pause",
+    "resume": "Resume",
+    "clear": "Clear",
+    "unavailable": "Docker isn't answering",
+    "emptyTitle": "No events yet",
+    "emptyDescription": "Docker's events appear here as they happen, newest first."
+  },
+  "storage": {
+    "disk": "Panel disk",
+    "docker": "Docker storage",
+    "images": "Images",
+    "containers": "Containers",
+    "volumes": "Volumes",
+    "buildCache": "Build cache",
+    "project": "Project",
+    "service": "Service",
+    "size": "Size",
+    "path": "Path",
+    "emptyTitle": "No services yet",
+    "emptyDescription": "Each service's data directory appears here with its size.",
+    "dockerDisk": "Docker disk",
+    "dockerDiskUnknown": "Docker's disk can't be measured from here."
+  },
+  "restricted": {
+    "title": "Administrators only",
+    "description": "Monitoring shows the whole server, so it's reserved for administrators."
+  },
+  "neverMeasured": "No measurement on record yet.",
+  "lastMeasured": "Last measurement: {{when}}",
+  "tableScope": "Each row adds up its running tasks, read from Docker. Network columns count from each task's start.",
+  "historyScope": "Averaged over each interval. An interval with no reading is left blank, never counted as zero.",
+  "origin": {
+    "docker": "Docker statistics",
+    "host": "This server",
+    "simulated": "Simulated figures"
+  },
+  "kept": {
+    "title": "Kept volumes",
+    "description": "Volumes left behind by destroyed services. They hold their data until you delete them here, one at a time.",
+    "empty": "No volume is being kept.",
+    "volume": "Volume",
+    "from": "From",
+    "since": "Kept since",
+    "delete": "Delete",
+    "deleteTitle": "Delete this volume?",
+    "deleteDescription": "You are about to delete the data in",
+    "deleteConfirm": "Delete volume",
+    "copyName": "Copy the volume's name",
+    "removed": "This volume and everything it holds. There is no undo.",
+    "keptStill": "Backups of the service it came from, and every other volume.",
+    "deleting": "Deleting {{name}}"
   }
 }

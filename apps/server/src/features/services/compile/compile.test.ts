@@ -9,7 +9,7 @@ import { type CompileDomain, compileService } from "./index";
 import { compileMiddlewares, REDIRECT_HTTPS_MIDDLEWARE } from "./middlewares";
 import { bindMountRisk, compileMounts, UnacknowledgedMountError } from "./mounts";
 import { compilePorts } from "./ports";
-import { compileResources } from "./resources";
+import { compileResources, MAX_TASK_PROCESSES } from "./resources";
 
 const image = { type: "image" as const, image: "traefik/whoami:v1.10", username: null, sealedPassword: null };
 const defaultDomain: CompileDomain = {
@@ -25,12 +25,13 @@ function spec(overrides: Partial<AppServiceSpec> = {}): AppServiceSpec {
 }
 
 function compile(
-  overrides: Partial<AppServiceSpec> = {},
+  { env: serviceEnv, ...overrides }: Partial<AppServiceSpec> & { env?: string } = {},
   options: { env?: string; domains?: CompileDomain[]; forceUpdate?: number } = {},
 ) {
   return compileService({
-    project: { name: "shop", env: options.env ?? "" },
+    project: { name: "shop" },
     service: { name: "web", spec: spec(overrides) },
+    env: { project: options.env ?? "", service: serviceEnv ?? "" },
     domains: options.domains ?? [defaultDomain],
     dataDir: "/var/lib/opsifier",
     forceUpdate: options.forceUpdate ?? 0,
@@ -54,8 +55,38 @@ describe("the env compiler", () => {
       serviceEnv,
       primaryHost: "whoami.example.test",
       port: 80,
+      interpolate: false,
       ...overrides,
     });
+
+  it("leaves the placeholders as typed unless asked to fill them in (REQ-477)", () => {
+    const sample = "A=$(PROJECT_NAME)\nB=$(SERVICE_NAME)\nC=$(PRIMARY_DOMAIN)";
+    expect(env(sample)).toEqual(["PORT=80", "A=$(PROJECT_NAME)", "B=$(SERVICE_NAME)", "C=$(PRIMARY_DOMAIN)"]);
+    expect(env(sample, { interpolate: true })).toEqual([
+      "PORT=80",
+      "A=probe-app",
+      "B=whoami",
+      "C=whoami.example.test",
+    ]);
+  });
+
+  it("keeps spaces, dollars, equals signs and Unicode exactly, in several variables at once (REQ-479)", () => {
+    const sample = [
+      "SPACES=hello big world",
+      "DOLLARS=$5 and $HOME and $(NOPE)",
+      "EQUALS=a=b=c==",
+      "UNICODE=héllo wörld 日本語 🎉",
+      'QUOTED="keeps = and $ too"',
+    ].join("\n");
+    expect(env(sample)).toEqual([
+      "PORT=80",
+      "SPACES=hello big world",
+      "DOLLARS=$5 and $HOME and $(NOPE)",
+      "EQUALS=a=b=c==",
+      "UNICODE=héllo wörld 日本語 🎉",
+      "QUOTED=keeps = and $ too",
+    ]);
+  });
 
   it("turns the sample file into exactly the expected variables, in order", () => {
     const sample = [
@@ -72,7 +103,7 @@ describe("the env compiler", () => {
       "EMPTY_VAL=",
     ].join("\n");
 
-    expect(env(sample, { projectEnv: "SHARED_ONE=project-value" })).toEqual([
+    expect(env(sample, { projectEnv: "SHARED_ONE=project-value", interpolate: true })).toEqual([
       "PORT=80",
       "SHARED_ONE=project-value",
       "FOO=bar",
@@ -229,13 +260,20 @@ describe("the resources compiler", () => {
         resourcesSpec.parse({ memoryReservation: 64, memoryLimit: 128, cpuReservation: 0.1, cpuLimit: 0.5 }),
       ),
     ).toEqual({
-      Limits: { MemoryBytes: 134217728, NanoCPUs: 500000000 },
+      Limits: { MemoryBytes: 134217728, NanoCPUs: 500000000, Pids: MAX_TASK_PROCESSES },
       Reservations: { MemoryBytes: 67108864, NanoCPUs: 100000000 },
     });
   });
 
   it("leaves zero values out", () => {
-    expect(compileResources(resourcesSpec.parse({}))).toEqual({ Limits: {}, Reservations: {} });
+    expect(compileResources(resourcesSpec.parse({}))).toEqual({
+      Limits: { Pids: MAX_TASK_PROCESSES },
+      Reservations: {},
+    });
+  });
+
+  it("always bounds how many processes a task can have, orphans included", () => {
+    expect(compileResources(resourcesSpec.parse({ memoryLimit: 256 })).Limits?.Pids).toBe(MAX_TASK_PROCESSES);
   });
 });
 
@@ -263,6 +301,70 @@ describe("the deploy settings compiler", () => {
       Options: { "max-file": "3", "max-size": "10m" },
     });
     expect(compiled.container).toMatchObject({ Init: false, StopGracePeriod: 10_000_000_000 });
+  });
+
+  it("leaves the stop signal to the image unless one is chosen", () => {
+    const compiled = compileDeploy({ settings: settings(), stopped: false, forceUpdate: 0 });
+
+    expect(compiled.container.StopSignal).toBeUndefined();
+  });
+
+  it("carries the chosen stop signal and how long a task gets to stop", () => {
+    const { container: options } = compileDeploy({
+      settings: settings({ stopSignal: "SIGQUIT", stopGraceSeconds: 45 }),
+      stopped: false,
+      forceUpdate: 0,
+    });
+
+    expect(options).toMatchObject({ StopSignal: "SIGQUIT", StopGracePeriod: 45_000_000_000 });
+  });
+
+  describe("a custom command", () => {
+    const commandOf = (command: string) => {
+      const { container: options } = compileDeploy({
+        settings: settings({ command }),
+        stopped: false,
+        forceUpdate: 0,
+      });
+      return { Command: options.Command, Args: options.Args };
+    };
+
+    it("runs as itself when it needs no shell, so it works on an image without one", () => {
+      expect(commandOf("/whoami -port 80")).toEqual({
+        Command: ["/whoami", "-port", "80"],
+        Args: undefined,
+      });
+    });
+
+    it("keeps quoted words together without a shell", () => {
+      expect(commandOf(`node app.js --name "my app" --flag 'a b'`)).toEqual({
+        Command: ["node", "app.js", "--name", "my app", "--flag", "a b"],
+        Args: undefined,
+      });
+      expect(commandOf("nginx -g 'daemon off;'")).toEqual({
+        Command: ["nginx", "-g", "daemon off;"],
+        Args: undefined,
+      });
+    });
+
+    it.each([
+      "echo $PORT",
+      "npm start && echo done",
+      "cat a | wc -l",
+      "cat < in > out",
+      "ls *.txt",
+      "echo `date`",
+      "sleep 1; sleep 2",
+      "$(which node) app.js",
+      "FOO=bar node app.js",
+      "exec node app.js",
+      "cd /app",
+      'node app.js --name "$NAME"',
+      "line one\nline two",
+      "unterminated 'quote",
+    ])("uses a shell for %j, which needs one to mean what it says", (command) => {
+      expect(commandOf(command)).toEqual({ Command: ["/bin/sh"], Args: ["-c", command] });
+    });
   });
 
   it("stops first when zero downtime is off", () => {
@@ -294,7 +396,7 @@ describe("the deploy settings compiler", () => {
     });
   });
 
-  it("wraps a command in a shell and passes the rest through", () => {
+  it("passes a plain command and everything else through", () => {
     const { container: options } = compileDeploy({
       settings: settings({
         command: "/whoami -port 80",
@@ -309,8 +411,7 @@ describe("the deploy settings compiler", () => {
     });
 
     expect(options).toMatchObject({
-      Command: ["/bin/sh"],
-      Args: ["-c", "/whoami -port 80"],
+      Command: ["/whoami", "-port", "80"],
       Init: true,
       CapabilityAdd: ["NET_ADMIN"],
       CapabilityDrop: ["MKNOD"],
@@ -355,7 +456,7 @@ describe("the domains and middlewares compilers", () => {
 
     expect(compiled.routers).toEqual({
       "http-shop_web-0": {
-        rule: "Host(`app.example.test`) && PathPrefix(`/api`)",
+        rule: "Host(`app.example.test`) && (Path(`/api`) || PathPrefix(`/api/`))",
         entryPoints: ["web"],
         service: "shop_web-0",
         middlewares: [BAD_GATEWAY_MIDDLEWARE],
@@ -392,7 +493,10 @@ describe("compileService", () => {
 
     expect(swarm?.Name).toBe("shop_web");
     expect(swarm?.TaskTemplate.ContainerSpec.Image).toBe("traefik/whoami:v1.10");
-    expect(swarm?.TaskTemplate.Networks).toEqual([{ Target: "opsifier-shop", Aliases: ["shop-web", "web"] }]);
+    expect(swarm?.TaskTemplate.Networks).toEqual([
+      { Target: "opsifier-shop", Aliases: ["shop-web", "web"] },
+      { Target: "opsifier-shop_proxy" },
+    ]);
     expect(swarm?.Labels).toEqual({
       "opsifier.project": "shop",
       "opsifier.service": "web",
@@ -403,7 +507,7 @@ describe("compileService", () => {
 
   it("composes the env from the project, the service and the primary domain", () => {
     const result = compile(
-      { env: "HOST=$(PRIMARY_DOMAIN)" },
+      { env: "HOST=$(PRIMARY_DOMAIN)", envInterpolation: true },
       {
         env: "SHARED=1",
         domains: [
@@ -417,10 +521,9 @@ describe("compileService", () => {
   });
 
   it("falls back to port 80 and an empty host with no domain", () => {
-    expect(container(compile({ env: "HOST=$(PRIMARY_DOMAIN)" }, { domains: [] })).Env).toEqual([
-      "PORT=80",
-      "HOST=",
-    ]);
+    expect(
+      container(compile({ env: "HOST=$(PRIMARY_DOMAIN)", envInterpolation: true }, { domains: [] })).Env,
+    ).toEqual(["PORT=80", "HOST="]);
   });
 
   it("puts each concern where it belongs", () => {
@@ -433,7 +536,10 @@ describe("compileService", () => {
 
     expect(result.swarmSpec?.TaskTemplate.Placement).toEqual({ Constraints: ["node.role==manager"] });
     expect(container(result).Mounts).toEqual([{ Type: "bind", Source: "/srv", Target: "/data" }]);
-    expect(result.swarmSpec?.TaskTemplate.Resources?.Limits).toEqual({ MemoryBytes: 134217728 });
+    expect(result.swarmSpec?.TaskTemplate.Resources?.Limits).toEqual({
+      MemoryBytes: 134217728,
+      Pids: MAX_TASK_PROCESSES,
+    });
     expect(result.swarmSpec?.EndpointSpec?.Ports?.[0]).toMatchObject({ PublishedPort: 30080 });
     expect(result.swarmSpec?.Mode).toEqual({ Replicated: { Replicas: 3 } });
   });
@@ -464,7 +570,7 @@ describe("compileService", () => {
     const swarm = result.swarmSpec;
 
     expect(swarm?.TaskTemplate.Resources).toEqual({
-      Limits: { NanoCPUs: 500_000_000, MemoryBytes: 134_217_728 },
+      Limits: { NanoCPUs: 500_000_000, MemoryBytes: 134_217_728, Pids: MAX_TASK_PROCESSES },
       Reservations: { NanoCPUs: 100_000_000, MemoryBytes: 67_108_864 },
     });
     expect(swarm?.Mode).toEqual({ Replicated: { Replicas: 2 } });
@@ -477,8 +583,7 @@ describe("compileService", () => {
       ],
     });
     expect(container(result)).toMatchObject({
-      Command: ["/bin/sh"],
-      Args: ["-c", "nginx -g 'daemon off;'"],
+      Command: ["nginx", "-g", "daemon off;"],
       Init: true,
       CapabilityAdd: ["NET_ADMIN"],
       CapabilityDrop: ["MKNOD"],

@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { SessionUser, UserRole } from "@opsifier/contract";
 import { and, eq, gt, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import type { Db, DbHandle } from "../db";
+import { type Db, type DbHandle, isStorageFailure } from "../db";
 import { apiTokens, sessions, users } from "../db/schema";
 
 const SESSION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -21,9 +21,22 @@ export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type ApiTokenRow = typeof apiTokens.$inferSelect;
 
+/** Administering the server itself is a right of its own, apart from being an administrator. */
+export const HOST_ADMIN_ONLY = "Only the owner, or an administrator the owner has allowed, can do this.";
+
+export const holdsHostAdmin = (user: Pick<UserRow, "isOwner" | "hostAdmin">): boolean =>
+  user.isOwner || user.hostAdmin;
+
 export type Principal =
   | { kind: "session"; sessionId: string; user: UserRow }
-  | { kind: "token"; tokenId: string; user: UserRow };
+  | {
+      kind: "token";
+      tokenId: string;
+      tokenName: string;
+      user: UserRow;
+      level: "read" | "write";
+      projects: string[] | null;
+    };
 
 /** The only shape in which a user leaves the server. */
 export function toSessionUser(user: UserRow): SessionUser {
@@ -32,6 +45,7 @@ export function toSessionUser(user: UserRow): SessionUser {
     email: user.email,
     role: user.role as UserRole,
     twoFactorEnabled: user.totpSecret !== null,
+    hostAdmin: holdsHostAdmin(user),
   };
 }
 
@@ -85,7 +99,13 @@ export function findSessionPrincipal(db: DbHandle, token: string, now: number): 
     .select({ session: sessions, user: users })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
-    .where(and(eq(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date(now))))
+    .where(
+      and(
+        eq(sessions.tokenHash, hashToken(token)),
+        gt(sessions.expiresAt, new Date(now)),
+        isNull(users.deactivatedAt),
+      ),
+    )
     .get();
   return row === undefined ? null : { kind: "session", sessionId: row.session.id, user: row.user };
 }
@@ -145,6 +165,8 @@ export interface NewApiToken {
   name: string;
   now: number;
   expiresAt?: Date | null;
+  level?: "read" | "write";
+  projects?: string[] | null;
 }
 
 /** The plain token exists only in the return value: it cannot be read back later. */
@@ -156,6 +178,8 @@ export function createApiToken(db: DbHandle, input: NewApiToken): { token: strin
     name: input.name,
     tokenHash: hashToken(token),
     tokenPrefix: token.slice(0, API_TOKEN_PREFIX.length + 6),
+    level: input.level ?? "write",
+    projects: input.projects ?? null,
     createdAt: new Date(input.now),
     lastUsedAt: null,
     expiresAt: input.expiresAt ?? null,
@@ -176,6 +200,7 @@ export function findTokenPrincipal(db: Db, token: string, now: number): Principa
       and(
         eq(apiTokens.tokenHash, hashToken(token)),
         or(isNull(apiTokens.expiresAt), gt(apiTokens.expiresAt, new Date(now))),
+        isNull(users.deactivatedAt),
       ),
     )
     .get();
@@ -185,14 +210,35 @@ export function findTokenPrincipal(db: Db, token: string, now: number): Principa
 
   const lastUsed = row.token.lastUsedAt?.getTime() ?? 0;
   if (now - lastUsed >= TOKEN_USE_WRITE_INTERVAL_MS) {
-    db.update(apiTokens)
-      .set({ lastUsedAt: new Date(now) })
-      .where(eq(apiTokens.id, row.token.id))
-      .run();
+    try {
+      db.update(apiTokens)
+        .set({ lastUsedAt: new Date(now) })
+        .where(eq(apiTokens.id, row.token.id))
+        .run();
+    } catch (error) {
+      // When a key was last used is bookkeeping: reading must keep working while storage is failing.
+      if (!isStorageFailure(error)) {
+        throw error;
+      }
+    }
   }
-  return { kind: "token", tokenId: row.token.id, user: row.user };
+  return {
+    kind: "token",
+    tokenId: row.token.id,
+    tokenName: row.token.name,
+    user: row.user,
+    level: row.token.level,
+    projects: row.token.projects ?? null,
+  };
 }
 
 export function revokeApiToken(db: DbHandle, tokenId: string): void {
   db.delete(apiTokens).where(eq(apiTokens.id, tokenId)).run();
+}
+
+/** Ends every session of a user and revokes every key: their rights have changed. */
+export function revokeUserCredentials(db: DbHandle, userId: string): string[] {
+  const ended = db.delete(sessions).where(eq(sessions.userId, userId)).returning({ id: sessions.id }).all();
+  db.delete(apiTokens).where(eq(apiTokens.userId, userId)).run();
+  return ended.map((row) => row.id);
 }

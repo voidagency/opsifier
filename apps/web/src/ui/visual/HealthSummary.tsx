@@ -22,6 +22,8 @@ export interface HealthSummaryProps {
   variant?: "strip" | "row";
   /** Names the group for assistive technology. */
   label?: string;
+  /** Replaces a state's word where it reads differently: a finished Action "Succeeded", not "Running". */
+  stateLabels?: Partial<Record<VisualState, string>>;
   className?: string;
 }
 
@@ -30,15 +32,13 @@ interface CountProps {
   count: number;
   selected: boolean;
   onSelect: HealthSummaryProps["onSelect"];
+  name: string;
   className: string;
   children: ReactNode;
 }
 
 /** One count: a filter button when there is something to filter, otherwise plain and named for assistive technology. */
-function Count({ state, count, selected, onSelect, className, children }: CountProps) {
-  const { t } = useTranslation("visual");
-  const name = t("health.count", { state: t(stateLanguage[state].labelKey), count });
-
+function Count({ state, count, selected, onSelect, name, className, children }: CountProps) {
   if (onSelect === undefined) {
     return (
       <span role="img" aria-label={name} title={name} className={className}>
@@ -70,9 +70,11 @@ function HealthStrip({
   selected = null,
   onSelect,
   label,
+  stateLabels,
   className,
 }: Omit<HealthSummaryProps, "variant">) {
   const { t } = useTranslation("visual");
+  const stateName = (state: VisualState) => stateLabels?.[state] ?? t(stateLanguage[state].labelKey);
   const overall = overallState(counts);
   const problems = problemCount(counts);
   const headline =
@@ -82,7 +84,7 @@ function HealthStrip({
         ? t("health.problems", { count: problems })
         : overall === "running"
           ? t("health.allClear")
-          : t(stateLanguage[overall].labelKey);
+          : stateName(overall);
 
   return (
     // biome-ignore lint/a11y/useSemanticElements: a fieldset would need a legend inside this one-line strip
@@ -108,6 +110,7 @@ function HealthStrip({
                 count={count}
                 selected={isSelected}
                 onSelect={onSelect}
+                name={t("health.count", { state: stateName(state), count })}
                 className={cn(
                   "relative grid grid-cols-[auto_1fr] items-center gap-x-2 px-3 py-2.5 text-left shadow-[1px_0_0_var(--rule),0_1px_0_var(--rule)]",
                   isSelected && "after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-accent",
@@ -122,14 +125,14 @@ function HealthStrip({
                 />
                 <span className={cn("font-mono text-xl tabular-nums", count === 0 && "text-muted")}>
                   {count}
-                </span>
+                </span>{" "}
                 <span
                   className={cn(
                     "col-span-2 text-xs whitespace-nowrap",
                     isSelected ? "font-medium text-ink" : "text-muted",
                   )}
                 >
-                  {t(stateLanguage[state].labelKey)}
+                  {stateName(state)}
                 </span>
               </Count>
             );
@@ -146,9 +149,11 @@ function HealthRow({
   selected = null,
   onSelect,
   label,
+  stateLabels,
   className,
 }: Omit<HealthSummaryProps, "variant">) {
   const { t } = useTranslation("visual");
+  const stateName = (state: VisualState) => stateLabels?.[state] ?? t(stateLanguage[state].labelKey);
   const present = visualStates.filter((state) => (counts[state] ?? 0) > 0 || state === selected);
 
   return (
@@ -170,6 +175,7 @@ function HealthRow({
               count={counts[state] ?? 0}
               selected={isSelected}
               onSelect={onSelect}
+              name={t("health.count", { state: stateName(state), count: counts[state] ?? 0 })}
               className={cn(
                 "inline-flex h-6 items-center gap-1 rounded-sm px-1.5",
                 isSelected && "bg-wash shadow-[inset_0_-2px_0_var(--accent)]",

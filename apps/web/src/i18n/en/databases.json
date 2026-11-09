@@ -11,6 +11,7 @@
     "overview": "Overview",
     "credentials": "Credentials",
     "expose": "Expose",
+    "backups": "Backups",
     "resources": "Resources",
     "advanced": "Advanced"
   },
@@ -30,10 +31,12 @@
   },
   "destroy": {
     "title": "Destroy this database?",
-    "description": "This permanently deletes the service and its data volume {{volume}}. The data cannot be recovered. To confirm, type",
+    "description": "You are about to destroy",
     "confirm": "Destroy database",
     "copyName": "Copy the name",
-    "started": "Destroying {{name}}"
+    "started": "Destroying {{name}}",
+    "removed": "The database service, its web tools and its settings.",
+    "kept": "Its data volume {{volume}} and its backups. Delete the volume later under Monitor, Storage. A new database never reuses it."
   },
   "create": {
     "title": "Add a {{engine}} database",
@@ -48,14 +51,14 @@
     "rootPassword": "Root password",
     "passwordHint": "Leave empty and a strong one is generated for you.",
     "image": "Image",
-    "imageHint": "Leave empty for {{image}}.",
+    "imageHint": "A fixed version only: latest or a bare major number would move on its own. Leave empty for {{image}}.",
     "submit": "Add database",
     "required": "Give the service a name.",
     "invalidName": "Use lowercase letters, digits, dashes and underscores, ending with a letter or digit.",
     "invalidDatabaseName": "Use letters, digits, dashes and underscores.",
     "invalidUser": "Use letters, digits, dashes, dots and underscores.",
     "invalidPassword": "Use up to 256 characters, with no line breaks or other control characters.",
-    "invalidImage": "Enter an image such as name:tag.",
+    "invalidImage": "Name a fixed version, such as postgres:18.6, or pin a digest.",
     "created": "Database {{name}} is being deployed"
   }
 }

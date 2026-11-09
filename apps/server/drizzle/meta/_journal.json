@@ -29,6 +29,104 @@
       "when": 1794165836470,
       "tag": "0003_proxy_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794169645042,
+      "tag": "0004_platform",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794171097552,
+      "tag": "0005_stacks_and_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794178786308,
+      "tag": "0006_retained_volumes",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1794181225228,
+      "tag": "0007_lame_speed",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794182102245,
+      "tag": "0008_striped_jamie_braddock",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1794182287334,
+      "tag": "0009_handy_luke_cage",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1794182675226,
+      "tag": "0010_big_iron_fist",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1794186080716,
+      "tag": "0011_stale_ultimates",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1794186816161,
+      "tag": "0012_watery_hemingway",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1794187577057,
+      "tag": "0013_early_legion",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1794188771389,
+      "tag": "0014_outgoing_carnage",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1794190180210,
+      "tag": "0015_pretty_george_stacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1794191073704,
+      "tag": "0016_wooden_drax",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1794191996465,
+      "tag": "0017_dizzy_blade",
+      "breakpoints": true
     }
   ]
 }

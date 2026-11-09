@@ -4,6 +4,7 @@ import type {
   ActionEntry,
   CompanionList,
   DatabaseAdvancedSettings,
+  DatabaseAvailability,
   DatabaseCredentials,
   DatabaseDetail,
   ServiceDetail,
@@ -43,13 +44,17 @@ const detail = (overrides: Partial<ServiceDetail> = {}): ServiceDetail => ({
   status: "running",
   replicas: { running: 1, desired: 1 },
   activeAction: null,
+  runtimeUncertain: null,
   wake: ["succeeded"],
   lastDeployedAt: "2026-01-01T00:00:00.000Z",
   createdAt: "2026-01-01T00:00:00.000Z",
   source: { type: "image", image: "postgres:18", username: null, hasPassword: false },
   notes: "",
+  notesHidden: false,
   stopped: false,
   primaryUrl: null,
+  pendingChanges: false,
+  answering: null,
   ...overrides,
 });
 
@@ -60,6 +65,7 @@ const database: DatabaseDetail = {
   exposedPort: 0,
   internalHost: "shop_db",
   internalPort: 5432,
+  versions: { proposed: "postgres:18", configured: "postgres:18", running: null },
 };
 
 const credentials = (overrides: Partial<DatabaseCredentials> = {}): DatabaseCredentials => ({
@@ -97,6 +103,7 @@ const action = (overrides: Partial<ActionEntry> = {}): ActionEntry => ({
   type: "database.password",
   title: "Change the password of shop/db",
   status: "queued",
+  phase: null,
   projectName: "shop",
   serviceName: "db",
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -105,6 +112,8 @@ const action = (overrides: Partial<ActionEntry> = {}): ActionEntry => ({
   error: null,
   hasLog: false,
   actorEmail: "admin@example.com",
+  origin: "session",
+  originDetail: null,
   ...overrides,
 });
 
@@ -260,8 +269,9 @@ describe("the database page (DAT-03, DAT-04, DAT-12)", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Destroy database" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Destroy this database?" });
-    expect(dialog.textContent).toContain("shop_db_data");
-    expect(dialog.textContent).toContain("cannot be recovered");
+    expect(dialog.textContent).toContain("Removed");
+    expect(dialog.textContent).toContain("Kept");
+    expect(dialog.textContent).toContain("Its data volume shop_db_data and its backups");
     const confirm = within(dialog).getByRole("button", { name: "Destroy database" }) as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
 
@@ -284,6 +294,107 @@ describe("the database page (DAT-03, DAT-04, DAT-12)", () => {
     installFakeServer(base());
     const app = renderApp("/projects/shop/app/db/");
     await expectLocation(app, "/projects/shop/postgres/db");
+  });
+});
+
+describe("the database connection state", () => {
+  it("says it can be reached inside and not outside", async () => {
+    installFakeServer(base());
+    renderApp("/projects/shop/postgres/db/");
+
+    expect(await screen.findByText("shop_db:5432")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Not exposed" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Not exposed" }).getAttribute("href")).toBe(
+      "/projects/shop/postgres/db/expose",
+    );
+  });
+
+  it("shows the outside address once exposed, and flags an unconfirmed password", async () => {
+    installFakeServer(
+      base({
+        [`GET ${SERVICE}/credentials`]: credentials({
+          external: {
+            host: "203.0.113.10",
+            port: 15432,
+            maskedUrl: "postgres://postgres:••••••••@203.0.113.10:15432/shop?sslmode=disable",
+          },
+          rotationUnresolved: true,
+        }),
+      }),
+    );
+    renderApp("/projects/shop/postgres/db/");
+
+    expect(await screen.findByText("203.0.113.10:15432")).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "Not exposed" })).toBeNull();
+    expect(screen.getByRole("img", { name: "Password unconfirmed" })).toBeTruthy();
+  });
+
+  describe("a started process versus an engine that lets the panel in (REQ-198)", () => {
+    const availability = (overrides: Partial<DatabaseAvailability>): DatabaseAvailability => ({
+      process: "running",
+      signIn: "accepted",
+      detail: null,
+      checkedAt: "2026-01-01T00:00:00.000Z",
+      ...overrides,
+    });
+
+    it("says it accepts the panel's credentials when it does", async () => {
+      installFakeServer(
+        base({ [`GET ${SERVICE}/database/availability`]: availability({ signIn: "accepted" }) }),
+      );
+      renderApp("/projects/shop/postgres/db/");
+      expect(await screen.findByRole("img", { name: "Accepted" })).toBeTruthy();
+      expect(screen.getByText("Sign-in")).toBeTruthy();
+    });
+
+    it("says so, with its own lamp, when the engine runs and refuses", async () => {
+      installFakeServer(
+        base({
+          [`GET ${SERVICE}/database/availability`]: availability({
+            signIn: "refused",
+            detail: "password authentication failed",
+          }),
+        }),
+      );
+      renderApp("/projects/shop/postgres/db/");
+      expect(await screen.findByRole("img", { name: "Refused" })).toBeTruthy();
+    });
+
+    it("does not claim anything about an engine that is not running", async () => {
+      installFakeServer(
+        base({
+          [`GET ${SERVICE}/database/availability`]: availability({
+            process: "not-running",
+            signIn: "unknown",
+          }),
+        }),
+      );
+      renderApp("/projects/shop/postgres/db/");
+      expect(await screen.findByRole("img", { name: "Not running" })).toBeTruthy();
+    });
+  });
+
+  it("doesn't call a port open just because it was saved", async () => {
+    installFakeServer(
+      base({
+        [`GET ${SERVICE}/expose`]: { port: 15432, publishedPort: 0 },
+      }),
+    );
+    renderApp("/projects/shop/postgres/db/expose");
+
+    expect(await screen.findByText("Not exposed")).toBeTruthy();
+    expect(screen.queryByText(/Open on port/)).toBeNull();
+  });
+
+  it("leads the expose tab with whether it is open", async () => {
+    installFakeServer(
+      base({
+        [`GET ${SERVICE}/expose`]: { port: 15432, publishedPort: 15432 },
+      }),
+    );
+    renderApp("/projects/shop/postgres/db/expose");
+
+    expect(await screen.findByText("Open on port 15432 · Running")).toBeTruthy();
   });
 });
 
@@ -439,8 +550,8 @@ describe("the Credentials tab (DAT-05, DAT-06)", () => {
 describe("the Expose tab (DAT-07)", () => {
   const exposeRoutes = (port: number): FakeRoute =>
     base({
-      [`GET ${SERVICE}/expose`]: { port },
-      [`PUT ${SERVICE}/expose`]: withStatus(202, action({ id: "e1", type: "database.expose" })),
+      [`GET ${SERVICE}/expose`]: { port, publishedPort: port },
+      [`PUT ${SERVICE}/expose`]: { port },
     });
 
   it("warns about the risk and asks before exposing", async () => {
@@ -449,7 +560,7 @@ describe("the Expose tab (DAT-07)", () => {
 
     expect(await screen.findByText("Think twice before exposing a database")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Public port"), { target: { value: "15432" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save and restart" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Expose this database?" });
     expect(server.calls.some((call) => call.method === "PUT")).toBe(false);
@@ -464,7 +575,7 @@ describe("the Expose tab (DAT-07)", () => {
     renderApp("/projects/shop/postgres/db/expose");
 
     fireEvent.change(await screen.findByLabelText("Public port"), { target: { value: "0" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save and restart" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(server.calls.find((call) => call.method === "PUT")?.body).toEqual({ port: 0 }),
     );
@@ -476,7 +587,7 @@ describe("the Expose tab (DAT-07)", () => {
     renderApp("/projects/shop/postgres/db/expose");
 
     fireEvent.change(await screen.findByLabelText("Public port"), { target: { value: "70000" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save and restart" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await screen.findByText("Use 0, or a whole number from 1024 to 65535.");
     expect(server.calls.filter((call) => call.method === "PUT")).toEqual([]);
@@ -485,7 +596,7 @@ describe("the Expose tab (DAT-07)", () => {
   it("shows a conflict from the server on the field", async () => {
     installFakeServer(
       base({
-        [`GET ${SERVICE}/expose`]: { port: 0 },
+        [`GET ${SERVICE}/expose`]: { port: 0, publishedPort: 0 },
         [`PUT ${SERVICE}/expose`]: withStatus(409, {
           error: { code: "port_in_use", message: "Used.", fields: { port: "Already used by shop/other" } },
         }),
@@ -494,11 +605,11 @@ describe("the Expose tab (DAT-07)", () => {
     renderApp("/projects/shop/postgres/db/expose");
 
     fireEvent.change(await screen.findByLabelText("Public port"), { target: { value: "16379" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save and restart" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Expose it" }));
 
-    expect(await screen.findByText("Another service already publishes this port.")).toBeTruthy();
+    expect(await screen.findByText("This port is already in use on this server.")).toBeTruthy();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(screen.getByLabelText("Public port").getAttribute("aria-invalid")).toBe("true");
   });
@@ -514,7 +625,12 @@ describe("the Resources tab (DAT-08)", () => {
           cpuReservation: 0.1,
           cpuLimit: 0.5,
         },
-        [`PUT ${SERVICE}/database-resources`]: withStatus(202, action({ id: "r1" })),
+        [`PUT ${SERVICE}/database-resources`]: {
+          memoryReservation: 64,
+          memoryLimit: 256,
+          cpuReservation: 0.1,
+          cpuLimit: 0.5,
+        },
       }),
     );
     renderApp("/projects/shop/postgres/db/resources");
@@ -522,7 +638,7 @@ describe("the Resources tab (DAT-08)", () => {
     const limit = (await screen.findByLabelText("Memory limit (MB)")) as HTMLInputElement;
     await waitFor(() => expect(limit.value).toBe("128"));
     fireEvent.change(limit, { target: { value: "256" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save and restart" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
       expect(server.calls.find((call) => call.method === "PUT")?.body).toEqual({
@@ -548,7 +664,7 @@ describe("the Resources tab (DAT-08)", () => {
     renderApp("/projects/shop/postgres/db/resources");
 
     fireEvent.change(await screen.findByLabelText("Memory limit (MB)"), { target: { value: "-5" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save and restart" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await screen.findByText("Use a number, 0 or more, and keep any reservation within its limit.");
     expect(server.calls.filter((call) => call.method === "PUT")).toEqual([]);
@@ -562,11 +678,16 @@ describe("the Advanced tab (DAT-09)", () => {
       [`GET ${SERVICE}/database-advanced`]: {
         image: `${engine}:18`,
         command: "",
-        env: "",
+        envNames: [],
         configFile: "",
         ...overrides,
       },
-      [`PUT ${SERVICE}/database-advanced`]: withStatus(202, action({ id: "ad" })),
+      [`PUT ${SERVICE}/database-advanced`]: {
+        image: "postgres:17",
+        command: "",
+        envNames: [],
+        configFile: "",
+      },
     });
 
   it("edits image, command and environment", async () => {
@@ -576,7 +697,7 @@ describe("the Advanced tab (DAT-09)", () => {
     const image = (await screen.findByLabelText("Image")) as HTMLInputElement;
     await waitFor(() => expect(image.value).toBe("postgres:18"));
     fireEvent.change(screen.getByLabelText("Environment"), { target: { value: "TZ=UTC" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save and restart" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
       expect(server.calls.find((call) => call.method === "PUT")?.body).toEqual({
@@ -586,6 +707,30 @@ describe("the Advanced tab (DAT-09)", () => {
         configFile: "",
       }),
     );
+  });
+
+  it("shows variables by name, and only sends values someone asked to see", async () => {
+    const server = installFakeServer({
+      ...advanced("postgres", { envNames: ["TZ"] }),
+      [`POST ${SERVICE}/environment/reveal`]: { env: "TZ=UTC" },
+    });
+    renderApp("/projects/shop/postgres/db/advanced");
+
+    await screen.findByText("TZ");
+    expect(screen.queryByLabelText("Environment")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(server.calls.find((call) => call.method === "PUT")?.body).toEqual({
+        image: "postgres:18",
+        command: "",
+        configFile: "",
+      }),
+    );
+    expect(server.calls.some((call) => call.path.endsWith("/environment/reveal"))).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show and edit" }));
+    const field = (await screen.findByLabelText("Environment")) as HTMLTextAreaElement;
+    expect(field.value).toBe("TZ=UTC");
   });
 
   it("offers a config file only on MySQL and MariaDB", async () => {
@@ -601,13 +746,71 @@ describe("the Advanced tab (DAT-09)", () => {
     expect(await screen.findByLabelText("Config file")).toBeTruthy();
   });
 
+  it("asks before moving to another major version, and sends the name typed (REQ-202)", async () => {
+    const server = installFakeServer(advanced("postgres", { image: "postgres:18.6" }));
+    renderApp("/projects/shop/postgres/db/advanced");
+
+    const image = (await screen.findByLabelText("Image")) as HTMLInputElement;
+    await waitFor(() => expect(image.value).toBe("postgres:18.6"));
+    fireEvent.change(image, { target: { value: "postgres:19.0" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Move to another major version?" });
+    expect(within(dialog).getByText(/backup of the whole server/)).toBeTruthy();
+    expect(server.calls.filter((call) => call.method === "PUT")).toEqual([]);
+
+    fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "db" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save this version" }));
+
+    await waitFor(() =>
+      expect(server.calls.find((call) => call.method === "PUT")?.body).toMatchObject({
+        image: "postgres:19.0",
+        confirm: "db",
+      }),
+    );
+  });
+
+  it("says to start a stopped database when it can't be backed up for the move (REQ-202)", async () => {
+    installFakeServer({
+      ...advanced("postgres", { image: "postgres:18.6" }),
+      [`PUT ${SERVICE}/database-advanced`]: withStatus(409, {
+        error: { code: "major_change_needs_running", message: "Start this database first." },
+      }),
+    });
+    renderApp("/projects/shop/postgres/db/advanced");
+
+    const image = (await screen.findByLabelText("Image")) as HTMLInputElement;
+    await waitFor(() => expect(image.value).toBe("postgres:18.6"));
+    fireEvent.change(image, { target: { value: "postgres:19.0" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Move to another major version?" });
+    fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "db" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save this version" }));
+
+    expect(await within(dialog).findByText(/moving to another major version backs it up/)).toBeTruthy();
+  });
+
+  it("refuses a floating image before sending anything (REQ-495)", async () => {
+    const server = installFakeServer(advanced("postgres", { image: "postgres:18.6" }));
+    renderApp("/projects/shop/postgres/db/advanced");
+
+    const image = (await screen.findByLabelText("Image")) as HTMLInputElement;
+    await waitFor(() => expect(image.value).toBe("postgres:18.6"));
+    fireEvent.change(image, { target: { value: "postgres:latest" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await screen.findByText("Name a fixed version, such as postgres:18.6, or pin a digest.");
+    expect(server.calls.filter((call) => call.method === "PUT")).toEqual([]);
+  });
+
   it("rejects a malformed environment before sending anything", async () => {
     const server = installFakeServer(advanced());
     renderApp("/projects/shop/postgres/db/advanced");
 
     await screen.findByLabelText("Image");
     fireEvent.change(screen.getByLabelText("Environment"), { target: { value: "no equals" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save and restart" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await screen.findByText("Each line must look like NAME=value.");
     expect(server.calls.filter((call) => call.method === "PUT")).toEqual([]);

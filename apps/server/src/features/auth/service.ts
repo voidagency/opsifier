@@ -8,6 +8,7 @@ import {
   type TwoFactorSetup,
   twoFactorRequiredCode,
 } from "@opsifier/contract";
+import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   buildOtpauthUri,
@@ -34,7 +35,9 @@ import {
 } from "../../core/auth";
 import type { AppDeps } from "../../core/context";
 import type { DbHandle } from "../../core/db";
+import { apiTokens } from "../../core/db/schema";
 import { AppError, badRequest, conflict, forbidden, unauthorized } from "../../core/errors";
+import { revokeTriggersOfAccount } from "../service-tabs/deployments/trigger";
 import * as repo from "./repo";
 
 export interface SignedIn {
@@ -162,8 +165,10 @@ export function createAuthService(deps: AppDeps) {
           const user = repo.insertUser(tx, {
             id: nanoid(),
             email: normalizeEmail(input.email),
+            name: input.name,
             passwordHash,
             role: "admin",
+            isOwner: true,
             createdAt: timestamp,
             updatedAt: timestamp,
           });
@@ -213,7 +218,7 @@ export function createAuthService(deps: AppDeps) {
 
       // Re-read after the slow hash, so a password change or 2FA setup in the meantime counts.
       const user = repo.findUserById(db, candidate.id);
-      if (user === undefined || user.passwordHash !== candidate.passwordHash) {
+      if (user === undefined || user.passwordHash !== candidate.passwordHash || user.deactivatedAt !== null) {
         throw unauthorized("invalid_credentials", WRONG_CREDENTIALS);
       }
 
@@ -291,6 +296,10 @@ export function createAuthService(deps: AppDeps) {
             passwordHash,
             updatedAt: new Date(now()),
           });
+          // Keys carry the account's authority, so changing how it signs in revokes them as well.
+          tx.delete(apiTokens).where(eq(apiTokens.userId, user.id)).run();
+          // Its rights haven't changed, so what it issued goes but what it could merely read stays.
+          revokeTriggersOfAccount(tx, user.id, () => false, new Date(now()));
           return { updated, endedSessions: deleteOtherSessions(tx, user.id, principal.sessionId) };
         },
         { behavior: "immediate" },

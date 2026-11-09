@@ -80,8 +80,8 @@ export function Sparkline({
   valueText,
   max,
   thresholds = defaultThresholds,
-  width = 96,
-  height = 24,
+  width = 120,
+  height = 30,
   className,
 }: SparklineProps) {
   const { t } = useTranslation("visual");

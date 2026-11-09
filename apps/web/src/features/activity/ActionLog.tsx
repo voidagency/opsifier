@@ -64,6 +64,8 @@ export function ActionLog({ actionId, className }: { actionId: string; className
   return (
     <pre
       ref={scroller}
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: it scrolls, so the keyboard has to reach it
+      tabIndex={0}
       onScroll={(event) => {
         const element = event.currentTarget;
         pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24;

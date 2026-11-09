@@ -1,0 +1,116 @@
+{
+  "type": "Compose stack",
+  "tabs": {
+    "label": "Stack sections",
+    "overview": "Overview",
+    "source": "Source",
+    "deployments": "Deployments",
+    "environment": "Environment",
+    "domains": "Domains",
+    "redirects": "Redirects",
+    "security": "Security",
+    "maintenance": "Maintenance"
+  },
+  "create": {
+    "title": "Add a Compose stack",
+    "description": "It starts empty: paste a Compose file next.",
+    "submit": "Add",
+    "created": "Stack {{name}} added"
+  },
+  "destroy": {
+    "title": "Destroy this stack?",
+    "description": "You are about to destroy",
+    "confirm": "Destroy",
+    "removed": "Its containers, networks, routes and the stack's folder, including anything written there through a relative mount.",
+    "kept": "Its named volumes and its backups. Delete kept volumes later under Monitor, Storage."
+  },
+  "states": {
+    "running": "Running",
+    "starting": "Starting",
+    "unhealthy": "Unhealthy",
+    "failed": "Failed",
+    "stopped": "Stopped",
+    "completed": "Finished"
+  },
+  "overview": {
+    "children": "Services",
+    "noChildren": "Nothing is running yet. Save a Compose file, then press Deploy.",
+    "filter": "Show logs for",
+    "all": "All",
+    "copyAddress": "Copy this service's address"
+  },
+  "source": {
+    "title": "Compose file",
+    "description": "Runs with docker compose on this server. Everything in the file applies, and values in ${...} come from the Environment tab.",
+    "kind": "Where the file comes from",
+    "inline": "Inline",
+    "git": "Git",
+    "content": "Compose file",
+    "url": "Repository URL",
+    "ref": "Branch",
+    "path": "Build path",
+    "pathHint": "The folder inside the repository that holds the file.",
+    "file": "Compose file",
+    "save": "Save",
+    "saved": "Compose file saved",
+    "savedHint": "It takes effect at the next deploy.",
+    "fileHint": "Path of the Compose file in the repository.",
+    "refHint": "A branch, tag or commit.",
+    "urlHint": "The HTTPS or SSH address of the repository."
+  },
+  "issues": {
+    "title": "Checks on this file",
+    "view": "View",
+    "banner_one": "{{count}} thing to look at in this file",
+    "banner_other": "{{count}} things to look at in this file",
+    "bannerError": "This file can't be deployed as it is",
+    "bannerHost": "This stack can reach outside its containers",
+    "bannerHostConfirmed": "You confirmed this stack may reach the server",
+    "severity": {
+      "error": "Blocks deploy",
+      "host": "Host access",
+      "warning": "Warning"
+    },
+    "codes": {
+      "no_services": "defines no services.",
+      "unknown_dependency": "depends on a service that isn't in this file.",
+      "escapes_stack": "points outside the stack's folder.",
+      "foreign_network": "joins a network this project doesn't own. Projects are kept apart, so remove it. To use a database from another project, publish its port on its Expose tab and connect through the server's address.",
+      "privileged": "runs in privileged mode, with full control of the server.",
+      "docker_socket": "mounts the Docker socket, which gives it control of the server.",
+      "data_directory": "mounts the panel's own data, including its secrets.",
+      "host_path": "mounts a folder from the server, or a path only known at deploy time.",
+      "host_namespace": "shares a namespace with the server or another container.",
+      "capabilities": "adds kernel capabilities.",
+      "devices": "gets direct access to devices on the server.",
+      "security_options": "relaxes the container's security settings.",
+      "container_name": "sets container_name, which can clash with another container.",
+      "published_port": "publishes a port directly on the server, bypassing the proxy.",
+      "port_taken": "publishes a port something else already uses.",
+      "no_restart_policy": "has no restart policy, so it stays down after a reboot.",
+      "external_resource": "reaches a volume or container outside this stack.",
+      "profiles": "sits behind a profile, so a plain deploy won't start it.",
+      "network_mode": "uses its own network mode, so domains can't reach it.",
+      "unroutable_name": "has a name that can't be used as a domain target."
+    },
+    "hostTitle": "This stack can take over the server",
+    "hostBody": "Mounting the Docker socket, running privileged or reaching into the server's files gives this stack the power to control the machine. Only confirm if you trust everything it runs.",
+    "confirmLabel": "I understand and trust this file",
+    "adminOnly": "Only an administrator can confirm this file.",
+    "confirm": "Confirm",
+    "confirmed": "Confirmed for this version of the file",
+    "confirmFirst": "Tick the box first."
+  },
+  "domains": {
+    "chooseChild": "Choose which service of the stack each domain reaches. Until then those domains answer 503.",
+    "child": "Service in the stack",
+    "none": "Choose later",
+    "childHint": "The container in this stack that receives the traffic."
+  },
+  "environment": {
+    "fileLabel": "Create .env file",
+    "fileHint": "Also writes these variables to .env next to the Compose file before each deploy.",
+    "saved": "Saved",
+    "savedHint": "It takes effect at the next deploy."
+  }
+}

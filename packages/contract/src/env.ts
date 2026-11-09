@@ -66,6 +66,10 @@ export const envText = z
     }
   });
 
-/** GET and PUT for environment variables, on a project or a service. */
+/** The text of a set of variables: what is saved, and what a deliberate reveal returns. */
 export const envDocument = z.object({ env: envText });
 export type EnvDocument = z.infer<typeof envDocument>;
+
+/** A set of variables as a page sees it: what they are called, and nothing of what they hold. */
+export const envSummary = z.object({ names: z.array(z.string()) });
+export type EnvSummary = z.infer<typeof envSummary>;

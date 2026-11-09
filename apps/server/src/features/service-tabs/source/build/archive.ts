@@ -12,6 +12,9 @@ const SIZE_CHECK_INTERVAL_MS = 1500;
 /** The limits on what an archive may unpack to, however small it was to upload. */
 export const MAX_UNPACKED_BYTES = 10 * 1024 ** 3;
 export const MAX_UNPACKED_ENTRIES = 500_000;
+/** Far past any real source tree, and well short of paths no tool can reach to delete them again. */
+export const MAX_UNPACKED_DEPTH = 128;
+const TOO_DEEP = "This archive has folders nested deeper than the panel allows.";
 
 /** An archive the panel refuses to unpack. The message is safe to show. */
 export class UnsafeArchiveError extends Error {
@@ -24,9 +27,17 @@ export function isUnsafeEntryName(name: string): boolean {
   return name.startsWith("/") || /^[A-Za-z]:/.test(name) || segments.includes("..");
 }
 
+function depthOf(name: string): number {
+  return name
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter((segment) => segment !== "" && segment !== ".").length;
+}
+
 export interface UnpackOptions {
   signal?: AbortSignal;
   maxBytes?: number;
+  maxDepth?: number;
 }
 
 const env = () => inheritedEnv();
@@ -38,9 +49,10 @@ const env = () => inheritedEnv();
 export async function inspectArchive(
   deps: Pick<AppDeps, "tools">,
   file: string,
-  options: Pick<UnpackOptions, "signal"> = {},
+  options: Pick<UnpackOptions, "signal" | "maxDepth"> = {},
 ): Promise<void> {
   const unsafe: string[] = [];
+  let deepest = 0;
   let result: Awaited<ReturnType<AppDeps["tools"]["run"]>>;
   try {
     result = await deps.tools.run({
@@ -53,6 +65,7 @@ export async function inspectArchive(
         if (isUnsafeEntryName(line)) {
           unsafe.push(line);
         }
+        deepest = Math.max(deepest, depthOf(line));
       },
     });
   } catch (error) {
@@ -70,24 +83,34 @@ export async function inspectArchive(
       `This archive has entries that would escape its folder, such as ${unsafe[0]}.`,
     );
   }
+  if (deepest > (options.maxDepth ?? MAX_UNPACKED_DEPTH)) {
+    throw new UnsafeArchiveError(TOO_DEEP);
+  }
 }
 
 /** Measures what was unpacked, and fails on anything that isn't a plain file, folder or safe link. */
-export async function verifyTree(root: string): Promise<{ bytes: number; entries: number }> {
+export async function verifyTree(
+  root: string,
+  maxDepth = MAX_UNPACKED_DEPTH,
+): Promise<{ bytes: number; entries: number }> {
   const realRoot = await realpath(root);
   let bytes = 0;
   let entries = 0;
-  const pending = [realRoot];
+  const pending = [{ dir: realRoot, depth: 0 }];
   while (pending.length > 0) {
-    const dir = pending.pop();
-    if (dir === undefined) {
+    const current = pending.pop();
+    if (current === undefined) {
       break;
     }
+    const { dir, depth } = current;
     for (const entry of await readdir(dir, { withFileTypes: true })) {
+      if (depth + 1 > maxDepth) {
+        throw new UnsafeArchiveError(TOO_DEEP);
+      }
       entries += 1;
       const path = join(dir, entry.name);
       if (entry.isDirectory()) {
-        pending.push(path);
+        pending.push({ dir: path, depth: depth + 1 });
       } else if (entry.isFile()) {
         bytes += (await lstat(path)).size;
       } else if (entry.isSymbolicLink()) {
@@ -124,26 +147,10 @@ export async function unpackArchive(
   const signal =
     options.signal === undefined ? controller.signal : AbortSignal.any([controller.signal, options.signal]);
   let exceeded = false;
-  let checking = false;
-  const watcher = setInterval(() => {
-    if (checking) {
-      return;
-    }
-    checking = true;
-    measure(destination)
-      .then(({ bytes, entries }) => {
-        if (tooLarge(bytes, entries, maxBytes)) {
-          exceeded = true;
-          controller.abort(new UnsafeArchiveError("This archive unpacks to more than the panel allows."));
-        }
-      })
-      // The tree is changing under the walk: the next round sees a consistent one.
-      .catch(() => undefined)
-      .finally(() => {
-        checking = false;
-      });
-  }, SIZE_CHECK_INTERVAL_MS);
-  watcher.unref();
+  const stopWatching = watchTreeSize([destination], maxBytes, () => {
+    exceeded = true;
+    controller.abort(new UnsafeArchiveError("This archive unpacks to more than the panel allows."));
+  });
 
   try {
     const result = await deps.tools.run({
@@ -176,26 +183,60 @@ export async function unpackArchive(
     }
     throw error;
   } finally {
-    clearInterval(watcher);
+    stopWatching();
   }
 
-  const { bytes, entries } = await verifyTree(destination);
+  const { bytes, entries } = await verifyTree(destination, options.maxDepth);
   if (tooLarge(bytes, entries, maxBytes)) {
     throw new UnsafeArchiveError("This archive unpacks to more than the panel allows.");
   }
 }
 
+/** Whether what is under `roots` is past the limits, as of now. */
+export async function exceedsTreeSize(roots: readonly string[], maxBytes: number): Promise<boolean> {
+  const { bytes, entries } = await measure(roots);
+  return tooLarge(bytes, entries, maxBytes);
+}
+
+/** Calls `onExceeded` once what is under `roots` passes the limits. Returns what stops the watching. */
+export function watchTreeSize(
+  roots: readonly string[],
+  maxBytes: number,
+  onExceeded: () => void,
+): () => void {
+  let checking = false;
+  const watcher = setInterval(() => {
+    if (checking) {
+      return;
+    }
+    checking = true;
+    measure(roots)
+      .then(({ bytes, entries }) => {
+        if (tooLarge(bytes, entries, maxBytes)) {
+          onExceeded();
+        }
+      })
+      // The tree is changing under the walk: the next round sees a consistent one.
+      .catch(() => undefined)
+      .finally(() => {
+        checking = false;
+      });
+  }, SIZE_CHECK_INTERVAL_MS);
+  watcher.unref();
+  return () => clearInterval(watcher);
+}
+
 /** Tolerant version of the final check, for use while files are still appearing. */
-async function measure(root: string): Promise<{ bytes: number; entries: number }> {
+async function measure(roots: readonly string[]): Promise<{ bytes: number; entries: number }> {
   let bytes = 0;
   let entries = 0;
-  const pending = [root];
+  const pending = [...roots];
   while (pending.length > 0) {
     const dir = pending.pop();
     if (dir === undefined) {
       break;
     }
-    for (const entry of await readdir(dir, { withFileTypes: true })) {
+    for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
       entries += 1;
       if (entry.isDirectory()) {
         pending.push(join(dir, entry.name));

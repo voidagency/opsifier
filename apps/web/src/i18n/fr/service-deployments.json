@@ -8,22 +8,215 @@
     "started": "Lancé",
     "duration": "Durée",
     "by": "Par",
-    "log": "Sortie"
+    "log": "Sortie",
+    "ran": "Exécuté"
   },
   "status": {
     "queued": "En file",
     "running": "En cours",
     "succeeded": "Stabilisé",
     "failed": "Échoué",
-    "cancelled": "Annulé"
+    "cancelled": "Annulé",
+    "uncertain": "Incertain"
   },
   "byPanel": "Automatique",
   "view": "Voir la sortie",
   "trigger": {
     "title": "Déclencheur de déploiement",
-    "description": "Appeler cette URL en GET ou POST lance un déploiement : la CI ou tout autre outil peut donc déployer ce service. Quiconque la possède le peut. Ajoutez ?forceRebuild pour ignorer le cache de build.",
-    "copy": "Copier l'URL du déclencheur",
-    "rotate": "Remplacer l'URL",
-    "rotated": "Nouvelle URL prête"
+    "description": "Une tâche de CI, ou tout autre outil pouvant faire une requête, lance un déploiement en appelant cette adresse avec son jeton dans un en-tête Authorization.",
+    "tokenActive": "Jeton actif",
+    "tokenNone": "Aucun jeton",
+    "tokenIssuedAt": "Émis {{when}}",
+    "address": "Appelez cette adresse",
+    "copyAddress": "Copier l'adresse",
+    "example": "Exemple",
+    "copyExample": "Copier la commande",
+    "forceRebuildHint": "Ajoutez ?forceRebuild pour ignorer le cache de build et récupérer de nouveau les images de base.",
+    "generate": "Générer un jeton",
+    "generated": "Jeton émis",
+    "rotate": "Remplacer le jeton",
+    "rotateTitle": "Remplacer ce jeton ?",
+    "rotateDescription": "Le jeton actuel cesse aussitôt de fonctionner : mettez à jour votre CI avec le nouveau.",
+    "rotateConfirm": "Remplacer",
+    "revoke": "Révoquer le jeton",
+    "revokeTitle": "Révoquer ce jeton ?",
+    "revokeDescription": "Qui le possède ne peut plus lancer de déploiement. C'est définitif : il faudra en émettre un nouveau.",
+    "revokeConfirm": "Révoquer",
+    "revoked": "Jeton révoqué",
+    "tokenTitle": "Copiez ce jeton maintenant",
+    "tokenShownOnce": "C'est la seule fois où il est affiché. Envoyez-le sous la forme : Authorization: Bearer <jeton>.",
+    "tokenLabel": "Jeton de déploiement",
+    "copyToken": "Copier le jeton",
+    "done": "Terminé",
+    "legacyUrl": "Ce jeton date d'avant le passage à l'en-tête, si bien que son ancienne adresse fonctionne encore. Remplacez-le pour que seul l'en-tête fonctionne.",
+    "copyHint": "Copiez-le maintenant : il ne sera plus affiché.",
+    "exampleHint": "Une requête qui lance un déploiement avec ce déclencheur."
+  },
+  "webhook": {
+    "title": "Webhook de push",
+    "description": "Votre hébergeur Git appelle cette adresse après chaque push. Une livraison ne compte que si elle est signée avec le secret du webhook, et seuls les pushes vers le dépôt et la branche pour lesquels il a été émis déploient, une seule fois chacun.",
+    "active": "Actif",
+    "paused": "En pause",
+    "bound": "Déploie {{repository}} sur {{ref}}",
+    "legacy": "Ce webhook date d'avant les secrets propres aux webhooks. Il continue de fonctionner à son ancienne adresse, signé avec l'ancien jeton, tant que vous ne l'avez pas renouvelé.",
+    "pausedHint": "Le dépôt ou la branche a changé, ou le compte qui l'a émis a perdu ses droits : ses livraisons sont refusées. Renouvelez son secret pour reprendre.",
+    "none": "Aucun webhook",
+    "create": "Créer un webhook",
+    "created": "Webhook créé",
+    "rotate": "Renouveler le secret",
+    "rotateTitle": "Renouveler le secret de ce webhook ?",
+    "rotateDescription": "Le secret actuel cesse aussitôt de fonctionner. Le webhook suit ensuite le dépôt et la branche actuels du service.",
+    "rotateConfirm": "Renouveler",
+    "rotated": "Secret du webhook remplacé",
+    "remove": "Supprimer le webhook",
+    "removeTitle": "Supprimer ce webhook ?",
+    "removeDescription": "Les livraisons vers son adresse sont refusées désormais. Supprimez-le aussi chez votre hébergeur Git.",
+    "removeConfirm": "Supprimer",
+    "removed": "Webhook supprimé",
+    "copyAddress": "Copier l'adresse du webhook",
+    "copySecret": "Copier le secret",
+    "issuedTitle": "Copiez ce secret maintenant",
+    "shownOnce": "C'est la seule fois où il est affiché. Collez-le dans les réglages du webhook chez votre hébergeur Git, avec le type de contenu JSON.",
+    "secretLabel": "Secret du webhook",
+    "addressLabel": "Adresse du webhook",
+    "done": "Terminé"
+  },
+  "origin": {
+    "session": "Connecté",
+    "api_key": "Clé d'API",
+    "trigger": "Déclencheur CI",
+    "webhook": "Webhook",
+    "system": "Automatique"
+  },
+  "noLog": "Ce déploiement n'a écrit aucune sortie.",
+  "history": {
+    "rollback": "Retour arrière",
+    "unknownImage": "Non enregistré",
+    "answering": "A répondu sur son port",
+    "silent": "Rien n'a répondu sur son port",
+    "tasks": "{{running}} tâche(s) sur {{desired}} en marche"
+  },
+  "pending": {
+    "title": "En attente de déploiement",
+    "description": "Ce qui est enregistré ici sans être encore en marche. Le prochain déploiement l'applique. Les valeurs des variables et des fichiers ne sont pas affichées, car elles peuvent être des secrets.",
+    "unknown": "Rien à comparer pour l'instant : aucun déploiement n'a encore enregistré ce qu'il a mis en place.",
+    "none": "Rien n'est en attente",
+    "refetches": {
+      "image": "Un déploiement récupère aussi l'image à nouveau : ce que son tag désigne maintenant vient avec.",
+      "code": "Un déploiement récupère et reconstruit aussi le code : ce que sa branche désigne maintenant vient avec.",
+      "stack": "Un déploiement récupère aussi à nouveau les images et le code de la pile."
+    }
+  },
+  "changes": {
+    "what": "Quoi",
+    "running": "En marche",
+    "saved": "Enregistré",
+    "hidden": "Valeur masquée",
+    "none": "Absent",
+    "kind": {
+      "added": "Ajouté",
+      "removed": "Retiré",
+      "changed": "Modifié"
+    },
+    "areas": {
+      "image": "Image",
+      "source": "Source",
+      "build": "Construction",
+      "environment": "Variable",
+      "command": "Commande",
+      "resources": "Ressources",
+      "replicas": "Réplicas",
+      "volumes": "Volume",
+      "files": "Fichier",
+      "ports": "Port",
+      "compose": "Compose",
+      "advanced": "Avancé"
+    },
+    "names": {
+      "cpu-limit": "Limite CPU",
+      "memory-limit": "Limite mémoire",
+      "process-limit": "Limite de processus",
+      "cpu-reservation": "Réservation CPU",
+      "memory-reservation": "Réservation mémoire",
+      "repository": "Dépôt",
+      "ref": "Branche ou tag",
+      "path": "Chemin",
+      "archive": "Archive",
+      "type": "Type",
+      "builder": "Constructeur",
+      "builder-version": "Version du constructeur",
+      "dockerfile-path": "Chemin du Dockerfile",
+      "env-file": "Fichier d'environnement",
+      "file": "Fichier Compose",
+      "networks": "Réseaux"
+    }
+  },
+  "versions": {
+    "title": "Versions",
+    "description": "Chaque déploiement réussi conserve son image exacte et ses réglages, pour que le service puisse y revenir. Un retour ne récupère, ne construit et ne télécharge jamais rien.",
+    "state": "État",
+    "version": "Version",
+    "image": "Image",
+    "commit": "Commit",
+    "deployed": "Déployée",
+    "size": "Taille",
+    "action": "Action",
+    "active": "Active",
+    "kept": "Conservée",
+    "backTo": "Retour à #{{number}}",
+    "noCommit": "Sans commit",
+    "goBack": "Revenir",
+    "goBackHint": "Remettre la version {{number}} en service",
+    "busy": "Un autre travail est en cours sur ce service",
+    "keptGauge": "{{count}} versions conservées sur {{keep}}",
+    "keptShort": "{{count}} / {{keep}}",
+    "changeKept": "Modifier dans Réglages",
+    "changeKeptHint": "Ce serveur conserve les {{keep}} versions les plus récentes de chaque service. Un administrateur le modifie dans Réglages, Général.",
+    "howMany": "En garde {{keep}}",
+    "requested": "Demandé {{ref}}",
+    "built": "Construit {{commit}}",
+    "ociRevision": "Révision OCI {{revision}}",
+    "refusal": {
+      "active": {
+        "label": "Active",
+        "reason": "C'est la version en marche."
+      },
+      "not_deployed": {
+        "label": "Non déployé",
+        "reason": "Le service n'est pas déployé : il n'y a rien à remplacer."
+      },
+      "renamed": {
+        "label": "Autre nom",
+        "reason": "La version {{number}} a été déployée sous un autre nom, auquel ce qu'elle exécutait était lié."
+      },
+      "image_missing": {
+        "label": "Image absente",
+        "reason": "L'image de la version {{number}} n'est plus sur ce serveur, et un retour n'en récupère jamais."
+      },
+      "image_altered": {
+        "label": "Tag modifié",
+        "reason": "Le tag qui conserve la version {{number}} a été modifié ou retiré hors du panneau : ce qu'il désigne n'est plus fiable."
+      },
+      "volumes_differ": {
+        "label": "Autres volumes",
+        "reason": "La version {{number}} n'utilise pas les mêmes volumes que ce qui est en marche : elle ne verrait pas les données actuelles."
+      }
+    }
+  },
+  "rollback": {
+    "title": "Revenir à la version {{number}} ?",
+    "description": "L'image et les réglages de cette version sont remis en service. C'est enregistré comme une nouvelle tentative.",
+    "image": "Image",
+    "imageLocal": "déjà sur ce serveur",
+    "configuration": "Réglages",
+    "noChanges": "Les mêmes réglages que ce qui est en marche.",
+    "after": "Version {{number}}",
+    "data": "Données",
+    "volumesStay": "Les volumes restent tels quels : ce qui a été écrit depuis est conservé.",
+    "savedStays": "Les réglages enregistrés le restent, et arrivent au service au prochain déploiement.",
+    "notUndone": "Le contenu des bases de données et les migrations applicatives ne sont pas annulés. Les variables et les secrets reviennent à leur valeur de cette version.",
+    "confirm": "Revenir",
+    "done": "De retour sur la version {{number}}",
+    "failed": "Impossible de revenir à la version {{number}}"
   }
 }

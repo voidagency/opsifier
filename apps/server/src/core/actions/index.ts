@@ -12,3 +12,5 @@ export {
   type RecordInput,
   toActionEntry,
 } from "./engine";
+export { PANEL_ACTION_TYPES } from "./policy";
+export { type ActionSource, currentSource, runAs } from "./source";

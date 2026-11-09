@@ -1,0 +1,73 @@
+{
+  "id": "adminer",
+  "version": "1.0.0",
+  "name": "Adminer",
+  "summary": {
+    "en": "A small web interface for your databases.",
+    "fr": "Une petite interface web pour vos bases de données."
+  },
+  "description": {
+    "en": "Browse and edit MySQL, MariaDB, Postgres and other databases from one tiny page. Sign in with the credentials of the database you want to open.",
+    "fr": "Parcourez et modifiez MySQL, MariaDB, Postgres et d'autres bases depuis une seule page. Connectez-vous avec les identifiants de la base à ouvrir."
+  },
+  "category": "data",
+  "tags": ["database", "sql", "admin"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://www.adminer.org"
+    },
+    {
+      "kind": "docs",
+      "url": "https://hub.docker.com/_/adminer"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/vrana/adminer"
+    }
+  ],
+  "verified": false,
+  "params": [
+    {
+      "key": "defaultServer",
+      "label": {
+        "en": "Default database host",
+        "fr": "Hôte de base par défaut"
+      },
+      "type": "text",
+      "required": false,
+      "default": "",
+      "help": {
+        "en": "Pre-filled on the login form, such as the Internal host of a database.",
+        "fr": "Pré-rempli sur le formulaire de connexion, par exemple l'hôte interne d'une base."
+      }
+    }
+  ],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "adminer",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "adminer:5.5.1"
+      },
+      "env": {
+        "ADMINER_DEFAULT_SERVER": "{{params.defaultServer}}"
+      },
+      "command": null,
+      "mounts": [],
+      "domain": {
+        "port": 8080,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

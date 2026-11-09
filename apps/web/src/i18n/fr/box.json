@@ -1,0 +1,70 @@
+{
+  "tabs": {
+    "label": "Onglets de la box",
+    "overview": "Aperçu",
+    "modules": "Modules",
+    "processes": "Processus",
+    "hooks": "Hooks",
+    "ide": "IDE",
+    "deployments": "Déploiements",
+    "environment": "Environnement",
+    "domains": "Domaines",
+    "redirects": "Redirections",
+    "scripts": "Scripts",
+    "security": "Sécurité",
+    "resources": "Ressources",
+    "maintenance": "Maintenance",
+    "storage": "Stockage"
+  },
+  "create": {
+    "title": "Ajouter une box",
+    "description": "Choisissez ses environnements d'exécution et ses processus dans {{project}}.",
+    "submit": "Ajouter la box",
+    "created": "{{name}} est prête à être configurée",
+    "preset": "Point de départ",
+    "presetHint": "Configure les modules, les processus et les hooks. Vos fichiers ne sont jamais remplacés.",
+    "noPreset": "Aucun, je choisis"
+  },
+  "presets": {
+    "static-site": {
+      "name": "Site statique",
+      "hint": "Un serveur web qui sert un dossier de l'espace de travail."
+    },
+    "node-service": {
+      "name": "Service Node.js",
+      "hint": "Un processus Node.js à l'écoute sur le port du service."
+    },
+    "php-site": {
+      "name": "Site PHP",
+      "hint": "PHP derrière un serveur web, avec Composer et OPcache."
+    },
+    "python-service": {
+      "name": "Service Python",
+      "hint": "Un processus Python dans un environnement virtuel."
+    },
+    "ruby-service": {
+      "name": "Service Ruby",
+      "hint": "Un processus Ruby, avec ses gems dans l'espace de travail."
+    }
+  },
+  "overview": {
+    "running": "Processus",
+    "noProcesses": "Aucun processus pour l'instant. Ajoutez-en un dans l'onglet Processus, ou activez un serveur web dans l'onglet Modules.",
+    "howItRuns": "Comment fonctionne cette box",
+    "identity": {
+      "title": "Sous quel utilisateur",
+      "body": "Tout s'exécute dans la box sous l'utilisateur {{user}} (uid {{uid}}, gid {{gid}}), jamais en root. Seul le hook de build fait exception : il s'exécute en root pendant la construction de l'image."
+    },
+    "storage": {
+      "title": "Ce qui est conservé",
+      "body": "Seul {{path}} est conservé d'un déploiement et d'une reconstruction à l'autre. C'est l'espace de travail de la box, un volume de ce service. Tout le reste du conteneur est remplacé à chaque déploiement."
+    },
+    "ide": {
+      "title": "Comment accéder à l'IDE",
+      "off": "L'IDE du navigateur est désactivé : rien ne peut ouvrir les fichiers de cette box.",
+      "no_token": "L'IDE du navigateur est activé, mais aucun jeton n'existe encore : personne ne peut entrer.",
+      "expired": "Le jeton de l'IDE du navigateur a expiré : personne ne peut entrer tant qu'un nouveau n'est pas émis.",
+      "open": "L'IDE du navigateur est ouvert à qui détient son jeton, pour les fichiers de l'espace de travail et rien d'autre."
+    }
+  }
+}

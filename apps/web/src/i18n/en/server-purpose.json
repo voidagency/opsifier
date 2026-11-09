@@ -1,0 +1,141 @@
+{
+  "purposes": {
+    "development": "Development",
+    "staging": "Staging",
+    "production": "Production",
+    "unset": "Not set"
+  },
+  "purposeHints": {
+    "development": "Work in progress. Password on every site, hidden from search engines.",
+    "staging": "A rehearsal before release. Password on every site, hidden from search engines.",
+    "production": "Live for everyone. Sites are public and meant to be indexed."
+  },
+  "saved": "Server purpose set to {{purpose}}",
+  "indicator": {
+    "publicCount_one": "{{count}} public",
+    "publicCount_other": "{{count}} public",
+    "summaryPublic_one": "{{purpose}}: {{count}} domain, public by design.",
+    "summaryPublic_other": "{{purpose}}: {{count}} domains, public by design.",
+    "summaryProtected": "{{purpose}}: {{protected}} of {{total}} domains protected.",
+    "summaryGap": "{{purpose}}: only {{protected}} of {{total}} domains protected. Something is open.",
+    "summaryLocked": "{{purpose}}: no credentials, so every site is locked.",
+    "unknown": "Server purpose unknown"
+  },
+  "lamp": {
+    "protected": "Protected",
+    "exposed": "Exposed: not protected",
+    "public": "Public",
+    "unknown": "Protection unknown"
+  },
+  "firstUse": {
+    "title": "What is this server for?",
+    "description": "Opsifier protects every site on this server until you say otherwise.",
+    "meanwhile": "Until you choose, every site asks for a password and stays out of search engines.",
+    "later": "Decide later",
+    "credentialsTitle": "Your server's password"
+  },
+  "credentialsOnce": {
+    "title": "New credentials",
+    "warning": "Copy this now. It will not be shown again.",
+    "username": "Username",
+    "password": "Password",
+    "copyUsername": "Copy the username",
+    "copyPassword": "Copy the password",
+    "done": "Done"
+  },
+  "toProduction": {
+    "title": "Move to production?",
+    "description_one": "{{count}} domain will become public, with no password, and open to indexing.",
+    "description_other": "{{count}} domains will become public, with no password, and open to indexing.",
+    "confirm": "Move to production"
+  },
+  "leaveProduction": {
+    "title": "Protect this server?",
+    "description": "Every site will ask for a password and be hidden from search engines, starting now. New purpose: {{purpose}}.",
+    "confirm": "Protect this server"
+  },
+  "purpose": {
+    "title": "Purpose",
+    "description": "What this server is for decides how every site on it is exposed.",
+    "unset": "No purpose chosen yet. The server behaves as non-production: protected.",
+    "adminOnly": "Only an administrator can change this."
+  },
+  "protection": {
+    "title": "Protection",
+    "description": "Read back from what the proxy holds, not from what was asked of it.",
+    "descriptionProduction": "A production server is public by design: nothing here is protected.",
+    "empty": {
+      "title": "No domains yet",
+      "description": "Sites you add will be protected as soon as they exist."
+    }
+  },
+  "problems": {
+    "no_credentials": "There are no credentials, so every site is locked. Add a user below.",
+    "panel_exposed": "The panel's own pages are missing their robots rules.",
+    "unreadable_file": "The routing file {{file}} could not be read."
+  },
+  "credentials": {
+    "title": "Credentials",
+    "description": "One set for the whole server. Passwords are stored as hashes and shown once, when generated.",
+    "add": "Add a user",
+    "addTitle": "Add a user",
+    "added": "User added",
+    "username": "Username",
+    "password": "Password",
+    "passwordHint": "Leave empty to generate a strong one.",
+    "hidden": "Password stored as a hash",
+    "rotate": "Change the password",
+    "rotateTitle": "Change the password?",
+    "rotateDescription": "The current password for {{username}} stops working at once.",
+    "rotateConfirm": "Change password",
+    "remove": "Remove this user",
+    "removeTitle": "Remove this user?",
+    "removeDescription": "{{username}} can no longer get through. A protected server always keeps one user.",
+    "removeConfirm": "Remove user",
+    "changed": "Password changed",
+    "removed": "User removed",
+    "empty": {
+      "title": "No credentials yet",
+      "description": "They are generated the moment this server gets a protected purpose."
+    },
+    "usernameHint": "Every protected site asks for it."
+  },
+  "allowlist": {
+    "title": "Exemptions",
+    "description": "Paths or address ranges of one service that may skip the password, for callbacks and health checks.",
+    "warning": "Each exemption is a way around the password. Keep them few and narrow.",
+    "empty": "No exemptions.",
+    "added": "Exemption added",
+    "add": "Add an exemption",
+    "service": "Service",
+    "servicePlaceholder": "Choose a service",
+    "kind": "Kind",
+    "kinds": {
+      "path": "Path",
+      "ip": "IP range"
+    },
+    "path": "Path",
+    "pathHint": "Exactly this path, or everything under it with /hooks/*.",
+    "ip": "IP range",
+    "ipHint": "One address, or a range such as 203.0.113.0/24.",
+    "remove": "Remove this exemption",
+    "removeTitle": "Remove this exemption?",
+    "removeDescription": "{{value}} will ask for the password again.",
+    "removeConfirm": "Remove",
+    "removed": "Exemption removed",
+    "kindHint": "By path, or by the visitor's address.",
+    "serviceHint": "The service that skips the password."
+  },
+  "certificates": {
+    "title": "Hostnames in logs",
+    "description": "Certificates leave a public trace, even for a protected site.",
+    "advice": "Certificates from a public authority are written to public Certificate Transparency logs, so a hostname on this server can be discovered even while it is protected. A wildcard certificate would keep each hostname out of the logs, but HTTPS on a wildcard has not been verified on this panel yet."
+  },
+  "errors": {
+    "username": "Use letters, digits, dots, dashes, underscores and @, up to 64 characters.",
+    "password": "Use at least 12 characters, and no more than 72 bytes.",
+    "target": "Choose a service.",
+    "path": "Enter a path such as /healthz, or /hooks/* for everything under it.",
+    "ip": "Enter an address or a range such as 203.0.113.0/24, no wider than /8."
+  }
+}

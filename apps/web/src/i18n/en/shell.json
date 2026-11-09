@@ -18,7 +18,18 @@
       "user": "User",
       "server": "Server"
     },
-    "github": "GitHub"
+    "github": "GitHub",
+    "storageProviders": "Storage providers",
+    "apiKeys": "API keys",
+    "api": "API reference",
+    "general": "General",
+    "address": "Address",
+    "users": "Users",
+    "notifications": "Notifications",
+    "certificates": "Certificates",
+    "monitoring": "Monitoring",
+    "purpose": "Purpose",
+    "knownHosts": "Known hosts"
   },
   "server": {
     "copyIp": "Copy server IP",
@@ -50,7 +61,11 @@
     "groups": {
       "navigation": "Go to",
       "settings": "Settings",
-      "preferences": "Preferences"
+      "preferences": "Preferences",
+      "projects": "Projects",
+      "services": "Services",
+      "user": "User",
+      "server": "Server"
     }
   },
   "tape": {
@@ -76,7 +91,8 @@
       "running": "Running",
       "succeeded": "Succeeded",
       "failed": "Failed",
-      "cancelled": "Cancelled"
+      "cancelled": "Cancelled",
+      "uncertain": "Uncertain"
     },
     "noLog": "This action doesn't produce any output."
   },
@@ -88,5 +104,16 @@
     "title": "There is nothing at this address",
     "description": "The link may be old, or the page may have moved.",
     "back": "Back to Overview"
+  },
+  "storage": {
+    "title": "Changes blocked",
+    "full": "The panel's disk is full, so it cannot save its state. Free some space to continue.",
+    "read_only": "The panel's storage has become read-only, so it cannot save its state.",
+    "locked": "Another program holds the panel's database, so it cannot save its state.",
+    "failed": "The panel cannot write to its storage, so it cannot save its state."
+  },
+  "simulated": {
+    "label": "Simulated",
+    "detail": "Nothing here is real: no container runs and nothing is deployed."
   }
 }

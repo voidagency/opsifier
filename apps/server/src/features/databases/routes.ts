@@ -1,5 +1,6 @@
 import { createRoute } from "@hono/zod-openapi";
 import {
+  databaseAvailability as availabilitySchema,
   createDatabaseRequest,
   databaseDetail,
   projectPath,
@@ -10,7 +11,7 @@ import { requirePrincipal } from "../../core/auth";
 import type { Feature } from "../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
 import { recoverInterruptedRotations } from "./rotation";
-import { createDatabase, requireDatabase, databaseDetail as toDetail } from "./service";
+import { createDatabase, databaseAvailability, requireDatabase, databaseDetail as toDetail } from "./service";
 
 const tags = ["Databases"];
 const invalid = errorResponse("The request failed validation.");
@@ -45,6 +46,21 @@ const getDatabaseRoute = createRoute({
   },
 });
 
+const availabilityRoute = createRoute({
+  method: "get",
+  path: "/api/v1/projects/{project}/services/{service}/database/availability",
+  tags,
+  description:
+    "Whether a task is running and, separately, whether the engine accepts the panel's credentials right now.",
+  request: { params: servicePath },
+  responses: {
+    200: jsonResponse(availabilitySchema, "What the process and the engine answered."),
+    400: invalid,
+    401: denied,
+    404: missing,
+  },
+});
+
 export const feature: Feature = {
   boot(deps) {
     recoverInterruptedRotations(deps);
@@ -61,6 +77,14 @@ export const feature: Feature = {
           principal.kind === "session" ? principal.user.email : undefined,
         ),
         201,
+      );
+    });
+
+    app.openapi(availabilityRoute, async (c) => {
+      const { project, service } = c.req.valid("param");
+      return c.json(
+        await databaseAvailability(deps, { projectName: project, serviceName: service }, c.req.raw.signal),
+        200,
       );
     });
 

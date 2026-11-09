@@ -200,14 +200,7 @@ describe("HealthSummary", () => {
     const names = within(screen.getByRole("group"))
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label"));
-    expect(names).toEqual([
-      "Failed: 2",
-      "Degraded: 1",
-      "Unknown: 0",
-      "In progress: 0",
-      "Running: 6",
-      "Stopped: 0",
-    ]);
+    expect(names).toEqual(["2 Failed", "1 Degraded", "0 Unknown", "0 In progress", "6 Running", "0 Stopped"]);
   });
 
   it("names the group and summarises the problems", () => {
@@ -225,7 +218,7 @@ describe("HealthSummary", () => {
 
   it("turns each count into a filter, and a second press clears it", () => {
     render(<FilterHarness />);
-    const failed = screen.getByRole("button", { name: "Failed: 2" });
+    const failed = screen.getByRole("button", { name: "2 Failed" });
     expect(failed.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(failed);
     expect(failed.getAttribute("aria-pressed")).toBe("true");
@@ -237,20 +230,20 @@ describe("HealthSummary", () => {
 
   it("does not offer a filter that would show nothing", () => {
     render(<FilterHarness />);
-    expect((screen.getByRole("button", { name: "Stopped: 0" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "0 Stopped" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("keeps a selected filter clearable after its count falls to zero", () => {
     const onSelect = vi.fn();
     render(<HealthSummary counts={{ running: 2 }} selected="failed" onSelect={onSelect} />);
-    fireEvent.click(screen.getByRole("button", { name: "Failed: 0" }));
+    fireEvent.click(screen.getByRole("button", { name: "0 Failed" }));
     expect(onSelect).toHaveBeenCalledWith(null);
   });
 
   it("shows plain named counts without a filter handler", () => {
     render(<HealthSummary counts={{ failed: 1, running: 4 }} variant="row" />);
     expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.getByRole("img", { name: "Failed: 1" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "1 Failed" })).toBeTruthy();
   });
 
   it("lists only what is there in the row form, problems first", () => {
@@ -258,12 +251,28 @@ describe("HealthSummary", () => {
     const names = within(screen.getByRole("group"))
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label"));
-    expect(names).toEqual(["Failed: 2", "Degraded: 1", "Running: 6"]);
+    expect(names).toEqual(["2 Failed", "1 Degraded", "6 Running"]);
   });
 
   it("has a named state when the row has nothing to count", () => {
     render(<HealthSummary counts={{}} variant="row" />);
     expect(screen.getByRole("img", { name: "Nothing yet" })).toBeTruthy();
+  });
+});
+
+describe("HealthSummary with its own words", () => {
+  const stateLabels = { running: "Succeeded", stopped: "Cancelled" };
+
+  it("prints the given word instead of the state's", () => {
+    render(<HealthSummary counts={{ running: 3 }} stateLabels={stateLabels} />);
+    expect(screen.getByText("Succeeded")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "3 Succeeded" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "0 Cancelled" })).toBeTruthy();
+  });
+
+  it("names the row's counts with them too", () => {
+    render(<HealthSummary counts={{ stopped: 2 }} stateLabels={stateLabels} variant="row" />);
+    expect(screen.getByRole("img", { name: "2 Cancelled" })).toBeTruthy();
   });
 });
 

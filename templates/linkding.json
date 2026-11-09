@@ -1,0 +1,98 @@
+{
+  "id": "linkding",
+  "version": "1.0.0",
+  "name": "linkding",
+  "summary": {
+    "en": "A bookmark manager that gets out of the way.",
+    "fr": "Un gestionnaire de marque-pages qui reste discret."
+  },
+  "description": {
+    "en": "Save, tag and search your links, with browser extensions and an archive of the pages you keep. Your first account is created from the values below.",
+    "fr": "Enregistrez, étiquetez et cherchez vos liens, avec extensions de navigateur et archive des pages conservées. Votre premier compte est créé à partir des valeurs ci-dessous."
+  },
+  "instructions": {
+    "en": "Sign in as {{params.adminUser}} with the password shown below.",
+    "fr": "Connectez-vous avec {{params.adminUser}} et le mot de passe affiché ci-dessous."
+  },
+  "category": "productivity",
+  "tags": ["bookmarks", "read-later", "links"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://linkding.link"
+    },
+    {
+      "kind": "docs",
+      "url": "https://linkding.link/installation"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/sissbruecker/linkding"
+    }
+  ],
+  "verified": false,
+  "params": [
+    {
+      "key": "adminUser",
+      "label": {
+        "en": "Admin user",
+        "fr": "Utilisateur administrateur"
+      },
+      "type": "text",
+      "required": true,
+      "default": "admin"
+    },
+    {
+      "key": "adminPassword",
+      "label": {
+        "en": "Admin password",
+        "fr": "Mot de passe administrateur"
+      },
+      "type": "secret",
+      "required": false,
+      "help": {
+        "en": "Leave empty to generate one.",
+        "fr": "Laissez vide pour en générer un."
+      },
+      "generate": {
+        "length": 24,
+        "alphabet": "alphanumeric"
+      }
+    }
+  ],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "linkding",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "sissbruecker/linkding:1.47.0"
+      },
+      "env": {
+        "LD_SUPERUSER_NAME": "{{params.adminUser}}",
+        "LD_SUPERUSER_PASSWORD": "{{params.adminPassword}}",
+        "LD_CSRF_TRUSTED_ORIGINS": "{{services.app.url}}"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/etc/linkding/data"
+        }
+      ],
+      "domain": {
+        "port": 9090,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/health",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

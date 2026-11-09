@@ -17,10 +17,11 @@ export function SetupPage() {
 
   const form = useForm({
     t,
-    initialValues: { token: token ?? "", email: "", password: "" },
+    initialValues: { token: token ?? "", name: "", email: "", password: "" },
     validate: (values) =>
       schemaErrors(setupRequest, values, {
         token: t("errors.setupCode"),
+        name: t("errors.name"),
         email: t("errors.email"),
         password:
           values.password.length > passwordMaxLength
@@ -58,14 +59,11 @@ export function SetupPage() {
             />
           </Field>
         )}
-        <Field label={t("fields.email")} error={form.errors.email}>
-          <Input
-            {...form.field("email")}
-            type="email"
-            autoComplete="username"
-            autoFocus={!askForCode}
-            spellCheck={false}
-          />
+        <Field label={t("fields.name")} error={form.errors.name} hint={t("fields.nameHint")}>
+          <Input {...form.field("name")} autoComplete="name" autoFocus={!askForCode} />
+        </Field>
+        <Field label={t("fields.email")} error={form.errors.email} hint={t("fields.emailHint")}>
+          <Input {...form.field("email")} type="email" autoComplete="username" spellCheck={false} />
         </Field>
         <Field label={t("fields.password")} hint={t("setup.passwordHint")} error={form.errors.password}>
           <PasswordInput {...form.field("password")} autoComplete="new-password" />

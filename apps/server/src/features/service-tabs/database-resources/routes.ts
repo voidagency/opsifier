@@ -1,10 +1,8 @@
 import { createRoute } from "@hono/zod-openapi";
-import { actionEntry, deployActionType, resourcesSpec, servicePath } from "@opsifier/contract";
-import { toActionEntry } from "../../../core/actions";
+import { databaseActionTypes, resourcesSpec, servicePath } from "@opsifier/contract";
 import { requirePrincipal } from "../../../core/auth";
 import type { Feature } from "../../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../../core/openapi";
-import { rolloutDatabase } from "../../databases/rollout";
 import { requireDatabase } from "../../databases/service";
 import { saveServiceSpec } from "../../services/repo";
 
@@ -31,10 +29,10 @@ const putRoute = createRoute({
   method: "put",
   path: PATH,
   tags,
-  description: "Saves limits and reservations and applies them at once, which restarts a running database.",
+  description: "Saves limits and reservations. They reach the database at its next deployment.",
   request: { params: servicePath, body: jsonBody(resourcesSpec) },
   responses: {
-    202: jsonResponse(actionEntry, "The Action applying them."),
+    200: jsonResponse(resourcesSpec, "Saved."),
     400: invalid,
     401: denied,
     404: missing,
@@ -55,27 +53,16 @@ export const feature: Feature = {
       const { project, service } = c.req.valid("param");
       const target = { projectName: project, serviceName: service };
       const record = requireDatabase(deps, target);
-      saveServiceSpec(
-        deps.db,
-        project,
-        service,
-        { ...record.spec, resources: c.req.valid("json") },
-        new Date(deps.now()),
-      );
+      const resources = c.req.valid("json");
+      saveServiceSpec(deps.db, project, service, { ...record.spec, resources }, new Date(deps.now()));
       const principal = requirePrincipal(c);
-      return c.json(
-        toActionEntry(
-          deps.actions.enqueue({
-            type: deployActionType,
-            title: `Apply resource limits to ${project}/${service}`,
-            projectName: project,
-            serviceName: service,
-            actorEmail: principal.kind === "session" ? principal.user.email : undefined,
-            run: (ctx) => rolloutDatabase(deps, target, ctx),
-          }),
-        ),
-        202,
-      );
+      deps.actions.record({
+        type: databaseActionTypes.settings,
+        title: `Update the resources of ${project}/${service}`,
+        ...target,
+        actorEmail: principal.kind === "session" ? principal.user.email : undefined,
+      });
+      return c.json(resources, 200);
     });
   },
 };

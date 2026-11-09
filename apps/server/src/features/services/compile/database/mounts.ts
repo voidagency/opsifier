@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { type DatabaseEngine, databaseEngineInfo } from "@opsifier/contract";
 import type { SwarmServiceSpec } from "../../../../core/docker";
 import type { MountFile } from "../mounts";
+import { idLabel } from "../names";
 import { MYSQL_CONFIG_PATH, supportsConfigFile } from "./engines";
 
 type ContainerMount = NonNullable<SwarmServiceSpec["TaskTemplate"]["ContainerSpec"]["Mounts"]>[number];
@@ -13,6 +14,8 @@ export interface DatabaseMountsInput {
   project: string;
   service: string;
   dataDir: string;
+  /** The service's stable identifier, which outlives the name on the volume. */
+  id?: string | null;
 }
 
 export interface CompiledDatabaseMounts {
@@ -24,9 +27,22 @@ export interface CompiledDatabaseMounts {
 export const DATA_NODE_CONSTRAINT = "node.role==manager";
 
 export function compileDatabaseMounts(input: DatabaseMountsInput): CompiledDatabaseMounts {
-  const { engine, volume, configFile, project, service, dataDir } = input;
+  const { engine, volume, configFile, project, service, dataDir, id } = input;
   const mounts: ContainerMount[] = [
-    { Type: "volume", Source: volume, Target: databaseEngineInfo[engine].dataPath },
+    {
+      Type: "volume",
+      Source: volume,
+      Target: databaseEngineInfo[engine].dataPath,
+      // Docker creates this volume itself when the first task starts, and labels it from here.
+      VolumeOptions: {
+        Labels: {
+          "opsifier.project": project,
+          "opsifier.service": service,
+          "opsifier.type": engine,
+          ...idLabel(id),
+        },
+      },
+    },
   ];
   const files: MountFile[] = [];
 

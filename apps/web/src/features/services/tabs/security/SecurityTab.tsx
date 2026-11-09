@@ -1,6 +1,6 @@
 import type { BasicAuthEntry } from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { errorMessage } from "../../../../lib/forms";
@@ -8,8 +8,10 @@ import {
   Button,
   ConfirmDialog,
   EmptyState,
-  FormBanner,
+  ErrorState,
   MonoValue,
+  Pictogram,
+  SectionIntro,
   Skeleton,
   Tooltip,
   toast,
@@ -48,15 +50,17 @@ export function SecurityTab() {
       return <Skeleton className="h-6" />;
     }
     if (isError) {
-      return (
-        <div className="grid justify-items-start gap-3">
-          <FormBanner>{errorMessage(error, t)}</FormBanner>
-          <Button onClick={() => refetch()}>{t("common:actions.retry")}</Button>
-        </div>
-      );
+      return <ErrorState message={errorMessage(error, t)} onRetry={() => refetch()} />;
     }
     if (data.entries.length === 0) {
-      return <EmptyState title={t("empty.title")} description={t("empty.description")} action={add} />;
+      return (
+        <EmptyState
+          illustration="service-stopped"
+          title={t("empty.title")}
+          description={t("empty.description")}
+          action={add}
+        />
+      );
     }
     return (
       <div className="grid gap-4">
@@ -66,7 +70,7 @@ export function SecurityTab() {
               key={entry.id}
               className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 border-b py-2.5 last:border-b-0"
             >
-              <KeyRound aria-hidden="true" className="size-4 text-muted" />
+              <Pictogram name="user" className="text-muted" />
               <span className="grid min-w-0 gap-0.5">
                 <MonoValue
                   value={entry.username}
@@ -109,10 +113,7 @@ export function SecurityTab() {
 
   return (
     <section className="grid gap-x-10 gap-y-4 px-4 py-6 md:px-6 lg:grid-cols-[minmax(0,260px)_minmax(0,620px)] lg:px-8">
-      <div>
-        <h2 className="text-md font-medium">{t("title")}</h2>
-        <p className="mt-1 text-sm text-muted">{t("description")}</p>
-      </div>
+      <SectionIntro pictogram="access" title={t("title")} description={t("description")} />
       {body()}
 
       {(pending?.kind === "create" || pending?.kind === "edit") && (

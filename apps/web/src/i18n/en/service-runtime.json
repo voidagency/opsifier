@@ -7,6 +7,7 @@
     "separator": "Add a separator",
     "refresh": "Reload the logs",
     "fullscreen": "Open in the whole window",
+    "skipped": "Output skipped to catch up with the service",
     "connecting": "Connecting…",
     "waiting": "Waiting for {{name}} to start…",
     "empty": "Nothing printed yet.",
@@ -15,7 +16,20 @@
       "label": "How to read the logs",
       "live": "Live",
       "search": "Search"
-    }
+    },
+    "pause": "Pause",
+    "resume": "Resume",
+    "filter": "Filter the lines",
+    "filterPlaceholder": "Any part of a line",
+    "noMatch": "No line matches this filter.",
+    "live": "Live",
+    "since": "since {{when}}",
+    "latest": "latest {{limit}} lines",
+    "paused_one": "Paused, {{count}} new line waiting",
+    "paused_other": "Paused, {{count}} new lines waiting",
+    "scopeHelp": "The last {{tail}} lines of each task when the stream opened, then everything printed since. The feed keeps the latest {{ring}}, this view the latest {{limit}}. Search reaches further back.",
+    "scopeHelpShort": "This view keeps the latest {{limit}} lines. Search reaches further back.",
+    "timeZone": "Times in {{zone}}"
   },
   "search": {
     "text": "Text",
@@ -51,7 +65,13 @@
     "empty": {
       "title": "No matching lines",
       "description": "Try another word, or a longer period."
-    }
+    },
+    "scope": "{{range}}, at most {{limit}} lines",
+    "limitHint": "The most lines to show.",
+    "rangeHint": "How far back to look.",
+    "levelHint": "Only lines of this severity.",
+    "streamHint": "Normal output, errors, or both.",
+    "textHint": "Words to find in the logs kept by the panel."
   },
   "console": {
     "open": "Console",
@@ -59,12 +79,15 @@
     "task": "Task",
     "choose": "Choose a program to open a session in the selected task.",
     "noTasks": "Nothing is running yet. Start the service to open a console.",
+    "noShell": "This container has no shell to open.",
     "notRunning": "Start the service to open a console",
     "adminOnly": "Only an administrator can open a console",
     "disconnect": "Disconnect",
     "ended": "Session ended.",
     "endedWithCode": "Session ended with code {{code}}.",
     "lost": "The connection was lost.",
-    "refused": "The console couldn't be opened."
+    "refused": "The console couldn't be opened.",
+    "fallback": "Bash isn't in this container, so {{opened}} was opened instead.",
+    "sessionOpen": "Disconnect first."
   }
 }

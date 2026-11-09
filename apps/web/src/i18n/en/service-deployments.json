@@ -8,22 +8,215 @@
     "started": "Started",
     "duration": "Took",
     "by": "By",
-    "log": "Output"
+    "log": "Output",
+    "ran": "Ran"
   },
   "status": {
     "queued": "Queued",
     "running": "Rolling out",
     "succeeded": "Settled",
     "failed": "Failed",
-    "cancelled": "Cancelled"
+    "cancelled": "Cancelled",
+    "uncertain": "Uncertain"
   },
   "byPanel": "Automated",
   "view": "See output",
   "trigger": {
     "title": "Deployment trigger",
-    "description": "Calling this URL with GET or POST starts a deployment, so CI or any other tool can deploy this service. Anyone holding it can. Add ?forceRebuild to skip the build cache.",
-    "copy": "Copy the trigger URL",
-    "rotate": "Replace the URL",
-    "rotated": "New trigger URL ready"
+    "description": "A CI job, or anything else that can make a request, starts a deployment by calling this address with its token in an Authorization header.",
+    "tokenActive": "Token active",
+    "tokenNone": "No token",
+    "tokenIssuedAt": "Issued {{when}}",
+    "address": "Call this address",
+    "copyAddress": "Copy the address",
+    "example": "Example",
+    "copyExample": "Copy the command",
+    "forceRebuildHint": "Add ?forceRebuild to skip the build cache and pull base images again.",
+    "generate": "Generate a token",
+    "generated": "Token issued",
+    "rotate": "Replace the token",
+    "rotateTitle": "Replace this token?",
+    "rotateDescription": "The current token stops working at once, so update your CI with the new one.",
+    "rotateConfirm": "Replace",
+    "revoke": "Revoke the token",
+    "revokeTitle": "Revoke this token?",
+    "revokeDescription": "Whoever holds it can no longer start a deployment. This cannot be undone: you would have to issue a new one.",
+    "revokeConfirm": "Revoke",
+    "revoked": "Token revoked",
+    "tokenTitle": "Copy this token now",
+    "tokenShownOnce": "This is the only time it is shown. Send it as: Authorization: Bearer <token>.",
+    "tokenLabel": "Deployment token",
+    "copyToken": "Copy the token",
+    "done": "Done",
+    "legacyUrl": "This token dates from before tokens moved to a header, so its old address still works too. Replace it so that only the header does.",
+    "copyHint": "Copy it now: it isn't shown again.",
+    "exampleHint": "A request that starts a deployment with this trigger."
+  },
+  "webhook": {
+    "title": "Push webhook",
+    "description": "Your Git host calls this address after each push. A delivery counts only if it is signed with the webhook's own secret, and only pushes to the repository and branch it was issued for deploy, once each.",
+    "active": "Active",
+    "paused": "Paused",
+    "bound": "Deploys {{repository}} at {{ref}}",
+    "legacy": "This webhook dates from before webhooks had a secret of their own. It keeps working at its old address, signed with the old token, until you rotate it.",
+    "pausedHint": "The repository or branch changed, or the account that issued it lost access, so its deliveries are refused. Rotate its secret to resume.",
+    "none": "No webhook",
+    "create": "Create a webhook",
+    "created": "Webhook created",
+    "rotate": "Rotate the secret",
+    "rotateTitle": "Rotate this webhook's secret?",
+    "rotateDescription": "The current secret stops working at once. The webhook then follows the service's current repository and branch.",
+    "rotateConfirm": "Rotate",
+    "rotated": "Webhook secret replaced",
+    "remove": "Remove the webhook",
+    "removeTitle": "Remove this webhook?",
+    "removeDescription": "Deliveries to its address are refused from now on. Remove it at your Git host as well.",
+    "removeConfirm": "Remove",
+    "removed": "Webhook removed",
+    "copyAddress": "Copy the webhook address",
+    "copySecret": "Copy the secret",
+    "issuedTitle": "Copy this secret now",
+    "shownOnce": "This is the only time it is shown. Paste it into your Git host's webhook settings, with the content type set to JSON.",
+    "secretLabel": "Webhook secret",
+    "addressLabel": "Webhook address",
+    "done": "Done"
+  },
+  "origin": {
+    "session": "Signed in",
+    "api_key": "API key",
+    "trigger": "CI trigger",
+    "webhook": "Webhook",
+    "system": "Automated"
+  },
+  "noLog": "This deployment wrote no output.",
+  "history": {
+    "rollback": "Rollback",
+    "unknownImage": "Not recorded",
+    "answering": "Answered on its port",
+    "silent": "Nothing answered on its port",
+    "tasks": "{{running}} of {{desired}} tasks running"
+  },
+  "pending": {
+    "title": "Waiting for a deployment",
+    "description": "What is saved here but not yet running. The next deployment applies it. Values of variables and files are not shown, because they can be secrets.",
+    "unknown": "Nothing can be compared yet: no deployment has recorded what it put in place.",
+    "none": "Nothing is waiting",
+    "refetches": {
+      "image": "A deployment also pulls the image again, so what its tag points to now comes with it.",
+      "code": "A deployment also fetches and builds the code again, so what its branch points to now comes with it.",
+      "stack": "A deployment also fetches the stack's images and code again."
+    }
+  },
+  "changes": {
+    "what": "What",
+    "running": "Running now",
+    "saved": "Saved",
+    "hidden": "Value hidden",
+    "none": "Not there",
+    "kind": {
+      "added": "Added",
+      "removed": "Removed",
+      "changed": "Changed"
+    },
+    "areas": {
+      "image": "Image",
+      "source": "Source",
+      "build": "Build",
+      "environment": "Variable",
+      "command": "Command",
+      "resources": "Resources",
+      "replicas": "Replicas",
+      "volumes": "Volume",
+      "files": "File",
+      "ports": "Port",
+      "compose": "Compose",
+      "advanced": "Advanced"
+    },
+    "names": {
+      "cpu-limit": "CPU limit",
+      "memory-limit": "Memory limit",
+      "process-limit": "Process limit",
+      "cpu-reservation": "CPU reservation",
+      "memory-reservation": "Memory reservation",
+      "repository": "Repository",
+      "ref": "Branch or tag",
+      "path": "Path",
+      "archive": "Archive",
+      "type": "Type",
+      "builder": "Builder",
+      "builder-version": "Builder version",
+      "dockerfile-path": "Dockerfile path",
+      "env-file": "Environment file",
+      "file": "Compose file",
+      "networks": "Networks"
+    }
+  },
+  "versions": {
+    "title": "Versions",
+    "description": "Each successful deployment keeps its exact image and settings, so that the service can go back to it. Going back never pulls, builds or fetches anything.",
+    "state": "State",
+    "version": "Version",
+    "image": "Image",
+    "commit": "Commit",
+    "deployed": "Deployed",
+    "size": "Size",
+    "action": "Action",
+    "active": "Active",
+    "kept": "Kept",
+    "backTo": "Back to #{{number}}",
+    "noCommit": "No commit",
+    "goBack": "Go back",
+    "goBackHint": "Put version {{number}} back in service",
+    "busy": "Other work is in progress on this service",
+    "keptGauge": "{{count}} of {{keep}} versions kept",
+    "keptShort": "{{count}} / {{keep}}",
+    "changeKept": "Change in Settings",
+    "changeKeptHint": "This server keeps the newest {{keep}} versions of each service. An administrator changes it in Settings, General.",
+    "howMany": "Keeps {{keep}}",
+    "requested": "Requested {{ref}}",
+    "built": "Built {{commit}}",
+    "ociRevision": "OCI revision {{revision}}",
+    "refusal": {
+      "active": {
+        "label": "Active",
+        "reason": "This is the version running now."
+      },
+      "not_deployed": {
+        "label": "Not deployed",
+        "reason": "The service is not deployed, so there is nothing to replace."
+      },
+      "renamed": {
+        "label": "Other name",
+        "reason": "Version {{number}} was deployed under another name, and what it ran was tied to it."
+      },
+      "image_missing": {
+        "label": "Image gone",
+        "reason": "The image of version {{number}} is no longer on this server, and going back never pulls one."
+      },
+      "image_altered": {
+        "label": "Tag changed",
+        "reason": "The tag keeping version {{number}} was changed or removed outside the panel, so what it names can't be trusted."
+      },
+      "volumes_differ": {
+        "label": "Other volumes",
+        "reason": "Version {{number}} does not use the same volumes as what runs now, so it would not see the current data."
+      }
+    }
+  },
+  "rollback": {
+    "title": "Go back to version {{number}}?",
+    "description": "This puts the image and settings of that version back in service. It is recorded as a new attempt.",
+    "image": "Image",
+    "imageLocal": "already on this server",
+    "configuration": "Settings",
+    "noChanges": "The same settings as what runs now.",
+    "after": "Version {{number}}",
+    "data": "Data",
+    "volumesStay": "Volumes stay as they are: whatever was written since then is kept.",
+    "savedStays": "Saved settings stay saved, and reach the service at the next deployment.",
+    "notUndone": "Database content and application migrations are not undone. Variables and secrets go back to what they were at that version.",
+    "confirm": "Go back",
+    "done": "Back on version {{number}}",
+    "failed": "Could not go back to version {{number}}"
   }
 }

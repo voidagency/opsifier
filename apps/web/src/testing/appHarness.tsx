@@ -18,7 +18,7 @@ export interface FakeRoute {
 
 export const SIGNED_IN = {
   status: "signed-in",
-  user: { id: "u1", email: "admin@example.com", role: "admin", twoFactorEnabled: false },
+  user: { id: "u1", email: "admin@example.com", role: "admin", twoFactorEnabled: false, hostAdmin: true },
 };
 
 /** Marks a response with a status other than 200. */
@@ -46,7 +46,7 @@ export function installFakeServer(routes: FakeRoute): FakeServer {
       calls.push({ method, path, body });
 
       const defaults: Record<string, unknown> = {
-        "GET /system/info": { version: "0.0.0-test", serverIp: "203.0.113.10" },
+        "GET /system/info": { version: "0.0.0-test", serverIp: "203.0.113.10", simulated: false },
         "GET /actions": { items: [], nextCursor: null },
       };
       const key = `${method} ${path}`;
@@ -56,7 +56,8 @@ export function installFakeServer(routes: FakeRoute): FakeServer {
           status: 404,
         });
       }
-      const value = typeof route === "function" ? (route as Handler)(body, url) : route;
+      // A handler can answer later, which is how a test holds a request open.
+      const value = await (typeof route === "function" ? (route as Handler)(body, url) : route);
       const { __status: status, body: payload } = (value as { __status?: number; body?: unknown }) ?? {};
       if (typeof status === "number") {
         return new Response(JSON.stringify(payload), { status });

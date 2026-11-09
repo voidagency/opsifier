@@ -2,6 +2,7 @@ import {
   type DomainEntry,
   deletedDomain,
   domainEntry,
+  domainsOverview,
   exposedPorts,
   type SaveDomainRequest,
 } from "@opsifier/contract";
@@ -18,6 +19,14 @@ export const exposedPortsQuery = (project: string, service: string) =>
       api.get(`${base(project, service)}/exposed-ports`, { schema: exposedPorts, signal }),
     staleTime: 0,
   });
+
+/** Every domain's certificate state. A panel that cannot tell leaves the rows to say what they are set up to do. */
+export const domainTlsQuery = queryOptions({
+  queryKey: ["domains", "tls"] as const,
+  queryFn: ({ signal }) => api.get("/domains", { schema: domainsOverview, signal }),
+  retry: false,
+  staleTime: 30_000,
+});
 
 export const domainsApi = {
   create: (project: string, service: string, body: SaveDomainRequest) =>

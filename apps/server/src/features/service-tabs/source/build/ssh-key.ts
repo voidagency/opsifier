@@ -1,4 +1,4 @@
-import { generateKeyPairSync, randomBytes } from "node:crypto";
+import { createHash, generateKeyPairSync, randomBytes } from "node:crypto";
 
 export interface SshKeyPair {
   /** The OpenSSH private key format, which `ssh` reads directly. */
@@ -55,4 +55,11 @@ export function generateSshKeyPair(comment: string): SshKeyPair {
     privateKey: `-----BEGIN OPENSSH PRIVATE KEY-----\n${body}\n-----END OPENSSH PRIVATE KEY-----\n`,
     publicKey: `ssh-ed25519 ${publicBlob.toString("base64")} ${comment}`,
   };
+}
+
+/** The fingerprint `ssh-keygen -l` prints, of a line such as `ssh-ed25519 AAAA... comment`. */
+export function sshFingerprint(publicKey: string): string {
+  const base64 = publicKey.trim().split(/\s+/)[1] ?? "";
+  const digest = createHash("sha256").update(Buffer.from(base64, "base64")).digest("base64");
+  return `SHA256:${digest.replace(/=+$/, "")}`;
 }

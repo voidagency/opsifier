@@ -3,21 +3,19 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { errorMessage, schemaErrors, useForm } from "../../../../lib/forms";
-import { Button, Field, FormBanner, Input, Skeleton, toast } from "../../../../ui";
+import { Button, ErrorState, Field, FormBanner, Input, SectionIntro, Skeleton, toast } from "../../../../ui";
 import { databaseResourcesQuery, databasesApi } from "../../../databases/api";
 import { useDatabaseParams } from "../../../databases/DatabaseLayout";
-import { useActionFollower } from "../../ActionFollower";
 import { serviceKey } from "../../api";
 
 const fields = ["memoryReservation", "memoryLimit", "cpuReservation", "cpuLimit"] as const;
 type Values = Record<(typeof fields)[number], string>;
 
-/** Limits and reservations. Saving applies them at once, as the page says. */
+/** Limits and reservations, which reach the database at its next deployment. */
 export function DatabaseResourcesTab() {
   const { t } = useTranslation(["service-database-resources", "common"]);
   const { project, service } = useDatabaseParams();
   const queryClient = useQueryClient();
-  const follow = useActionFollower();
   const { data, error, refetch, isPending } = useQuery(databaseResourcesQuery(project, service));
 
   const toNumbers = (values: Values) => ({
@@ -38,12 +36,8 @@ export function DatabaseResourcesTab() {
         cpuLimit: t("invalid"),
       }),
     onSubmit: async (values) => {
-      const action = await databasesApi.saveResources(project, service, toNumbers(values));
-      follow(action.id, {
-        success: () => toast.success(t("saved")),
-        failure: (ended) => toast.error(t("failed"), ended.error ?? undefined),
-      });
-      toast({ title: t("restarting") });
+      await databasesApi.saveResources(project, service, toNumbers(values));
+      toast.success(t("saved"), t("savedHint"));
       await queryClient.invalidateQueries({ queryKey: serviceKey(project, service) });
     },
   });
@@ -62,35 +56,38 @@ export function DatabaseResourcesTab() {
 
   if (isPending) {
     return (
-      <div className="max-w-[640px] px-4 py-6 md:px-6 lg:px-8">
+      <div className="max-w-[800px] px-4 py-6 md:px-6 lg:px-8">
         <Skeleton className="h-32" />
       </div>
     );
   }
   if (data === undefined) {
     return (
-      <div className="grid max-w-[520px] justify-items-start gap-3 px-4 py-6 md:px-6 lg:px-8">
-        <FormBanner>{errorMessage(error, t)}</FormBanner>
-        <Button onClick={() => refetch()}>{t("common:actions.retry")}</Button>
+      <div className="px-4 py-6 md:px-6 lg:px-8">
+        <ErrorState message={errorMessage(error, t)} onRetry={() => refetch()} />
       </div>
     );
   }
 
   return (
-    <form onSubmit={form.handleSubmit} className="grid max-w-[640px] gap-5 px-4 py-6 md:px-6 lg:px-8">
-      <p className="max-w-[60ch] text-muted">{t("intro")}</p>
+    <form onSubmit={form.handleSubmit} className="grid max-w-[800px] gap-5 px-4 py-6 md:px-6 lg:px-8">
+      <SectionIntro pictogram="cpu" title={t("title")} description={t("intro")} />
       {form.banner && <FormBanner>{form.banner}</FormBanner>}
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t("memoryReservation")} error={form.errors.memoryReservation}>
+        <Field
+          label={t("memoryReservation")}
+          error={form.errors.memoryReservation}
+          hint={t("memoryReservationHint")}
+        >
           <Input {...form.field("memoryReservation")} inputMode="decimal" mono autoComplete="off" />
         </Field>
-        <Field label={t("memoryLimit")} error={form.errors.memoryLimit}>
+        <Field label={t("memoryLimit")} error={form.errors.memoryLimit} hint={t("memoryLimitHint")}>
           <Input {...form.field("memoryLimit")} inputMode="decimal" mono autoComplete="off" />
         </Field>
-        <Field label={t("cpuReservation")} error={form.errors.cpuReservation}>
+        <Field label={t("cpuReservation")} error={form.errors.cpuReservation} hint={t("cpuReservationHint")}>
           <Input {...form.field("cpuReservation")} inputMode="decimal" mono autoComplete="off" />
         </Field>
-        <Field label={t("cpuLimit")} error={form.errors.cpuLimit}>
+        <Field label={t("cpuLimit")} error={form.errors.cpuLimit} hint={t("cpuLimitHint")}>
           <Input {...form.field("cpuLimit")} inputMode="decimal" mono autoComplete="off" />
         </Field>
       </div>

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { LogOut, Settings } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useCurrentUser } from "../../features/auth/session";
 import { type Language, languages, setLanguage } from "../../i18n";
@@ -19,6 +19,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Pictogram,
   useCopy,
 } from "../../ui";
 import { languageNames } from "./preferences";
@@ -49,7 +50,7 @@ export function UserMenu() {
       >
         {initial}
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-[260px]">
+      <DropdownMenuContent className="w-[330px]">
         <div className="px-2 py-1.5">
           <p className="truncate font-mono text-xs" title={user.email}>
             {user.email}
@@ -58,11 +59,11 @@ export function UserMenu() {
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => navigate({ to: "/settings/user/authentication" })}>
-          <Settings aria-hidden="true" className="size-4 text-muted" />
+          <Pictogram name="access" size={16} className="text-muted" />
           {t("settingsNav.authentication")}
         </DropdownMenuItem>
         {ip && (
-          <DropdownMenuItem onSelect={copy} className="xl:hidden">
+          <DropdownMenuItem onSelect={copy} className="min-[112.5rem]:hidden">
             <span className="flex-1">{t("server.copyIp")}</span>
             <span className="font-mono text-xs text-muted">{ip}</span>
           </DropdownMenuItem>

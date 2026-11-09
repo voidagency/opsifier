@@ -11,6 +11,34 @@
   "remove": "Remove",
   "removed": "GitHub token removed",
   "errors": {
-    "tokenRequired": "Paste a GitHub token."
+    "tokenRequired": "Paste a GitHub token.",
+    "clientIdRequired": "Paste the client ID of the OAuth app.",
+    "clientSecretRequired": "Paste the client secret of the OAuth app."
+  },
+  "connectedOauth": "Connected as {{login}}, through the OAuth app",
+  "oauth": {
+    "title": "OAuth app",
+    "description": "Instead of a token, register an OAuth app on GitHub and let Opsifier ask for its own access. Register one with the callback below, then save its client ID and secret here.",
+    "callback": "Callback URL",
+    "callbackHint": "GitHub only sends people back to the address the app was registered with, so this panel has to be reachable there.",
+    "copyCallback": "Copy the callback URL",
+    "clientId": "Client ID",
+    "clientSecret": "Client secret",
+    "register": "Register one on GitHub",
+    "saved": "OAuth app saved",
+    "app": "OAuth app",
+    "connect": "Connect with GitHub",
+    "removeApp": "Remove the app",
+    "removed": "OAuth app removed",
+    "connected": "GitHub connected",
+    "failed": "GitHub could not be connected",
+    "errors": {
+      "invalid_state": "That sign-in has expired or was already used. Try again.",
+      "denied": "GitHub wasn't given access.",
+      "not_configured": "The OAuth app was removed in the meantime.",
+      "exchange_failed": "GitHub did not issue a token. Check the app's client secret and callback URL."
+    },
+    "saveApp": "Save the app",
+    "clientSecretHint": "Stays on this server once saved, and isn't shown again."
   }
 }

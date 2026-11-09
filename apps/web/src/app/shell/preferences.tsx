@@ -72,7 +72,7 @@ export function LanguageSwitch() {
         <SegmentButton
           key={language}
           pressed={i18n.language === language}
-          label={languageNames[language]}
+          label={`${languageNames[language]}, ${language.toUpperCase()}`}
           onClick={() => setLanguage(language)}
           className="w-8 font-mono uppercase"
         >

@@ -7,7 +7,9 @@
     "newPassword": "New password",
     "newPasswordHint": "At least 12 characters. To keep your password as it is, enter it again here.",
     "submit": "Save changes",
-    "saved": "Sign-in details updated"
+    "saved": "Sign-in details updated",
+    "currentPasswordHint": "Needed to change any of this.",
+    "emailHint": "The address you sign in with."
   },
   "twoFactor": {
     "title": "Two-factor sign-in",
@@ -47,7 +49,11 @@
       "install": "Open an authenticator app on your phone, or install one.",
       "scan": "Scan the QR code. If you can't, type the setup key instead.",
       "enter": "Enter the 6-digit code the app shows."
-    }
+    },
+    "recoverySaveFirst": "Tick the box once your codes are saved.",
+    "codeLabelHint": "The 6-digit code your app shows right now.",
+    "recoveryCodeHint": "One of the codes you saved when you turned this on.",
+    "currentPasswordHint": "Confirms that it's you."
   },
   "errors": {
     "email": "Enter a valid email address.",

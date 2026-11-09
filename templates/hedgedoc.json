@@ -1,0 +1,84 @@
+{
+  "id": "hedgedoc",
+  "version": "1.0.0",
+  "name": "HedgeDoc",
+  "summary": {
+    "en": "Write Markdown together, live.",
+    "fr": "Rédigez en Markdown à plusieurs, en direct."
+  },
+  "description": {
+    "en": "Collaborative notes with a live preview, diagrams and sharing by link. Accounts are created by email in the app.",
+    "fr": "Des notes collaboratives avec aperçu en direct, schémas et partage par lien. Les comptes se créent par e-mail dans l'application."
+  },
+  "category": "documents",
+  "tags": ["markdown", "collaboration", "notes"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://hedgedoc.org"
+    },
+    {
+      "kind": "docs",
+      "url": "https://docs.hedgedoc.org/setup/docker/"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/hedgedoc/hedgedoc"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [
+    {
+      "key": "sessionSecret",
+      "length": 64,
+      "alphabet": "alphanumeric"
+    }
+  ],
+  "services": [
+    {
+      "key": "db",
+      "name": "hedgedoc-db",
+      "kind": "database",
+      "engine": "postgres",
+      "image": "postgres:17.11-alpine",
+      "databaseName": "hedgedoc",
+      "user": "hedgedoc"
+    },
+    {
+      "key": "app",
+      "name": "hedgedoc",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "quay.io/hedgedoc/hedgedoc:1.12.0"
+      },
+      "env": {
+        "CMD_DB_URL": "postgres://{{services.db.user}}:{{services.db.passwordEncoded}}@{{services.db.host}}:{{services.db.port}}/{{services.db.database}}",
+        "CMD_DOMAIN": "{{services.app.domain}}",
+        "CMD_PROTOCOL_USESSL": "true",
+        "CMD_URL_ADDPORT": "false",
+        "CMD_SESSION_SECRET": "{{secrets.sessionSecret}}",
+        "CMD_ALLOW_EMAIL_REGISTER": "true"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "uploads",
+          "path": "/hedgedoc/public/uploads"
+        }
+      ],
+      "domain": {
+        "port": 3000,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/_health",
+        "expect": [200]
+      },
+      "dependsOn": ["db"]
+    }
+  ]
+}

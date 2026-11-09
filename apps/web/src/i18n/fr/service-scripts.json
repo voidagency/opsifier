@@ -1,15 +1,89 @@
 {
   "title": "Scripts",
-  "description": "Les commandes que vous lancez souvent, prêtes à démarrer depuis la console de ce service.",
+  "description": "Les commandes enregistrées sur ce service. Lancez-les à la main, selon un planning, par l'API ou après chaque déploiement.",
   "add": "Ajouter un script",
   "edit": "Modifier ce script",
   "delete": "Supprimer ce script",
+  "run": {
+    "title": "Exécution",
+    "titleOf": "Exécution de {{name}}",
+    "origin": "Lancé par",
+    "actor": "Compte",
+    "exitCode": "Code de sortie",
+    "started": "Démarrage",
+    "duration": "Durée",
+    "limit": "Limite",
+    "limitValue": "{{seconds}} s",
+    "due": "Échéance",
+    "task": "Tâche",
+    "output": "Sortie",
+    "noOutput": "Rien n'a été capturé.",
+    "truncated": "Il a affiché plus que ce qui est conservé : voici la fin, jusqu'à {{count}} caractères.",
+    "incomplete": "Cette sortie n'est pas complète : la note ci-dessus explique pourquoi."
+  },
+  "runScript": "Lancer {{name}} maintenant",
+  "cancelRun": "Arrêter cette exécution",
+  "viewRun": "Voir cette exécution",
   "emptyScript": "Vide",
   "saved": "Script enregistré",
   "deleted": "Script supprimé",
+  "started": "{{name}} a démarré",
+  "row": {
+    "limit": "Limite {{seconds}} s",
+    "afterDeploy": "Après chaque déploiement",
+    "next": "Prochaine {{when}}"
+  },
   "empty": {
     "title": "Aucun script pour l'instant",
-    "description": "Les scripts enregistrés apparaissent à côté de Sh et Bash dans la console."
+    "description": "Les scripts enregistrés apparaissent à côté de Sh et Bash dans la console, et peuvent se lancer tout seuls."
+  },
+  "runs": {
+    "title": "Exécutions",
+    "description": "Chaque exécution des scripts de ce service, avec ce qui l'a lancée et la façon dont elle s'est terminée.",
+    "empty": "Aucun script n'a encore été exécuté."
+  },
+  "columns": {
+    "outcome": "Résultat",
+    "script": "Script",
+    "when": "Quand",
+    "duration": "Durée",
+    "origin": "Lancé par",
+    "exit": "Sortie",
+    "actions": "Actions"
+  },
+  "status": {
+    "queued": "En attente",
+    "running": "En cours",
+    "succeeded": "Réussi",
+    "failed": "Échoué",
+    "timed_out": "Temps dépassé",
+    "cancelled": "Annulé",
+    "skipped": "Ignoré",
+    "unknown": "Inconnu"
+  },
+  "origin": {
+    "manual": "À la main",
+    "api": "API",
+    "schedule": "Planning",
+    "hook": "Déploiement",
+    "console": "Console"
+  },
+  "runNote": {
+    "not_started": "Le panneau a redémarré avant que cette exécution ne commence.",
+    "no_running_task": "Le service n'avait aucune tâche en cours pour exécuter ce script.",
+    "script_deleted": "Ce script a été supprimé avant le début de l'exécution.",
+    "start_failed": "Docker n'a pas pu lancer ce script : {{message}}",
+    "connection_lost": "Le panneau a perdu sa connexion à ce processus. La sortie après ce moment n'a pas été capturée.",
+    "time_limit": "Il tournait encore à sa limite de {{seconds}} secondes, le panneau l'a donc arrêté.",
+    "end_unconfirmed": "Le panneau a demandé à ce processus de s'arrêter, sans pouvoir confirmer qu'il l'a fait.",
+    "panel_restarted": "Le panneau a redémarré au lancement de cette exécution. Ce qui avait démarré a été arrêté, et on ne sait pas ce qu'il a fait.",
+    "panel_restarted_running": "Le panneau a redémarré pendant cette exécution. Le processus tourne toujours : sa sortie depuis le redémarrage n'est pas capturée.",
+    "panel_restarted_finished": "Le panneau a redémarré pendant cette exécution. Elle s'est terminée hors de sa vue, avec le code de sortie indiqué par Docker. La sortie après le redémarrage n'a pas été capturée.",
+    "panel_restarted_unknown": "Le panneau a redémarré pendant cette exécution et Docker ne connaît plus ce processus. On ne sait pas comment elle s'est terminée, et la sortie après le redémarrage n'a pas été capturée.",
+    "console_output": "Lancé depuis la console : sa sortie est allée au terminal et n'a pas été conservée.",
+    "console_closed": "Lancé depuis la console : la session a été fermée pendant l'exécution.",
+    "skipped_overlap": "Non lancé : l'exécution précédente de ce script était encore en cours.",
+    "skipped_refused": "Non lancé : {{message}}"
   },
   "dialog": {
     "createTitle": "Ajouter un script",
@@ -18,15 +92,39 @@
     "save": "Enregistrer",
     "name": "Nom",
     "script": "Script",
-    "scriptHint": "Exécuté par /bin/sh dans la tâche choisie dans la console."
+    "scriptHint": "Exécuté par /bin/sh dans une tâche en cours de ce service.",
+    "maxDuration": "Durée maximale, en secondes",
+    "maxDurationHint": "Le processus est arrêté quand ce délai est écoulé. Au plus 86400, soit un jour.",
+    "scheduled": "Lancer selon un planning",
+    "scheduledHint": "S'il tourne encore à l'échéance suivante, celle-ci est ignorée et signalée dans les exécutions ci-dessous.",
+    "schedule": "Planning",
+    "cron": "Expression cron",
+    "cronHint": "Minute, heure, jour du mois, mois, jour de la semaine.",
+    "timeZone": "Fuseau horaire",
+    "timeZoneHint": "Le planning suit ce fuseau, heure d'été comprise.",
+    "runAfterDeploy": "Lancer après chaque déploiement",
+    "runAfterDeployHint": "Démarre une fois un déploiement réussi. S'il échoue, le déploiement reste valable.",
+    "presets": {
+      "everyMinute": "Toutes les minutes",
+      "everyHour": "Toutes les heures",
+      "every6Hours": "Toutes les 6 heures",
+      "daily2": "Tous les jours à 02:00",
+      "daily0": "Tous les jours à minuit",
+      "custom": "Personnalisé"
+    },
+    "nameHint": "Le libellé du bouton dans la console.",
+    "scheduleHint": "Une planification courante, ou une ligne cron ci-dessous."
   },
   "deleteDialog": {
     "title": "Supprimer ce script ?",
-    "description": "{{name}} ne sera plus proposé dans la console.",
+    "description": "{{name}} ne sera plus proposé dans la console et son planning s'arrête. Ses exécutions passées restent listées.",
     "confirm": "Supprimer le script"
   },
   "errors": {
     "name": "Donnez-lui un nom avec des lettres, chiffres, espaces, points, tirets ou underscores.",
-    "script": "Ce script est trop long."
+    "script": "Ce script est trop long.",
+    "maxDurationSeconds": "Saisissez un nombre entier de secondes, de 1 à 86400.",
+    "cron": "Saisissez une expression cron valide, à cinq champs.",
+    "timeZone": "Saisissez un nom de fuseau horaire comme Europe/Paris ou UTC."
   }
 }

@@ -1,0 +1,27 @@
+/*
+ * What a server is for is a kind of thing, not a state, so these colours are its own and none of
+ * them means "healthy" or "failing". Each reaches 3:1 against bg and raised, and against the navy
+ * top bar, in both themes (checked in server-purpose.test.tsx). The pictogram and the label say the
+ * same thing, so the colour never carries it alone.
+ */
+:root {
+  --purpose-development: #6a3fd4;
+  --purpose-staging: #955700;
+  --purpose-production: #1d5fc4;
+  --purpose-unset: var(--muted);
+}
+
+:root[data-theme="dark"] {
+  --purpose-development: #b79dff;
+  --purpose-staging: #ffc773;
+  --purpose-production: #7fb5ff;
+  --purpose-unset: var(--muted);
+}
+
+/* The top bar is navy in both themes, so it always uses the dark values. */
+.brand-bar {
+  --purpose-development: #b79dff;
+  --purpose-staging: #ffc773;
+  --purpose-production: #7fb5ff;
+  --purpose-unset: #b4bed2;
+}

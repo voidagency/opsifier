@@ -1,0 +1,30 @@
+{
+  "title": "Known hosts",
+  "description": "The SSH servers Git may connect to. Before any connection, the server's key must match one listed here: an unlisted or changed key is refused.",
+  "emptyTitle": "No hosts yet",
+  "emptyDescription": "Add the Git servers your services clone from over SSH. HTTPS needs nothing here.",
+  "add": "Add a host",
+  "addTitle": "Add a known host",
+  "host": "Host",
+  "hostHint": "As it appears in the repository address, such as git.example.com.",
+  "port": "Port",
+  "scan": "Read the server's keys",
+  "found": "Compare these with what your Git host publishes before trusting them.",
+  "trust": "Trust this key",
+  "trusted": "Key trusted",
+  "publicKey": "Public key",
+  "publicKeyHint": "Or paste the key your Git host publishes, or a line from a known_hosts file.",
+  "fingerprint": "Fingerprint",
+  "addedByImported": "Learned before the registry existed",
+  "remove": "Remove",
+  "removeTitle": "Stop trusting this key?",
+  "removeDescription": "Connections to this server fail unless another of its keys is listed.",
+  "removed": "Key removed",
+  "errors": {
+    "hostRequired": "Enter a host name.",
+    "hostInvalid": "Enter a host name such as git.example.com.",
+    "portInvalid": "Between 1 and 65535.",
+    "keyRequired": "Paste a public key such as ssh-ed25519 AAAA..."
+  },
+  "portHint": "The server's SSH port, usually 22."
+}

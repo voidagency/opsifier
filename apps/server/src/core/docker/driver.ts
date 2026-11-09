@@ -12,6 +12,10 @@ export interface DockerDriver {
 
   swarmInfo(): Promise<SwarmInfo>;
   swarmInit(options: SwarmInitOptions): Promise<{ nodeId: string }>;
+  /** Leaves the swarm this node is in. Refused while it manages services, unless `force` is set. */
+  swarmLeave(options?: { force?: boolean }): Promise<void>;
+  /** What this swarm holds besides services and networks. */
+  swarmContents(): Promise<SwarmContents>;
 
   listNetworks(): Promise<NetworkInfo[]>;
   /** Null when no network has this name. */
@@ -32,9 +36,24 @@ export interface DockerDriver {
 
   /** Yields lines until the logs end, the service goes away or `signal` aborts. */
   serviceLogs(name: string, options?: LogOptions): AsyncIterable<LogLine>;
+  /** The same for one container, which is what a Compose stack's children are. */
+  containerLogs(id: string, options?: LogOptions): AsyncIterable<LogLine>;
 
   /** Attaches to a new process in a running task of the service. */
   execAttach(options: ExecOptions): Promise<ExecSession>;
+  /**
+   * Ends the process started with this marker and everything it started, for when the session object
+   * that could have done it died with an earlier process of the panel. Nothing else in the container is
+   * touched. A task or container that is no longer there means there is nothing left to end, which is
+   * not an error; only a daemon that could not be asked rejects.
+   */
+  terminateExec(options: ExecTarget & { marker: string }): Promise<void>;
+  /**
+   * What Docker remembers about a process started by `execAttach`, however long ago and by whichever
+   * run of the panel. Null once it has forgotten, as it does a few minutes after the process ended,
+   * or as soon as its container is gone. Only a daemon that could not be asked rejects.
+   */
+  inspectExec(id: string): Promise<ExecState | null>;
 
   listVolumes(): Promise<VolumeInfo[]>;
   /** Null when no volume has this name. */
@@ -45,11 +64,46 @@ export interface DockerDriver {
 
   /** Pulls an image and reports progress. Rejects if `signal` aborts. */
   pullImage(ref: string, options?: PullOptions): Promise<void>;
+  /** Null when this image is not on the daemon. */
+  inspectImage(ref: string): Promise<ImageDetail | null>;
+  /** Gives an image already on this daemon one more name. */
+  tagImage(ref: string, target: string): Promise<void>;
   /** The TCP ports an image's configuration declares. Empty when the image isn't on this daemon. */
   imageExposedPorts(ref: string): Promise<number[]>;
 
   /** One sample for each running task of the service. */
   serviceStats(name: string, options?: { signal?: AbortSignal }): Promise<TaskStats[]>;
+
+  /** Containers Docker Compose started, of every stack or of one. Cheap enough to poll. */
+  listComposeContainers(project?: string): Promise<ComposeContainerInfo[]>;
+  /** One sample of a container, or null once it has gone. */
+  containerStats(id: string, options?: { signal?: AbortSignal }): Promise<TaskStats | null>;
+
+  /** What the engine says about itself. */
+  engineInfo(): Promise<EngineInfo>;
+  /** Yields daemon events until `signal` aborts or the connection ends. */
+  events(options?: EngineEventOptions): AsyncIterable<EngineEvent>;
+  /** What Docker holds on disk, by kind. Slow: the daemon adds up every volume to answer. */
+  diskUsage(options?: { signal?: AbortSignal }): Promise<EngineDiskUsage>;
+  /** Only the build cache, which the daemon can answer without measuring anything else. */
+  listBuildCache(options?: { signal?: AbortSignal }): Promise<BuildCacheRecord[]>;
+  listImages(): Promise<ImageInfo[]>;
+  /** Measuring each container's size is what makes this slow. Leave it out when nobody needs it. */
+  listContainers(options?: { size?: boolean }): Promise<ContainerInfo[]>;
+  /** Removing an image that does not exist is not an error. One still in use is. */
+  removeImage(id: string): Promise<void>;
+  /** Removing a container that does not exist is not an error. */
+  removeContainer(id: string): Promise<void>;
+  /** Removes these build cache records and returns how many bytes that freed. */
+  removeBuildCache(ids: readonly string[]): Promise<number>;
+  /** Runs a one-off helper container to the end and returns what it printed. */
+  runHelper(options: HelperOptions): Promise<HelperResult>;
+  /** Starts a helper container with a terminal attached. Ending the session removes the container. */
+  openHelper(
+    options: HelperOptions & { consoleSize?: { columns: number; rows: number } },
+  ): Promise<ExecSession>;
+  /** Removes every helper container there is, running or not, and says how many it removed. */
+  removeLeftoverHelpers(): Promise<number>;
 
   /** Releases timers and connections held by the driver. */
   dispose(): Promise<void>;
@@ -65,8 +119,15 @@ export interface SwarmInfo {
   isManager: boolean;
 }
 
+export interface SwarmContents {
+  nodes: number;
+  secrets: number;
+  configs: number;
+}
+
 export interface SwarmInitOptions {
-  advertiseAddr: string;
+  /** Without it Docker picks the address itself, and refuses if the host leaves that ambiguous. */
+  advertiseAddr?: string;
   listenAddr?: string;
 }
 
@@ -77,6 +138,8 @@ export interface NetworkInfo {
   scope: string;
   attachable: boolean;
   labels: Record<string, string>;
+  /** The address ranges Docker allocated for it, as CIDRs. */
+  subnets?: string[];
 }
 
 export interface CreateNetworkOptions {
@@ -107,11 +170,12 @@ export interface SwarmServiceSpec {
         Source?: string;
         Target: string;
         ReadOnly?: boolean;
+        VolumeOptions?: { Labels?: Record<string, string> };
       }>;
       [key: string]: unknown;
     };
     Resources?: {
-      Limits?: { NanoCPUs?: number; MemoryBytes?: number };
+      Limits?: { NanoCPUs?: number; MemoryBytes?: number; Pids?: number };
       Reservations?: { NanoCPUs?: number; MemoryBytes?: number };
     };
     RestartPolicy?: {
@@ -191,6 +255,8 @@ export interface TaskInfo {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+  /** The task's CPU limit in cores. Left out when it has none. */
+  cpuLimitCores?: number;
 }
 
 export interface LogOptions {
@@ -210,12 +276,20 @@ export interface LogLine {
   timestamp?: string;
 }
 
-export interface ExecOptions {
+/** The place an exec runs. */
+export interface ExecTarget {
   service: string;
   /** The task to run in. Without it, any running task of the service. */
   taskId?: string;
+  /** Runs in this container instead of a task, for a Compose stack whose children have no tasks. */
+  containerId?: string;
+}
+
+export interface ExecOptions extends ExecTarget {
   /** Run as an argument vector: nothing here ever passes through a shell on the panel's side. */
   command: string[];
+  /** Set for a process that a later run of the panel must be able to end with `terminateExec`. */
+  marker?: string;
   tty?: boolean;
   env?: string[];
   user?: string;
@@ -224,7 +298,16 @@ export interface ExecOptions {
   consoleSize?: { columns: number; rows: number };
 }
 
+/** A process Docker started with `execAttach`. */
+export interface ExecState {
+  running: boolean;
+  /** Null while it is running, and when Docker never learned how it ended. */
+  exitCode: number | null;
+}
+
 export interface ExecSession {
+  /** Docker's own id for this process, for asking about it later. Only test doubles leave it out. */
+  id?: string;
   stream: Duplex;
   resize(columns: number, rows: number): Promise<void>;
   /** The exit code once the process ends, or null when Docker does not report one. */
@@ -252,6 +335,16 @@ export interface CreateVolumeOptions {
   labels?: Record<string, string>;
 }
 
+export interface ImageDetail {
+  /** The user the image runs as, as its USER line has it. Empty means root. */
+  user: string;
+  id: string;
+  /** Registry digests, such as `repo@sha256:...`. Empty for an image that never saw a registry. */
+  digests: string[];
+  sizeBytes: number;
+  labels: Record<string, string>;
+}
+
 export interface PullProgress {
   status: string;
   id?: string;
@@ -265,16 +358,135 @@ export interface PullOptions {
   onProgress?: (progress: PullProgress) => void;
 }
 
+/** Docker leaves figures out while a container starts or dies. Those are null, never zero. */
 export interface TaskStats {
   taskId: string;
   slot: number | null;
   containerId: string;
-  cpuPercent: number;
-  memoryUsedBytes: number;
-  memoryLimitBytes: number;
-  networkRxBytes: number;
-  networkTxBytes: number;
+  cpuPercent: number | null;
+  /** What `cpuPercent` can reach for this task: 100 per core it may use. */
+  cpuCapacityPercent: number | null;
+  memoryUsedBytes: number | null;
+  memoryLimitBytes: number | null;
+  networkRxBytes: number | null;
+  networkTxBytes: number | null;
   readAt: string;
+}
+
+export interface EngineInfo {
+  version: string;
+  apiVersion: string;
+  operatingSystem: string;
+  kernelVersion: string;
+  cores: number;
+  memoryBytes: number;
+  rootDir: string;
+  swarm: SwarmState;
+  /** False when the daemon's answer has no Swarm section at all, as on an engine built without it. */
+  swarmAvailable: boolean;
+  /** Whether this node can issue Swarm commands, which only a manager can. */
+  swarmManager: boolean;
+  /** The network and volume drivers the daemon says it has. Empty when it doesn't say. */
+  networkDrivers: string[];
+  volumeDrivers: string[];
+}
+
+export interface EngineEventOptions {
+  /** Seconds since the epoch: start from this point in the daemon's history. */
+  since?: number;
+  signal?: AbortSignal;
+}
+
+export interface EngineEvent {
+  type: string;
+  action: string;
+  actorId: string;
+  attributes: Record<string, string>;
+  scope: string | null;
+  /** Milliseconds since the epoch. */
+  at: number;
+}
+
+export interface BuildCacheRecord {
+  id: string;
+  sizeBytes: number;
+  inUse: boolean;
+  shared: boolean;
+  description: string;
+  lastUsedAt: string | null;
+}
+
+export interface EngineDiskUsage {
+  imagesBytes: number;
+  containersBytes: number;
+  volumesBytes: number;
+  buildCacheBytes: number;
+  buildCache: BuildCacheRecord[];
+}
+
+export interface ImageInfo {
+  id: string;
+  /** Repository tags. Empty for a dangling image. */
+  tags: string[];
+  sizeBytes: number;
+  labels: Record<string, string>;
+  createdAt: string | null;
+}
+
+export interface ContainerInfo {
+  id: string;
+  /** Without the leading slash. */
+  name: string;
+  image: string;
+  imageId: string;
+  state: string;
+  labels: Record<string, string>;
+  sizeBytes: number | null;
+  /** The host ports it holds. Only a running container has any. */
+  ports?: Array<{ protocol: "tcp" | "udp"; port: number }>;
+}
+
+/** A container Docker Compose started: what a stack's state is read from. */
+export interface ComposeContainerInfo {
+  id: string;
+  /** Without the leading slash. */
+  name: string;
+  image: string;
+  /** The Compose project, which is the service's qualified name. */
+  project: string;
+  /** The name of the child in the Compose file. */
+  child: string;
+  /** Which replica of the child this is. */
+  number: number;
+  state: string;
+  /** Docker's own sentence, such as `Up 3 minutes (healthy)` or `Exited (137) 2 minutes ago`. */
+  status: string;
+  /** Parsed from `status`. Null while the container has not exited. */
+  exitCode: number | null;
+  health: "healthy" | "unhealthy" | "starting" | null;
+  /** Published ports, as `8080:80/tcp`. */
+  ports: string[];
+  /** Left out by simulations that have none to report. */
+  labels?: Record<string, string>;
+  /** The networks it is attached to, by name. Left out by simulations that have none to report. */
+  networks?: string[];
+}
+
+export interface HelperOptions {
+  image: string;
+  /** Run as an argument vector. Nothing here passes through a shell on the panel's side. */
+  command: string[];
+  binds?: string[];
+  privileged?: boolean;
+  hostPid?: boolean;
+  hostNetwork?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface HelperResult {
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
 }
 
 /** Everything a driver reports that the caller may want to act on. */
@@ -292,6 +504,13 @@ export class DockerDriverError extends Error {
 }
 
 export class InvalidDockerInputError extends DockerDriverError {}
+
+/** A command that was refused because this daemon can't run it. Nothing was sent to Docker. */
+export class DockerUnsupportedError extends DockerDriverError {
+  constructor(message: string) {
+    super(message, 503);
+  }
+}
 
 // Docker requires service names to be valid DNS labels.
 const SERVICE_NAME = /^[a-zA-Z0-9](?:[a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])?$/;

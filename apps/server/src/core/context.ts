@@ -4,7 +4,7 @@ import type { Logger } from "pino";
 import type { ActionEngine } from "./actions";
 import type { AuthLimits, Principal, RateLimiter } from "./auth";
 import type { Config } from "./config";
-import type { Db } from "./db";
+import type { Db, StorageHealth } from "./db";
 import type { DockerDriver, RolloutTiming } from "./docker";
 import type { ProxyFiles } from "./proxy";
 import type { RealtimeHub } from "./realtime";
@@ -16,6 +16,8 @@ export interface AppDeps {
   config: Config;
   logger: Logger;
   db: Db;
+  /** Whether the panel can still write its state. Changes stop when it can't. */
+  storage: StorageHealth;
   secrets: Secrets;
   docker: DockerDriver;
   proxy: ProxyFiles;
@@ -46,9 +48,13 @@ export interface Feature {
   publicPaths?: readonly string[];
   /** For paths that carry a credential of their own, such as a deployment trigger. */
   isPublicPath?(path: string): boolean;
+  /** For routes whose Authorization header is a credential of their own, not an API key. */
+  readsOwnBearer?(path: string): boolean;
   /** For routes that read a body larger than the API's limit and enforce their own. */
   readsOwnBody?(path: string): boolean;
   /** Runs once during startup, before the server accepts requests. */
   boot?(deps: AppDeps): void | Promise<void>;
+  /** Stops what `boot` started. Runs before Docker and the database are released. */
+  shutdown?(deps: AppDeps): void | Promise<void>;
   register(app: ApiApp, deps: AppDeps): void;
 }

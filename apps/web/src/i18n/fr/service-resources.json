@@ -16,5 +16,11 @@
     "memoryLimit": "Indiquez 0 pour aucune limite, ou au moins 6 Mo.",
     "cpuReservation": "Indiquez 0, ou au moins 0,01 cœur, sans dépasser la limite.",
     "cpuLimit": "Indiquez 0 pour aucune limite, ou au moins 0,01 cœur."
+  },
+  "fieldHints": {
+    "memoryReservation": "Mémoire réservée à ce service.",
+    "memoryLimit": "La mémoire maximale qu'il peut utiliser.",
+    "cpuReservation": "Processeur réservé.",
+    "cpuLimit": "Le processeur maximal qu'il peut utiliser."
   }
 }

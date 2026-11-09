@@ -15,8 +15,15 @@ export const serviceStatus = z.enum(["undeployed", "stopped", "starting", "runni
 export type ServiceStatus = z.infer<typeof serviceStatus>;
 
 /** The result of one deployment, as drawn in the wake strip. */
-export const deployOutcome = z.enum(["succeeded", "failed", "running", "cancelled"]);
+export const deployOutcome = z.enum(["succeeded", "failed", "running", "cancelled", "uncertain"]);
 export type DeployOutcome = z.infer<typeof deployOutcome>;
+
+/**
+ * Why nobody can say what a service is really running: a deployment `interrupted` before it finished,
+ * or one that failed and could not put the previous version back (`restore_failed`).
+ */
+export const runtimeUncertainty = z.enum(["interrupted", "restore_failed"]);
+export type RuntimeUncertaintyReason = z.infer<typeof runtimeUncertainty>;
 
 /** The work in progress on a service, so the UI can follow it and never outlive it. */
 export const activeAction = z.object({ id: z.string(), type: z.string() });
@@ -30,6 +37,8 @@ export const serviceSummary = z.object({
   status: serviceStatus,
   replicas: z.object({ running: z.number().int().min(0), desired: z.number().int().min(0) }),
   activeAction: activeAction.nullable(),
+  /** Set until a deployment succeeds. Data operations and giving up a port or name are refused meanwhile. */
+  runtimeUncertain: runtimeUncertainty.nullable(),
   /** The last 24 deployments, oldest first. */
   wake: z.array(deployOutcome).max(24),
   lastDeployedAt: z.iso.datetime().nullable(),
@@ -49,8 +58,14 @@ export const serviceDetail = serviceSummary.extend({
   /** Null until a source is saved: the service is still being set up. */
   source: serviceSource.nullable(),
   notes: z.string(),
+  /** Hidden is not empty: the notes are still saved and `notes` still holds them, folded away. */
+  notesHidden: z.boolean().default(false),
   stopped: z.boolean(),
   primaryUrl: z.string().nullable(),
+  /** Saved settings the running version does not have yet. They arrive with the next deploy. */
+  pendingChanges: z.boolean(),
+  /** Whether the service answered on its port at the last deployment. Null when that could not be told. */
+  answering: z.boolean().nullable(),
 });
 export type ServiceDetail = z.infer<typeof serviceDetail>;
 

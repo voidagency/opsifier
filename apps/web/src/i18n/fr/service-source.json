@@ -17,7 +17,7 @@
   "registryHint": "Uniquement pour un registre privé.",
   "username": "Identifiant du registre",
   "password": "Mot de passe du registre",
-  "passwordStored": "Un mot de passe est conservé. Laissez vide pour le garder, ou videz l'identifiant pour retirer les deux.",
+  "passwordStored": "Un mot de passe est conservé pour le dépôt de cette image. Laissez vide pour le garder, ou videz l'identifiant pour retirer les deux. Passer à un autre dépôt demande de le saisir à nouveau.",
   "passwordPlaceholder": "Conservé",
   "branch": "Branche",
   "branchHint": "Une branche, un tag ou un hash de commit complet.",
@@ -74,7 +74,7 @@
     "file": "Chemin du Dockerfile",
     "fileHint": "Relatif au chemin de build, qui est aussi le contexte Docker.",
     "builder": "Builder",
-    "builderHint": "N'importe quelle image de builder.",
+    "builderHint": "N'importe quelle image de builder, fixée sur une version complète ou un condensat, pour qu'elle ne change pas sous un service.",
     "version": "Version",
     "installCommand": "Commande d'installation",
     "buildCommand": "Commande de build",
@@ -86,7 +86,31 @@
     "misePackagesHint": "Séparés par des espaces, sous la forme nom ou nom@version.",
     "buildAptPackages": "Paquets APT pour le build",
     "deployAptPackages": "Paquets APT dans l'image finale",
-    "packagesHint": "Séparés par des espaces."
+    "packagesHint": "Séparés par des espaces.",
+    "facts": {
+      "toggle": "Ce que ce builder prend en charge",
+      "version": "Version",
+      "versionDockerfile": "BuildKit, dans le Docker de ce serveur",
+      "versionBuildpacks": "pack {{pack}}, avec {{builder}}",
+      "languages": "Langages",
+      "anyLanguage": "Tous : le Dockerfile dit comment construire",
+      "unknownLanguages": "La documentation de cette image l'indique",
+      "overrides": "Vous pouvez changer",
+      "fails": "En cas d'échec",
+      "overridesBy": {
+        "dockerfile": "Le chemin du Dockerfile. Le reste est dans le fichier lui-même, et ses variables et secrets de build viennent de l'onglet Environnement.",
+        "buildpacks": "L'image du builder, et un project.toml dans le chemin de build.",
+        "nixpacks": "Les commandes d'installation, de build et de démarrage, les paquets Nix et APT, et un nixpacks.toml dans le chemin de build.",
+        "railpack": "Les commandes d'installation, de build et de démarrage, les paquets Mise et APT, et un railpack.json dans le chemin de build."
+      },
+      "failsBy": {
+        "dockerfile": "Une étape qui échoue, une image de base introuvable ou un Dockerfile absent fait échouer le déploiement. Ce qui tourne reste en place.",
+        "buildpacks": "Un projet qu'aucun de ses buildpacks ne reconnaît fait échouer le déploiement, qui le dit. Ce qui tourne reste en place.",
+        "nixpacks": "Une version non installée, ou un projet qu'il ne sait pas construire, fait échouer le déploiement, qui le dit. Ce qui tourne reste en place.",
+        "railpack": "Une version non installée, ou un projet qu'il ne sait pas construire, fait échouer le déploiement, qui le dit. Ce qui tourne reste en place."
+      }
+    },
+    "versionHint": "La version du constructeur à utiliser."
   },
   "sshKey": {
     "title": "Clé SSH",
@@ -98,7 +122,20 @@
     "refresh": "Remplacer la clé SSH",
     "refreshTitle": "Remplacer cette clé SSH ?",
     "refreshDescription": "La clé actuelle cesse aussitôt de fonctionner pour ce service : ajoutez la nouvelle à votre hébergeur Git avant le prochain déploiement.",
-    "refreshConfirm": "Remplacer"
+    "refreshConfirm": "Remplacer",
+    "fingerprint": "Empreinte",
+    "boundTo": "Uniquement pour {{repository}}",
+    "notBound": "Pas encore liée à un dépôt : le premier pour lequel elle sert se l'approprie.",
+    "test": "Tester la connexion",
+    "testing": "Connexion…",
+    "testOk": "Connecté : cette clé peut lire le dépôt.",
+    "testFailed": "Connexion impossible : {{detail}}",
+    "delete": "Supprimer la clé SSH",
+    "deleteTitle": "Supprimer cette clé SSH ?",
+    "deleteDescription": "Opsifier oublie aussitôt la clé et cesse de l'utiliser. Elle reste installée chez votre hébergeur Git : retirez-la là-bas pour la révoquer complètement.",
+    "deleteConfirm": "Supprimer",
+    "deleted": "Clé SSH supprimée",
+    "deletedHint": "Retirez-la aussi de votre hébergeur Git."
   },
   "autoDeploy": {
     "title": "Déploiement automatique",
@@ -106,7 +143,11 @@
     "hint": "Ajoute un webhook au dépôt. Le jeton GitHub doit pouvoir gérer les webhooks.",
     "needsToken": "Le déploiement automatique nécessite un jeton GitHub.",
     "enabled": "Déploiement automatique activé",
-    "disabled": "Déploiement automatique désactivé"
+    "disabled": "Déploiement automatique désactivé",
+    "pausedTitle": "Le webhook est en pause car la branche a changé. Renouvelez-le pour reprendre.",
+    "renew": "Renouveler le webhook",
+    "renewed": "Webhook renouvelé",
+    "legacyHook": "Ce webhook date d'avant les secrets propres aux webhooks. Renouvelez-le pour lui en donner un."
   },
   "errors": {
     "imageRequired": "Indiquez une image à exécuter.",
@@ -126,7 +167,7 @@
     "fileTooLarge": "Cette archive dépasse {{limit}}.",
     "build": {
       "file": "Utilisez un chemin à l'intérieur du chemin de build, comme Dockerfile.",
-      "builder": "Indiquez une image de builder comme heroku/builder:24.",
+      "builder": "Utilisez une image de builder fixée sur une version complète comme 0.4.681, ou sur un condensat.",
       "version": "Utilisez une version comme 1.2.3.",
       "installCommand": "Écrivez la commande sur une seule ligne.",
       "buildCommand": "Écrivez la commande sur une seule ligne.",
@@ -137,5 +178,7 @@
       "buildAptPackages": "Utilisez des noms de paquets séparés par des espaces.",
       "deployAptPackages": "Utilisez des noms de paquets séparés par des espaces."
     }
-  }
+  },
+  "changeRevokes": "Enregistrer un autre dépôt ou une autre branche révoque le jeton de déploiement de ce service et met son webhook en pause, car ils ont été émis pour celui-ci.",
+  "usernameHint": "Seulement pour un registre privé."
 }

@@ -1,0 +1,85 @@
+{
+  "id": "freshrss",
+  "version": "1.0.0",
+  "name": "FreshRSS",
+  "summary": {
+    "en": "A self-hosted RSS aggregator for many users.",
+    "fr": "Un agrégateur RSS auto-hébergé pour plusieurs utilisateurs."
+  },
+  "description": {
+    "en": "Follow your feeds from the web or from mobile apps. It stores everything in SQLite by default and refreshes feeds on its own schedule.",
+    "fr": "Suivez vos flux sur le web ou depuis des applications mobiles. Tout est stocké dans SQLite par défaut et les flux se rafraîchissent selon leur propre planning."
+  },
+  "instructions": {
+    "en": "Open the site and follow the setup steps. The first account you create is the administrator.",
+    "fr": "Ouvrez le site et suivez les étapes de configuration. Le premier compte créé est administrateur."
+  },
+  "category": "productivity",
+  "tags": ["rss", "reader", "feeds"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://freshrss.org"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/FreshRSS/FreshRSS/blob/edge/Docker/README.md"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/FreshRSS/FreshRSS"
+    }
+  ],
+  "verified": false,
+  "params": [
+    {
+      "key": "timezone",
+      "label": {
+        "en": "Time zone",
+        "fr": "Fuseau horaire"
+      },
+      "type": "text",
+      "required": true,
+      "default": "Europe/Paris"
+    }
+  ],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "freshrss",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "freshrss/freshrss:1.30.4"
+      },
+      "env": {
+        "TZ": "{{params.timezone}}",
+        "CRON_MIN": "2,32"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/var/www/FreshRSS/data"
+        },
+        {
+          "type": "volume",
+          "name": "extensions",
+          "path": "/var/www/FreshRSS/extensions"
+        }
+      ],
+      "domain": {
+        "port": 80,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/",
+        "expect": [200, 302]
+      },
+      "dependsOn": []
+    }
+  ]
+}

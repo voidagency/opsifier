@@ -1,6 +1,6 @@
 {
   "image": "Image",
-  "imageHint": "Changer de version peut rendre les données illisibles. Passez d'une version majeure à l'autre avec précaution.",
+  "imageHint": "Une version précise uniquement. Un changement de version majeure est confirmé et sauvegardé avant tout.",
   "imageRequired": "Choisissez une image.",
   "invalidImage": "Saisissez une image, par exemple nom:version.",
   "command": "Commande",
@@ -12,10 +12,17 @@
   "envHint": "Un NOM=valeur par ligne, ajouté aux variables du moteur.",
   "invalidEnv": "Chaque ligne doit être de la forme NOM=valeur.",
   "configFile": "Fichier de configuration",
-  "configFileHint": "Conservé à côté de la configuration du serveur. Pris en compte au redémarrage de la base.",
-  "restartNote": "L'enregistrement redémarre immédiatement la base de données.",
-  "save": "Enregistrer et redémarrer",
-  "restarting": "Redémarrage de la base de données…",
-  "saved": "Les réglages avancés sont en place",
-  "failed": "Les nouveaux réglages n'ont pas été appliqués"
+  "configFileHint": "Conservé à côté de la configuration du serveur. Pris en compte au prochain déploiement.",
+  "deployNote": "L'enregistrement ne fait que conserver ces réglages. C'est un redéploiement qui les applique, et il redémarre la base.",
+  "save": "Enregistrer",
+  "saved": "Réglages enregistrés",
+  "savedHint": "Redéployez la base de données pour les appliquer.",
+  "envReveal": "Afficher et modifier",
+  "fixedImage": "Indiquez une version précise, par exemple postgres:18.6, ou un condensé.",
+  "majorChange": {
+    "title": "Changer de version majeure ?",
+    "description": "{{from}} deviendra {{to}} au prochain déploiement, ce qui peut nécessiter une migration des données. Ce déploiement prend d'abord une sauvegarde du serveur entier et s'arrête si elle échoue. Si la nouvelle version ne démarre pas, la précédente revient.",
+    "descriptionRedis": "{{from}} deviendra {{to}} au prochain déploiement. Redis n'a pas de sauvegarde dans le panneau : ses données restent uniquement sur son volume. Si la nouvelle version ne démarre pas, la précédente revient.",
+    "confirm": "Enregistrer cette version"
+  }
 }

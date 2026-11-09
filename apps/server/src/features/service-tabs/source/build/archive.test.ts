@@ -20,6 +20,7 @@ import {
   UnsafeArchiveError,
   unpackArchive,
   unwrapSingleFolder,
+  verifyTree,
 } from "./archive";
 
 const hasBsdtar = spawnSync("bsdtar", ["--version"]).error === undefined;
@@ -271,6 +272,29 @@ describe.skipIf(!hasBsdtar)("unpackArchive", () => {
     await expect(unpackArchive(deps, file, destination(), { maxBytes: 1000 })).rejects.toThrow(
       /more than the panel allows/,
     );
+  });
+
+  it("refuses an archive that nests folders deeper than the limit, before unpacking anything", async () => {
+    const file = writeArchive("deep.tar", tarArchive([{ name: "a/b/c/d/e/f.txt", content: "x" }]));
+    const target = destination();
+
+    await expect(unpackArchive(deps, file, target, { maxDepth: 3 })).rejects.toThrow(/nested deeper/);
+    expect(existsSync(join(target, "a"))).toBe(false);
+  });
+
+  it("accepts an archive exactly as deep as the limit", async () => {
+    const file = writeArchive("ok.tar", tarArchive([{ name: "a/b/c/d.txt", content: "x" }]));
+
+    await expect(unpackArchive(deps, file, destination(), { maxDepth: 4 })).resolves.toBeUndefined();
+  });
+
+  it("checks the depth again on what was actually unpacked", async () => {
+    const folder = destination();
+    mkdirSync(join(folder, "a", "b", "c"), { recursive: true });
+    writeFileSync(join(folder, "a", "b", "c", "d.txt"), "x");
+
+    await expect(verifyTree(folder, 3)).rejects.toThrow(/nested deeper/);
+    await expect(verifyTree(folder, 4)).resolves.toMatchObject({ bytes: 1 });
   });
 
   it("stops when the action is cancelled", async () => {

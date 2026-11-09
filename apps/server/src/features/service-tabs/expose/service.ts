@@ -1,14 +1,17 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import type { ExposeSettings } from "@opsifier/contract";
 import { databaseActionTypes } from "@opsifier/contract";
-import type { ActionContext, ActionRow } from "../../../core/actions";
+import type { ActionContext } from "../../../core/actions";
 import type { AppDeps } from "../../../core/context";
 import type { TaskInfo } from "../../../core/docker";
 import { conflict } from "../../../core/errors";
 import { rolloutDatabase } from "../../databases/rollout";
-import { requireDatabase } from "../../databases/service";
+import { publishedPort, requireDatabase } from "../../databases/service";
 import { qualifiedName } from "../../services/compile";
+import { firstPortInUse, PortInUseError } from "../../services/host-ports";
+import { type DeployOptions, runDeploy } from "../../services/lifecycle";
 import { listServiceRecords, saveServiceSpec } from "../../services/repo";
+import { assertRuntimeCertain } from "../../services/runtime-state";
 import type { ServiceTarget } from "../../services/service";
 
 /** Ports the platform itself depends on, whichever way the server is set up. */
@@ -30,10 +33,12 @@ function reservedPortOwner(deps: AppDeps, port: number): string | null {
 const publishesTcp = (ports: readonly { protocol: "tcp" | "udp"; published: number }[], port: number) =>
   ports.some((entry) => entry.protocol === "tcp" && entry.published === port);
 
+/** The name a conflict may give a holder: its own within this project, nothing that says more. */
+const SOMEONE_ELSE = "another service";
+
 /**
- * Who else already holds the port, if anyone can tell: saved services, including those that
- * are stopped and will want it back, and anything Swarm runs. A plain container or process on
- * the host is invisible from here, and only shows up when the rollout fails to bind.
+ * Who else already holds the port: saved services, including those that are stopped and will want
+ * it back, anything Swarm runs, a plain container, or a process on the host.
  */
 export async function findPortOwner(
   deps: AppDeps,
@@ -46,7 +51,9 @@ export async function findPortOwner(
     }
     const held = record.spec.database?.exposedPort === port || publishesTcp(record.spec.ports, port);
     if (held) {
-      return `${record.projectName}/${record.name}`;
+      return record.projectName === target.projectName
+        ? `${record.projectName}/${record.name}`
+        : SOMEONE_ELSE;
     }
   }
 
@@ -59,10 +66,10 @@ export async function findPortOwner(
       (entry) => entry.PublishedPort === port && (entry.Protocol ?? "tcp") === "tcp",
     );
     if (held === true) {
-      return service.name;
+      return service.name.startsWith(`${target.projectName}_`) ? service.name : SOMEONE_ELSE;
     }
   }
-  return null;
+  return (await firstPortInUse(deps, target, [{ protocol: "tcp", port }])) === null ? null : SOMEONE_ELSE;
 }
 
 function savePort(deps: AppDeps, target: ServiceTarget, port: number): void {
@@ -82,10 +89,6 @@ const PORT_IN_USE =
 
 const reportsPortConflict = (task: TaskInfo): boolean =>
   PORT_IN_USE.test(task.error ?? "") || PORT_IN_USE.test(task.message);
-
-class PortInUseError extends Error {
-  override readonly name = "PortInUseError";
-}
 
 /**
  * Watches the new tasks for a port conflict so the rollout does not sit in Pending until its
@@ -122,6 +125,7 @@ async function rolloutWatchingPort(
   target: ServiceTarget,
   port: number,
   ctx: ActionContext,
+  rollOut: (watched: ActionContext) => Promise<void>,
 ): Promise<void> {
   const service = qualifiedName(target.projectName, target.serviceName);
   const previous = new Set((await deps.docker.listTasks({ service }).catch(() => [])).map((task) => task.id));
@@ -135,7 +139,7 @@ async function rolloutWatchingPort(
     rollout.abort(error);
   });
   try {
-    await rolloutDatabase(deps, target, { ...ctx, signal });
+    await rollOut({ ...ctx, signal });
   } catch (error) {
     throw conflict ?? error;
   } finally {
@@ -144,39 +148,18 @@ async function rolloutWatchingPort(
   }
 }
 
-async function runExposeChange(
-  deps: AppDeps,
-  target: ServiceTarget,
-  port: number,
-  ctx: ActionContext,
-): Promise<void> {
-  const previous = requireDatabase(deps, target).spec.database.exposedPort;
-  savePort(deps, target, port);
-  ctx.log(port === 0 ? "Removing the public port" : `Publishing port ${port} on the host`);
-  try {
-    await rolloutWatchingPort(deps, target, port, ctx);
-  } catch (error) {
-    if (!(error instanceof PortInUseError)) {
-      throw error;
-    }
-    ctx.log(error.message);
-    // The database is down at this point: stop-first already stopped the old task.
-    savePort(deps, target, previous);
-    await rolloutDatabase(deps, target, ctx);
-    throw error;
-  }
-  ctx.log(port === 0 ? "The database is no longer exposed" : `Port ${port} is now open`);
-}
-
-/** Validates a new public port and applies it. Saving restarts the database, as the tab says. */
-export async function enqueueExpose(
+/** Validates a new public port and saves it. It reaches the server at the database's next deployment. */
+export async function saveExpose(
   deps: AppDeps,
   target: ServiceTarget,
   settings: ExposeSettings,
   actorEmail: string | undefined,
-): Promise<ActionRow> {
+): Promise<ExposeSettings> {
   const { port } = settings;
-  requireDatabase(deps, target);
+  const { exposedPort } = requireDatabase(deps, target).spec.database;
+  if (port !== exposedPort) {
+    assertRuntimeCertain(deps, target);
+  }
   if (port !== 0) {
     const reserved = reservedPortOwner(deps, port);
     if (reserved !== null) {
@@ -192,15 +175,50 @@ export async function enqueueExpose(
     }
   }
 
-  return deps.actions.enqueue({
+  savePort(deps, target, port);
+  deps.actions.record({
     type: databaseActionTypes.expose,
     title:
       port === 0
         ? `Stop exposing ${target.projectName}/${target.serviceName}`
         : `Expose ${target.projectName}/${target.serviceName} on port ${port}`,
-    projectName: target.projectName,
-    serviceName: target.serviceName,
+    ...target,
     actorEmail,
-    run: (ctx) => runExposeChange(deps, target, port, ctx),
   });
+  return { port };
+}
+
+/**
+ * Deploys a database with the public port it has saved. A port that isn't published yet can turn
+ * out to be taken on the host, which only the rollout can tell, and the database is down by then
+ * because stop-first has already stopped the old task. So it goes back up on the port it had, and
+ * the deployment fails saying why.
+ */
+export async function deployDatabaseWithPort(
+  deps: AppDeps,
+  target: ServiceTarget,
+  ctx: ActionContext,
+  options: DeployOptions,
+): Promise<void> {
+  const port = requireDatabase(deps, target).spec.database.exposedPort;
+  const published = (await publishedPort(deps, target)) ?? port;
+  if (port === published) {
+    await runDeploy(deps, target, ctx, options);
+    return;
+  }
+  ctx.log(port === 0 ? "Removing the public port" : `Publishing port ${port} on the host`);
+  try {
+    await rolloutWatchingPort(deps, target, port, ctx, (watched) =>
+      runDeploy(deps, target, watched, options),
+    );
+  } catch (error) {
+    if (!(error instanceof PortInUseError)) {
+      throw error;
+    }
+    ctx.log(error.message);
+    savePort(deps, target, published);
+    await rolloutDatabase(deps, target, ctx);
+    throw error;
+  }
+  ctx.log(port === 0 ? "The database is no longer exposed" : `Port ${port} is now open`);
 }

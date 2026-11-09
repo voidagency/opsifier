@@ -1,19 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { useTranslation } from "react-i18next";
-import { Button, Markdown } from "../../../../ui";
+import { credentialsQuery, databaseQuery } from "../../../databases/api";
 import { useDatabaseParams } from "../../../databases/DatabaseLayout";
 import { LogsPanel } from "../../../service-runtime/LogsPanel";
 import { serviceQuery } from "../../api";
-import { NotesDialog } from "../../NotesDialog";
+import { NotesSection } from "../../NotesSection";
+import { ServiceNotice } from "../../ServiceNotice";
 import { CompanionCards } from "../companions/CompanionCards";
+import { ConnectionPanel } from "./ConnectionPanel";
+import { VersionPanel } from "./VersionPanel";
 
-/** Notes, the logs panel and the web tools, in the order they are most often needed. */
+/** Connection state, notes, the logs panel and the web tools, in the order they are most often needed. */
 export function DatabaseOverviewTab() {
-  const { t } = useTranslation("services");
   const { project, service } = useDatabaseParams();
   const { data: detail } = useQuery(serviceQuery(project, service));
-  const [editing, setEditing] = useState(false);
+  const { data: credentials } = useQuery(credentialsQuery(project, service));
+  const { data: database } = useQuery(databaseQuery(project, service));
 
   if (detail === undefined) {
     return null;
@@ -21,24 +22,18 @@ export function DatabaseOverviewTab() {
 
   return (
     <div className="grid gap-px">
-      {detail.notes !== "" && (
-        <section className="grid gap-3 border-b px-4 py-6 md:px-6 lg:px-8">
-          <div className="flex max-w-[720px] items-center justify-between gap-3">
-            <h2 className="eyebrow">{t("notes.heading")}</h2>
-            <Button size="sm" onClick={() => setEditing(true)}>
-              {t("notes.edit")}
-            </Button>
-          </div>
-          <Markdown text={detail.notes} className="grid max-w-[720px] gap-2 text-sm" />
-          <NotesDialog
-            project={project}
-            service={service}
-            notes={detail.notes}
-            open={editing}
-            onOpenChange={setEditing}
-          />
+      <ServiceNotice detail={detail} />
+      {credentials !== undefined && (
+        <section className="border-b px-4 py-6 md:px-6 lg:px-8">
+          <ConnectionPanel detail={detail} credentials={credentials} />
         </section>
       )}
+      {database !== undefined && (
+        <section className="border-b px-4 py-6 md:px-6 lg:px-8">
+          <VersionPanel versions={database.versions} />
+        </section>
+      )}
+      <NotesSection detail={detail} />
       <section className="border-b px-4 py-6 md:px-6 lg:px-8">
         <LogsPanel project={project} service={service} />
       </section>

@@ -1,0 +1,113 @@
+{
+  "title": "Browser IDE",
+  "description": "Edit this box's workspace from a browser. It has its own access: being signed in to the panel does not open it, and its token opens nothing else.",
+  "access": {
+    "open": {
+      "title": "Open to its token",
+      "body": "Anyone holding the token can edit the workspace."
+    },
+    "expired": {
+      "title": "Token expired",
+      "body": "Nothing can get in until a new token is issued."
+    },
+    "no_token": {
+      "title": "No token yet",
+      "body": "The IDE is on, but nothing can get in until a token is issued."
+    },
+    "off": {
+      "title": "Turned off",
+      "body": "Nothing can reach this box's files through the IDE."
+    }
+  },
+  "enable": "Allow the browser IDE",
+  "enableHint": "Turning this off ends the current token.",
+  "open": "Open the IDE",
+  "token": {
+    "title": "Access token",
+    "description": "A secret shown once. Rotating it ends the previous one at once.",
+    "expires": "Expires {{when}}",
+    "lifetime": "Lasts for",
+    "lifetimeHint": "It stops working by itself after this long.",
+    "lifetimes": {
+      "1": "1 hour",
+      "24": "1 day",
+      "168": "7 days",
+      "720": "30 days",
+      "2160": "90 days"
+    },
+    "issue": "Issue a token",
+    "rotate": "Rotate the token",
+    "revoke": "Revoke"
+  },
+  "issued": {
+    "title": "Copy this token",
+    "description": "It won't be shown again.",
+    "warning": "Keep it somewhere safe. Anyone holding it can edit this box's files until it expires.",
+    "copy": "Copy the token",
+    "open": "Open the IDE with it",
+    "done": "Done"
+  },
+  "revoke": {
+    "title": "Revoke this token?",
+    "description": "Whoever holds it is locked out at once. The IDE stays on: issue a new token to get back in.",
+    "confirm": "Revoke the token"
+  },
+  "confinement": "The IDE edits the files in this box's workspace and nothing else. It has no terminal, doesn't follow links out of the workspace, and can't reach the panel, another service or the server.",
+  "page": {
+    "title": "IDE of {{service}}",
+    "expires": "Token expires {{when}}",
+    "signOut": "Sign out",
+    "signIn": {
+      "title": "Open the IDE",
+      "body": "Paste this box's IDE token. Signing in to the panel does not open it.",
+      "token": "Token",
+      "submit": "Open",
+      "expired": "This token has expired. Issue a new one on the box's IDE tab.",
+      "invalid": "This token can't open this IDE.",
+      "again": "Your token no longer works",
+      "tokenHint": "Issued on this box's IDE tab."
+    },
+    "tree": {
+      "label": "Files",
+      "root": "Workspace",
+      "empty": "Empty",
+      "truncated": "This folder holds more than can be shown.",
+      "rename": "Rename {{name}}",
+      "delete": "Delete {{name}}",
+      "notEditable": "Not an ordinary file, so it can't be opened here."
+    },
+    "editor": {
+      "emptyTitle": "Choose a file",
+      "emptyBody": "Files in this box's workspace are listed on the left.",
+      "binaryTitle": "{{name}} isn't text",
+      "binaryBody": "The editor only opens text files.",
+      "tooLargeTitle": "{{name}} is too large",
+      "tooLargeBody": "The editor opens files up to {{max}} KB.",
+      "save": "Save",
+      "nothingToSave": "Nothing to save.",
+      "conflict": "Something else changed this file since you opened it. Your edits are still here.",
+      "reload": "Load the new version",
+      "keepEditing": "Keep editing",
+      "state": {
+        "clean": "Saved",
+        "unsaved": "Unsaved changes",
+        "saving": "Saving",
+        "saved": "Saved",
+        "failed": "Not saved"
+      }
+    },
+    "dialogs": {
+      "newFile": "New file",
+      "newFolder": "New folder",
+      "rename": "Rename",
+      "name": "Name",
+      "cancel": "Cancel",
+      "confirm": "Done",
+      "deleteTitle": "Delete this?",
+      "deleteConfirm": "Delete",
+      "deleteFileBody": "This file is removed from the workspace.",
+      "deleteFolderBody": "This folder and everything in it are removed from the workspace.",
+      "nameHint": "Just the name: it is created in the current folder."
+    }
+  }
+}

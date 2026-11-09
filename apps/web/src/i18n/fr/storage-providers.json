@@ -1,0 +1,156 @@
+{
+  "title": "Stockages",
+  "description": "Où envoyer les sauvegardes. Un dossier sur ce serveur est rapide, mais il disparaît avec le serveur si celui-ci est perdu : gardez aussi les copies importantes ailleurs.",
+  "summary": "Destinations par état",
+  "listLabel": "Destinations de stockage",
+  "create": "Ajouter",
+  "edit": "Modifier",
+  "checkNow": "Vérifier maintenant",
+  "disconnectAction": "Déconnecter",
+  "deleteAction": "Supprimer",
+  "connect": "Connecter",
+  "menuFor": "Options de {{name}}",
+  "onServer": "Sur ce serveur",
+  "notConnectedHint": "Proposé aux sauvegardes seulement une fois connecté.",
+  "created": "Destination ajoutée",
+  "updated": "Destination mise à jour",
+  "kinds": {
+    "local": "Local",
+    "sftp": "SFTP",
+    "ftp": "FTP",
+    "dropbox": "Dropbox",
+    "google-drive": "Google Drive",
+    "aws-s3": "AWS S3",
+    "cloudflare-r2": "Cloudflare R2",
+    "digitalocean-spaces": "DigitalOcean Spaces",
+    "backblaze-b2": "Backblaze B2",
+    "wasabi": "Wasabi",
+    "generic-s3": "S3 générique"
+  },
+  "state": {
+    "failed": "Ne fonctionne pas",
+    "degraded": "Dernière vérification en échec",
+    "unknown": "Non vérifié",
+    "progress": "Vérification en cours",
+    "running": "Prêt",
+    "stopped": "Non connecté"
+  },
+  "check": {
+    "ok": "{{name}} fonctionne",
+    "failed": "{{name}} n'a pas répondu comme prévu"
+  },
+  "delete": {
+    "title": "Supprimer cette destination ?",
+    "description": "Les sauvegardes qui envoient leurs fichiers vers {{name}} s'arrêtent jusqu'à ce que vous en choisissiez une autre. Les fichiers déjà stockés restent en place.",
+    "confirm": "Supprimer",
+    "done": "{{name}} supprimé"
+  },
+  "disconnect": {
+    "title": "Déconnecter cette destination ?",
+    "description": "Le panneau renonce à son accès à {{name}}. Les sauvegardes cessent de l'utiliser jusqu'à sa reconnexion, et ses fichiers restent en place.",
+    "confirm": "Déconnecter",
+    "done": "{{name}} déconnecté"
+  },
+  "oauth": {
+    "connected": "Connecté",
+    "failed": "Impossible de se connecter",
+    "editHint": "Seul le nom se modifie ici. Pour utiliser un autre compte, déconnectez puis reconnectez.",
+    "errors": {
+      "missing_state": "La réponse du fournisseur est incomplète. Réessayez de vous connecter.",
+      "invalid_state": "Cette tentative a expiré. Réessayez de vous connecter.",
+      "denied": "L'accès n'a pas été accordé.",
+      "provider_missing": "Cette destination n'existe plus.",
+      "exchange_failed": "Le fournisseur n'a pas accepté cette connexion. Réessayez."
+    }
+  },
+  "dialog": {
+    "createTitle": "Ajouter {{kind}}",
+    "editTitle": "Modifier {{kind}}",
+    "create": "Ajouter",
+    "save": "Enregistrer",
+    "saveAndConnect": "Enregistrer et connecter",
+    "description": {
+      "local": "Un dossier sur ce serveur où le panneau écrit.",
+      "server": "La connexion est testée avant l'enregistrement.",
+      "s3": "La connexion est testée avant l'enregistrement. La clé doit pouvoir lister, lire, écrire et supprimer des fichiers dans ce bucket.",
+      "oauth": "Utilisez les identifiants de votre propre application, déclarée auprès du fournisseur. Vous y êtes redirigé pour autoriser l'accès juste après l'enregistrement."
+    }
+  },
+  "fields": {
+    "name": "Nom",
+    "path": "Dossier",
+    "host": "Hôte",
+    "port": "Port",
+    "username": "Utilisateur",
+    "password": "Mot de passe",
+    "rootPath": "Dossier",
+    "tls": "Utiliser TLS (FTPS)",
+    "trustNewHostKey": "Faire confiance à la nouvelle clé du serveur",
+    "hostKey": "Clé du serveur",
+    "accessKeyId": "ID de clé d'accès",
+    "secretAccessKey": "Clé d'accès secrète",
+    "bucket": "Bucket",
+    "region": "Région",
+    "endpoint": "Point d'accès",
+    "storageClass": "Classe de stockage",
+    "prefix": "Préfixe",
+    "clientId": "ID client",
+    "clientSecret": "Secret client",
+    "redirectUrl": "URL de redirection",
+    "hostKeyHint": "La clé par laquelle ce serveur s'est identifié.",
+    "clientSecretHint": "Depuis votre application OAuth. Conservé scellé.",
+    "clientIdHint": "Depuis votre propre application OAuth.",
+    "regionHint": "La région de ce compartiment.",
+    "bucketHint": "Le compartiment qui reçoit les sauvegardes.",
+    "accessKeyIdHint": "Depuis votre compte de stockage.",
+    "usernameHint": "Le compte utilisé pour se connecter.",
+    "portHint": "Le port sur lequel il écoute.",
+    "hostHint": "L'adresse du serveur.",
+    "nameHint": "Son nom dans la liste des destinations."
+  },
+  "hints": {
+    "path": "Un chemin absolu sur ce serveur, utilisé uniquement pour les sauvegardes.",
+    "keepSecret": "Laisser vide pour garder la valeur actuelle.",
+    "rootPath": "Où tout est rangé sur le serveur. Vide : le dossier d'arrivée de la connexion.",
+    "tls": "Le FTP simple envoie le mot de passe en clair.",
+    "trustNewHostKey": "Le serveur a présenté une clé différente de celle enregistrée. N'activez ceci que si vous savez pourquoi elle a changé.",
+    "endpointRequired": "L'adresse de ce stockage.",
+    "endpointOptional": "Laisser vide pour utiliser l'adresse habituelle du fournisseur.",
+    "storageClass": "Valeurs courantes : {{classes}}. Laisser vide pour la valeur par défaut du bucket.",
+    "prefix": "Un dossier du bucket sous lequel ranger tous les fichiers.",
+    "redirectUrl": {
+      "dropbox": "Déclarez exactement cette adresse dans les réglages de votre application Dropbox.",
+      "google-drive": "Déclarez exactement cette adresse dans votre client OAuth Google Cloud."
+    }
+  },
+  "placeholders": {
+    "local": "local",
+    "sftp": "sauvegardes-sftp",
+    "ftp": "sauvegardes-ftp",
+    "dropbox": "Dropbox",
+    "google-drive": "Google Drive",
+    "default": "Par défaut"
+  },
+  "errors": {
+    "name": "Donnez-lui un nom",
+    "path": "Chemin absolu sans . ni ..",
+    "host": "Saisissez un nom d'hôte ou une adresse IP",
+    "port": "Un port de 1 à 65535",
+    "username": "Saisissez un utilisateur",
+    "password": "Saisissez un mot de passe",
+    "rootPath": "Chemin de dossier sans . ni ..",
+    "accessKeyId": "Saisissez l'ID de clé d'accès",
+    "secretAccessKey": "Saisissez la clé d'accès secrète",
+    "bucket": "Saisissez le nom du bucket",
+    "region": "Saisissez la région",
+    "endpoint": "Saisissez une URL complète sans chemin",
+    "storageClass": "Lettres, chiffres et tirets bas",
+    "prefix": "Chemin de dossier sans . ni ..",
+    "clientId": "Saisissez l'ID client",
+    "clientSecret": "Saisissez le secret client"
+  },
+  "permissions": {
+    "title": "Droits nécessaires",
+    "hint": "Le panneau les essaie à l'enregistrement : il liste, écrit, relit et supprime un petit fichier."
+  }
+}

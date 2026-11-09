@@ -35,7 +35,8 @@
       "title": "Retirer tous les ports ?",
       "description": "Tous les ports publiés seront fermés au prochain déploiement.",
       "confirm": "Tout retirer"
-    }
+    },
+    "protocolHint": "TCP pour la plupart des services, UDP pour le DNS et les jeux."
   },
   "deploy": {
     "title": "Exécution",
@@ -50,13 +51,21 @@
     "tiniInit": "Lancer avec un processus init",
     "tiniInitHint": "Ajoute un petit init qui récupère les processus zombies et transmet les signaux.",
     "command": "Commande",
-    "commandHint": "Remplace la commande de l'image. Exécutée par /bin/sh.",
+    "commandHint": "Remplace la commande de l'image. Elle s'exécute directement, sauf si elle utilise une syntaxe de shell comme $VAR, | ou && : il faut alors /bin/sh dans l'image.",
+    "stopSignal": "Signal d'arrêt",
+    "stopSignalHint": "Ce qui demande à une tâche de s'arrêter.",
+    "stopSignalImage": "Celui que déclare l'image",
+    "stopGraceSeconds": "Délai d'arrêt (secondes)",
+    "stopGraceSecondsHint": "Le temps laissé à une tâche pour finir avant d'être tuée.",
     "capAdd": "Ajouter des capacités",
     "capDrop": "Retirer des capacités",
     "sysctls": "Sysctls",
     "sysctlsHint": "Paires clé=valeur séparées par des virgules.",
     "groups": "Groupes supplémentaires",
-    "groupsHint": "Identifiants de groupe numériques séparés par des virgules."
+    "groupsHint": "Identifiants de groupe numériques séparés par des virgules.",
+    "capAddHint": "Capacités Linux à ajouter. Réservé aux administrateurs.",
+    "adminOnly": "Seul un administrateur peut les définir.",
+    "capDropHint": "Capacités Linux à retirer."
   },
   "errors": {
     "port": "Indiquez un port de 1 à 65535.",
@@ -65,6 +74,7 @@
     "command": "Saisissez une commande ou laissez ce champ vide.",
     "capabilities": "Utilisez des noms de capacités connus comme NET_ADMIN, une seule fois chacun et jamais dans les deux champs.",
     "sysctls": "Utilisez des paires clé=valeur avec espace de noms, comme net.core.somaxconn=1024.",
-    "groups": "Utilisez des identifiants de groupe numériques."
+    "groups": "Utilisez des identifiants de groupe numériques.",
+    "stopGraceSeconds": "Utilisez un nombre entier de secondes, de 0 à 3600."
   }
 }

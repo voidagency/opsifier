@@ -1,0 +1,87 @@
+{
+  "id": "gitea",
+  "version": "1.0.0",
+  "name": "Gitea",
+  "summary": {
+    "en": "A light Git forge with issues, pull requests and packages.",
+    "fr": "Une forge Git légère avec tickets, pull requests et paquets."
+  },
+  "description": {
+    "en": "Host your repositories on your own server. Gitea stays small and fast, and the first visit runs its installer.",
+    "fr": "Hébergez vos dépôts sur votre propre serveur. Gitea reste léger et rapide, et la première visite lance son installateur."
+  },
+  "instructions": {
+    "en": "Open the site and finish the installer. The database is already configured, so nothing there needs changing.",
+    "fr": "Ouvrez le site et terminez l'installateur. La base de données est déjà configurée : rien à y changer."
+  },
+  "category": "development",
+  "tags": ["git", "forge", "code-hosting"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://about.gitea.com"
+    },
+    {
+      "kind": "docs",
+      "url": "https://docs.gitea.com/installation/install-with-docker"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/go-gitea/gitea"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "db",
+      "name": "gitea-db",
+      "kind": "database",
+      "engine": "postgres",
+      "image": "postgres:17.11-alpine",
+      "databaseName": "gitea",
+      "user": "gitea"
+    },
+    {
+      "key": "app",
+      "name": "gitea",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "gitea/gitea:28.3.0"
+      },
+      "env": {
+        "USER_UID": "1000",
+        "USER_GID": "1000",
+        "GITEA__database__DB_TYPE": "postgres",
+        "GITEA__database__HOST": "{{services.db.host}}:5432",
+        "GITEA__database__NAME": "{{services.db.database}}",
+        "GITEA__database__USER": "{{services.db.user}}",
+        "GITEA__database__PASSWD": "{{services.db.password}}",
+        "GITEA__database__SSL_MODE": "disable",
+        "GITEA__server__ROOT_URL": "{{services.app.url}}/",
+        "GITEA__server__DOMAIN": "{{services.app.domain}}",
+        "GITEA__server__SSH_DOMAIN": "{{services.app.domain}}"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/data"
+        }
+      ],
+      "domain": {
+        "port": 3000,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/api/healthz",
+        "expect": [200]
+      },
+      "dependsOn": ["db"]
+    }
+  ]
+}

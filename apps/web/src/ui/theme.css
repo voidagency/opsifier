@@ -94,24 +94,30 @@
   --font-sans: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
+  /*
+   * The interface is sized to be read without effort: body text is 16px and nothing goes below 13px.
+   * Every height, gap and icon comes from this 5px step, so changing it rescales all of them together.
+   */
+  --spacing: 0.3125rem;
+
   --text-*: initial;
-  --text-micro: 0.6875rem;
-  --text-micro--line-height: 1rem;
-  --text-xs: 0.75rem;
-  --text-xs--line-height: 1.0625rem;
-  --text-sm: 0.8125rem;
-  --text-sm--line-height: 1.25rem;
-  --text-base: 0.875rem;
-  --text-base--line-height: 1.375rem;
-  --text-md: 1rem;
-  --text-md--line-height: 1.5rem;
-  --text-lg: 1.25rem;
-  --text-lg--line-height: 1.625rem;
-  --text-xl: 1.625rem;
-  --text-xl--line-height: 2rem;
+  --text-micro: 0.8125rem;
+  --text-micro--line-height: 1.125rem;
+  --text-xs: 0.875rem;
+  --text-xs--line-height: 1.25rem;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.375rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-md: 1.125rem;
+  --text-md--line-height: 1.625rem;
+  --text-lg: 1.5rem;
+  --text-lg--line-height: 2rem;
+  --text-xl: 2rem;
+  --text-xl--line-height: 2.5rem;
 
   --radius-*: initial;
-  --radius-sm: 3px;
+  --radius-sm: 4px;
 
   --shadow-*: initial;
   --shadow-overlay: 0 1px 2px rgb(10 18 24 / 0.12), 0 18px 44px -14px rgb(10 18 24 / 0.38);

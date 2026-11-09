@@ -20,13 +20,17 @@ const detail = (overrides: Partial<ServiceDetail> = {}): ServiceDetail => ({
   status: "running",
   replicas: { running: 1, desired: 1 },
   activeAction: null,
+  runtimeUncertain: null,
   wake: ["succeeded"],
   lastDeployedAt: "2026-01-01T00:00:00.000Z",
   createdAt: "2026-01-01T00:00:00.000Z",
   source: { type: "image", image: "traefik/whoami:v1.10", username: null, hasPassword: false },
   notes: "",
+  notesHidden: false,
   stopped: false,
   primaryUrl: "https://shop-web.example.test/",
+  pendingChanges: false,
+  answering: null,
   ...overrides,
 });
 
@@ -49,14 +53,18 @@ const domain = (overrides: Partial<DomainEntry> = {}): DomainEntry => ({
   id: "d1",
   host: "shop-web.example.test",
   path: "/",
+  stripPath: false,
   port: 80,
   https: true,
   primary: true,
   destinationProtocol: "http",
   destinationPath: "/",
+  upstreamServerName: null,
+  upstreamCa: null,
   certificateResolver: null,
   wildcard: false,
   middlewares: [],
+  composeService: null,
   url: "https://shop-web.example.test/",
   internalUrl: "http://shop_web:80/",
   ...overrides,
@@ -75,6 +83,7 @@ describe("the domains tab", () => {
     renderApp("/projects/shop/app/web/domains");
 
     expect(await screen.findByText("No domains yet")).toBeTruthy();
+    expect(document.querySelector('[data-illustration="no-domains"]')).toBeTruthy();
     expect(screen.getByRole("button", { name: "Add domain" })).toBeTruthy();
   });
 
@@ -112,6 +121,140 @@ describe("the domains tab", () => {
     expect(screen.getAllByRole("button", { name: "Edit this domain" })).toHaveLength(2);
   });
 
+  it("leads each domain with its certificate state, from what the proxy holds", async () => {
+    installFakeServer(
+      base({
+        [DOMAINS]: { domains: [domain()] },
+        "GET /domains": {
+          domains: [
+            { ...domain(), destination: "service", projectName: "shop", serviceName: "web", tls: "expiring" },
+          ],
+          serverIp: null,
+        },
+      }),
+    );
+    renderApp("/projects/shop/app/web/domains");
+
+    expect(await screen.findByRole("img", { name: "Certificate expiring soon" })).toBeTruthy();
+  });
+
+  it("says it does not know, rather than what a domain asked for, when the certificates can't be read", async () => {
+    installFakeServer(
+      base({
+        [DOMAINS]: {
+          domains: [
+            domain(),
+            domain({ id: "d2", https: false, primary: false, url: "http://other.example.test/" }),
+          ],
+        },
+      }),
+    );
+    renderApp("/projects/shop/app/web/domains");
+
+    const lamp = await screen.findByRole("img", { name: "Certificate state unknown" });
+    // What the words deny, a green lamp would still claim.
+    expect(lamp.closest("[data-state]")?.getAttribute("data-state")).toBe("unknown");
+    expect(screen.getByRole("img", { name: "HTTP only" })).toBeTruthy();
+  });
+
+  it.each([
+    ["unreadable", "Certificate unreadable", "failed"],
+    ["unverified", "Wildcard HTTPS not verified", "unknown"],
+  ])("shows the %s state the server reports", async (tls, label, state) => {
+    installFakeServer(
+      base({
+        [DOMAINS]: { domains: [domain()] },
+        "GET /domains": {
+          domains: [{ ...domain(), destination: "service", projectName: "shop", serviceName: "web", tls }],
+          serverIp: null,
+        },
+      }),
+    );
+    renderApp("/projects/shop/app/web/domains");
+
+    const lamp = await screen.findByRole("img", { name: label });
+    expect(lamp.closest("[data-state]")?.getAttribute("data-state")).toBe(state);
+  });
+
+  it("states what DNS, the ports and the certificate need, from the address being typed", async () => {
+    installFakeServer(
+      base({
+        [DOMAINS]: { domains: [] },
+        [PORTS]: { ports: [] },
+        "GET /domains": { domains: [], serverIp: "203.0.113.10" },
+      }),
+    );
+    renderApp("/projects/shop/app/web/domains");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add domain" }));
+    fireEvent.change(await screen.findByLabelText("Hostname"), { target: { value: "app.example.test" } });
+
+    expect(await screen.findByText("A record: app.example.test → 203.0.113.10")).toBeTruthy();
+    expect(screen.getByText("80 and 443 open to the internet")).toBeTruthy();
+    expect(screen.getByText("Issued automatically once DNS and port 80 are right.")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("switch", { name: /HTTPS/ }));
+    expect(screen.getByText("80 open to the internet")).toBeTruthy();
+    expect(screen.queryByText("Issued automatically once DNS and port 80 are right.")).toBeNull();
+  });
+
+  it("says what the DNS record needs even when the server's address is unknown", async () => {
+    installFakeServer(base({ [DOMAINS]: { domains: [] }, [PORTS]: { ports: [] } }));
+    renderApp("/projects/shop/app/web/domains");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add domain" }));
+    fireEvent.change(await screen.findByLabelText("Hostname"), { target: { value: "app.example.test" } });
+
+    expect(
+      await screen.findByText("A record for app.example.test, pointing at this server's address"),
+    ).toBeTruthy();
+  });
+
+  it("does not present HTTPS on a wildcard as working", async () => {
+    installFakeServer(base({ [DOMAINS]: { domains: [] }, [PORTS]: { ports: [] } }));
+    renderApp("/projects/shop/app/web/domains");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add domain" }));
+    await screen.findByLabelText("Hostname");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "SSL" }), { button: 0 });
+    fireEvent.click(await screen.findByRole("switch", { name: /Wildcard/ }));
+
+    expect(await screen.findByText(/HTTPS on a wildcard is not verified yet/)).toBeTruthy();
+  });
+
+  it("strips the path and asks what to trust, only for an upstream that speaks HTTPS", async () => {
+    const server = installFakeServer(
+      base({
+        [DOMAINS]: { domains: [] },
+        [PORTS]: { ports: [] },
+        "POST /projects/shop/services/web/domains": domain(),
+      }),
+    );
+    renderApp("/projects/shop/app/web/domains");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add domain" }));
+    fireEvent.change(await screen.findByLabelText("Hostname"), { target: { value: "app.example.test" } });
+    fireEvent.change(screen.getByLabelText("Path"), { target: { value: "/api" } });
+    fireEvent.click(screen.getByRole("switch", { name: /Remove the path/ }));
+    expect(screen.queryByLabelText(/Certificate name/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Protocol" }));
+    fireEvent.click(await screen.findByRole("option", { name: "HTTPS" }));
+    fireEvent.change(await screen.findByLabelText(/Certificate name/), {
+      target: { value: "backend.internal" },
+    });
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Add" }));
+
+    expect(await screen.findByText("Domain added")).toBeTruthy();
+    expect(server.calls.find((entry) => entry.method === "POST")?.body).toMatchObject({
+      path: "/api",
+      stripPath: true,
+      destinationProtocol: "https",
+      upstreamServerName: "backend.internal",
+      upstreamCa: null,
+    });
+  });
+
   it("creates a domain with the form's defaults", async () => {
     const server = installFakeServer(
       base({
@@ -137,9 +280,12 @@ describe("the domains tab", () => {
       https: true,
       host: "app.example.test",
       path: "/",
+      stripPath: false,
       destinationProtocol: "http",
       port: 80,
       destinationPath: "/",
+      upstreamServerName: null,
+      upstreamCa: null,
       certificateResolver: null,
       wildcard: false,
       middlewares: [],

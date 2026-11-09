@@ -26,6 +26,7 @@ const service: ServiceSummary = {
   status: "running",
   replicas: { running: 1, desired: 1 },
   activeAction: null,
+  runtimeUncertain: null,
   wake: ["succeeded"],
   lastDeployedAt: null,
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -65,6 +66,64 @@ describe("the project page", () => {
     expect(app.location()).toBe("/projects/shop");
   });
 
+  it("leads each row with its lamp and pictogram, problems first, and filters by state", async () => {
+    const broken: ServiceSummary = {
+      ...service,
+      name: "api",
+      status: "failing",
+      replicas: { running: 0, desired: 1 },
+      type: "postgres",
+    };
+    installFakeServer(list([service, broken]));
+    renderApp("/projects/shop");
+
+    const links = () => screen.getAllByRole("link", { name: /^(api|web)$/ }).map((link) => link.textContent);
+    await screen.findByRole("link", { name: "api" });
+    expect(links()).toEqual(["api", "web"]);
+    expect(screen.getByRole("img", { name: "Postgres" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "shop: Failed" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "1 Running" }));
+    await waitFor(() => expect(links()).toEqual(["web"]));
+  });
+
+  it("draws what each service uses against its limit, and that it can't know yet", async () => {
+    installFakeServer(list([service]));
+    const app = renderApp("/projects/shop");
+
+    expect(await screen.findByRole("img", { name: "web: CPU: No data" })).toBeTruthy();
+
+    app.emit("metrics:services", {
+      available: true,
+      readAt: "2026-01-01T00:00:00.000Z",
+      services: [
+        {
+          projectName: "shop",
+          serviceName: "web",
+          tasks: [
+            {
+              taskId: "t1",
+              slot: 1,
+              cpuPercent: 50,
+              cpuCapacityPercent: 200,
+              memoryUsedBytes: 134217728,
+              memoryLimitBytes: 536870912,
+              memoryPercent: 25,
+              networkRxBytes: 0,
+              networkTxBytes: 0,
+            },
+          ],
+        },
+      ],
+    });
+
+    const cpu = await screen.findByRole("meter", { name: "web: CPU" });
+    expect(cpu.getAttribute("aria-valuetext")).toBe("0.5 of 2 cores");
+    expect(screen.getByRole("meter", { name: "web: Memory" }).getAttribute("aria-valuetext")).toBe(
+      "128 MB of 512 MB",
+    );
+  });
+
   it("switches project from the breadcrumb", async () => {
     installFakeServer(list([service]));
     renderApp("/projects/shop");
@@ -99,14 +158,14 @@ describe("the create-service page", () => {
     await waitFor(() => expect(app.router.state.location.search).toEqual({ tab: "templates" }));
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Custom" }));
     await waitFor(() => expect(app.router.state.location.search).toEqual({ tab: "custom" }));
-    expect(await screen.findByText("Custom setups are on their way")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Create from a schema" })).toBeTruthy();
   });
 
   it("opens straight on a tab named in the URL", async () => {
-    installFakeServer(list());
+    installFakeServer({ ...list(), "GET /templates": { templates: [] } });
     renderApp("/projects/shop/create?tab=templates");
 
-    expect(await screen.findByText("Templates are on their way")).toBeTruthy();
+    expect(await screen.findByPlaceholderText("Search templates")).toBeTruthy();
   });
 
   it("creates an app and goes to its setup page", async () => {
@@ -116,15 +175,21 @@ describe("the create-service page", () => {
         ...service,
         source: null,
         notes: "",
+        notesHidden: false,
         stopped: false,
         primaryUrl: null,
+        pendingChanges: false,
+        answering: null,
       },
       "GET /projects/shop/services/web": {
         ...service,
         source: null,
         notes: "",
+        notesHidden: false,
         stopped: false,
         primaryUrl: null,
+        pendingChanges: false,
+        answering: null,
         status: "undeployed",
       },
     });
@@ -153,7 +218,8 @@ describe("the create-service page", () => {
 describe("project settings", () => {
   const settings = (services: ServiceSummary[] = []) => ({
     ...list(services),
-    "GET /projects/shop/env": { env: "SHARED=1" },
+    "GET /projects/shop/env": { names: ["SHARED"] },
+    "POST /projects/shop/env/reveal": { env: "SHARED=1" },
     "GET /projects/shop/schema": { services: [] },
   });
 
@@ -161,10 +227,14 @@ describe("project settings", () => {
     const server = installFakeServer(settings());
     renderApp("/projects/shop/settings");
 
+    // Named on load: the value only comes when somebody asks.
+    await screen.findByText("SHARED");
+    expect(screen.queryByText("SHARED=1")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show and edit" }));
     const field = (await screen.findByLabelText("Shared variables")) as HTMLTextAreaElement;
     expect(field.value).toBe("SHARED=1");
 
-    server.set({ "PUT /projects/shop/env": { env: "SHARED=2" } });
+    server.set({ "PUT /projects/shop/env": { names: ["SHARED"] } });
     fireEvent.change(field, { target: { value: "SHARED=2" } });
     fireEvent.click(screen.getByRole("button", { name: "Save variables" }));
 
@@ -181,15 +251,26 @@ describe("project settings", () => {
     );
   });
 
-  it("warns that services will go, and needs the exact name to destroy", async () => {
-    const server = installFakeServer(settings([service]));
+  it("won't let a project that still holds a service be destroyed", async () => {
+    installFakeServer(settings([service]));
+    renderApp("/projects/shop/settings");
+
+    expect(await screen.findByText("Delete the service in this project first.")).toBeTruthy();
+    const destroy = screen.getByRole("button", { name: "Destroy project" }) as HTMLButtonElement;
+    await waitFor(() => expect(destroy.disabled).toBe(true));
+  });
+
+  it("says what goes and what stays, and needs the exact name to destroy an empty project", async () => {
+    const server = installFakeServer(settings());
     const app = renderApp("/projects/shop/settings");
 
-    expect(await screen.findByText("The 1 service in this project goes with it.")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Destroy project" }));
+    const destroy = (await screen.findByRole("button", { name: "Destroy project" })) as HTMLButtonElement;
+    await waitFor(() => expect(destroy.disabled).toBe(false));
+    fireEvent.click(destroy);
     const confirm = (await screen.findByRole("button", { name: "Destroy" })) as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
+    expect(screen.getByText("Its network and its shared variables.")).toBeTruthy();
+    expect(screen.getByText(/Volumes kept from services it used to hold/)).toBeTruthy();
 
     fireEvent.change(screen.getByRole("textbox", { name: /To confirm/ }), { target: { value: "shop" } });
     expect(confirm.disabled).toBe(false);

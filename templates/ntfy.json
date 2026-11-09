@@ -1,0 +1,71 @@
+{
+  "id": "ntfy",
+  "version": "1.0.0",
+  "name": "ntfy",
+  "summary": {
+    "en": "Publish notifications with a plain HTTP request.",
+    "fr": "Publiez des notifications avec une simple requête HTTP."
+  },
+  "description": {
+    "en": "Send a message with curl and receive it on your phone or browser. Topics are public by default on your server unless you turn on access control.",
+    "fr": "Envoyez un message avec curl et recevez-le sur votre téléphone ou votre navigateur. Les sujets sont publics par défaut sur votre serveur, sauf si vous activez le contrôle d'accès."
+  },
+  "instructions": {
+    "en": "Anyone can publish and read topics until you set up users. The access control page of its documentation explains how.",
+    "fr": "N'importe qui peut publier et lire les sujets tant que vous n'avez pas créé d'utilisateurs. La page sur le contrôle d'accès de sa documentation explique comment."
+  },
+  "category": "communication",
+  "tags": ["notifications", "push", "pub-sub"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://ntfy.sh"
+    },
+    {
+      "kind": "docs",
+      "url": "https://docs.ntfy.sh/install/"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/binwiederhier/ntfy"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "ntfy",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "binwiederhier/ntfy:v2.37.2"
+      },
+      "env": {
+        "NTFY_BASE_URL": "{{services.app.url}}",
+        "NTFY_BEHIND_PROXY": "true",
+        "NTFY_CACHE_FILE": "/var/cache/ntfy/cache.db",
+        "NTFY_AUTH_FILE": "/var/cache/ntfy/user.db"
+      },
+      "command": "ntfy serve",
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "cache",
+          "path": "/var/cache/ntfy"
+        }
+      ],
+      "domain": {
+        "port": 80,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/v1/health",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

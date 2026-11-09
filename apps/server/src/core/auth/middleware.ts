@@ -1,6 +1,8 @@
 import { getConnInfo } from "@hono/node-server/conninfo";
 import type { Context, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import type { ActionSource } from "../actions/source";
+import { runAs } from "../actions/source";
 import type { Config } from "../config";
 import type { AppEnv } from "../context";
 import type { Db } from "../db";
@@ -31,6 +33,8 @@ export interface AuthLimits {
   loginPerEmail: RateLimitRule;
   /** Password or code checks behind an existing session, in case the session was stolen. */
   sensitivePerUser: RateLimitRule;
+  /** One address failing to open a box's IDE. A token that works costs nothing. */
+  idePerAddress: RateLimitRule;
 }
 
 const FIFTEEN_MINUTES = 15 * 60 * 1000;
@@ -40,6 +44,7 @@ export const defaultAuthLimits: AuthLimits = {
   loginPerAddress: { limit: 20, windowMs: FIFTEEN_MINUTES },
   loginPerEmail: { limit: 50, windowMs: FIFTEEN_MINUTES },
   sensitivePerUser: { limit: 10, windowMs: FIFTEEN_MINUTES },
+  idePerAddress: { limit: 30, windowMs: FIFTEEN_MINUTES },
 };
 
 const BEARER = /^Bearer\s+(\S+)$/i;
@@ -66,14 +71,28 @@ export function requestScheme(c: Context<AppEnv>, config: Pick<Config, "trustedP
   );
 }
 
-/** Resolves the caller into `principal`. Credentials that were sent but are wrong are a 401. */
-export function authenticate(deps: {
-  db: Db;
-  now: () => number;
-  config: Pick<Config, "trustedProxies">;
-}): MiddlewareHandler<AppEnv> {
+/** What an Action started by this request will say about where it came from. */
+function sourceOf(principal: Principal | null): ActionSource {
+  if (principal?.kind === "token") {
+    return { origin: "api_key", actorEmail: principal.user.email, detail: principal.tokenName };
+  }
+  return { origin: "session", actorEmail: principal?.user.email };
+}
+
+/**
+ * Resolves the caller into `principal`. Credentials that were sent but are wrong are a 401, except
+ * on paths that read the Authorization header themselves: a deployment trigger is no API key.
+ */
+export function authenticate(
+  deps: {
+    db: Db;
+    now: () => number;
+    config: Pick<Config, "trustedProxies">;
+  },
+  readsOwnBearer: (path: string) => boolean = () => false,
+): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    const authorization = c.req.header("authorization");
+    const authorization = readsOwnBearer(c.req.path) ? undefined : c.req.header("authorization");
     let principal: Principal | null = null;
 
     if (authorization !== undefined) {
@@ -90,7 +109,7 @@ export function authenticate(deps: {
     }
 
     c.set("principal", principal);
-    await next();
+    await runAs(sourceOf(principal), next);
   };
 }
 

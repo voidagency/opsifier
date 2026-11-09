@@ -12,7 +12,9 @@ import {
 import { toActionEntry } from "../../core/actions";
 import { requirePrincipal } from "../../core/auth";
 import type { Feature } from "../../core/context";
-import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
+import { errorResponse, jsonBody, jsonResponse, optionalJsonBody } from "../../core/openapi";
+import { requestAccess, requireProjectLevel } from "../access/guard";
+import { redactForViewer } from "../access/rules";
 import {
   enqueueDeploy,
   enqueueDestroy,
@@ -21,6 +23,7 @@ import {
   enqueueStop,
   renameService,
 } from "./lifecycle";
+import { assignMissingServiceIds } from "./repo";
 import { createService, getServiceDetail } from "./service";
 
 const tags = ["Services"];
@@ -70,7 +73,7 @@ const deployRoute = createRoute({
   tags,
   request: {
     params: servicePath,
-    body: { required: false, content: { "application/json": { schema: deployRequest } } },
+    body: optionalJsonBody(deployRequest),
   },
   responses: { 202: accepted, 400: invalid, 401: denied, 404: missing, 409: refused },
 });
@@ -110,6 +113,10 @@ const actorEmailOf = (principal: ReturnType<typeof requirePrincipal>) =>
   principal.kind === "session" ? principal.user.email : undefined;
 
 export const feature: Feature = {
+  boot(deps) {
+    assignMissingServiceIds(deps.db);
+  },
+
   register(app, deps) {
     app.openapi(createServiceRoute, async (c) =>
       c.json(
@@ -123,9 +130,11 @@ export const feature: Feature = {
       ),
     );
 
-    app.openapi(getRoute, async (c) =>
-      c.json(await getServiceDetail(deps, target(c.req.valid("param"))), 200),
-    );
+    app.openapi(getRoute, async (c) => {
+      const params = c.req.valid("param");
+      const detail = await getServiceDetail(deps, target(params));
+      return c.json(redactForViewer(requestAccess(deps, c), params.project, detail), 200);
+    });
 
     app.openapi(deployRoute, (c) =>
       c.json(
@@ -180,10 +189,13 @@ export const feature: Feature = {
     );
 
     app.openapi(renameRoute, async (c) => {
+      const request = c.req.valid("json");
+      // The table checked the project in the path. A move also writes into the one in the body.
+      requireProjectLevel(requestAccess(deps, c), c.req.method, request.projectName, "operator");
       const to = await renameService(
         deps,
         target(c.req.valid("param")),
-        c.req.valid("json"),
+        request,
         actorEmailOf(requirePrincipal(c)),
       );
       return c.json(await getServiceDetail(deps, to), 200);

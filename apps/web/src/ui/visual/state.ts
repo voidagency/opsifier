@@ -1,4 +1,4 @@
-import type { ActionStatus, DeployOutcome, ServiceStatus } from "@opsifier/contract";
+import type { ActionStatus, DeployOutcome, ScriptRunStatus, ServiceStatus } from "@opsifier/contract";
 import type { LampStatus } from "../StatusLamp";
 
 /**
@@ -91,15 +91,25 @@ export interface ServiceStateInput {
   status: ServiceStatus;
   activeAction?: unknown;
   replicas?: { running: number; desired: number };
+  /** Set while nobody can say what the service is really running. */
+  runtimeUncertain?: unknown;
 }
 
 /**
  * Work in progress wins over what is running, because that is what is happening.
  * A failing service that still has tasks up is degraded, not down.
  */
-export function stateFromService({ status, activeAction, replicas }: ServiceStateInput): VisualState {
+export function stateFromService({
+  status,
+  activeAction,
+  replicas,
+  runtimeUncertain,
+}: ServiceStateInput): VisualState {
   if (activeAction !== undefined && activeAction !== null) {
     return "progress";
+  }
+  if (runtimeUncertain !== undefined && runtimeUncertain !== null) {
+    return "unknown";
   }
   const states: Record<ServiceStatus, VisualState> = {
     running: "running",
@@ -120,12 +130,29 @@ export function stateFromAction(status: ActionStatus): VisualState {
     succeeded: "running",
     failed: "failed",
     cancelled: "stopped",
+    // The panel does not know how it ended, and someone should go and look.
+    uncertain: "unknown",
   };
   return states[status];
 }
 
 export function stateFromOutcome(outcome: DeployOutcome): VisualState {
   return stateFromAction(outcome);
+}
+
+/** A run with no known ending reads as unknown, never as a failure it might not have been. */
+export function stateFromScriptRun(status: ScriptRunStatus): VisualState {
+  const states: Record<ScriptRunStatus, VisualState> = {
+    queued: "progress",
+    running: "progress",
+    succeeded: "running",
+    failed: "failed",
+    timed_out: "failed",
+    cancelled: "stopped",
+    skipped: "stopped",
+    unknown: "unknown",
+  };
+  return states[status];
 }
 
 export type HealthCounts = Partial<Record<VisualState, number>>;

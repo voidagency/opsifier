@@ -1,0 +1,13 @@
+{
+  "build": {
+    "title": "Hook de build",
+    "description": "S'exécute en root pendant la construction de l'image, sans espace de travail. Utilisez-le pour les paquets système."
+  },
+  "start": {
+    "title": "Hook de démarrage",
+    "description": "S'exécute sous l'utilisateur de la box à chaque démarrage, dans l'espace de travail, avant tout processus."
+  },
+  "failure": "Si un hook échoue, le déploiement s'arrête là et ce qui tourne reste tel quel.",
+  "saved": "Enregistré. Le prochain déploiement les exécutera.",
+  "save": "Enregistrer les hooks"
+}

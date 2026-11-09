@@ -261,6 +261,12 @@ export const conceptPictograms = {
       <path d="M10 3.2A9 9 0 0 1 14 3.2" {...amber} />
     </>
   ),
+  editor: (
+    <>
+      <path d="M5 3H15L19 7V21H5Z" />
+      <path d="M10 11 7.5 13.5 10 16M14 11 16.5 13.5 14 16" {...amber} />
+    </>
+  ),
   console: (
     <>
       <rect x="3" y="4" width="18" height="16" />

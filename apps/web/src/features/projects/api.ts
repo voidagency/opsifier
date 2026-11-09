@@ -2,6 +2,7 @@ import {
   actionEntry,
   type CreateProjectRequest,
   envDocument,
+  envSummary,
   projectList,
   projectSchemaDocument,
   projectSummary,
@@ -25,7 +26,7 @@ export const projectQuery = (name: string) =>
 export const projectEnvQuery = (name: string) =>
   queryOptions({
     queryKey: ["projects", name, "env"] as const,
-    queryFn: ({ signal }) => api.get(`/projects/${name}/env`, { schema: envDocument, signal }),
+    queryFn: ({ signal }) => api.get(`/projects/${name}/env`, { schema: envSummary, signal }),
     staleTime: 0,
   });
 
@@ -39,7 +40,8 @@ export const projectSchemaQuery = (name: string) =>
 export const projectsApi = {
   create: (body: CreateProjectRequest) => api.post("/projects", { body, schema: projectSummary }),
   saveEnv: (name: string, env: string) =>
-    api.put(`/projects/${name}/env`, { body: { env }, schema: envDocument }),
+    api.put(`/projects/${name}/env`, { body: { env }, schema: envSummary }),
+  revealEnv: (name: string) => api.post(`/projects/${name}/env/reveal`, { schema: envDocument }),
   destroy: (name: string, confirm: string) =>
     api.delete(`/projects/${name}`, { body: { confirm }, schema: actionEntry }),
 };

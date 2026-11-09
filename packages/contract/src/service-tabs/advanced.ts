@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { wholeNumber } from "../common";
 import { servicePath } from "../services";
 
 export const MAX_PORTS = 64;
@@ -89,6 +90,19 @@ const sysctlValue = z
   .max(1024, "This is too long")
   .refine((value) => !/[\r\n]/.test(value) && !value.includes("\0"), "Must fit on one line");
 
+/** What a task can be asked to stop with. SIGKILL is left out: it asks nothing and can't be caught. */
+export const STOP_SIGNALS = [
+  "SIGTERM",
+  "SIGINT",
+  "SIGQUIT",
+  "SIGHUP",
+  "SIGUSR1",
+  "SIGUSR2",
+  "SIGWINCH",
+] as const;
+
+export const MAX_STOP_GRACE_SECONDS = 3600;
+
 const MAX_GROUP_ID = 4_294_967_295;
 
 const groupId = z
@@ -116,6 +130,15 @@ export const deploySettings = z
       .refine((command) => !command.includes("\0"), "Can't contain a NUL character")
       .nullable()
       .default(null),
+    /** The signal a task is asked to stop with. Null keeps the one the image declares. */
+    stopSignal: z.enum(STOP_SIGNALS).nullable().default(null),
+    /** How long a task gets to stop after that signal, before it is killed. */
+    stopGraceSeconds: z
+      .number()
+      .int("Use a whole number of seconds")
+      .min(0, "Use a whole number of seconds")
+      .max(MAX_STOP_GRACE_SECONDS, `Use at most ${MAX_STOP_GRACE_SECONDS} seconds`)
+      .default(10),
     capAdd: capabilityList.default([]),
     capDrop: capabilityList.default([]),
     sysctls: z.record(sysctlKey, sysctlValue).default({}),
@@ -143,7 +166,7 @@ export const advancedDocument = z.object({
 export type AdvancedDocument = z.infer<typeof advancedDocument>;
 
 /** One published port of a service, by its position in the list. */
-export const portItemPath = servicePath.extend({ index: z.coerce.number().int().min(0).max(999) });
+export const portItemPath = servicePath.extend({ index: wholeNumber(0, 999) });
 
 /** The answer to every change of a service's published ports. */
 export const portList = z.object({ ports: z.array(portSpec) });

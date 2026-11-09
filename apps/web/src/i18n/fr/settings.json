@@ -7,7 +7,9 @@
     "newPassword": "Nouveau mot de passe",
     "newPasswordHint": "Au moins 12 caractères. Pour conserver votre mot de passe, saisissez-le ici à nouveau.",
     "submit": "Enregistrer",
-    "saved": "Identifiants mis à jour"
+    "saved": "Identifiants mis à jour",
+    "currentPasswordHint": "Nécessaire pour modifier ces informations.",
+    "emailHint": "L'adresse avec laquelle vous vous connectez."
   },
   "twoFactor": {
     "title": "Connexion à deux facteurs",
@@ -47,7 +49,11 @@
       "install": "Ouvrez une application d'authentification sur votre téléphone, ou installez-en une.",
       "scan": "Scannez le code QR. Si ce n'est pas possible, saisissez la clé de configuration.",
       "enter": "Saisissez le code à 6 chiffres affiché par l'application."
-    }
+    },
+    "recoverySaveFirst": "Cochez la case une fois vos codes enregistrés.",
+    "codeLabelHint": "Le code à 6 chiffres affiché par votre application.",
+    "recoveryCodeHint": "Un des codes enregistrés quand vous avez activé cette option.",
+    "currentPasswordHint": "Confirme qu'il s'agit bien de vous."
   },
   "errors": {
     "email": "Saisissez une adresse e-mail valide.",

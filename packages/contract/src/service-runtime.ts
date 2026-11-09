@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { wholeNumber } from "./common";
+import { metricOrigin, metricScope } from "./monitor";
 
 /** Live logs of one service, of any type. Published only while someone is subscribed. */
 export const serviceLogsTopic = (project: string, service: string): string =>
@@ -26,6 +28,8 @@ export const serviceLogLine = z.object({
   line: z.string(),
   /** RFC 3339. Null when Docker gave no timestamp. */
   at: z.string().nullable(),
+  /** Marks where the feed skipped output it could not keep up with. Carries no text. */
+  gap: z.literal(true).optional(),
 });
 export type ServiceLogLine = z.infer<typeof serviceLogLine>;
 
@@ -36,6 +40,10 @@ export const serviceLogEvent = z.discriminatedUnion("kind", [
     feed: z.string(),
     state: logFeedState,
     lines: z.array(serviceLogLine),
+    /** How many lines of each task a new follow reads back. Anything older is left to search. */
+    tailLines: z.number().int().min(0).optional(),
+    /** How many of the latest lines the feed keeps for whoever subscribes next. */
+    ringLines: z.number().int().min(0).optional(),
   }),
   z.object({ kind: z.literal("lines"), feed: z.string(), lines: z.array(serviceLogLine) }),
   z.object({ kind: z.literal("state"), feed: z.string(), state: logFeedState }),
@@ -54,13 +62,8 @@ export const logSearchQuery = z.object({
   stream: logStreamFilter.default("all"),
   level: logLevelFilter.default("any"),
   /** How many seconds back to look. Leaving it out searches everything Docker still holds. */
-  since: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(366 * 24 * 3600)
-    .optional(),
-  limit: z.coerce.number().int().min(1).max(2000).default(500),
+  since: wholeNumber(1, 366 * 24 * 3600).optional(),
+  limit: wholeNumber(1, 2000).default(500),
 });
 export type LogSearchQuery = z.infer<typeof logSearchQuery>;
 
@@ -81,18 +84,19 @@ export const consoleTask = z.object({
   slot: z.number().int().nullable(),
   /** `<project>_<service>.<slot>.<task id>`, as Docker names the container. */
   name: z.string(),
+  /** The shells that really start in it. Empty when it has none. */
+  programs: z.array(consoleProgram),
 });
 export type ConsoleTask = z.infer<typeof consoleTask>;
 
 /** GET /api/v1/projects/{project}/services/{service}/console. Administrators only. */
 export const consoleInfo = z.object({
   tasks: z.array(consoleTask),
-  programs: z.array(consoleProgram),
   scripts: z.array(z.string()),
 });
 export type ConsoleInfo = z.infer<typeof consoleInfo>;
 
-const terminalDimension = z.coerce.number().int().min(1).max(1000);
+const terminalDimension = wholeNumber(1, 1000);
 
 /** The query string of a terminal socket: which task, and what to run in it. */
 export const terminalQuery = z
@@ -121,7 +125,11 @@ export type TerminalClientFrame = z.infer<typeof terminalClientFrame>;
 
 /** Text frames a terminal server sends. Binary frames are the program's output. */
 export const terminalServerFrame = z.discriminatedUnion("t", [
-  z.object({ t: z.literal("ready") }),
+  z.object({
+    t: z.literal("ready"),
+    /** The shell opened instead of the one asked for, which this container does not have. */
+    fallback: consoleProgram.optional(),
+  }),
   z.object({ t: z.literal("exit"), code: z.number().int().nullable() }),
   z.object({ t: z.literal("error"), message: z.string() }),
 ]);
@@ -130,15 +138,19 @@ export type TerminalServerFrame = z.infer<typeof terminalServerFrame>;
 /** Sent as the WebSocket close code when the panel refuses to keep a terminal open. */
 export const TERMINAL_CLOSE_REFUSED = 4403;
 
+/** A figure Docker did not report for a task is null: that task is starting or dying, not idle. */
 export const taskMetrics = z.object({
   taskId: z.string(),
   slot: z.number().int().nullable(),
-  cpuPercent: z.number().min(0),
-  memoryUsedBytes: z.number().int().min(0),
-  memoryLimitBytes: z.number().int().min(0),
-  memoryPercent: z.number().min(0),
-  networkRxBytes: z.number().int().min(0),
-  networkTxBytes: z.number().int().min(0),
+  cpuPercent: z.number().min(0).nullable(),
+  /** What `cpuPercent` can reach for this task: 100 per core it may use. */
+  cpuCapacityPercent: z.number().min(0).nullable().default(null),
+  memoryUsedBytes: z.number().int().min(0).nullable(),
+  memoryLimitBytes: z.number().int().min(0).nullable(),
+  memoryPercent: z.number().min(0).nullable(),
+  /** Received and sent since the task started. */
+  networkRxBytes: z.number().int().min(0).nullable(),
+  networkTxBytes: z.number().int().min(0).nullable(),
 });
 export type TaskMetrics = z.infer<typeof taskMetrics>;
 
@@ -146,7 +158,12 @@ export type TaskMetrics = z.infer<typeof taskMetrics>;
 export const servicesMetrics = z.object({
   /** False when Docker did not answer, in which case the previous readings no longer hold. */
   available: z.boolean(),
+  /** When Docker was read. Null when it did not answer. */
   readAt: z.iso.datetime().nullable(),
+  /** The newest reading of any service on record, so that an outage can be dated. */
+  lastReadAt: z.iso.datetime().nullable().default(null),
+  origin: metricOrigin.default("docker"),
+  scope: metricScope.default("containers"),
   services: z.array(
     z.object({
       projectName: z.string(),

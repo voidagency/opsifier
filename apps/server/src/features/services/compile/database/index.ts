@@ -3,7 +3,7 @@ import type { SwarmServiceSpec } from "../../../../core/docker";
 import type { AppServiceSpec, StoredDatabase } from "../../spec";
 import { compileDeploy } from "../deploy";
 import type { CompiledService } from "../index";
-import { qualifiedName } from "../names";
+import { idLabel, qualifiedName } from "../names";
 import { compileResources } from "../resources";
 import { compileDatabaseEndpoint } from "./endpoint";
 import { engineRuntime } from "./engines";
@@ -16,7 +16,6 @@ export { type ConnectionTarget, connectionUrl, enginePort, MASK, maskedConnectio
 export { MYSQL_CONFIG_PATH, supportsConfigFile } from "./engines";
 export { managedEnvKeys } from "./env";
 export { DATA_NODE_CONSTRAINT } from "./mounts";
-export { SHARED_NETWORK } from "./network";
 
 /** Plaintext only here, for the few moments a deploy needs it. The compiler keeps none of it. */
 export interface DatabaseSecrets {
@@ -25,8 +24,10 @@ export interface DatabaseSecrets {
 }
 
 export interface CompileDatabaseInput {
-  project: { name: string; env: string };
-  service: { name: string; spec: AppServiceSpec & { database: StoredDatabase } };
+  project: { name: string };
+  service: { name: string; spec: AppServiceSpec & { database: StoredDatabase }; id?: string | null };
+  /** The unsealed variables of the project and the service. */
+  env?: { project: string; service: string };
   secrets: DatabaseSecrets;
   dataDir: string;
   forceUpdate: number;
@@ -55,8 +56,8 @@ export function compileDatabaseService(input: CompileDatabaseInput): CompiledSer
     user: database.user,
     password: secrets.password,
     rootPassword: secrets.rootPassword,
-    projectEnv: project.env,
-    serviceEnv: spec.env,
+    projectEnv: input.env?.project ?? "",
+    serviceEnv: input.env?.service ?? "",
   });
   const mounts = compileDatabaseMounts({
     engine: database.engine,
@@ -65,6 +66,7 @@ export function compileDatabaseService(input: CompileDatabaseInput): CompiledSer
     project: project.name,
     service: service.name,
     dataDir: input.dataDir,
+    id: service.id,
   });
   const deploy = compileDeploy({
     settings: databaseDeploySettings(),
@@ -79,6 +81,7 @@ export function compileDatabaseService(input: CompileDatabaseInput): CompiledSer
       "opsifier.project": project.name,
       "opsifier.service": service.name,
       "opsifier.type": database.engine,
+      ...idLabel(service.id),
     },
     TaskTemplate: {
       ContainerSpec: {

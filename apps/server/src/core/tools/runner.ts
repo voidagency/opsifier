@@ -117,8 +117,9 @@ export function spawnTool(request: ToolRequest): Promise<ToolResult> {
 
     const tail: string[] = [];
     const emit = (raw: string) => {
-      const clipped = raw.length > MAX_EMITTED_LINE_CHARS ? raw.slice(0, MAX_EMITTED_LINE_CHARS) : raw;
-      const line = redactor.apply(clipped.replace(ANSI_SEQUENCE, ""));
+      // Removed before the line is cut, so that the cut can't leave the first half of a secret behind.
+      const clean = redactor.apply(raw.replace(ANSI_SEQUENCE, ""));
+      const line = clean.length > MAX_EMITTED_LINE_CHARS ? clean.slice(0, MAX_EMITTED_LINE_CHARS) : clean;
       tail.push(line);
       if (tail.length > TAIL_LINES) {
         tail.shift();

@@ -17,7 +17,7 @@
   "registryHint": "Only for a private registry.",
   "username": "Registry username",
   "password": "Registry password",
-  "passwordStored": "A password is stored. Leave this blank to keep it, or clear the username to remove both.",
+  "passwordStored": "A password is stored for this image's repository. Leave this blank to keep it, or clear the username to remove both. Moving to another repository takes the password again.",
   "passwordPlaceholder": "Stored",
   "branch": "Branch",
   "branchHint": "A branch, a tag or a full commit hash.",
@@ -74,7 +74,7 @@
     "file": "Dockerfile path",
     "fileHint": "Relative to the build path, which is also the Docker context.",
     "builder": "Builder",
-    "builderHint": "Any builder image.",
+    "builderHint": "Any builder image, pinned to a full release or a digest so that it can't change under a service.",
     "version": "Version",
     "installCommand": "Install command",
     "buildCommand": "Build command",
@@ -86,7 +86,31 @@
     "misePackagesHint": "Separated by spaces, as name or name@version.",
     "buildAptPackages": "APT packages for the build",
     "deployAptPackages": "APT packages in the final image",
-    "packagesHint": "Separated by spaces."
+    "packagesHint": "Separated by spaces.",
+    "facts": {
+      "toggle": "What this builder supports",
+      "version": "Version",
+      "versionDockerfile": "BuildKit, in this server's own Docker",
+      "versionBuildpacks": "pack {{pack}}, with {{builder}}",
+      "languages": "Languages",
+      "anyLanguage": "Any: the Dockerfile says how to build it",
+      "unknownLanguages": "This image's own documentation says",
+      "overrides": "You can change",
+      "fails": "When it fails",
+      "overridesBy": {
+        "dockerfile": "The Dockerfile's path. The rest is in the file itself, and its build variables and secrets come from the Environment tab.",
+        "buildpacks": "The builder image, and a project.toml in the build path.",
+        "nixpacks": "The install, build and start commands, Nix and APT packages, and a nixpacks.toml in the build path.",
+        "railpack": "The install, build and start commands, Mise and APT packages, and a railpack.json in the build path."
+      },
+      "failsBy": {
+        "dockerfile": "A step that fails, a base image that can't be fetched or a missing Dockerfile fails the deployment. What is running is left alone.",
+        "buildpacks": "A project none of its buildpacks recognise fails the deployment and says so. What is running is left alone.",
+        "nixpacks": "A version that is not installed, or a project it can't work out how to build, fails the deployment and says so. What is running is left alone.",
+        "railpack": "A version that is not installed, or a project it can't work out how to build, fails the deployment and says so. What is running is left alone."
+      }
+    },
+    "versionHint": "Which release of the builder to run."
   },
   "sshKey": {
     "title": "SSH key",
@@ -98,7 +122,20 @@
     "refresh": "Replace the SSH key",
     "refreshTitle": "Replace this SSH key?",
     "refreshDescription": "The current key stops working for this service at once, so add the new one to your Git host before the next deploy.",
-    "refreshConfirm": "Replace"
+    "refreshConfirm": "Replace",
+    "fingerprint": "Fingerprint",
+    "boundTo": "Only for {{repository}}",
+    "notBound": "Not tied to a repository yet: the first one it is used for claims it.",
+    "test": "Test the connection",
+    "testing": "Connecting…",
+    "testOk": "Connected: this key can read the repository.",
+    "testFailed": "It could not connect: {{detail}}",
+    "delete": "Delete the SSH key",
+    "deleteTitle": "Delete this SSH key?",
+    "deleteDescription": "Opsifier forgets the key at once and stops using it. It is still installed at your Git host: remove it there to revoke it fully.",
+    "deleteConfirm": "Delete",
+    "deleted": "SSH key deleted",
+    "deletedHint": "Remove it from your Git host as well."
   },
   "autoDeploy": {
     "title": "Auto-deploy",
@@ -106,7 +143,11 @@
     "hint": "Adds a webhook to the repository. The GitHub token needs permission to manage webhooks.",
     "needsToken": "Auto-deploy needs a GitHub token.",
     "enabled": "Auto-deploy is on",
-    "disabled": "Auto-deploy is off"
+    "disabled": "Auto-deploy is off",
+    "pausedTitle": "The webhook is paused because the branch changed. Renew it to resume.",
+    "renew": "Renew the webhook",
+    "renewed": "Webhook renewed",
+    "legacyHook": "This webhook dates from before webhooks had a secret of their own. Renew it to give it one."
   },
   "errors": {
     "imageRequired": "Enter an image to run.",
@@ -126,7 +167,7 @@
     "fileTooLarge": "This archive is larger than {{limit}}.",
     "build": {
       "file": "Use a path inside the build path, such as Dockerfile.",
-      "builder": "Enter a builder image such as heroku/builder:24.",
+      "builder": "Use a builder image pinned to a full release such as 0.4.681, or to a digest.",
       "version": "Use a version such as 1.2.3.",
       "installCommand": "Write the command on one line.",
       "buildCommand": "Write the command on one line.",
@@ -137,5 +178,7 @@
       "buildAptPackages": "Use package names separated by spaces.",
       "deployAptPackages": "Use package names separated by spaces."
     }
-  }
+  },
+  "changeRevokes": "Saving another repository or branch revokes this service's deployment token and pauses its webhook, because they were issued for this one.",
+  "usernameHint": "Only for a private registry."
 }

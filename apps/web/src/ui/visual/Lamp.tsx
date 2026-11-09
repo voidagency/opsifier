@@ -3,7 +3,7 @@ import { cn } from "../../lib/cn";
 import { type StateDefinition, stateLanguage, type VisualState } from "./state";
 import "./strings";
 
-export const lampSizes = { xs: 10, sm: 12, md: 16, lg: 24, xl: 40 } as const;
+export const lampSizes = { xs: 12, sm: 15, md: 20, lg: 30, xl: 50 } as const;
 export type LampSize = keyof typeof lampSizes;
 
 /** From this size up, a lamp has room for its inner mark. Below it, the outline alone carries the state. */

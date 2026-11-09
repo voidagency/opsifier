@@ -2,25 +2,32 @@ import {
   type ActionEntry,
   actionEntry,
   actionsTopic,
+  buildEnvironment,
+  buildVariablesDocument,
   type CreateServiceRequest,
   deploymentPage,
   deploymentTrigger,
   domainList,
+  issuedDeploymentTrigger,
+  issuedDeploymentWebhook,
+  pendingChanges,
   type RenameServiceRequest,
+  releaseDetail,
+  releaseList,
+  type SaveServiceEnvironment,
   type SaveSourceRequest,
-  type ServiceDetail,
-  type ServiceStatus,
   serviceDetail,
   serviceEnvironment,
+  serviceEnvironmentText,
   serviceMetrics,
   serviceNotes,
+  serviceNotesVisibility,
   serviceSource,
 } from "@opsifier/contract";
 import { queryOptions, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { api } from "../../lib/api";
 import { useTopic } from "../../lib/realtime";
-import type { LampStatus } from "../../ui";
 import { projectsKey } from "../projects/api";
 
 /** The project and service the current route is about. Only for components under a service route. */
@@ -54,6 +61,14 @@ export const environmentQuery = (project: string, service: string) =>
     staleTime: 0,
   });
 
+export const buildEnvironmentQuery = (project: string, service: string) =>
+  queryOptions({
+    queryKey: [...serviceKey(project, service), "environment", "build"] as const,
+    queryFn: ({ signal }) =>
+      api.get(`${base(project, service)}/environment/build`, { schema: buildEnvironment, signal }),
+    staleTime: 0,
+  });
+
 export const domainsQuery = (project: string, service: string) =>
   queryOptions({
     queryKey: [...serviceKey(project, service), "domains"] as const,
@@ -65,6 +80,30 @@ export const deploymentsQuery = (project: string, service: string) =>
     queryKey: [...serviceKey(project, service), "deployments"] as const,
     queryFn: ({ signal }) =>
       api.get(`${base(project, service)}/deployments`, { schema: deploymentPage, signal }),
+    staleTime: 0,
+  });
+
+/** What the next deployment would change. */
+export const pendingChangesQuery = (project: string, service: string) =>
+  queryOptions({
+    queryKey: [...serviceKey(project, service), "pending-changes"] as const,
+    queryFn: ({ signal }) =>
+      api.get(`${base(project, service)}/deployments/pending`, { schema: pendingChanges, signal }),
+    staleTime: 0,
+  });
+
+export const releasesQuery = (project: string, service: string) =>
+  queryOptions({
+    queryKey: [...serviceKey(project, service), "releases"] as const,
+    queryFn: ({ signal }) => api.get(`${base(project, service)}/releases`, { schema: releaseList, signal }),
+    staleTime: 0,
+  });
+
+export const releaseQuery = (project: string, service: string, number: number) =>
+  queryOptions({
+    queryKey: [...serviceKey(project, service), "releases", number] as const,
+    queryFn: ({ signal }) =>
+      api.get(`${base(project, service)}/releases/${number}`, { schema: releaseDetail, signal }),
     staleTime: 0,
   });
 
@@ -95,39 +134,48 @@ export const servicesApi = {
     api.post(`${base(project, service)}/rename`, { body, schema: serviceDetail }),
   saveNotes: (project: string, service: string, notes: string) =>
     api.put(`${base(project, service)}/notes`, { body: { notes }, schema: serviceNotes }),
+  setNotesHidden: (project: string, service: string, hidden: boolean) =>
+    api.put(`${base(project, service)}/notes/visibility`, {
+      body: { hidden },
+      schema: serviceNotesVisibility,
+    }),
   saveSource: (project: string, service: string, body: SaveSourceRequest) =>
     api.put(`${base(project, service)}/source`, { body, schema: serviceSource }),
   rotateTrigger: (project: string, service: string) =>
-    api.post(`${base(project, service)}/deployments/trigger/rotate`, { schema: deploymentTrigger }),
-  saveEnvironment: (project: string, service: string, env: string) =>
-    api.put(`${base(project, service)}/environment`, { body: { env }, schema: serviceEnvironment }),
+    api.post(`${base(project, service)}/deployments/trigger/rotate`, { schema: issuedDeploymentTrigger }),
+  revokeTrigger: (project: string, service: string) =>
+    api.delete(`${base(project, service)}/deployments/trigger`, { schema: deploymentTrigger }),
+  rotateWebhook: (project: string, service: string) =>
+    api.post(`${base(project, service)}/deployments/webhook/rotate`, { schema: issuedDeploymentWebhook }),
+  removeWebhook: (project: string, service: string) =>
+    api.delete(`${base(project, service)}/deployments/webhook`, { schema: deploymentTrigger }),
+  rollback: (project: string, service: string, number: number, confirm: string) =>
+    api.post(`${base(project, service)}/releases/${number}/rollback`, {
+      body: { confirm },
+      schema: actionEntry,
+    }),
+  saveEnvironment: (project: string, service: string, body: SaveServiceEnvironment) =>
+    api.put(`${base(project, service)}/environment`, { body, schema: serviceEnvironment }),
+  revealEnvironment: (project: string, service: string) =>
+    api.post(`${base(project, service)}/environment/reveal`, { schema: serviceEnvironmentText }),
+  saveBuildVariables: (project: string, service: string, env: string) =>
+    api.put(`${base(project, service)}/environment/build`, { body: { env }, schema: buildEnvironment }),
+  revealBuildVariables: (project: string, service: string) =>
+    api.post(`${base(project, service)}/environment/build/reveal`, { schema: buildVariablesDocument }),
+  saveBuildSecret: (project: string, service: string, name: string, value: string) =>
+    api.put(`${base(project, service)}/environment/build/secrets/${name}`, {
+      body: { value },
+      schema: buildEnvironment,
+    }),
+  deleteBuildSecret: (project: string, service: string, name: string) =>
+    api.delete(`${base(project, service)}/environment/build/secrets/${name}`, { schema: buildEnvironment }),
+  stopInheritingRuntime: (project: string, service: string) =>
+    api.delete(`${base(project, service)}/environment/build/inherited`, { schema: buildEnvironment }),
 };
 
 export function isActive(action: Pick<ActionEntry, "status">): boolean {
   return action.status === "queued" || action.status === "running";
 }
-
-/** What the lamp shows. Work in progress overrides the running state, because that is what's happening. */
-export function lampForService(
-  status: ServiceStatus,
-  activeAction: ServiceDetail["activeAction"],
-): LampStatus {
-  if (activeAction !== null) {
-    return "busy";
-  }
-  switch (status) {
-    case "running":
-      return "ok";
-    case "starting":
-      return "busy";
-    case "failing":
-      return "bad";
-    default:
-      return "off";
-  }
-}
-
-export const statusLabelKey = (status: ServiceStatus): `status.${ServiceStatus}` => `status.${status}`;
 
 /**
  * Refetches everything an Action can have changed the moment one starts or finishes, so nothing

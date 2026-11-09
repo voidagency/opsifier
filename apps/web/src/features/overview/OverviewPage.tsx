@@ -1,23 +1,35 @@
-import type { ProjectSummary } from "@opsifier/contract";
+import type { ProjectSummary, ServiceSummary } from "@opsifier/contract";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, LayoutTemplate, Plus, Settings } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { errorMessage } from "../../lib/forms";
 import {
   Button,
   EmptyState,
-  FormBanner,
-  HarbourFigure,
+  ErrorState,
+  HealthSummary,
+  Lamp,
   PageHeader,
   Segmented,
   Skeleton,
+  stateLanguage,
   Tooltip,
+  type VisualState,
 } from "../../ui";
+import { SystemGauges } from "../monitor/SystemGauges";
 import { projectsQuery } from "../projects/api";
 import { CreateProjectDialog } from "../projects/CreateProjectDialog";
-import { ServiceRow } from "../services/ServiceRow";
+import { resourcesKey, type ServiceResources, useAllServiceResources } from "../service-runtime/resources";
+import { ServiceChip, ServiceRow } from "../services/ServiceRow";
+import {
+  serviceCounts,
+  serviceState,
+  servicesState,
+  sortServices,
+  stateRank,
+} from "../services/serviceState";
 
 type Sort = "name" | "time";
 type View = "expanded" | "collapsed";
@@ -79,11 +91,27 @@ function IconLink({
   );
 }
 
-function ProjectBlock({ project, expanded }: { project: ProjectSummary; expanded: boolean }) {
-  const { t } = useTranslation("overview");
+function ProjectBlock({
+  project,
+  services,
+  expanded,
+  resources,
+}: {
+  project: ProjectSummary;
+  /** The project's services to draw, problems first. Fewer than it has while a filter is on. */
+  services: readonly ServiceSummary[];
+  expanded: boolean;
+  resources: ReadonlyMap<string, ServiceResources>;
+}) {
+  const { t } = useTranslation(["overview", "visual"]);
+  const state = servicesState(project.services);
+  const stateName =
+    state === null ? t("health.empty", { ns: "visual" }) : t(stateLanguage[state].labelKey, { ns: "visual" });
+
   return (
     <section aria-label={project.name} className="border-b last:border-b-0">
-      <div className="flex items-center justify-between gap-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5">
+        <Lamp state={state ?? "unknown"} size="md" label={`${project.name}: ${stateName}`} />
         <h2 className="min-w-0 truncate">
           <Link
             to="/projects/$project"
@@ -92,11 +120,16 @@ function ProjectBlock({ project, expanded }: { project: ProjectSummary; expanded
           >
             {project.name}
           </Link>
-          <span className="ml-2 text-xs text-muted">
-            {t("serviceCount", { count: project.services.length })}
-          </span>
         </h2>
-        <div className="flex shrink-0 items-center gap-0.5">
+        <div className="order-last flex w-full flex-wrap items-center gap-1.5 pl-7 sm:order-none sm:w-auto sm:pl-1">
+          {project.services.length === 0 ? (
+            <span className="text-xs text-muted">{t("noServices")}</span>
+          ) : (
+            // The rows below already link to each service, so only the summary needs links of its own.
+            services.map((service) => <ServiceChip key={service.name} service={service} link={!expanded} />)
+          )}
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
           <IconLink label={t("links.view")} to="/projects/$project" project={project.name}>
             <ArrowRight aria-hidden="true" className="size-4" />
           </IconLink>
@@ -116,18 +149,41 @@ function ProjectBlock({ project, expanded }: { project: ProjectSummary; expanded
           </IconLink>
         </div>
       </div>
-      {expanded &&
-        (project.services.length === 0 ? (
-          <p className="pb-3 text-sm text-muted">{t("noServices")}</p>
-        ) : (
-          <ul className="border-t pl-4">
-            {project.services.map((service) => (
-              <ServiceRow key={service.name} service={service} />
-            ))}
-          </ul>
-        ))}
+      {expanded && services.length > 0 && (
+        <ul className="border-t pl-7">
+          {services.map((service) => (
+            <ServiceRow
+              key={service.name}
+              service={service}
+              resources={resources.get(resourcesKey(service.projectName, service.name))}
+            />
+          ))}
+        </ul>
+      )}
     </section>
   );
+}
+
+/** Problems first, then in the order asked for. A filter keeps only what is in that state. */
+function arrangeProjects(
+  projects: readonly ProjectSummary[],
+  sort: Sort,
+  filter: VisualState | null,
+): Array<{ project: ProjectSummary; services: ServiceSummary[] }> {
+  const compare = sort === "name" ? compareNames : compareTimes;
+  return [...projects]
+    .sort(
+      (a, b) => stateRank(servicesState(a.services)) - stateRank(servicesState(b.services)) || compare(a, b),
+    )
+    .map((project) => ({
+      project,
+      services: sortServices(
+        filter === null
+          ? project.services
+          : project.services.filter((service) => serviceState(service) === filter),
+      ),
+    }))
+    .filter(({ services }) => filter === null || services.length > 0);
 }
 
 export function OverviewPage() {
@@ -136,14 +192,17 @@ export function OverviewPage() {
   const [sort, setSort] = usePersisted<Sort>(sortKey, ["name", "time"], "name");
   const [view, setView] = usePersisted<View>(viewKey, ["expanded", "collapsed"], "expanded");
   const [creating, setCreating] = useState(false);
+  const [filter, setFilter] = useState<VisualState | null>(null);
+  const resources = useAllServiceResources();
 
-  const projects = [...(data?.projects ?? [])].sort(sort === "name" ? compareNames : compareTimes);
+  const all = data?.projects ?? [];
+  const counts = useMemo(() => serviceCounts(all.flatMap((project) => project.services)), [all]);
+  const arranged = useMemo(() => arrangeProjects(all, sort, filter), [all, sort, filter]);
 
   return (
     <>
       <PageHeader
         title={t("title")}
-        description={t("description")}
         actions={
           <Button
             variant="primary"
@@ -155,6 +214,22 @@ export function OverviewPage() {
         }
       />
       <div className="grid gap-4 px-4 py-6 md:px-6 lg:px-8">
+        {isPending ? (
+          <Skeleton className="h-[90px] max-w-[1400px]" />
+        ) : (
+          all.length > 0 && (
+            <HealthSummary
+              counts={counts}
+              selected={filter}
+              onSelect={setFilter}
+              label={t("healthLabel")}
+              className="max-w-[1400px]"
+            />
+          )
+        )}
+        <div className="max-w-[1400px]">
+          <SystemGauges />
+        </div>
         <div className="flex flex-wrap items-center gap-3">
           <Segmented<Sort>
             label={t("sort.label")}
@@ -176,18 +251,15 @@ export function OverviewPage() {
           />
         </div>
         {isPending ? (
-          <div className="grid max-w-[960px] gap-3">
+          <div className="grid max-w-[1400px] gap-3">
             <Skeleton className="h-6" />
             <Skeleton className="h-6" />
           </div>
         ) : isError ? (
-          <div className="grid max-w-[520px] justify-items-start gap-3">
-            <FormBanner>{errorMessage(error, t)}</FormBanner>
-            <Button onClick={() => refetch()}>{t("common:actions.retry")}</Button>
-          </div>
-        ) : projects.length === 0 ? (
+          <ErrorState message={errorMessage(error, t)} onRetry={() => refetch()} />
+        ) : all.length === 0 ? (
           <EmptyState
-            figure={<HarbourFigure />}
+            illustration="no-projects"
             title={t("empty.title")}
             description={t("empty.description")}
             action={
@@ -200,10 +272,18 @@ export function OverviewPage() {
               </Button>
             }
           />
+        ) : arranged.length === 0 ? (
+          <p className="text-sm text-muted">{t("noMatch")}</p>
         ) : (
-          <div className="max-w-[960px] border-y">
-            {projects.map((project) => (
-              <ProjectBlock key={project.name} project={project} expanded={view === "expanded"} />
+          <div className="max-w-[1400px] border-y">
+            {arranged.map(({ project, services }) => (
+              <ProjectBlock
+                key={project.name}
+                project={project}
+                services={services}
+                expanded={view === "expanded"}
+                resources={resources}
+              />
             ))}
           </div>
         )}

@@ -9,6 +9,7 @@ import {
   twoFactorDisable,
 } from "./auth";
 
+const name = "Ada Admin";
 const email = "admin@example.com";
 const password = "a long enough password";
 const longEmail = `${"a".repeat(254 - "@example.com".length + 1)}@example.com`;
@@ -19,7 +20,7 @@ const atLimitPassword = "p".repeat(passwordMaxLength);
 describe("emails", () => {
   it("are capped at 254 characters wherever one is taken", () => {
     expect(longEmail).toHaveLength(255);
-    expect(setupRequest.safeParse({ token: "t", email: longEmail, password }).success).toBe(false);
+    expect(setupRequest.safeParse({ token: "t", name, email: longEmail, password }).success).toBe(false);
     expect(loginRequest.safeParse({ email: longEmail, password }).success).toBe(false);
     expect(
       changeCredentialsRequest.safeParse({
@@ -38,7 +39,7 @@ describe("emails", () => {
 
 describe("passwords", () => {
   it("are capped wherever one is taken, so hashing them stays cheap", () => {
-    expect(setupRequest.safeParse({ token: "t", email, password: longPassword }).success).toBe(false);
+    expect(setupRequest.safeParse({ token: "t", name, email, password: longPassword }).success).toBe(false);
     expect(loginRequest.safeParse({ email, password: longPassword }).success).toBe(false);
     expect(
       changeCredentialsRequest.safeParse({ email, currentPassword: longPassword, newPassword: password })
@@ -53,20 +54,39 @@ describe("passwords", () => {
   });
 
   it("may be exactly as long as the maximum", () => {
-    expect(setupRequest.safeParse({ token: "t", email, password: atLimitPassword }).success).toBe(true);
+    expect(setupRequest.safeParse({ token: "t", name, email, password: atLimitPassword }).success).toBe(true);
     expect(loginRequest.safeParse({ email, password: atLimitPassword }).success).toBe(true);
   });
 });
 
 describe("the setup token", () => {
   it("is required", () => {
-    expect(setupRequest.safeParse({ email, password }).success).toBe(false);
-    expect(setupRequest.safeParse({ token: "   ", email, password }).success).toBe(false);
+    expect(setupRequest.safeParse({ name, email, password }).success).toBe(false);
+    expect(setupRequest.safeParse({ token: "   ", name, email, password }).success).toBe(false);
   });
 
   it("is trimmed and bounded", () => {
-    expect(setupRequest.parse({ token: "  abc\n", email, password }).token).toBe("abc");
-    expect(setupRequest.safeParse({ token: "x".repeat(129), email, password }).success).toBe(false);
+    expect(setupRequest.parse({ token: "  abc\n", name, email, password }).token).toBe("abc");
+    expect(setupRequest.safeParse({ token: "x".repeat(129), name, email, password }).success).toBe(false);
+  });
+});
+
+describe("the owner's name", () => {
+  it("is what the setup request carries", () => {
+    expect(setupRequest.parse({ token: "t", name, email, password }).name).toBe(name);
+  });
+
+  const withName = (value: unknown) => setupRequest.safeParse({ token: "t", name: value, email, password });
+
+  it("is required, and may not be blank", () => {
+    expect(setupRequest.safeParse({ token: "t", email, password }).success).toBe(false);
+    expect(withName("   ").success).toBe(false);
+  });
+
+  it("is bounded, stays on one line and is trimmed", () => {
+    expect(withName("x".repeat(101)).success).toBe(false);
+    expect(withName("Ada\nAdmin").success).toBe(false);
+    expect(setupRequest.parse({ token: "t", name: "  Ada Admin ", email, password }).name).toBe("Ada Admin");
   });
 });
 

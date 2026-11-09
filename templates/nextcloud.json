@@ -1,0 +1,124 @@
+{
+  "id": "nextcloud",
+  "version": "1.0.0",
+  "name": "Nextcloud",
+  "summary": {
+    "en": "Your files, calendars and contacts, on your own server.",
+    "fr": "Vos fichiers, agendas et contacts, sur votre propre serveur."
+  },
+  "description": {
+    "en": "A complete content platform with desktop and mobile sync, sharing and an app store. The first administrator is created from the values below, and the first start takes a few minutes.",
+    "fr": "Une plateforme complète avec synchronisation sur ordinateur et mobile, partage et magasin d'applications. Le premier administrateur est créé à partir des valeurs ci-dessous, et le premier démarrage prend quelques minutes."
+  },
+  "instructions": {
+    "en": "Sign in as {{params.adminUser}} with the password shown below. Background jobs run from the web interface until you set up a cron.",
+    "fr": "Connectez-vous avec {{params.adminUser}} et le mot de passe affiché ci-dessous. Les tâches de fond passent par l'interface web tant que vous n'avez pas mis en place un cron."
+  },
+  "category": "documents",
+  "tags": ["files", "sync", "collaboration"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://nextcloud.com"
+    },
+    {
+      "kind": "docs",
+      "url": "https://github.com/nextcloud/docker"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/nextcloud/server"
+    }
+  ],
+  "verified": false,
+  "params": [
+    {
+      "key": "adminUser",
+      "label": {
+        "en": "Admin user",
+        "fr": "Utilisateur administrateur"
+      },
+      "type": "text",
+      "required": true,
+      "default": "admin"
+    },
+    {
+      "key": "adminPassword",
+      "label": {
+        "en": "Admin password",
+        "fr": "Mot de passe administrateur"
+      },
+      "type": "secret",
+      "required": false,
+      "help": {
+        "en": "Leave empty to generate one.",
+        "fr": "Laissez vide pour en générer un."
+      },
+      "generate": {
+        "length": 24,
+        "alphabet": "alphanumeric"
+      }
+    }
+  ],
+  "secrets": [],
+  "services": [
+    {
+      "key": "db",
+      "name": "nextcloud-db",
+      "kind": "database",
+      "engine": "postgres",
+      "image": "postgres:17.11-alpine",
+      "databaseName": "nextcloud",
+      "user": "nextcloud"
+    },
+    {
+      "key": "cache",
+      "name": "nextcloud-cache",
+      "kind": "database",
+      "engine": "redis",
+      "image": "redis:8.8.4-alpine"
+    },
+    {
+      "key": "app",
+      "name": "nextcloud",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "nextcloud:35.0.2-apache"
+      },
+      "env": {
+        "POSTGRES_HOST": "{{services.db.host}}",
+        "POSTGRES_DB": "{{services.db.database}}",
+        "POSTGRES_USER": "{{services.db.user}}",
+        "POSTGRES_PASSWORD": "{{services.db.password}}",
+        "REDIS_HOST": "{{services.cache.host}}",
+        "REDIS_HOST_PORT": "{{services.cache.port}}",
+        "REDIS_HOST_PASSWORD": "{{services.cache.password}}",
+        "NEXTCLOUD_ADMIN_USER": "{{params.adminUser}}",
+        "NEXTCLOUD_ADMIN_PASSWORD": "{{params.adminPassword}}",
+        "NEXTCLOUD_TRUSTED_DOMAINS": "{{services.app.domain}}",
+        "OVERWRITEHOST": "{{services.app.domain}}",
+        "OVERWRITEPROTOCOL": "https",
+        "TRUSTED_PROXIES": "10.0.0.0/8"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "html",
+          "path": "/var/www/html"
+        }
+      ],
+      "domain": {
+        "port": 80,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/status.php",
+        "expect": [200]
+      },
+      "dependsOn": ["db", "cache"]
+    }
+  ]
+}

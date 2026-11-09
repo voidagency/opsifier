@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import type { Logger } from "pino";
+import { runCommand } from "./bootstrap/cli";
 import { ConfigError, loadConfig } from "./core/config";
 import { createLogger } from "./core/logger";
 import { SecretsError } from "./core/secrets";
@@ -70,11 +71,17 @@ async function main(): Promise<void> {
   closeOnSignal(server, runtime, logger);
 }
 
-main().catch((error: unknown) => {
-  if (error instanceof ConfigError || error instanceof SecretsError) {
-    console.error(error.message);
-  } else {
-    console.error("Opsifier could not start:", error);
-  }
-  process.exit(1);
-});
+const [command, ...args] = process.argv.slice(2);
+if (command !== undefined) {
+  // Everything except serving: the commands of the image, such as `setup`.
+  void runCommand(command, args).then((code) => process.exit(code));
+} else {
+  main().catch((error: unknown) => {
+    if (error instanceof ConfigError || error instanceof SecretsError) {
+      console.error(error.message);
+    } else {
+      console.error("Opsifier could not start:", error);
+    }
+    process.exit(1);
+  });
+}

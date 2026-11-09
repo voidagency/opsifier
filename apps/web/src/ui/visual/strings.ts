@@ -13,7 +13,7 @@ export const visualStrings = {
     },
     health: {
       label: "Health summary",
-      count: "{{state}}: {{count}}",
+      count: "{{count}} {{state}}",
       problems_one: "{{count}} problem",
       problems_other: "{{count}} problems",
       allClear: "All clear",
@@ -34,7 +34,7 @@ export const visualStrings = {
     },
     health: {
       label: "Résumé de l'état",
-      count: "{{state}} : {{count}}",
+      count: "{{count}} {{state}}",
       problems_one: "{{count}} problème",
       problems_other: "{{count}} problèmes",
       allClear: "Tout va bien",

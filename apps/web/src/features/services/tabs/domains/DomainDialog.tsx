@@ -22,18 +22,23 @@ import {
   TabsTrigger,
   toast,
 } from "../../../../ui";
-import { domainsApi, exposedPortsQuery } from "./api";
+import { DomainPrerequisites, UpstreamCertificateFields } from "../../../domains/DomainPrerequisites";
+import { domainsApi, domainTlsQuery, exposedPortsQuery } from "./api";
 
 interface DomainFormValues {
   https: boolean;
   host: string;
   path: string;
+  stripPath: boolean;
   destinationProtocol: "http" | "https";
   port: string;
   destinationPath: string;
+  upstreamServerName: string;
+  upstreamCa: string;
   certificateResolver: string;
   wildcard: boolean;
   middlewares: string[];
+  composeService: string;
   [key: string]: unknown;
 }
 
@@ -45,6 +50,8 @@ const tabOfField: Record<string, Name> = {
   port: "details",
   destinationPath: "details",
   destinationProtocol: "details",
+  upstreamServerName: "details",
+  upstreamCa: "details",
   https: "details",
   middlewares: "middlewares",
   certificateResolver: "ssl",
@@ -55,33 +62,44 @@ const blank: DomainFormValues = {
   https: true,
   host: "",
   path: "/",
+  stripPath: false,
   destinationProtocol: "http",
   port: "80",
   destinationPath: "/",
+  upstreamServerName: "",
+  upstreamCa: "",
   certificateResolver: "",
   wildcard: false,
   middlewares: [],
+  composeService: "",
 };
 
 const valuesFrom = (domain: DomainEntry): DomainFormValues => ({
   https: domain.https,
   host: domain.host,
   path: domain.path,
+  stripPath: domain.stripPath,
   destinationProtocol: domain.destinationProtocol,
   port: String(domain.port),
   destinationPath: domain.destinationPath,
+  upstreamServerName: domain.upstreamServerName ?? "",
+  upstreamCa: domain.upstreamCa ?? "",
   certificateResolver: domain.certificateResolver ?? "",
   wildcard: domain.wildcard,
   middlewares: domain.middlewares,
+  composeService: domain.composeService ?? "",
 });
 
 const toRequest = (values: DomainFormValues): SaveDomainRequest => ({
   https: values.https,
   host: values.host,
   path: values.path,
+  stripPath: values.stripPath,
   destinationProtocol: values.destinationProtocol,
   port: values.port.trim() === "" ? Number.NaN : Number(values.port),
   destinationPath: values.destinationPath,
+  upstreamServerName: values.upstreamServerName === "" ? null : values.upstreamServerName,
+  upstreamCa: values.upstreamCa === "" ? null : values.upstreamCa,
   certificateResolver: values.certificateResolver === "" ? null : values.certificateResolver,
   wildcard: values.wildcard,
   middlewares: values.middlewares,
@@ -108,7 +126,7 @@ function PortSuggestions({
           <ChevronDown aria-hidden="true" className="size-3.5" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="min-w-[140px]">
+      <DropdownMenuContent className="min-w-[180px]">
         {isPending ? (
           <DropdownMenuItem disabled>{t("dialog.portsLoading")}</DropdownMenuItem>
         ) : isError || ports.length === 0 ? (
@@ -133,11 +151,24 @@ export interface DomainDialogProps {
   /** The domain being edited, or undefined to create one. */
   domain?: DomainEntry;
   onSaved: () => Promise<unknown>;
+  /** For a Compose stack: the children a domain can reach. */
+  composeServices?: readonly string[];
 }
 
-function DomainForm({ project, service, domain, onOpenChange, onSaved }: Omit<DomainDialogProps, "open">) {
-  const { t } = useTranslation(["service-domains", "common"]);
+const COMPOSE_NONE = "__none__";
+
+function DomainForm({
+  project,
+  service,
+  domain,
+  onOpenChange,
+  onSaved,
+  composeServices,
+}: Omit<DomainDialogProps, "open">) {
+  const { t } = useTranslation(["service-domains", "common", "compose"]);
   const [tab, setTab] = useState<Name>("details");
+  // Only for the DNS record's value: a member who can't read it still sees what has to be done.
+  const { data: overview } = useQuery(domainTlsQuery);
   const form = useForm<DomainFormValues>({
     t,
     initialValues: domain === undefined ? blank : valuesFrom(domain),
@@ -147,6 +178,8 @@ function DomainForm({ project, service, domain, onOpenChange, onSaved }: Omit<Do
         path: t("errors.path"),
         port: t("errors.port"),
         destinationPath: t("errors.destinationPath"),
+        upstreamServerName: t("errors.upstreamServerName"),
+        upstreamCa: t("errors.upstreamCa"),
         certificateResolver: t("errors.resolver"),
         middlewares: t("errors.middlewares"),
       }) as FieldErrors<keyof DomainFormValues & string>;
@@ -156,7 +189,10 @@ function DomainForm({ project, service, domain, onOpenChange, onSaved }: Omit<Do
       return errors;
     },
     onSubmit: async (values) => {
-      const request = toRequest(values);
+      const request = {
+        ...toRequest(values),
+        ...(composeServices === undefined ? {} : { composeService: values.composeService }),
+      };
       if (domain === undefined) {
         await domainsApi.create(project, service, request);
         toast.success(t("created"));
@@ -185,7 +221,15 @@ function DomainForm({ project, service, domain, onOpenChange, onSaved }: Omit<Do
       form.values.middlewares.map((name, position) => (position === index ? value : name)),
     );
 
-  const detailsFields = ["host", "path", "port", "destinationPath", "destinationProtocol"];
+  const detailsFields = [
+    "host",
+    "path",
+    "port",
+    "destinationPath",
+    "destinationProtocol",
+    "upstreamServerName",
+    "upstreamCa",
+  ];
 
   return (
     <Dialog
@@ -230,7 +274,7 @@ function DomainForm({ project, service, domain, onOpenChange, onSaved }: Omit<Do
               checked={form.values.https}
               onCheckedChange={(checked) => form.set("https", checked)}
             />
-            <Field label={t("dialog.host")} error={errors.host}>
+            <Field label={t("dialog.host")} error={errors.host} hint={t("dialog.hostHint")}>
               <Input
                 {...form.field("host")}
                 mono
@@ -249,10 +293,42 @@ function DomainForm({ project, service, domain, onOpenChange, onSaved }: Omit<Do
                 autoCapitalize="none"
               />
             </Field>
+            <Switch
+              label={t("dialog.stripPath")}
+              hint={t("dialog.stripPathHint")}
+              checked={form.values.stripPath}
+              onCheckedChange={(checked) => form.set("stripPath", checked)}
+            />
+            <DomainPrerequisites
+              host={form.values.host}
+              wildcard={form.values.wildcard}
+              https={form.values.https}
+              serverIp={overview?.serverIp ?? null}
+            />
             <fieldset className="m-0 grid gap-4 border-0 p-0">
               <legend className="eyebrow mb-1">{t("dialog.destination")}</legend>
+              {composeServices !== undefined && (
+                <Field
+                  label={t("compose:domains.child")}
+                  error={errors.composeService}
+                  hint={t("compose:domains.childHint")}
+                >
+                  <Select
+                    value={form.values.composeService === "" ? COMPOSE_NONE : form.values.composeService}
+                    onValueChange={(value) => form.set("composeService", value === COMPOSE_NONE ? "" : value)}
+                    options={[
+                      { value: COMPOSE_NONE, label: t("compose:domains.none") },
+                      ...composeServices.map((name) => ({ value: name, label: name })),
+                    ]}
+                  />
+                </Field>
+              )}
               <div className="grid items-start gap-3 sm:grid-cols-[120px_minmax(0,1fr)]">
-                <Field label={t("dialog.protocol")} error={errors.destinationProtocol}>
+                <Field
+                  label={t("dialog.protocol")}
+                  error={errors.destinationProtocol}
+                  hint={t("dialog.protocolHint")}
+                >
                   <Select
                     value={form.values.destinationProtocol}
                     onValueChange={(value) =>
@@ -296,6 +372,14 @@ function DomainForm({ project, service, domain, onOpenChange, onSaved }: Omit<Do
                   autoCapitalize="none"
                 />
               </Field>
+              {form.values.destinationProtocol === "https" && (
+                <UpstreamCertificateFields
+                  serverName={form.field("upstreamServerName")}
+                  certificates={form.field("upstreamCa")}
+                  serverNameError={errors.upstreamServerName}
+                  certificatesError={errors.upstreamCa}
+                />
+              )}
             </fieldset>
           </TabsContent>
 
@@ -305,7 +389,11 @@ function DomainForm({ project, service, domain, onOpenChange, onSaved }: Omit<Do
             {form.values.middlewares.map((name, index) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: rows have no identity of their own
               <div key={index} className="flex items-end gap-2">
-                <Field label={t("dialog.middleware", { number: index + 1 })} className="min-w-0 flex-1">
+                <Field
+                  label={t("dialog.middleware", { number: index + 1 })}
+                  className="min-w-0 flex-1"
+                  hint={t("dialog.middlewareHint")}
+                >
                   <Input
                     value={name}
                     onChange={(event) => setMiddleware(index, event.currentTarget.value)}
@@ -333,7 +421,7 @@ function DomainForm({ project, service, domain, onOpenChange, onSaved }: Omit<Do
             <div>
               <Button
                 icon={<Plus aria-hidden="true" className="size-4" />}
-                disabled={form.values.middlewares.length >= 20}
+                disabledReason={form.values.middlewares.length >= 20 ? t("dialog.maxMiddlewares") : undefined}
                 onClick={() => form.set("middlewares", [...form.values.middlewares, ""])}
               >
                 {t("dialog.addMiddleware")}
@@ -363,6 +451,9 @@ function DomainForm({ project, service, domain, onOpenChange, onSaved }: Omit<Do
               checked={form.values.wildcard}
               onCheckedChange={(checked) => form.set("wildcard", checked)}
             />
+            {form.values.wildcard && form.values.https && (
+              <FormBanner tone="warning">{t("dialog.wildcardUnverified")}</FormBanner>
+            )}
           </TabsContent>
         </Tabs>
       </div>

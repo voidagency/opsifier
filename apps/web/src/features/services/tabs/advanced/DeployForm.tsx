@@ -1,8 +1,15 @@
-import { type DeploySettings, deploySettings, parseSysctlText, splitList } from "@opsifier/contract";
+import {
+  type DeploySettings,
+  deploySettings,
+  parseSysctlText,
+  STOP_SIGNALS,
+  splitList,
+} from "@opsifier/contract";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { schemaErrors, useForm } from "../../../../lib/forms";
-import { Button, Field, FormBanner, Input, Switch, toast } from "../../../../ui";
+import { Button, Field, FormBanner, Input, Select, Switch, toast } from "../../../../ui";
+import { useCurrentUser } from "../../../auth/session";
 import { advancedApi, advancedQuery } from "./api";
 
 interface FormValues extends Record<string, unknown> {
@@ -10,11 +17,16 @@ interface FormValues extends Record<string, unknown> {
   zeroDowntime: boolean;
   tiniInit: boolean;
   command: string;
+  stopSignal: string;
+  stopGraceSeconds: string;
   capAdd: string;
   capDrop: string;
   sysctls: string;
   groups: string;
 }
+
+/** A Select option can't be empty, so "whatever the image declares" gets a name of its own. */
+const IMAGE_STOP_SIGNAL = "image";
 
 function toFormValues(settings: DeploySettings): FormValues {
   return {
@@ -22,6 +34,8 @@ function toFormValues(settings: DeploySettings): FormValues {
     zeroDowntime: settings.zeroDowntime,
     tiniInit: settings.tiniInit,
     command: settings.command ?? "",
+    stopSignal: settings.stopSignal ?? IMAGE_STOP_SIGNAL,
+    stopGraceSeconds: String(settings.stopGraceSeconds),
     capAdd: settings.capAdd.join(", "),
     capDrop: settings.capDrop.join(", "),
     sysctls: Object.entries(settings.sysctls)
@@ -40,6 +54,9 @@ function toSettings(values: FormValues): DeploySettings {
     zeroDowntime: values.zeroDowntime,
     tiniInit: values.tiniInit,
     command: command === "" ? null : command,
+    stopSignal:
+      values.stopSignal === IMAGE_STOP_SIGNAL ? null : (values.stopSignal as DeploySettings["stopSignal"]),
+    stopGraceSeconds: values.stopGraceSeconds.trim() === "" ? Number.NaN : Number(values.stopGraceSeconds),
     capAdd: capabilities(values.capAdd),
     capDrop: capabilities(values.capDrop),
     sysctls: parseSysctlText(values.sysctls),
@@ -47,7 +64,7 @@ function toSettings(values: FormValues): DeploySettings {
   };
 }
 
-type Name = "replicas" | "command" | "capAdd" | "capDrop" | "sysctls" | "groups";
+type Name = "replicas" | "command" | "stopGraceSeconds" | "capAdd" | "capDrop" | "sysctls" | "groups";
 
 export function DeployForm({
   project,
@@ -62,6 +79,7 @@ export function DeployForm({
   stopped: boolean;
   publishesPorts: boolean;
 }) {
+  const isAdmin = useCurrentUser()?.role === "admin";
   const { t } = useTranslation(["service-advanced", "common"]);
   const queryClient = useQueryClient();
   const form = useForm<FormValues>({
@@ -72,6 +90,7 @@ export function DeployForm({
       const problems = schemaErrors<Name>(deploySettings, candidate, {
         replicas: stopped ? t("errors.replicasStopped") : t("errors.replicas"),
         command: t("errors.command"),
+        stopGraceSeconds: t("errors.stopGraceSeconds"),
         capAdd: t("errors.capabilities"),
         capDrop: t("errors.capabilities"),
         sysctls: t("errors.sysctls"),
@@ -96,9 +115,9 @@ export function DeployForm({
         label={t("deploy.replicas")}
         hint={stopped ? t("deploy.replicasStoppedHint") : undefined}
         error={form.errors.replicas}
-        className="max-w-[360px]"
+        className="max-w-[450px]"
       >
-        <Input {...form.field("replicas")} mono type="number" className="max-w-[160px]" />
+        <Input {...form.field("replicas")} mono type="number" className="max-w-[200px]" />
       </Field>
       <Switch
         label={t("deploy.zeroDowntime")}
@@ -116,16 +135,46 @@ export function DeployForm({
         <Input {...form.field("command")} mono autoComplete="off" spellCheck={false} />
       </Field>
       <div className="grid gap-4 md:grid-cols-2">
-        <Field label={t("deploy.capAdd")} error={form.errors.capAdd} optional>
+        <Field label={t("deploy.stopSignal")} hint={t("deploy.stopSignalHint")}>
+          <Select
+            value={form.values.stopSignal}
+            onValueChange={(value) => form.set("stopSignal", value)}
+            options={[
+              { value: IMAGE_STOP_SIGNAL, label: t("deploy.stopSignalImage") },
+              ...STOP_SIGNALS.map((signal) => ({ value: signal, label: signal })),
+            ]}
+          />
+        </Field>
+        <Field
+          label={t("deploy.stopGraceSeconds")}
+          hint={t("deploy.stopGraceSecondsHint")}
+          error={form.errors.stopGraceSeconds}
+        >
+          <Input {...form.field("stopGraceSeconds")} mono type="number" />
+        </Field>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field
+          label={t("deploy.capAdd")}
+          hint={isAdmin ? t("deploy.capAddHint") : t("deploy.adminOnly")}
+          error={form.errors.capAdd}
+          optional
+        >
           <Input
             {...form.field("capAdd")}
             mono
             autoComplete="off"
             spellCheck={false}
             placeholder="NET_ADMIN, SYS_MODULE"
+            disabled={!isAdmin}
           />
         </Field>
-        <Field label={t("deploy.capDrop")} error={form.errors.capDrop} optional>
+        <Field
+          label={t("deploy.capDrop")}
+          error={form.errors.capDrop}
+          optional
+          hint={t("deploy.capDropHint")}
+        >
           <Input {...form.field("capDrop")} mono autoComplete="off" spellCheck={false} placeholder="MKNOD" />
         </Field>
       </div>

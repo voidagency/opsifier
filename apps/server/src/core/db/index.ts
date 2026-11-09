@@ -5,9 +5,16 @@ import { type BetterSQLite3Database, drizzle } from "drizzle-orm/better-sqlite3"
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import * as schema from "./schema";
 
+export { lockDataDirectory } from "./data-lock";
+export {
+  isDatabaseFailure,
+  isStorageFailure,
+  StorageHealth,
+  type StorageHealthOptions,
+} from "./storage-health";
 export { schema };
 export type Schema = typeof schema;
-export type Db = BetterSQLite3Database<Schema>;
+export type Db = BetterSQLite3Database<Schema> & { $client: Database.Database };
 
 /** Either the database or an open transaction: repositories accept both. */
 export type DbHandle = Pick<Db, "select" | "insert" | "update" | "delete">;
@@ -32,11 +39,12 @@ export function findMigrationsFolder(startDir: string = import.meta.dirname): st
 
 /**
  * Opens the database and brings its schema up to date. A migration that fails throws, and
- * the panel refuses to boot on a half-migrated schema.
+ * the panel refuses to boot on a half-migrated schema. Passing `null` as the folder only opens it,
+ * for a process that doesn't own the schema: the panel running against it may be a different version.
  */
 export function openDatabase(
   file: string,
-  migrationsFolder: string = findMigrationsFolder(),
+  migrationsFolder: string | null = findMigrationsFolder(),
 ): DatabaseHandle {
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
 
@@ -52,7 +60,9 @@ export function openDatabase(
     sqlite.pragma("foreign_keys = ON");
 
     const db = drizzle(sqlite, { schema });
-    migrate(db, { migrationsFolder });
+    if (migrationsFolder !== null) {
+      migrate(db, { migrationsFolder });
+    }
 
     return { db, close: () => sqlite.close() };
   } catch (error) {

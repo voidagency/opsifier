@@ -8,6 +8,8 @@ export const sessionUser = z.object({
   email: z.email(),
   role: userRole,
   twoFactorEnabled: z.boolean(),
+  /** May open a shell on the server, list its disk and reboot it. */
+  hostAdmin: z.boolean().default(false),
 });
 export type SessionUser = z.infer<typeof sessionUser>;
 
@@ -21,6 +23,15 @@ export type SessionState = z.infer<typeof sessionState>;
 
 /** No address can be longer (RFC 5321), and these end up in rate-limit keys and audit lines. */
 const email = z.email().max(254, "Must be at most 254 characters");
+
+/** What someone is called: free text, on one line, and shown back in the interface. */
+export const personName = z
+  .string("Required")
+  .trim()
+  .min(1, "Required")
+  .max(100, "Must be at most 100 characters")
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what this rejects
+  .regex(/^[^\u0000-\u001f\u007f]*$/, "Must not contain control characters");
 
 /** Longer than any passphrase or password manager produces, and far too short to burden the hash. */
 export const passwordMaxLength = 256;
@@ -41,6 +52,7 @@ export const recoveryCode = z
 export const setupRequest = z.object({
   /** The one-time code printed in the server log at boot. */
   token: z.string().trim().min(1, "Required").max(128, "That setup code is not valid"),
+  name: personName,
   email,
   password: newPassword,
 });

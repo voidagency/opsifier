@@ -13,6 +13,107 @@
     "memory": "Mémoire",
     "memoryPercent": "Mémoire %",
     "networkIn": "Réseau entrant",
-    "networkOut": "Réseau sortant"
+    "networkOut": "Réseau sortant",
+    "trend": "Dernière heure",
+    "trendOf": "CPU de {{service}}, dernière heure"
+  },
+  "tabs": {
+    "services": "Services",
+    "events": "Événements Docker",
+    "storage": "Stockage"
+  },
+  "gauges": {
+    "label": "Mesures du serveur",
+    "title": "Serveur",
+    "cpu": "CPU",
+    "memory": "Mémoire",
+    "disk": "Disque",
+    "network": "Réseau",
+    "in": "Entrant",
+    "out": "Sortant",
+    "cores_one": "{{count}} cœur",
+    "cores_other": "{{count}} cœurs",
+    "noData": "Aucune donnée",
+    "unavailable": "Mesures indisponibles",
+    "dockerAway": "Docker arrêté",
+    "dockerAwaySince": "Docker arrêté depuis {{when}}",
+    "networkScope": "Trafic de tous les conteneurs du serveur"
+  },
+  "settings": {
+    "open": "Réglages des courbes",
+    "title": "Réglages des courbes",
+    "refresh": "Actualisation",
+    "off": "Off",
+    "range": "Période",
+    "rangeHint": "Les périodes anciennes sont stockées à un pas plus large.",
+    "step": "Pas",
+    "stepHint": "L'espacement entre les points d'une courbe.",
+    "refreshHint": "À quelle fréquence les jauges se mettent à jour."
+  },
+  "chart": {
+    "noData": "aucune donnée"
+  },
+  "history": {
+    "title": "Historique de {{service}}",
+    "disk": "Disque",
+    "step": "Toutes les {{minutes}} min"
+  },
+  "events": {
+    "type": "Type",
+    "action": "Action",
+    "time": "Heure",
+    "details": "Détails",
+    "detailsTitle": "Événement",
+    "pause": "Pause",
+    "resume": "Reprendre",
+    "clear": "Effacer",
+    "unavailable": "Docker ne répond pas",
+    "emptyTitle": "Aucun événement",
+    "emptyDescription": "Les événements de Docker s'affichent ici dès qu'ils arrivent, du plus récent au plus ancien."
+  },
+  "storage": {
+    "disk": "Disque du panneau",
+    "docker": "Stockage Docker",
+    "images": "Images",
+    "containers": "Conteneurs",
+    "volumes": "Volumes",
+    "buildCache": "Cache de build",
+    "project": "Projet",
+    "service": "Service",
+    "size": "Taille",
+    "path": "Chemin",
+    "emptyTitle": "Aucun service",
+    "emptyDescription": "Le dossier de données de chaque service s'affiche ici avec sa taille.",
+    "dockerDisk": "Disque Docker",
+    "dockerDiskUnknown": "Le disque de Docker ne peut pas être mesuré d'ici."
+  },
+  "restricted": {
+    "title": "Réservé aux administrateurs",
+    "description": "La supervision montre tout le serveur : elle est réservée aux administrateurs."
+  },
+  "neverMeasured": "Aucune mesure enregistrée pour l'instant.",
+  "lastMeasured": "Dernière mesure : {{when}}",
+  "tableScope": "Chaque ligne additionne ses tâches en cours, d'après Docker. Les colonnes réseau comptent depuis le démarrage de chaque tâche.",
+  "historyScope": "Moyenne sur chaque intervalle. Un intervalle sans mesure reste vide et n'est jamais compté comme zéro.",
+  "origin": {
+    "docker": "Statistiques Docker",
+    "host": "Ce serveur",
+    "simulated": "Chiffres simulés"
+  },
+  "kept": {
+    "title": "Volumes conservés",
+    "description": "Les volumes laissés par les services supprimés. Ils gardent leurs données jusqu'à ce que vous les supprimiez ici, un par un.",
+    "empty": "Aucun volume conservé.",
+    "volume": "Volume",
+    "from": "Origine",
+    "since": "Conservé depuis",
+    "delete": "Supprimer",
+    "deleteTitle": "Supprimer ce volume ?",
+    "deleteDescription": "Vous allez supprimer les données de",
+    "deleteConfirm": "Supprimer le volume",
+    "copyName": "Copier le nom du volume",
+    "removed": "Ce volume et tout ce qu'il contient. Impossible de revenir en arrière.",
+    "keptStill": "Les sauvegardes du service dont il provient et tous les autres volumes.",
+    "deleting": "Suppression de {{name}}"
   }
 }

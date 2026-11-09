@@ -1,0 +1,66 @@
+{
+  "id": "docker-registry",
+  "version": "1.0.0",
+  "name": "Docker Registry",
+  "summary": {
+    "en": "Store your own container images.",
+    "fr": "Stockez vos propres images de conteneur."
+  },
+  "description": {
+    "en": "The reference implementation of the OCI distribution API. It accepts anonymous pushes by default, so turn on basic authentication before giving out the address.",
+    "fr": "L'implémentation de référence de l'API de distribution OCI. Elle accepte les envois anonymes par défaut : activez l'authentification par mot de passe avant de partager l'adresse."
+  },
+  "instructions": {
+    "en": "Open the Security tab and add a basic authentication user before you use it.",
+    "fr": "Ouvrez l'onglet Sécurité et ajoutez un utilisateur avant de vous en servir."
+  },
+  "category": "development",
+  "tags": ["docker", "registry", "images"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://distribution.github.io/distribution/"
+    },
+    {
+      "kind": "docs",
+      "url": "https://distribution.github.io/distribution/about/deploying/"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/distribution/distribution"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "docker-registry",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "registry:3.1.2"
+      },
+      "env": {},
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "images",
+          "path": "/var/lib/registry"
+        }
+      ],
+      "domain": {
+        "port": 5000,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/v2/",
+        "expect": [200, 401]
+      },
+      "dependsOn": []
+    }
+  ]
+}

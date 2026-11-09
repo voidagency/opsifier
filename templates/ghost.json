@@ -1,0 +1,83 @@
+{
+  "id": "ghost",
+  "version": "1.0.0",
+  "name": "Ghost",
+  "summary": {
+    "en": "A publishing platform with memberships and newsletters.",
+    "fr": "Une plateforme de publication avec abonnements et infolettres."
+  },
+  "description": {
+    "en": "A modern blog with a clean editor, member sign-ups and email newsletters. Create the owner account from /ghost once it is running.",
+    "fr": "Un blog moderne avec un éditeur soigné, des inscriptions et des infolettres. Créez le compte propriétaire sur /ghost une fois lancé."
+  },
+  "instructions": {
+    "en": "Open /ghost and create the owner account.",
+    "fr": "Ouvrez /ghost et créez le compte propriétaire."
+  },
+  "category": "documents",
+  "tags": ["blog", "publishing", "newsletter"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://ghost.org"
+    },
+    {
+      "kind": "docs",
+      "url": "https://hub.docker.com/_/ghost"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/TryGhost/Ghost"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "db",
+      "name": "ghost-db",
+      "kind": "database",
+      "engine": "mysql",
+      "image": "mysql:8.4",
+      "databaseName": "ghost",
+      "user": "ghost"
+    },
+    {
+      "key": "app",
+      "name": "ghost",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "ghost:6.75.0"
+      },
+      "env": {
+        "url": "{{services.app.url}}",
+        "database__client": "mysql",
+        "database__connection__host": "{{services.db.host}}",
+        "database__connection__port": "{{services.db.port}}",
+        "database__connection__user": "{{services.db.user}}",
+        "database__connection__password": "{{services.db.password}}",
+        "database__connection__database": "{{services.db.database}}"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "content",
+          "path": "/var/lib/ghost/content"
+        }
+      ],
+      "domain": {
+        "port": 2368,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/",
+        "expect": [200, 301]
+      },
+      "dependsOn": ["db"]
+    }
+  ]
+}

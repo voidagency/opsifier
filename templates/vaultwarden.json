@@ -1,0 +1,80 @@
+{
+  "id": "vaultwarden",
+  "version": "1.0.0",
+  "name": "Vaultwarden",
+  "summary": {
+    "en": "A password manager that works with Bitwarden apps.",
+    "fr": "Un gestionnaire de mots de passe compatible avec les applications Bitwarden."
+  },
+  "description": {
+    "en": "A lightweight server implementing the Bitwarden client API. Web vault access requires HTTPS, which the default domain provides.",
+    "fr": "Un serveur léger qui implémente l'API des clients Bitwarden. Le coffre web exige HTTPS, fourni par le domaine par défaut."
+  },
+  "instructions": {
+    "en": "Create your account, then turn off new accounts by setting SIGNUPS_ALLOWED to false on the Environment tab.",
+    "fr": "Créez votre compte, puis désactivez les nouveaux comptes en passant SIGNUPS_ALLOWED à false dans l'onglet Environnement."
+  },
+  "category": "security",
+  "tags": ["passwords", "bitwarden-compatible", "vault"],
+  "links": [
+    {
+      "kind": "docs",
+      "url": "https://github.com/dani-garcia/vaultwarden/wiki/Using-Docker-Compose"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/dani-garcia/vaultwarden"
+    }
+  ],
+  "verified": false,
+  "params": [
+    {
+      "key": "signups",
+      "label": {
+        "en": "Allow new accounts",
+        "fr": "Autoriser les nouveaux comptes"
+      },
+      "type": "boolean",
+      "required": true,
+      "default": true,
+      "help": {
+        "en": "Turn this off once everyone has an account.",
+        "fr": "Désactivez ceci quand tout le monde a un compte."
+      }
+    }
+  ],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "vaultwarden",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "vaultwarden/server:1.37.5"
+      },
+      "env": {
+        "DOMAIN": "{{services.app.url}}",
+        "SIGNUPS_ALLOWED": "{{params.signups}}"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/data"
+        }
+      ],
+      "domain": {
+        "port": 80,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/alive",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

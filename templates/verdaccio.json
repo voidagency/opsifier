@@ -1,0 +1,71 @@
+{
+  "id": "verdaccio",
+  "version": "1.0.0",
+  "name": "Verdaccio",
+  "summary": {
+    "en": "A private npm registry and cache.",
+    "fr": "Un registre npm privé avec cache."
+  },
+  "description": {
+    "en": "Publish private packages and cache the public ones, so installs keep working when the public registry doesn't.",
+    "fr": "Publiez des paquets privés et mettez en cache les paquets publics, pour que les installations continuent quand le registre public flanche."
+  },
+  "instructions": {
+    "en": "Anyone can create an account by default. Set max_users in its configuration once your team has signed up.",
+    "fr": "N'importe qui peut créer un compte par défaut. Réglez max_users dans sa configuration une fois votre équipe inscrite."
+  },
+  "category": "development",
+  "tags": ["npm", "registry", "packages"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://verdaccio.org"
+    },
+    {
+      "kind": "docs",
+      "url": "https://verdaccio.org/docs/docker/"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/verdaccio/verdaccio"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "verdaccio",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "verdaccio/verdaccio:6.11.1"
+      },
+      "env": {},
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "storage",
+          "path": "/verdaccio/storage"
+        },
+        {
+          "type": "volume",
+          "name": "plugins",
+          "path": "/verdaccio/plugins"
+        }
+      ],
+      "domain": {
+        "port": 4873,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/-/ping",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

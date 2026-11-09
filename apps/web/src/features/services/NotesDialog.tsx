@@ -61,7 +61,7 @@ export function NotesDialog({
     >
       <div className="grid gap-4">
         {form.banner && <FormBanner>{form.banner}</FormBanner>}
-        <Field label={t("notes.label")} error={form.errors.notes}>
+        <Field label={t("notes.label")} error={form.errors.notes} hint={t("notes.labelHint")}>
           <Textarea {...form.field("notes")} rows={10} mono />
         </Field>
       </div>

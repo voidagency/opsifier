@@ -12,6 +12,7 @@ const action = (overrides: Partial<ActionEntry> = {}): ActionEntry => ({
   type: "service.deploy",
   title: "Deploy shop/web",
   status: "succeeded",
+  phase: null,
   projectName: "shop",
   serviceName: "web",
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -20,10 +21,78 @@ const action = (overrides: Partial<ActionEntry> = {}): ActionEntry => ({
   error: null,
   hasLog: true,
   actorEmail: "admin@example.com",
+  origin: "session",
+  originDetail: null,
   ...overrides,
 });
 
 const page = (items: ActionEntry[], nextCursor: string | null = null) => ({ items, nextCursor });
+
+describe("following a task", () => {
+  it("shows the phase while it runs", async () => {
+    installFakeServer({
+      "GET /actions": page([action({ status: "running", finishedAt: null, phase: "rollout" })]),
+    });
+    renderApp("/activity");
+
+    expect(await screen.findByText("Rolling out")).toBeTruthy();
+    expect(screen.getAllByRole("img", { name: "Running" }).length).toBeGreaterThan(0);
+  });
+
+  it("shows the result and the step it stopped at, in the row and in its dialog", async () => {
+    const failed = action({ status: "failed", phase: "verify", error: "The new tasks did not stay up." });
+    installFakeServer({
+      "GET /actions": page([failed]),
+      "GET /actions/a1": { ...failed, log: "line", logTruncated: false, logSeq: 0 },
+    });
+    renderApp("/activity");
+
+    expect(await screen.findByText("Checking it stays up")).toBeTruthy();
+    expect(screen.getByText("The new tasks did not stay up.")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "See the output" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByText("Failed")).toBeTruthy();
+    expect(dialog.getByText("Checking it stays up")).toBeTruthy();
+    expect(dialog.getByText("The new tasks did not stay up.")).toBeTruthy();
+  });
+
+  it("offers to deploy again only when pressed, never by coming back to the page", async () => {
+    const failed = action({ status: "failed", error: "no" });
+    const server = installFakeServer({
+      "GET /actions": page([failed]),
+      "POST /projects/shop/services/web/deploy": action({ id: "a2", status: "queued" }),
+    });
+    const app = renderApp("/activity");
+
+    await screen.findByRole("button", { name: "Deploy again" });
+    await app.router.navigate({ to: "/" });
+    await app.router.navigate({ to: "/activity" });
+    await screen.findByRole("button", { name: "Deploy again" });
+    const deploys = () => server.calls.filter((call) => call.method === "POST");
+    expect(deploys()).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Deploy again" }));
+
+    await waitFor(() =>
+      expect(deploys().map((call) => call.path)).toEqual(["/projects/shop/services/web/deploy"]),
+    );
+    expect(await screen.findByText("Deployment started")).toBeTruthy();
+  });
+
+  it("has nothing to resume for a deployment that worked, or an action that can't be repeated", async () => {
+    installFakeServer({
+      "GET /actions": page([
+        action({ id: "ok" }),
+        action({ id: "backup", type: "backup.database", status: "failed", error: "no" }),
+      ]),
+    });
+    renderApp("/activity");
+
+    await screen.findByText("Database backup");
+    expect(screen.queryByRole("button", { name: "Deploy again" })).toBeNull();
+  });
+});
 
 describe("the Activity page", () => {
   it("says when there is nothing yet", async () => {
@@ -31,6 +100,7 @@ describe("the Activity page", () => {
     renderApp("/activity");
 
     expect(await screen.findByText("The log is empty")).toBeTruthy();
+    expect(document.querySelector('[data-illustration="no-activity"]')).toBeTruthy();
   });
 
   it("shows an entry's outcome, duration, target, actor and shortcut", async () => {
@@ -53,6 +123,34 @@ describe("the Activity page", () => {
 
     expect(await screen.findByRole("img", { name: "Failed" })).toBeTruthy();
     expect(screen.getByText("The tasks crashed.").className).toContain("text-bad");
+  });
+
+  it("leads each row with its lamp and a drawing of what it was about", async () => {
+    installFakeServer({ "GET /actions": page([action({ type: "service.domains" })]) });
+    renderApp("/activity");
+
+    await screen.findByRole("img", { name: "Succeeded" });
+    expect(document.querySelector('main li svg[data-pictogram="domain"]')).toBeTruthy();
+  });
+
+  it("counts outcomes in its own words, and filters by them", async () => {
+    installFakeServer({
+      "GET /actions": page([
+        action({ id: "ok" }),
+        action({ id: "bad", status: "failed", error: "The tasks crashed." }),
+      ]),
+    });
+    renderApp("/activity");
+
+    await screen.findByText("The tasks crashed.");
+    expect(screen.getByRole("group", { name: "Recent actions by outcome" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "1 Succeeded" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "1 Succeeded" }));
+    await waitFor(() => expect(screen.queryByText("The tasks crashed.")).toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: "1 Succeeded" }));
+    expect(await screen.findByText("The tasks crashed.")).toBeTruthy();
   });
 
   it("offers no output control for an entry with no log", async () => {

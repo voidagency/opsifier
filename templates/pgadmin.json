@@ -1,0 +1,97 @@
+{
+  "id": "pgadmin",
+  "version": "1.0.0",
+  "name": "pgAdmin",
+  "summary": {
+    "en": "The administration tool for PostgreSQL.",
+    "fr": "L'outil d'administration de PostgreSQL."
+  },
+  "description": {
+    "en": "Manage Postgres servers, run queries and inspect plans from a web interface.",
+    "fr": "Administrez des serveurs Postgres, lancez des requêtes et analysez des plans depuis une interface web."
+  },
+  "instructions": {
+    "en": "Sign in as {{params.adminEmail}} with the password shown below.",
+    "fr": "Connectez-vous avec {{params.adminEmail}} et le mot de passe affiché ci-dessous."
+  },
+  "category": "data",
+  "tags": ["postgres", "database", "admin"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://www.pgadmin.org"
+    },
+    {
+      "kind": "docs",
+      "url": "https://www.pgadmin.org/docs/pgadmin4/latest/container_deployment.html"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/pgadmin-org/pgadmin4"
+    }
+  ],
+  "verified": false,
+  "params": [
+    {
+      "key": "adminEmail",
+      "label": {
+        "en": "Admin email",
+        "fr": "E-mail administrateur"
+      },
+      "type": "email",
+      "required": true,
+      "default": "admin@example.com"
+    },
+    {
+      "key": "adminPassword",
+      "label": {
+        "en": "Admin password",
+        "fr": "Mot de passe administrateur"
+      },
+      "type": "secret",
+      "required": false,
+      "help": {
+        "en": "Leave empty to generate one.",
+        "fr": "Laissez vide pour en générer un."
+      },
+      "generate": {
+        "length": 24,
+        "alphabet": "alphanumeric"
+      }
+    }
+  ],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "pgadmin",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "dpage/pgadmin4:9.19.0"
+      },
+      "env": {
+        "PGADMIN_DEFAULT_EMAIL": "{{params.adminEmail}}",
+        "PGADMIN_DEFAULT_PASSWORD": "{{params.adminPassword}}"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/var/lib/pgadmin"
+        }
+      ],
+      "domain": {
+        "port": 80,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/misc/ping",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

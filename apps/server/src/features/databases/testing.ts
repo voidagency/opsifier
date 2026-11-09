@@ -19,6 +19,8 @@ export interface DatabaseTestContext {
   api<T = unknown>(path: string, method?: string, body?: unknown): ReturnType<typeof call<T>>;
   /** Sends a request whose answer is an Action, and returns the Action once it has finished. */
   run(path: string, method?: string, body?: unknown): Promise<ActionEntry & { log: string }>;
+  /** Saves settings on one of a database's tabs, then deploys them, and returns that deployment. */
+  saveThenDeploy(path: string, body: unknown): Promise<ActionEntry & { log: string }>;
   waitFor(id: string): Promise<ActionEntry & { log: string }>;
   create(
     body: Partial<CreateDatabaseRequest> & { engine: CreateDatabaseRequest["engine"] },
@@ -59,6 +61,14 @@ export async function setupDatabaseTests(): Promise<DatabaseTestContext> {
 
   const service = (name = "db") => `/projects/${PROJECT}/services/${name}`;
 
+  const saveThenDeploy: DatabaseTestContext["saveThenDeploy"] = async (path, body) => {
+    const saved = await api(path, "PUT", body);
+    if (saved.status !== 200) {
+      throw new Error(`Saving ${path} answered ${saved.status}: ${JSON.stringify(saved.body)}`);
+    }
+    return run(`${path.slice(0, path.lastIndexOf("/"))}/deploy`);
+  };
+
   const create: DatabaseTestContext["create"] = async (body) => {
     const created = await api<ServiceDetail>(`/projects/${PROJECT}/databases`, "POST", {
       name: "db",
@@ -88,6 +98,7 @@ export async function setupDatabaseTests(): Promise<DatabaseTestContext> {
     cookie,
     api,
     run,
+    saveThenDeploy,
     waitFor,
     create,
     deployed,

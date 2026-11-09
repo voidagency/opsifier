@@ -1,0 +1,66 @@
+{
+  "id": "node-red",
+  "version": "1.0.0",
+  "name": "Node-RED",
+  "summary": {
+    "en": "Wire together devices, APIs and online services.",
+    "fr": "Reliez appareils, API et services en ligne."
+  },
+  "description": {
+    "en": "A browser-based flow editor where you connect nodes to automate almost anything. The editor has no login until you configure one, so keep it private.",
+    "fr": "Un éditeur de flux dans le navigateur où vous reliez des nœuds pour tout automatiser. L'éditeur n'a pas de mot de passe tant que vous n'en configurez pas : gardez-le privé."
+  },
+  "instructions": {
+    "en": "The editor is open to anyone who finds it. Protect it with basic authentication on the Security tab.",
+    "fr": "L'éditeur est ouvert à quiconque le trouve. Protégez-le par mot de passe dans l'onglet Sécurité."
+  },
+  "category": "automation",
+  "tags": ["automation", "iot", "low-code"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://nodered.org"
+    },
+    {
+      "kind": "docs",
+      "url": "https://nodered.org/docs/getting-started/docker"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/node-red/node-red"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "node-red",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "nodered/node-red:5.0.9"
+      },
+      "env": {},
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/data"
+        }
+      ],
+      "domain": {
+        "port": 1880,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

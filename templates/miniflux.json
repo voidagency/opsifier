@@ -1,0 +1,104 @@
+{
+  "id": "miniflux",
+  "version": "1.0.0",
+  "name": "Miniflux",
+  "summary": {
+    "en": "A minimalist RSS reader.",
+    "fr": "Un lecteur RSS minimaliste."
+  },
+  "description": {
+    "en": "Read your feeds without distractions: fast, simple and stored in Postgres. The administrator account is created from the values below.",
+    "fr": "Lisez vos flux sans distraction : rapide, simple et stocké dans Postgres. Le compte administrateur est créé à partir des valeurs ci-dessous."
+  },
+  "instructions": {
+    "en": "Sign in as {{params.adminUser}} with the password shown below.",
+    "fr": "Connectez-vous avec {{params.adminUser}} et le mot de passe affiché ci-dessous."
+  },
+  "category": "productivity",
+  "tags": ["rss", "reader", "feeds"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://miniflux.app"
+    },
+    {
+      "kind": "docs",
+      "url": "https://miniflux.app/docs/docker.html"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/miniflux/v2"
+    }
+  ],
+  "verified": true,
+  "params": [
+    {
+      "key": "adminUser",
+      "label": {
+        "en": "Admin user",
+        "fr": "Utilisateur administrateur"
+      },
+      "type": "text",
+      "required": true,
+      "default": "admin"
+    },
+    {
+      "key": "adminPassword",
+      "label": {
+        "en": "Admin password",
+        "fr": "Mot de passe administrateur"
+      },
+      "type": "secret",
+      "required": false,
+      "help": {
+        "en": "Leave empty to generate one.",
+        "fr": "Laissez vide pour en générer un."
+      },
+      "generate": {
+        "length": 24,
+        "alphabet": "alphanumeric"
+      }
+    }
+  ],
+  "secrets": [],
+  "services": [
+    {
+      "key": "db",
+      "name": "miniflux-db",
+      "kind": "database",
+      "engine": "postgres",
+      "image": "postgres:17.11-alpine",
+      "databaseName": "miniflux",
+      "user": "miniflux"
+    },
+    {
+      "key": "app",
+      "name": "miniflux",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "miniflux/miniflux:2.3.5"
+      },
+      "env": {
+        "DATABASE_URL": "{{services.db.url}}",
+        "RUN_MIGRATIONS": "1",
+        "CREATE_ADMIN": "1",
+        "ADMIN_USERNAME": "{{params.adminUser}}",
+        "ADMIN_PASSWORD": "{{params.adminPassword}}",
+        "BASE_URL": "{{services.app.url}}"
+      },
+      "command": null,
+      "mounts": [],
+      "domain": {
+        "port": 8080,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/healthcheck",
+        "expect": [200]
+      },
+      "dependsOn": ["db"]
+    }
+  ]
+}

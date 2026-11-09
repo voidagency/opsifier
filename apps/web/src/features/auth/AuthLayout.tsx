@@ -1,6 +1,38 @@
 import type { ReactNode } from "react";
 import { LanguageSwitch, ThemeSwitch } from "../../app/shell/preferences";
-import { ChartSheet, Mark, useDocumentTitle } from "../../ui";
+import { Gauge, Lamp, Mark, Pictogram, type PictogramName, useDocumentTitle, visualStates } from "../../ui";
+
+const panelPictograms: readonly PictogramName[] = [
+  "app",
+  "postgres",
+  "redis",
+  "domain",
+  "certificate",
+  "deployment",
+];
+
+/** The product's own instruments, at rest: lamps, rings and pictograms, on the navy of the top bar. */
+function InstrumentPanel() {
+  return (
+    <div className="grid justify-items-center gap-12">
+      <div className="flex items-end gap-8">
+        <Gauge value={24} label="" size="md" />
+        <Gauge value={41} label="" size="lg" />
+        <Gauge value={62} label="" size="md" />
+      </div>
+      <div className="flex items-center gap-7">
+        {visualStates.map((state) => (
+          <Lamp key={state} state={state} size="lg" still decorative />
+        ))}
+      </div>
+      <div className="flex items-center gap-7 text-muted">
+        {panelPictograms.map((name) => (
+          <Pictogram key={name} name={name} size={24} />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function AuthLayout({
   title,
@@ -19,7 +51,7 @@ export function AuthLayout({
           <Mark className="size-6" />
           <span className="text-base font-semibold tracking-[-0.005em]">Opsifier</span>
         </div>
-        <main className="my-auto w-full max-w-[380px] py-10">
+        <main className="my-auto w-full max-w-[480px] py-10">
           <h1 className="text-xl font-medium tracking-[-0.01em]">{title}</h1>
           <p className="mt-1.5 text-muted">{description}</p>
           <div className="mt-7">{children}</div>
@@ -29,10 +61,11 @@ export function AuthLayout({
           <ThemeSwitch />
         </div>
       </div>
-      <aside aria-hidden="true" className="relative hidden border-l bg-raised lg:block">
-        <div className="absolute inset-0">
-          <ChartSheet />
-        </div>
+      <aside
+        aria-hidden="true"
+        className="brand-bar relative hidden items-center justify-center border-l lg:flex"
+      >
+        <InstrumentPanel />
       </aside>
     </div>
   );

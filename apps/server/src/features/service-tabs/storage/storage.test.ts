@@ -1,12 +1,21 @@
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
-import type { ActionEntry, StorageDocument } from "@opsifier/contract";
+import type { ActionEntry, CreatedApiKey, StorageDocument } from "@opsifier/contract";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   apiErrorOf,
   call,
   createTestContext,
   setupAdmin,
+  signInMember,
   TEST_ORIGIN,
   type TestContext,
 } from "../../../testing/harness";
@@ -132,6 +141,99 @@ describe("the storage tab", () => {
   });
 });
 
+describe("who may give a service a path on the host", () => {
+  let operator: string;
+  const asOperator = <T = unknown>(path: string, method: string, body?: unknown) =>
+    call<T>(context.app, path, { method, body, cookie: operator, origin: TEST_ORIGIN });
+  const SOCKET = { type: "bind", hostPath: "/var/run/docker.sock", mountPath: "/d.sock" };
+
+  beforeEach(async () => {
+    operator = await signInMember(context.app, cookie, "op@example.com", [
+      { project: "shop", role: "operator" },
+    ]);
+  });
+
+  it.each([
+    ["the Docker socket, with the flag set", { ...SOCKET, acknowledgeRisk: true }],
+    ["the Docker socket, without it", SOCKET],
+    ["an ordinary host path", { type: "bind", hostPath: "/etc", mountPath: "/host-etc" }],
+    [
+      "the panel's data directory, with the flag set",
+      () => ({
+        type: "bind",
+        hostPath: context.dataDir,
+        mountPath: "/data",
+        acknowledgeRisk: true,
+      }),
+    ],
+  ])("refuses an operator %s", async (_label, mount) => {
+    const body = typeof mount === "function" ? mount() : mount;
+
+    const refused = await asOperator(MOUNTS, "POST", body);
+
+    expect(refused.status).toBe(403);
+    expect(apiErrorOf(refused).code).toBe("admin_required");
+    expect((await api<StorageDocument>(PATH)).body.mounts).toEqual([]);
+  });
+
+  it("still lets an operator add a volume or a file", async () => {
+    expect(
+      (await asOperator(MOUNTS, "POST", { type: "volume", name: "data", mountPath: "/data" })).status,
+    ).toBe(201);
+    expect((await asOperator(MOUNTS, "POST", { type: "file", mountPath: "/etc/x.conf" })).status).toBe(201);
+  });
+
+  it("lets an operator keep or remove what an administrator gave, but not point it elsewhere", async () => {
+    await api(MOUNTS, "POST", { type: "bind", hostPath: "/srv/app", mountPath: "/data" });
+    const edit = (hostPath: string, mountPath: string) =>
+      asOperator(`${MOUNTS}/0`, "PUT", { type: "bind", hostPath, mountPath });
+
+    expect((await edit("/srv/app", "/moved")).status).toBe(200);
+
+    const repointed = await edit("/etc", "/moved");
+    expect(repointed.status).toBe(403);
+    expect((await api<StorageDocument>(PATH)).body.mounts[0]).toMatchObject({
+      hostPath: "/srv/app",
+      mountPath: "/moved",
+    });
+
+    expect((await asOperator(`${MOUNTS}/0`, "DELETE")).status).toBe(200);
+  });
+
+  it("refuses to turn a volume into a host path for an operator", async () => {
+    await api(MOUNTS, "POST", { type: "volume", name: "data", mountPath: "/data" });
+
+    const changed = await asOperator(`${MOUNTS}/0`, "PUT", {
+      type: "bind",
+      hostPath: "/etc",
+      mountPath: "/data",
+    });
+
+    expect(changed.status).toBe(403);
+  });
+
+  it("holds keys to the same rule: a key narrowed to projects can't, even an administrator's", async () => {
+    const issue = async (body: object) =>
+      (
+        await call<CreatedApiKey>(context.app, "/api/v1/me/api-keys", {
+          method: "POST",
+          cookie,
+          origin: TEST_ORIGIN,
+          body: { name: "k", level: "write", ...body },
+        })
+      ).body.token;
+    const add = async (token: string, mountPath: string) =>
+      call(context.app, MOUNTS, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        body: { ...SOCKET, mountPath, acknowledgeRisk: true },
+      });
+
+    expect((await add(await issue({ projects: ["shop"] }), "/a.sock")).status).toBe(403);
+    expect((await add(await issue({}), "/b.sock")).status).toBe(201);
+  });
+});
+
 describe("bind mounts that expose the server", () => {
   it.each([
     ["the data directory", () => context.dataDir, "mount_exposes_data_directory"],
@@ -247,21 +349,158 @@ describe("deploying mounts", () => {
     expect(readdirSync(files)).toEqual(["0.txt"]);
   });
 
-  it("removes a service's volumes with the service", async () => {
-    await api(MOUNTS, "POST", { type: "volume", name: "probe-vol", mountPath: "/data/vol" });
-    await deploy();
-    expect(existsSync(join(context.dataDir, "projects/shop/web/volumes/probe-vol"))).toBe(true);
-
-    const accepted = await api<ActionEntry>(SERVICE, "DELETE", { confirm: "web" });
+  async function destroy(path = SERVICE, confirm = "web"): Promise<ActionEntry & { log: string }> {
+    const accepted = await api<ActionEntry>(path, "DELETE", { confirm });
     for (let attempt = 0; attempt < 1000; attempt += 1) {
-      const { body } = await api<ActionEntry>(`/api/v1/actions/${accepted.body.id}`);
+      const { body } = await api<ActionEntry & { log: string }>(`/api/v1/actions/${accepted.body.id}`);
+      if (body.status !== "queued" && body.status !== "running") {
+        return body;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    throw new Error("The removal did not finish");
+  }
+
+  it("leaves a service's volumes and their data behind when it is destroyed", async () => {
+    await api(MOUNTS, "POST", { type: "volume", name: "probe-vol", mountPath: "/data/vol" });
+    await api(MOUNTS, "POST", { type: "file", mountPath: "/etc/app.conf", content: "x" });
+    await deploy();
+    const data = join(context.dataDir, "projects/shop/web/volumes/probe-vol");
+    writeFileSync(join(data, "keep.txt"), "still here");
+
+    const destroyed = await destroy();
+
+    expect(destroyed.status).toBe("succeeded");
+    expect(destroyed.log).toContain("Keeping the volume shop_web_probe-vol");
+    expect(destroyed.log).toContain("Backups stay at their destination");
+    expect(readFileSync(join(data, "keep.txt"), "utf8")).toBe("still here");
+    expect((await context.docker.listVolumes()).map((volume) => volume.name)).toEqual(["shop_web_probe-vol"]);
+    // Configuration and generated files go with the service.
+    expect(existsSync(join(context.dataDir, "projects/shop/web/files"))).toBe(false);
+    expect((await api(SERVICE)).status).toBe(404);
+  });
+
+  it("touches no other project when it keeps a service's volumes", async () => {
+    await api("/api/v1/projects", "POST", { name: "other" });
+    await api("/api/v1/projects/other/services", "POST", { name: "web" });
+    await api("/api/v1/projects/other/services/web/storage/mounts", "POST", {
+      type: "volume",
+      name: "probe-vol",
+      mountPath: "/data/vol",
+    });
+    await api("/api/v1/projects/other/services/web/source", "PUT", { image: "nginx:alpine" });
+    const other = await api<ActionEntry>("/api/v1/projects/other/services/web/deploy", "POST");
+    for (let attempt = 0; attempt < 1000; attempt += 1) {
+      const { body } = await api<ActionEntry>(`/api/v1/actions/${other.body.id}`);
       if (body.status !== "queued" && body.status !== "running") {
         break;
       }
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
+    await api(MOUNTS, "POST", { type: "volume", name: "probe-vol", mountPath: "/data/vol" });
+    await deploy();
 
-    expect(await context.docker.listVolumes()).toEqual([]);
-    expect(existsSync(join(context.dataDir, "projects/shop/web"))).toBe(false);
+    await destroy();
+
+    expect(await context.docker.inspectVolume("other_web_probe-vol")).not.toBeNull();
+    expect(await context.docker.inspectService("other_web")).not.toBeNull();
+    expect((await api("/api/v1/projects/other/services/web")).status).toBe(200);
+  });
+});
+
+describe("checking a volume against the user its image runs as", () => {
+  const IMAGE = "nginx:alpine";
+  const volume = (...parts: string[]) =>
+    join(context.dataDir, "projects", "shop", "web", "volumes", "data", ...parts);
+  const someoneElse = () => String((process.getuid?.() ?? 1000) + 1);
+
+  beforeEach(async () => {
+    await api(MOUNTS, "POST", { type: "volume", name: "data", mountPath: "/data" });
+    await deploy();
+  });
+
+  function keepFile(mode: number, name = "kept.txt"): void {
+    writeFileSync(volume(name), "old");
+    chmodSync(volume(name), mode);
+  }
+
+  it("names what that user could not write, and carries on", async () => {
+    keepFile(0o644);
+    context.docker.imageUsers.set(IMAGE, someoneElse());
+
+    const deployed = await deploy();
+
+    expect(deployed.status).toBe("succeeded");
+    expect(deployed.log).toMatch(
+      /Volume shop_web_data: the user this image runs as \(\d+\) can't write 1 of the/,
+    );
+    expect(deployed.log).toContain("kept.txt");
+    expect(deployed.log).toMatch(/Give them to that user/);
+  });
+
+  it("looks inside folders too", async () => {
+    mkdirSync(volume("nested"));
+    chmodSync(volume("nested"), 0o777);
+    writeFileSync(volume("nested", "deep.txt"), "old");
+    chmodSync(volume("nested", "deep.txt"), 0o600);
+    context.docker.imageUsers.set(IMAGE, someoneElse());
+
+    expect((await deploy()).log).toContain("deep.txt");
+  });
+
+  it("is happy when that user is the owner", async () => {
+    keepFile(0o644);
+    context.docker.imageUsers.set(IMAGE, String(process.getuid?.() ?? 0));
+
+    expect((await deploy()).log).not.toMatch(/can't write/);
+  });
+
+  it("is happy with a file anyone may write", async () => {
+    keepFile(0o666);
+    context.docker.imageUsers.set(IMAGE, someoneElse());
+
+    expect((await deploy()).log).not.toMatch(/can't write/);
+  });
+
+  it("is happy when the image runs as root", async () => {
+    keepFile(0o600);
+
+    expect((await deploy()).log).not.toMatch(/can't write|whose number/);
+  });
+
+  it("counts a group the service adds", async () => {
+    keepFile(0o664);
+    context.docker.imageUsers.set(IMAGE, someoneElse());
+    expect((await deploy()).log).toMatch(/can't write/);
+
+    await api(`${SERVICE}/advanced/deploy`, "PUT", { groups: [String(process.getgid?.() ?? 0)] });
+
+    expect((await deploy()).log).not.toMatch(/can't write/);
+  });
+
+  it("reads the user out of a user:group line", async () => {
+    keepFile(0o644);
+    context.docker.imageUsers.set(IMAGE, `${someoneElse()}:100`);
+
+    expect((await deploy()).log).toMatch(/can't write/);
+  });
+
+  it("says when it can't tell, because the image only names its user", async () => {
+    keepFile(0o644);
+    context.docker.imageUsers.set(IMAGE, "www-data");
+
+    const deployed = await deploy();
+
+    expect(deployed.status).toBe("succeeded");
+    expect(deployed.log).toMatch(/runs as the user www-data, whose number only the image knows/);
+  });
+
+  it("stops looking after a bounded number of files", async () => {
+    for (let index = 0; index < 1100; index += 1) {
+      keepFile(0o644, `file-${index}.txt`);
+    }
+    context.docker.imageUsers.set(IMAGE, someoneElse());
+
+    expect((await deploy()).log).toMatch(/can't write 1000 of the 1000 files/);
   });
 });

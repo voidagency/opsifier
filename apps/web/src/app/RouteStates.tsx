@@ -1,7 +1,7 @@
 import { type ErrorComponentProps, Link, useRouter } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { errorMessage } from "../lib/forms";
-import { Button, buttonClass, FormBanner, Mark } from "../ui";
+import { Button, buttonClass, FormBanner, Illustration, Mark } from "../ui";
 
 /** Shown while the first session check is running. */
 export function BootScreen() {
@@ -19,7 +19,7 @@ export function BootScreen() {
 
 function StateFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto flex min-h-dvh max-w-[440px] flex-col justify-center gap-4 px-6">{children}</div>
+    <div className="mx-auto flex min-h-dvh max-w-[550px] flex-col justify-center gap-4 px-6">{children}</div>
   );
 }
 
@@ -29,7 +29,7 @@ export function RootError({ error }: ErrorComponentProps) {
   return (
     <StateFrame>
       <div>
-        <Mark className="size-6" />
+        <Illustration name="not-found" size={200} />
         <h1 className="mt-4 text-lg font-medium">{t("error.title")}</h1>
         <p className="mt-1 text-muted">{t("error.description")}</p>
       </div>
@@ -48,7 +48,8 @@ export function NotFoundPage() {
   return (
     <StateFrame>
       <div>
-        <p className="font-mono text-sm text-muted">404</p>
+        <Illustration name="not-found" size={200} />
+        <p className="mt-4 font-mono text-sm text-muted">404</p>
         <h1 className="mt-1 text-lg font-medium">{t("notFound.title")}</h1>
         <p className="mt-1 text-muted">{t("notFound.description")}</p>
       </div>

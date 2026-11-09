@@ -2,23 +2,40 @@ import * as RadixDialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useReturnFocus } from "../../ui";
 
 interface FullscreenPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: ReactNode;
   actions?: ReactNode;
+  /** While a terminal session is open, Escape belongs to the program running in it. */
+  keepOnEscape?: boolean;
   children: ReactNode;
 }
 
 /** A dialog that takes the whole window, for reading logs at length. */
-export function FullscreenPanel({ open, onOpenChange, title, actions, children }: FullscreenPanelProps) {
+export function FullscreenPanel({
+  open,
+  onOpenChange,
+  title,
+  actions,
+  keepOnEscape = false,
+  children,
+}: FullscreenPanelProps) {
   const { t } = useTranslation();
+  const returnFocus = useReturnFocus(open);
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
         <RadixDialog.Content
           aria-describedby={undefined}
+          onEscapeKeyDown={(event) => {
+            if (keepOnEscape) {
+              event.preventDefault();
+            }
+          }}
+          onCloseAutoFocus={returnFocus}
           className="fixed inset-0 z-50 flex flex-col bg-bg focus-visible:outline-none data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in"
         >
           <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-2.5 md:px-6">

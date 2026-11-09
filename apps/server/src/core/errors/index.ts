@@ -4,6 +4,7 @@ import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { Logger } from "pino";
 import type { $ZodIssue } from "zod/v4/core";
+import { DockerUnsupportedError } from "../docker/driver";
 
 type Fields = Record<string, string>;
 
@@ -41,7 +42,7 @@ export function errorBody(code: string, message: string, fields?: Fields): ApiEr
   return { error: fields === undefined ? { code, message } : { code, message, fields } };
 }
 
-type Issue = Pick<$ZodIssue, "path" | "message" | "code">;
+type Issue = Pick<$ZodIssue, "path" | "message" | "code"> & { keys?: readonly string[] };
 
 /** A missing value reads "expected string, received undefined" by default, which no form should show. */
 function issueMessage(issue: Issue): string {
@@ -53,10 +54,20 @@ function issueMessage(issue: Issue): string {
 /** Maps Zod issues to `{ "a.b": "message" }`, keeping the first message for each field. */
 export function issuesToFields(issues: readonly Issue[]): Fields {
   const fields: Fields = {};
-  for (const issue of issues) {
-    const key = issue.path.map(String).join(".");
+  const add = (path: readonly PropertyKey[], message: string) => {
+    const key = path.map(String).join(".");
     if (key !== "" && fields[key] === undefined) {
-      fields[key] = issueMessage(issue);
+      fields[key] = message;
+    }
+  };
+  for (const issue of issues) {
+    if (issue.code === "unrecognized_keys") {
+      // Each key gets its own entry, so the answer says exactly which ones were not expected.
+      for (const key of issue.keys ?? []) {
+        add([...issue.path, key], "Not a field this request accepts");
+      }
+    } else {
+      add(issue.path, issueMessage(issue));
     }
   }
   return fields;
@@ -97,6 +108,9 @@ export function createErrorHandler(logger: Logger): ErrorHandler {
         c.header(name, value);
       }
       return c.json(errorBody(error.code, error.message, error.fields), error.status);
+    }
+    if (error instanceof DockerUnsupportedError) {
+      return c.json(errorBody("docker_unsupported", error.message), 503);
     }
     if (error instanceof HTTPException) {
       const code = httpExceptionCodes[error.status] ?? "http_error";

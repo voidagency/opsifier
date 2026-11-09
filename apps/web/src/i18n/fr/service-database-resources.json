@@ -1,12 +1,16 @@
 {
-  "intro": "Limitez ce que cette base peut utiliser et réservez ce dont elle a besoin. Zéro signifie aucune limite ou réservation. L'enregistrement redémarre la base.",
+  "intro": "Limitez ce que cette base peut utiliser et réservez ce dont elle a besoin. Zéro signifie aucune limite ou réservation. L'enregistrement ne fait que les conserver : c'est un redéploiement qui les applique, et il redémarre la base.",
   "memoryReservation": "Mémoire réservée (Mo)",
   "memoryLimit": "Limite de mémoire (Mo)",
   "cpuReservation": "Processeur réservé (cœurs)",
   "cpuLimit": "Limite de processeur (cœurs)",
   "invalid": "Utilisez un nombre positif ou nul, et gardez chaque réservation sous sa limite.",
-  "save": "Enregistrer et redémarrer",
-  "restarting": "Redémarrage de la base de données…",
-  "saved": "Les nouvelles limites sont en place",
-  "failed": "Les nouvelles limites n'ont pas été appliquées"
+  "save": "Enregistrer",
+  "saved": "Limites enregistrées",
+  "title": "Ressources",
+  "savedHint": "Redéployez la base de données pour les appliquer.",
+  "cpuLimitHint": "Le processeur maximal qu'elle peut utiliser, en cœurs.",
+  "cpuReservationHint": "Processeur réservé, en cœurs.",
+  "memoryLimitHint": "La mémoire maximale qu'elle peut utiliser, en Mo.",
+  "memoryReservationHint": "Mémoire réservée à cette base de données, en Mo."
 }

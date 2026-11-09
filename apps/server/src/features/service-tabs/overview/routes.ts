@@ -1,8 +1,10 @@
 import { createRoute } from "@hono/zod-openapi";
-import { serviceMetrics, serviceNotes, servicePath } from "@opsifier/contract";
+import { serviceMetrics, serviceNotes, serviceNotesVisibility, servicePath } from "@opsifier/contract";
 import type { Feature } from "../../../core/context";
-import { notFound } from "../../../core/errors";
+import { conflict, notFound } from "../../../core/errors";
 import { errorResponse, jsonBody, jsonResponse } from "../../../core/openapi";
+import { readComposeMetrics } from "../../compose/feeds";
+import { isComposeTarget } from "../../compose/runtime";
 import { readServiceMetrics } from "../../service-runtime/metrics";
 import { serviceExists } from "../../service-runtime/repo";
 import { saveServiceSpec } from "../../services/repo";
@@ -35,6 +37,20 @@ const notesRoute = createRoute({
   responses: { 200: jsonResponse(serviceNotes, "Saved."), 400: invalid, 401: denied, 404: missing },
 });
 
+const notesVisibilityRoute = createRoute({
+  method: "put",
+  path: `${PATH}/notes/visibility`,
+  tags,
+  request: { params: servicePath, body: jsonBody(serviceNotesVisibility) },
+  responses: {
+    200: jsonResponse(serviceNotesVisibility, "Saved."),
+    400: invalid,
+    401: denied,
+    404: missing,
+    409: errorResponse("There are no notes to hide."),
+  },
+});
+
 export const feature: Feature = {
   register(app, deps) {
     // For any type of service: the readings only need it to exist, not to be an App.
@@ -44,15 +60,37 @@ export const feature: Feature = {
       if (!serviceExists(deps.db, target)) {
         throw notFound("This service does not exist.");
       }
-      return c.json(await readServiceMetrics(deps, target), 200);
+      const reading = isComposeTarget(deps, target)
+        ? await readComposeMetrics(deps, target)
+        : await readServiceMetrics(deps, target);
+      return c.json(reading, 200);
     });
 
     app.openapi(notesRoute, (c) => {
       const { project, service } = c.req.valid("param");
       const record = requireService(deps, { projectName: project, serviceName: service });
       const { notes } = c.req.valid("json");
-      saveServiceSpec(deps.db, project, service, { ...record.spec, notes }, new Date(deps.now()));
+      // Clearing the notes leaves nothing to hide, so the next ones start out visible.
+      const spec = { ...record.spec, notes, notesHidden: notes !== "" && record.spec.notesHidden };
+      saveServiceSpec(deps.db, project, service, spec, new Date(deps.now()));
       return c.json({ notes }, 200);
+    });
+
+    app.openapi(notesVisibilityRoute, (c) => {
+      const { project, service } = c.req.valid("param");
+      const record = requireService(deps, { projectName: project, serviceName: service });
+      const { hidden } = c.req.valid("json");
+      if (hidden && record.spec.notes === "") {
+        throw conflict("notes_empty", "There are no notes to hide.");
+      }
+      saveServiceSpec(
+        deps.db,
+        project,
+        service,
+        { ...record.spec, notesHidden: hidden },
+        new Date(deps.now()),
+      );
+      return c.json({ hidden }, 200);
     });
   },
 };

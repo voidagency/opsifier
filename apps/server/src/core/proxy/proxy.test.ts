@@ -22,7 +22,7 @@ let files: ProxyFiles;
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), "opsifier-proxy-"));
   dynamicDir = join(directory, "traefik", "dynamic");
-  files = new ProxyFiles(dynamicDir);
+  files = new ProxyFiles(dynamicDir, { apply: (_file, config) => config as object });
 });
 
 afterEach(() => {
@@ -148,10 +148,29 @@ describe("the atomic writer", () => {
   });
 
   it("writes one file per service with the documented name", async () => {
-    await files.writeService("shop", "web", { http: { routers: {} } });
+    const config = { http: { routers: { r: { rule: "Host(`a.example.test`)", service: "s" } } } };
+    await files.writeService("shop", "web", config);
     expect(serviceFileName("shop", "web")).toBe("shop__web.yaml");
-    expect(read("shop__web.yaml")).toEqual({ http: { routers: {} } });
+    expect(read("shop__web.yaml")).toEqual(config);
   });
+
+  it.each([
+    ["no routers at all", { http: {} }],
+    ["empty sections", { http: { routers: {}, services: {} } }],
+    [
+      "middlewares and nothing to attach them to",
+      { http: { routers: {}, middlewares: { m: { compress: {} } } } },
+    ],
+  ])(
+    "writes no file for a service with %s, since Traefik would refuse the directory",
+    async (_name, config) => {
+      await files.writeService("shop", "web", { http: { routers: { r: { rule: "x", service: "s" } } } });
+
+      await files.writeService("shop", "web", config);
+
+      expect(readdirSync(dynamicDir)).toEqual([]);
+    },
+  );
 
   it("leaves no temporary files behind, and none Traefik would load", async () => {
     await files.writeService("shop", "web", { a: 1 });

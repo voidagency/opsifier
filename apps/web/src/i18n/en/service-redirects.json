@@ -40,5 +40,6 @@
   "errors": {
     "regex": "Enter a regular expression Traefik can compile, with no spaces.",
     "replacement": "Enter a replacement with no spaces."
-  }
+  },
+  "enabled": "On"
 }

@@ -11,12 +11,13 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  StatusLamp,
+  Lamp,
+  Pictogram,
 } from "../../ui";
 import { servicePageLink } from "../databases/links";
 import { projectsQuery } from "../projects/api";
 import { CreateProjectDialog } from "../projects/CreateProjectDialog";
-import { lampForService, statusLabelKey } from "./api";
+import { servicePictogram, serviceState, serviceStateLabel, servicesState } from "./serviceState";
 
 export interface CrumbControlProps {
   isLast: boolean;
@@ -24,7 +25,7 @@ export interface CrumbControlProps {
 
 const triggerClass = (isLast: boolean) =>
   cn(
-    "flex min-w-0 items-center gap-1 rounded-sm font-mono text-sm hover:text-ink data-[state=open]:text-ink",
+    "flex max-w-full min-w-0 items-center gap-1 rounded-sm font-mono text-sm hover:text-ink data-[state=open]:text-ink",
     isLast ? "font-medium" : "text-muted",
   );
 
@@ -52,6 +53,7 @@ export function ProjectCrumb({ isLast }: CrumbControlProps) {
           {data?.projects.map((item) => (
             <DropdownMenuItem key={item.name} asChild>
               <Link to="/projects/$project" params={{ project: item.name }} className="font-mono">
+                <Lamp state={servicesState(item.services) ?? "unknown"} still decorative />
                 {item.name}
               </Link>
             </DropdownMenuItem>
@@ -72,7 +74,7 @@ export function ProjectCrumb({ isLast }: CrumbControlProps) {
 
 /** Switches between the services of the current project from the breadcrumb. */
 export function ServiceCrumb({ isLast }: CrumbControlProps) {
-  const { t } = useTranslation("services");
+  const { t } = useTranslation(["services", "visual", "activity"]);
   const { project, service } = useParams({ strict: false }) as { project: string; service: string };
   const { data } = useQuery(projectsQuery);
   const services = data?.projects.find((item) => item.name === project)?.services ?? [];
@@ -93,10 +95,8 @@ export function ServiceCrumb({ isLast }: CrumbControlProps) {
         {services.map((item) => (
           <DropdownMenuItem key={item.name} asChild>
             <Link {...servicePageLink(project, item.name, item.type)} className="font-mono">
-              <StatusLamp
-                status={lampForService(item.status, item.activeAction)}
-                label={t(statusLabelKey(item.status))}
-              />
+              <Lamp state={serviceState(item)} label={serviceStateLabel(item, t)} still />
+              <Pictogram name={servicePictogram(item.type)} size={16} className="text-muted" />
               {item.name}
             </Link>
           </DropdownMenuItem>

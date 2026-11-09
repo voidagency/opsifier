@@ -12,15 +12,20 @@ Opsifier is an open-source control panel for your own server. It deploys apps an
 ## What works today
 
 - Projects and services with live status, deployment history and an activity log.
-- Deployments from a Docker image, a Git repository, GitHub, an inline Dockerfile or an uploaded archive.
+- Deployments from a Docker image, a Git repository, GitHub, an inline Dockerfile or an uploaded archive, with signed webhooks and deployment tokens.
+- Going back to an earlier release in one action, with the exact image of every deployment recorded.
 - Domains with HTTPS through Traefik, redirects, basic authentication and maintenance mode.
-- Environment variables, volumes, published ports, resource limits and replicas.
-- Live logs with search, an in-browser console and per-service metrics.
-- Postgres, MySQL, MariaDB, MongoDB and Redis, with managed credentials and optional public ports.
-- Sign-in with two-factor authentication and recovery codes.
+- A free `<id>.opsifier.dev` address for every server, with one wildcard certificate. It can be turned off at install, and a server can use its own domain instead.
+- Development, staging and production server roles. Anything that isn't production stays behind a password and out of search engines.
+- Environment variables sealed at rest, with build inputs kept apart from runtime secrets, plus volumes, published ports, resource limits and replicas.
+- Live logs with search, an in-browser console, per-service metrics and scheduled scripts with a run history.
+- Postgres, MySQL, MariaDB, MongoDB and Redis, with managed credentials, optional public ports, backups you can download and restore, and networks kept apart between projects.
+- Compose stacks, ready-made templates, and a modular runtime with a browser IDE.
+- A command-line client and an MCP server, held to the same rights as the API.
+- Sign-in with two-factor authentication and recovery codes, project roles and API keys.
 - English and French, with light and dark themes.
 
-Templates, Compose stacks, backups, platform administration and the installer are under way.
+WordPress sites, moving a project between servers, multi-node clusters and tunnels are still to come.
 
 ## Run it locally
 
@@ -36,6 +41,8 @@ Open <http://127.0.0.1:5173>. The first-run page asks for a one-time setup code,
 ## How it works
 
 Docker Swarm runs the workloads and Traefik routes the traffic. Desired state lives in SQLite, and every deployment compiles it into a Swarm service and a Traefik route. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
+
+The only call a server makes home is to the `opsifier.dev` address service: the registration and a daily heartbeat, and nothing else. It is documented in the architecture notes and can be turned off.
 
 ## Security
 

@@ -3,9 +3,12 @@ import type { ActionContext, ActionRow } from "../../core/actions";
 import type { AppDeps } from "../../core/context";
 import { DockerDriverError } from "../../core/docker";
 import { badRequest, conflict } from "../../core/errors";
+import { assertProjectBoundaries } from "../projects/isolation";
 import { refreshEnabledCompanions } from "../service-tabs/companions/service";
 import { qualifiedName } from "../services/compile";
+import { SECRET_VALUE, sealRetired } from "../services/env-store";
 import { listServiceRecords, saveServiceSpec } from "../services/repo";
+import { assertRuntimeCertain } from "../services/runtime-state";
 import type { ServiceTarget } from "../services/service";
 import { type OpsCredentials, type OpsTarget, opsFor } from "./engine-ops";
 import { type ExecPlan, redactSecrets, runInDatabase } from "./exec";
@@ -104,7 +107,25 @@ function recordCredentials(
   credentials: OpsCredentials,
   rotation: StoredRotation | null,
 ): void {
-  saveDatabase(deps, target, { ...sealSecrets(deps, credentials), rotation });
+  const record = requireDatabase(deps, target);
+  const replaced = secretsList(unsealSecrets(deps, record.spec.database));
+  saveServiceSpec(
+    deps.db,
+    target.projectName,
+    target.serviceName,
+    {
+      ...record.spec,
+      database: { ...record.spec.database, ...sealSecrets(deps, credentials), rotation },
+      // Whatever the database stops accepting can still be in a log, and in a container not yet replaced.
+      sealedRetired: sealRetired(
+        deps,
+        record.spec.sealedRetired,
+        replaced.map((value) => ({ name: SECRET_VALUE, value })),
+        secretsList(credentials),
+      ),
+    },
+    new Date(deps.now()),
+  );
 }
 
 async function changeLiveCredentials(
@@ -264,6 +285,8 @@ async function runPasswordChange(
   ctx: ActionContext,
 ): Promise<void> {
   let record = requireDatabase(deps, target);
+  // Every change ends in a rollout, and that is not the moment to find out it can't go ahead.
+  await assertProjectBoundaries(deps, target, record);
   if (record.spec.database.rotation !== null) {
     ctx.log("An earlier password change did not finish. Checking where it stands first");
     await settleRotation(deps, target, record, record.spec.database.rotation, ctx);
@@ -321,6 +344,7 @@ export function enqueuePasswordChange(
   if (stopped) {
     throw conflict("service_stopped", "Start this database before changing its password.");
   }
+  assertRuntimeCertain(deps, target);
   return deps.actions.enqueue({
     type: databaseActionTypes.password,
     title: `Change the password of ${target.projectName}/${target.serviceName}`,

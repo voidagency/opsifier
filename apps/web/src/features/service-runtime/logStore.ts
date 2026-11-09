@@ -1,14 +1,49 @@
-import { type LogFeedState, serviceLogEvent, serviceLogsTopic } from "@opsifier/contract";
+import {
+  type LogFeedState,
+  type LogStreamFilter,
+  type ServiceLogLine,
+  serviceLogEvent,
+  serviceLogsTopic,
+} from "@opsifier/contract";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { realtime } from "../../lib/realtime";
 
 export type LogEntry =
   | { kind: "line"; key: string; seq: number; stream: "stdout" | "stderr"; text: string; at: string | null }
-  | { kind: "separator"; key: string; at: number };
+  | { kind: "separator"; key: string; at: number }
+  | { kind: "gap"; key: string; at: string | null };
 
 export interface LogView {
   entries: readonly LogEntry[];
   state: LogFeedState;
+  paused: boolean;
+  /** Lines that came in during a pause and are waiting to be shown. */
+  held: number;
+  /** How far back the feed reads and how much it keeps. Null until it has said. */
+  limits: { tailLines: number; ringLines: number } | null;
+}
+
+const INITIAL_VIEW: LogView = { entries: [], state: "connecting", paused: false, held: 0, limits: null };
+
+export interface LogFilter {
+  text: string;
+  stream: LogStreamFilter;
+}
+
+/** Only the lines a filter lets through. Separators and gaps keep their place, so the times still read. */
+export function filterLogView(view: LogView, { text, stream }: LogFilter): LogView {
+  const needle = text.trim().toLowerCase();
+  if (needle === "" && stream === "all") {
+    return view;
+  }
+  return {
+    ...view,
+    entries: view.entries.filter(
+      (entry) =>
+        entry.kind !== "line" ||
+        ((stream === "all" || entry.stream === stream) && entry.text.toLowerCase().includes(needle)),
+    ),
+  };
 }
 
 /** More than this and the browser would pay for lines nobody can scroll back to anyway. */
@@ -21,13 +56,16 @@ type Subscribe = (topic: string, handler: (payload: unknown) => void) => () => v
  * fullscreen view are two windows onto this one store, so opening one never disturbs the other.
  */
 export class LogStore {
-  private view: LogView = { entries: [], state: "connecting" };
+  private view: LogView = INITIAL_VIEW;
   private readonly listeners = new Set<() => void>();
   private consumers = 0;
   private release: (() => void) | null = null;
   private feed: string | null = null;
   private lastSeq = -1;
   private separators = 0;
+  private held: LogEntry[] = [];
+  /** A new feed arrived during a pause, or the hold overflowed: resuming starts from what is held. */
+  private replaceOnResume = false;
 
   constructor(
     private readonly topic: string,
@@ -53,14 +91,32 @@ export class LogStore {
     this.disconnect();
     this.feed = null;
     this.lastSeq = -1;
-    this.publish({ entries: [], state: "connecting" });
+    this.held = [];
+    this.replaceOnResume = false;
+    this.publish(INITIAL_VIEW);
     this.connect();
   }
 
   addSeparator(): void {
     this.separators += 1;
-    const separator: LogEntry = { kind: "separator", key: `separator-${this.separators}`, at: Date.now() };
-    this.publish({ ...this.view, entries: [...this.view.entries, separator] });
+    this.append([{ kind: "separator", key: `separator-${this.separators}`, at: Date.now() }]);
+  }
+
+  /** Holds what is on screen still. The stream carries on, up to the same limit as what is shown. */
+  pause(): void {
+    if (!this.view.paused) {
+      this.publish({ ...this.view, paused: true });
+    }
+  }
+
+  resume(): void {
+    if (!this.view.paused) {
+      return;
+    }
+    const entries = this.replaceOnResume ? this.held : [...this.view.entries, ...this.held];
+    this.held = [];
+    this.replaceOnResume = false;
+    this.publish({ ...this.view, entries: this.trimmed(entries), paused: false, held: 0 });
   }
 
   getView = (): LogView => this.view;
@@ -90,45 +146,61 @@ export class LogStore {
       if (event.kind === "state") {
         this.publish({ ...this.view, state: event.state });
       } else {
-        this.publish({
-          ...this.view,
-          entries: this.trimmed([...this.view.entries, ...this.toEntries(event.lines)]),
-        });
+        this.append(this.toEntries(event.lines));
       }
     }
+  }
+
+  /** Adds to the end of what is shown, or, during a pause, to what is waiting. */
+  private append(entries: readonly LogEntry[], state: LogFeedState = this.view.state): void {
+    if (!this.view.paused) {
+      this.publish({ ...this.view, state, entries: this.trimmed([...this.view.entries, ...entries]) });
+      return;
+    }
+    this.held.push(...entries);
+    if (this.held.length > MAX_LOG_ENTRIES) {
+      const kept = this.held.slice(this.held.length - MAX_LOG_ENTRIES + 1);
+      this.held = [{ kind: "gap", key: `held-${kept[0]?.key ?? "end"}`, at: heldTime(kept[0]) }, ...kept];
+      this.replaceOnResume = true;
+    }
+    this.publish({ ...this.view, state, held: this.held.length });
   }
 
   private applySnapshot(
     event: Extract<ReturnType<typeof serviceLogEvent.parse>, { kind: "snapshot" }>,
   ): void {
+    if (event.tailLines !== undefined && event.ringLines !== undefined) {
+      // Goes out with whichever update comes next, just below.
+      this.view = { ...this.view, limits: { tailLines: event.tailLines, ringLines: event.ringLines } };
+    }
     if (event.feed === this.feed) {
       // Connected again to a stream that never stopped: only what was missed is new.
-      this.publish({
-        state: event.state,
-        entries: this.trimmed([...this.view.entries, ...this.toEntries(event.lines)]),
-      });
+      this.append(this.toEntries(event.lines), event.state);
       return;
     }
     this.feed = event.feed;
     this.lastSeq = -1;
-    this.publish({ state: event.state, entries: this.trimmed(this.toEntries(event.lines)) });
+    const fresh = this.toEntries(event.lines);
+    if (this.view.paused) {
+      this.held = [];
+      this.replaceOnResume = true;
+      this.append(fresh, event.state);
+    } else {
+      this.publish({ ...this.view, state: event.state, entries: this.trimmed(fresh) });
+    }
   }
 
-  private toEntries(
-    lines: ReadonlyArray<{ seq: number; stream: "stdout" | "stderr"; line: string; at: string | null }>,
-  ) {
+  private toEntries(lines: readonly ServiceLogLine[]) {
     const entries: LogEntry[] = [];
     for (const line of lines) {
       if (line.seq > this.lastSeq) {
         this.lastSeq = line.seq;
-        entries.push({
-          kind: "line",
-          key: `${this.feed}:${line.seq}`,
-          seq: line.seq,
-          stream: line.stream,
-          text: line.line,
-          at: line.at,
-        });
+        const key = `${this.feed}:${line.seq}`;
+        entries.push(
+          line.gap === true
+            ? { kind: "gap", key, at: line.at }
+            : { kind: "line", key, seq: line.seq, stream: line.stream, text: line.line, at: line.at },
+        );
       }
     }
     return entries;
@@ -144,6 +216,10 @@ export class LogStore {
       listener();
     }
   }
+}
+
+function heldTime(entry: LogEntry | undefined): string | null {
+  return entry === undefined || entry.kind === "separator" ? null : entry.at;
 }
 
 const stores = new Map<string, { store: LogStore; uses: number }>();

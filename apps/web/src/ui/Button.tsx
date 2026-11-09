@@ -1,5 +1,6 @@
 import { type ComponentProps, type MouseEvent, type ReactNode, useState } from "react";
 import { cn } from "../lib/cn";
+import { Tooltip } from "./Tooltip";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md" | "lg" | "icon" | "icon-sm";
@@ -36,24 +37,35 @@ export interface ButtonProps extends Omit<ComponentProps<"button">, "onClick"> {
   icon?: ReactNode;
   /** When this returns a promise the button stays pending until it settles. */
   onClick?: (event: MouseEvent<HTMLButtonElement>) => unknown;
+  /** Shown on hover and focus, for a button that says what it does in an icon. */
+  tooltip?: ReactNode;
+  /**
+   * Why the button can't be used right now. Set, it reads as off but stays focusable and shows this
+   * on hover and focus, which a `disabled` button can't, so nobody has to guess what it needs.
+   */
+  disabledReason?: ReactNode;
 }
 
-export function Button({
-  variant = "secondary",
-  size = "md",
-  pending = false,
-  icon,
-  onClick,
-  type = "button",
-  className,
-  children,
-  ...props
-}: ButtonProps) {
+export function Button(allProps: ButtonProps) {
+  const {
+    variant = "secondary",
+    size = "md",
+    pending = false,
+    icon,
+    onClick,
+    type = "button",
+    className,
+    children,
+    tooltip,
+    disabledReason,
+    ...props
+  } = allProps;
   const [ownPending, setOwnPending] = useState(false);
   const isPending = pending || ownPending;
+  const unavailable = Boolean(disabledReason);
 
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
-    if (isPending) {
+    if (isPending || unavailable) {
       // Also stops a click on a submit button from submitting again.
       event.preventDefault();
       return;
@@ -65,12 +77,16 @@ export function Button({
     }
   };
 
-  return (
+  const button = (
     <button
       type={type}
-      className={cn(buttonClass(variant, size), className)}
+      className={cn(
+        buttonClass(variant, size),
+        unavailable && "cursor-not-allowed opacity-45 hover:bg-transparent active:translate-y-0",
+        className,
+      )}
       aria-busy={isPending || undefined}
-      aria-disabled={isPending || undefined}
+      aria-disabled={isPending || unavailable || undefined}
       data-pending={isPending || undefined}
       onClick={handleClick}
       {...props}
@@ -83,5 +99,12 @@ export function Button({
         </span>
       )}
     </button>
+  );
+
+  // Mounted as soon as a reason can apply, so the button keeps its focus when it becomes available.
+  return "tooltip" in allProps || "disabledReason" in allProps ? (
+    <Tooltip content={disabledReason || tooltip}>{button}</Tooltip>
+  ) : (
+    button
   );
 }

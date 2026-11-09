@@ -8,12 +8,25 @@ import {
   assertServiceName,
   assertServiceSpec,
   assertVolumeName,
+  type BuildCacheRecord,
+  type ComposeContainerInfo,
+  type ContainerInfo,
   type CreateNetworkOptions,
   type CreateVolumeOptions,
   type DockerDriver,
   DockerDriverError,
+  type EngineDiskUsage,
+  type EngineEvent,
+  type EngineEventOptions,
+  type EngineInfo,
   type ExecOptions,
   type ExecSession,
+  type ExecState,
+  type ExecTarget,
+  type HelperOptions,
+  type HelperResult,
+  type ImageDetail,
+  type ImageInfo,
   InvalidDockerInputError,
   type LogLine,
   type LogOptions,
@@ -21,6 +34,7 @@ import {
   type PullOptions,
   type RegistryOptions,
   type ServiceInfo,
+  type SwarmContents,
   type SwarmInfo,
   type SwarmInitOptions,
   type SwarmServiceSpec,
@@ -36,6 +50,7 @@ const DEFAULT_SOCKET = "/var/run/docker.sock";
 const DEFAULT_TCP_PORT = 2375;
 const DEFAULT_TAIL = 100;
 const UPDATE_ATTEMPTS = 3;
+const HELPER_LABEL = "opsifier.helper";
 
 /** Set on every exec, and inherited by what it starts, so that the whole session can be found again. */
 const EXEC_MARKER = "OPSIFIER_EXEC_ID";
@@ -78,7 +93,7 @@ interface RawTask {
   DesiredState: TaskState;
   CreatedAt: string;
   UpdatedAt: string;
-  Spec: { ContainerSpec?: { Image?: string } };
+  Spec: { ContainerSpec?: { Image?: string }; Resources?: { Limits?: { NanoCPUs?: number } } };
   Status: { State: TaskState; Message?: string; Err?: string; ContainerStatus?: { ContainerID?: string } };
 }
 
@@ -97,6 +112,7 @@ interface RawNetwork {
   Scope: string;
   Attachable?: boolean;
   Labels?: Record<string, string> | null;
+  IPAM?: { Config?: Array<{ Subnet?: string }> | null } | null;
 }
 
 interface RawStats {
@@ -112,6 +128,52 @@ interface RawStats {
     stats?: { inactive_file?: number; total_inactive_file?: number };
   };
   networks?: Record<string, { rx_bytes?: number; tx_bytes?: number }>;
+}
+
+interface RawEngineInfo {
+  ServerVersion?: string;
+  OperatingSystem?: string;
+  KernelVersion?: string;
+  NCPU?: number;
+  MemTotal?: number;
+  DockerRootDir?: string;
+  Swarm?: { LocalNodeState?: string; ControlAvailable?: boolean };
+  Plugins?: { Network?: string[] | null; Volume?: string[] | null };
+}
+
+interface RawEngineEvent {
+  Type?: string;
+  Action?: string;
+  status?: string;
+  id?: string;
+  Actor?: { ID?: string; Attributes?: Record<string, string> };
+  scope?: string;
+  time?: number;
+  timeNano?: number;
+}
+
+const toBuildCacheRecords = (raw: RawDiskUsage): BuildCacheRecord[] =>
+  (raw.BuildCache ?? []).map((record) => ({
+    id: record.ID,
+    sizeBytes: record.Size ?? 0,
+    inUse: record.InUse === true,
+    shared: record.Shared === true,
+    description: record.Description ?? "",
+    lastUsedAt: record.LastUsedAt ?? null,
+  }));
+
+interface RawDiskUsage {
+  LayersSize?: number;
+  Containers?: Array<{ SizeRw?: number }>;
+  Volumes?: Array<{ UsageData?: { Size?: number } }>;
+  BuildCache?: Array<{
+    ID: string;
+    Size?: number;
+    InUse?: boolean;
+    Shared?: boolean;
+    Description?: string;
+    LastUsedAt?: string;
+  }>;
 }
 
 interface DockerApiError {
@@ -188,6 +250,7 @@ function toServiceInfo(raw: RawService): ServiceInfo {
 }
 
 function toTaskInfo(raw: RawTask, serviceNames: ReadonlyMap<string, string>): TaskInfo {
+  const nanoCpus = raw.Spec.Resources?.Limits?.NanoCPUs ?? 0;
   return {
     id: raw.ID,
     serviceId: raw.ServiceID,
@@ -202,6 +265,7 @@ function toTaskInfo(raw: RawTask, serviceNames: ReadonlyMap<string, string>): Ta
     error: raw.Status.Err ?? null,
     createdAt: raw.CreatedAt,
     updatedAt: raw.UpdatedAt,
+    ...(nanoCpus > 0 ? { cpuLimitCores: nanoCpus / 1e9 } : {}),
   };
 }
 
@@ -223,28 +287,90 @@ function toNetworkInfo(raw: RawNetwork): NetworkInfo {
     scope: raw.Scope,
     attachable: raw.Attachable === true,
     labels: raw.Labels ?? {},
+    subnets: (raw.IPAM?.Config ?? []).flatMap((config) => config.Subnet ?? []),
   };
 }
 
-function toTaskStats(task: TaskInfo, containerId: string, raw: RawStats): TaskStats {
+const COMPOSE_PROJECT_LABEL = "com.docker.compose.project";
+const COMPOSE_SERVICE_LABEL = "com.docker.compose.service";
+const COMPOSE_NUMBER_LABEL = "com.docker.compose.container-number";
+
+function composeHealth(status: string): ComposeContainerInfo["health"] {
+  if (status.includes("(unhealthy)")) {
+    return "unhealthy";
+  }
+  if (status.includes("(health: starting)")) {
+    return "starting";
+  }
+  return status.includes("(healthy)") ? "healthy" : null;
+}
+
+function toComposeContainer(container: Dockerode.ContainerInfo): ComposeContainerInfo {
+  const labels = container.Labels ?? {};
+  const status = container.Status ?? "";
+  const exited = /\((\d+)\)/.exec(status);
+  return {
+    id: container.Id,
+    name: (container.Names?.[0] ?? "").replace(/^\//, ""),
+    image: container.Image ?? "",
+    project: labels[COMPOSE_PROJECT_LABEL] ?? "",
+    child: labels[COMPOSE_SERVICE_LABEL] ?? "",
+    number: Number(labels[COMPOSE_NUMBER_LABEL] ?? "1") || 1,
+    state: container.State ?? "",
+    status,
+    exitCode:
+      container.State === "exited" || container.State === "restarting" ? Number(exited?.[1] ?? 0) : null,
+    health: composeHealth(status),
+    ports: (container.Ports ?? [])
+      .filter((port) => port.PublicPort !== undefined && port.PublicPort !== 0)
+      .map((port) => `${port.PublicPort}:${port.PrivatePort}/${port.Type}`),
+    labels,
+    networks: Object.keys(container.NetworkSettings?.Networks ?? {}),
+  };
+}
+
+/** The CPU a container used between Docker's two samples. Null when there was no pair to compare. */
+function cpuPercentOf(raw: RawStats, cpus: number): number | null {
+  const now = raw.cpu_stats;
+  const before = raw.precpu_stats;
+  if (
+    now?.cpu_usage?.total_usage === undefined ||
+    before?.cpu_usage?.total_usage === undefined ||
+    now.system_cpu_usage === undefined ||
+    before.system_cpu_usage === undefined
+  ) {
+    return null;
+  }
+  const used = now.cpu_usage.total_usage - before.cpu_usage.total_usage;
+  const elapsed = now.system_cpu_usage - before.system_cpu_usage;
+  if (elapsed <= 0 || used < 0) {
+    return null;
+  }
+  return (used / elapsed) * cpus * 100;
+}
+
+function toTaskStats(
+  task: Pick<TaskInfo, "id" | "slot" | "cpuLimitCores">,
+  containerId: string,
+  raw: RawStats,
+): TaskStats {
   const cpu = raw.cpu_stats;
-  const previous = raw.precpu_stats;
-  const cpuDelta = (cpu?.cpu_usage?.total_usage ?? 0) - (previous?.cpu_usage?.total_usage ?? 0);
-  const systemDelta = (cpu?.system_cpu_usage ?? 0) - (previous?.system_cpu_usage ?? 0);
-  const cpus = cpu?.online_cpus ?? cpu?.cpu_usage?.percpu_usage?.length ?? 1;
+  const cores = cpu?.online_cpus ?? cpu?.cpu_usage?.percpu_usage?.length ?? null;
+  const capacity = task.cpuLimitCores ?? cores;
   const memory = raw.memory_stats;
   const inactive = memory?.stats?.inactive_file ?? memory?.stats?.total_inactive_file ?? 0;
-  const networks = Object.values(raw.networks ?? {});
+  const networks = raw.networks === undefined ? null : Object.values(raw.networks);
 
   return {
     taskId: task.id,
     slot: task.slot,
     containerId,
-    cpuPercent: systemDelta > 0 && cpuDelta > 0 ? (cpuDelta / systemDelta) * cpus * 100 : 0,
-    memoryUsedBytes: Math.max(0, (memory?.usage ?? 0) - inactive),
-    memoryLimitBytes: memory?.limit ?? 0,
-    networkRxBytes: networks.reduce((sum, network) => sum + (network.rx_bytes ?? 0), 0),
-    networkTxBytes: networks.reduce((sum, network) => sum + (network.tx_bytes ?? 0), 0),
+    cpuPercent: cpuPercentOf(raw, cores ?? 1),
+    cpuCapacityPercent: capacity === null ? null : capacity * 100,
+    memoryUsedBytes: memory?.usage === undefined ? null : Math.max(0, memory.usage - inactive),
+    memoryLimitBytes: memory?.limit ?? null,
+    networkRxBytes: networks?.reduce((sum, network) => sum + (network.rx_bytes ?? 0), 0) ?? null,
+    networkTxBytes: networks?.reduce((sum, network) => sum + (network.tx_bytes ?? 0), 0) ?? null,
     readAt: new Date().toISOString(),
   };
 }
@@ -277,7 +403,7 @@ export class DockerodeDriver implements DockerDriver {
   }
 
   async swarmInit(options: SwarmInitOptions): Promise<{ nodeId: string }> {
-    if (isIP(options.advertiseAddr) === 0) {
+    if (options.advertiseAddr !== undefined && isIP(options.advertiseAddr) === 0) {
       throw new InvalidDockerInputError(
         `Invalid advertise address: ${JSON.stringify(options.advertiseAddr)}.`,
       );
@@ -285,10 +411,23 @@ export class DockerodeDriver implements DockerDriver {
     const nodeId = await this.call("swarm init", () =>
       this.docker.swarmInit({
         ListenAddr: options.listenAddr ?? "0.0.0.0:2377",
-        AdvertiseAddr: options.advertiseAddr,
+        ...(options.advertiseAddr === undefined ? {} : { AdvertiseAddr: options.advertiseAddr }),
       }),
     );
     return { nodeId: String(nodeId) };
+  }
+
+  async swarmLeave(options: { force?: boolean } = {}): Promise<void> {
+    await this.call("swarm leave", () => this.docker.swarmLeave({ force: options.force === true }));
+  }
+
+  async swarmContents(): Promise<SwarmContents> {
+    const [nodes, secrets, configs] = await Promise.all([
+      this.call("list nodes", () => this.docker.listNodes()),
+      this.call("list secrets", () => this.docker.listSecrets()),
+      this.call("list configs", () => this.docker.listConfigs()),
+    ]);
+    return { nodes: nodes.length, secrets: secrets.length, configs: configs.length };
   }
 
   async listNetworks(): Promise<NetworkInfo[]> {
@@ -402,6 +541,20 @@ export class DockerodeDriver implements DockerDriver {
 
   async *serviceLogs(name: string, options: LogOptions = {}): AsyncGenerator<LogLine> {
     assertServiceName(name);
+    yield* this.readLogs("service logs", options, (request) => this.docker.getService(name).logs(request));
+  }
+
+  async *containerLogs(id: string, options: LogOptions = {}): AsyncGenerator<LogLine> {
+    yield* this.readLogs("container logs", options, (request) =>
+      this.docker.getContainer(id).logs(request as Dockerode.ContainerLogsOptions & { follow: true }),
+    );
+  }
+
+  private async *readLogs(
+    what: string,
+    options: LogOptions,
+    open: (request: Dockerode.ContainerLogsOptions) => Promise<unknown>,
+  ): AsyncGenerator<LogLine> {
     const timestamps = options.timestamps === true;
     const parser = new DockerLogParser({ timestamps });
 
@@ -409,7 +562,7 @@ export class DockerodeDriver implements DockerDriver {
     try {
       // `_query` keeps the signal out of the URL Docker receives. The outer `follow` asks dockerode
       // for a stream even for a one-off read, so that a large log is never held in memory whole.
-      source = await this.docker.getService(name).logs({
+      source = await open({
         follow: true,
         abortSignal: options.signal,
         _query: {
@@ -425,7 +578,7 @@ export class DockerodeDriver implements DockerDriver {
       if (options.signal?.aborted === true) {
         return;
       }
-      throw toDriverError("service logs", error);
+      throw toDriverError(what, error);
     }
 
     // Without `follow` Docker answers in one response: a Buffer, or JSON if the text parsed as such.
@@ -445,7 +598,7 @@ export class DockerodeDriver implements DockerDriver {
       if (options.signal?.aborted === true) {
         return;
       }
-      throw toDriverError("service logs", error);
+      throw toDriverError(what, error);
     } finally {
       source.destroy();
     }
@@ -454,19 +607,11 @@ export class DockerodeDriver implements DockerDriver {
   async execAttach(options: ExecOptions): Promise<ExecSession> {
     assertServiceName(options.service);
     return this.call("exec", async () => {
-      const task = (await this.listTasks({ service: options.service })).find(
-        (candidate) =>
-          candidate.state === "running" &&
-          candidate.containerId !== null &&
-          (options.taskId === undefined || candidate.id === options.taskId),
-      );
-      if (task?.containerId == null) {
-        throw new DockerDriverError(`No running task for service ${options.service}.`, 409);
-      }
+      const containerId = options.containerId ?? (await this.runningTaskContainer(options));
 
       const tty = options.tty ?? true;
-      const container = this.docker.getContainer(task.containerId);
-      const marker = `${EXEC_MARKER}=${randomBytes(16).toString("hex")}`;
+      const container = this.docker.getContainer(containerId);
+      const marker = `${EXEC_MARKER}=${options.marker ?? randomBytes(16).toString("hex")}`;
       const exec = await container.exec({
         Cmd: options.command,
         AttachStdin: true,
@@ -488,6 +633,7 @@ export class DockerodeDriver implements DockerDriver {
       const closed = new Promise<void>((resolve) => stream.once("close", () => resolve()));
 
       return {
+        id: exec.id,
         stream,
         resize: async (columns, rows) => {
           await exec.resize({ w: columns, h: rows });
@@ -500,15 +646,47 @@ export class DockerodeDriver implements DockerDriver {
         terminate: async () => {
           stream.destroy();
           // Best effort: the container may have gone away, which ended the session anyway.
-          const killer = await container.exec({
-            Cmd: ["/bin/sh", "-c", TERMINATE_SCRIPT, "opsifier-terminate", marker],
-            AttachStdout: false,
-            AttachStderr: false,
-          });
-          await killer.start({ Detach: true });
+          await this.runTerminateScript(container, marker);
         },
       };
     });
+  }
+
+  async terminateExec(options: ExecTarget & { marker: string }): Promise<void> {
+    assertServiceName(options.service);
+    await this.call("end exec", async () => {
+      const containerId = options.containerId ?? (await this.taskContainerOrNull(options));
+      if (containerId === null) {
+        return;
+      }
+      try {
+        await this.runTerminateScript(
+          this.docker.getContainer(containerId),
+          `${EXEC_MARKER}=${options.marker}`,
+        );
+      } catch (error) {
+        // Gone or stopped: whatever it held went with it.
+        if (!isNotFound(error) && (error as DockerApiError).statusCode !== 409) {
+          throw error;
+        }
+      }
+    });
+  }
+
+  async inspectExec(id: string): Promise<ExecState | null> {
+    return this.orNull("inspect exec", async () => {
+      const inspected = await this.docker.getExec(id).inspect();
+      return { running: inspected.Running === true, exitCode: inspected.ExitCode ?? null };
+    });
+  }
+
+  private async runTerminateScript(container: Dockerode.Container, marker: string): Promise<void> {
+    const killer = await container.exec({
+      Cmd: ["/bin/sh", "-c", TERMINATE_SCRIPT, "opsifier-terminate", marker],
+      AttachStdout: false,
+      AttachStderr: false,
+    });
+    await killer.start({ Detach: true });
   }
 
   async listVolumes(): Promise<VolumeInfo[]> {
@@ -546,6 +724,29 @@ export class DockerodeDriver implements DockerDriver {
         statusCodes: { 204: true, 404: "no such volume", 409: "conflict", 500: "server error" },
         options: { force: options.force === true },
       }),
+    );
+  }
+
+  async inspectImage(ref: string): Promise<ImageDetail | null> {
+    assertImageReference(ref);
+    return this.orNull("inspect image", async () => {
+      const image = await this.docker.getImage(ref).inspect();
+      return {
+        id: image.Id,
+        digests: image.RepoDigests ?? [],
+        sizeBytes: image.Size,
+        labels: image.Config?.Labels ?? {},
+        user: image.Config?.User ?? "",
+      };
+    });
+  }
+
+  async tagImage(ref: string, target: string): Promise<void> {
+    assertImageReference(ref);
+    assertImageReference(target);
+    const separator = target.lastIndexOf(":");
+    await this.call("tag image", () =>
+      this.docker.getImage(ref).tag({ repo: target.slice(0, separator), tag: target.slice(separator + 1) }),
     );
   }
 
@@ -596,6 +797,37 @@ export class DockerodeDriver implements DockerDriver {
     options.signal?.throwIfAborted();
   }
 
+  async listComposeContainers(project?: string): Promise<ComposeContainerInfo[]> {
+    if (project !== undefined) {
+      assertServiceName(project);
+    }
+    const containers = await this.call("list compose containers", () =>
+      this.docker.listContainers({
+        all: true,
+        filters: {
+          label: [project === undefined ? COMPOSE_PROJECT_LABEL : `${COMPOSE_PROJECT_LABEL}=${project}`],
+        },
+      }),
+    );
+    return containers.map(toComposeContainer);
+  }
+
+  async containerStats(id: string, options: { signal?: AbortSignal } = {}): Promise<TaskStats | null> {
+    try {
+      const raw = await this.docker.getContainer(id).stats({
+        stream: false,
+        abortSignal: options.signal,
+        _query: { stream: false },
+      } as { stream: false });
+      return toTaskStats({ id, slot: null }, id, raw as unknown as RawStats);
+    } catch (error) {
+      if (isNotFound(error)) {
+        return null;
+      }
+      throw toDriverError("container stats", error);
+    }
+  }
+
   async serviceStats(name: string, options: { signal?: AbortSignal } = {}): Promise<TaskStats[]> {
     assertServiceName(name);
     const running = (await this.listTasks({ service: name })).filter(
@@ -625,7 +857,282 @@ export class DockerodeDriver implements DockerDriver {
     return samples.filter((sample) => sample !== null);
   }
 
+  async engineInfo(): Promise<EngineInfo> {
+    const [info, version] = await Promise.all([
+      this.call("read engine info", () => this.docker.info()),
+      this.call("read engine version", () => this.docker.version()),
+    ]);
+    const raw = info as RawEngineInfo;
+    return {
+      version: version.Version ?? raw.ServerVersion ?? "",
+      apiVersion: version.ApiVersion ?? "",
+      operatingSystem: raw.OperatingSystem ?? "",
+      kernelVersion: raw.KernelVersion ?? "",
+      cores: raw.NCPU ?? 0,
+      memoryBytes: raw.MemTotal ?? 0,
+      rootDir: raw.DockerRootDir ?? "",
+      swarm: (raw.Swarm?.LocalNodeState || "inactive") as EngineInfo["swarm"],
+      swarmAvailable: Boolean(raw.Swarm?.LocalNodeState),
+      swarmManager: raw.Swarm?.ControlAvailable === true,
+      networkDrivers: raw.Plugins?.Network ?? [],
+      volumeDrivers: raw.Plugins?.Volume ?? [],
+    };
+  }
+
+  async *events(options: EngineEventOptions = {}): AsyncGenerator<EngineEvent> {
+    let source: Readable;
+    try {
+      source = (await this.docker.getEvents({
+        ...(options.since === undefined ? {} : { since: options.since }),
+      })) as unknown as Readable;
+    } catch (error) {
+      if (options.signal?.aborted === true) {
+        return;
+      }
+      throw toDriverError("read events", error);
+    }
+
+    const abort = () => source.destroy();
+    options.signal?.addEventListener("abort", abort, { once: true });
+    let pending = "";
+    try {
+      for await (const chunk of source) {
+        pending += (chunk as Buffer).toString("utf8");
+        const lines = pending.split("\n");
+        pending = lines.pop() ?? "";
+        for (const line of lines) {
+          const event = toEngineEvent(line);
+          if (event !== null) {
+            yield event;
+          }
+        }
+      }
+    } catch (error) {
+      if (options.signal?.aborted === true) {
+        return;
+      }
+      throw toDriverError("read events", error);
+    } finally {
+      options.signal?.removeEventListener("abort", abort);
+      source.destroy();
+    }
+  }
+
+  async diskUsage(options: { signal?: AbortSignal } = {}): Promise<EngineDiskUsage> {
+    const raw = (await this.call("read disk usage", () =>
+      (this.docker.df as (args?: unknown) => Promise<unknown>).call(this.docker, {
+        abortSignal: options.signal,
+        _query: {},
+      }),
+    )) as RawDiskUsage;
+    const buildCache = toBuildCacheRecords(raw);
+    return {
+      // Layers are shared between images, so the daemon's own total is the only honest one.
+      imagesBytes: raw.LayersSize ?? 0,
+      containersBytes: (raw.Containers ?? []).reduce((total, entry) => total + (entry.SizeRw ?? 0), 0),
+      volumesBytes: (raw.Volumes ?? []).reduce((total, entry) => total + (entry.UsageData?.Size ?? 0), 0),
+      buildCacheBytes: buildCache.reduce((total, record) => total + record.sizeBytes, 0),
+      buildCache,
+    };
+  }
+
+  async listBuildCache(options: { signal?: AbortSignal } = {}): Promise<BuildCacheRecord[]> {
+    const raw = (await this.call("read build cache", () =>
+      this.dial({
+        path: "/system/df?",
+        method: "GET",
+        statusCodes: { 200: true, 400: "bad parameter", 500: "server error" },
+        abortSignal: options.signal,
+        options: { type: "build-cache" },
+      }),
+    )) as RawDiskUsage;
+    return toBuildCacheRecords(raw);
+  }
+
+  async listImages(): Promise<ImageInfo[]> {
+    const images = await this.call("list images", () => this.docker.listImages({ all: false }));
+    return images.map((image) => ({
+      id: image.Id,
+      tags: (image.RepoTags ?? []).filter((tag) => tag !== "<none>:<none>"),
+      sizeBytes: image.Size ?? 0,
+      labels: image.Labels ?? {},
+      createdAt: typeof image.Created === "number" ? new Date(image.Created * 1000).toISOString() : null,
+    }));
+  }
+
+  async listContainers(options: { size?: boolean } = {}): Promise<ContainerInfo[]> {
+    const containers = await this.call("list containers", () =>
+      this.docker.listContainers({ all: true, size: options.size !== false }),
+    );
+    return containers.map((container) => ({
+      id: container.Id,
+      name: (container.Names?.[0] ?? "").replace(/^\//, ""),
+      image: container.Image ?? "",
+      imageId: container.ImageID ?? "",
+      state: container.State ?? "",
+      labels: container.Labels ?? {},
+      sizeBytes: (container as { SizeRw?: number }).SizeRw ?? null,
+      ports: (container.Ports ?? []).flatMap((port) =>
+        port.PublicPort === undefined || port.PublicPort === 0 || (port.Type !== "tcp" && port.Type !== "udp")
+          ? []
+          : [{ protocol: port.Type, port: port.PublicPort }],
+      ),
+    }));
+  }
+
+  async removeImage(id: string): Promise<void> {
+    await this.ignoringNotFound("remove image", () => this.docker.getImage(id).remove({ force: false }));
+  }
+
+  async removeContainer(id: string): Promise<void> {
+    await this.ignoringNotFound("remove container", () =>
+      this.docker.getContainer(id).remove({ force: false, v: false }),
+    );
+  }
+
+  async removeLeftoverHelpers(): Promise<number> {
+    const helpers = await this.call("list helpers", () =>
+      this.docker.listContainers({ all: true, filters: { label: [HELPER_LABEL] } }),
+    );
+    await Promise.all(
+      helpers.map((helper) =>
+        this.ignoringNotFound("remove helper", () =>
+          this.docker.getContainer(helper.Id).remove({ force: true, v: true }),
+        ),
+      ),
+    );
+    return helpers.length;
+  }
+
+  async removeBuildCache(ids: readonly string[]): Promise<number> {
+    let reclaimed = 0;
+    // One call per record: Docker's filter takes one id at a time and a list would be ambiguous.
+    for (const id of ids) {
+      const result = (await this.call("prune build cache", () =>
+        this.dial({
+          path: "/build/prune?",
+          method: "POST",
+          statusCodes: { 200: true, 500: "server error" },
+          options: { filters: JSON.stringify({ id: [id] }) },
+        }),
+      )) as { SpaceReclaimed?: number } | undefined;
+      reclaimed += result?.SpaceReclaimed ?? 0;
+    }
+    return reclaimed;
+  }
+
+  async runHelper(options: HelperOptions): Promise<HelperResult> {
+    assertImageReference(options.image);
+    const container = await this.createHelper(options, { tty: false });
+    const stop = () => void container.remove({ force: true }).catch(() => undefined);
+    options.signal?.addEventListener("abort", stop, { once: true });
+    try {
+      await container.start();
+      const { StatusCode } = (await container.wait()) as { StatusCode?: number };
+      const logs = (await container.logs({ stdout: true, stderr: true, follow: false })) as unknown as Buffer;
+      const parser = new DockerLogParser({ timestamps: false });
+      let stdout = "";
+      let stderr = "";
+      for (const entry of [...parser.push(logs), ...parser.flush()]) {
+        if (entry.stream === "stderr") {
+          stderr += `${entry.line}\n`;
+        } else {
+          stdout += `${entry.line}\n`;
+        }
+      }
+      return { exitCode: StatusCode ?? null, stdout, stderr };
+    } catch (error) {
+      options.signal?.throwIfAborted();
+      throw toDriverError("run helper", error);
+    } finally {
+      options.signal?.removeEventListener("abort", stop);
+      await container.remove({ force: true }).catch(() => undefined);
+    }
+  }
+
+  async openHelper(
+    options: HelperOptions & { consoleSize?: { columns: number; rows: number } },
+  ): Promise<ExecSession> {
+    assertImageReference(options.image);
+    const container = await this.createHelper(options, { tty: true });
+    const stream = (await this.call("attach helper", () =>
+      container.attach({ stream: true, stdin: true, stdout: true, stderr: true, hijack: true }),
+    )) as unknown as Duplex;
+    await this.call("start helper", () => container.start());
+    if (options.consoleSize !== undefined) {
+      await container
+        .resize({ w: options.consoleSize.columns, h: options.consoleSize.rows })
+        .catch(() => undefined);
+    }
+    const closed = new Promise<void>((resolve) => stream.once("close", () => resolve()));
+    return {
+      stream,
+      resize: async (columns, rows) => {
+        await container.resize({ w: columns, h: rows });
+      },
+      exited: async () => {
+        await closed;
+        const inspected = await container.inspect().catch(() => undefined);
+        return inspected?.State.ExitCode ?? null;
+      },
+      terminate: async () => {
+        stream.destroy();
+        await container.remove({ force: true }).catch(() => undefined);
+      },
+    };
+  }
+
+  private async createHelper(options: HelperOptions, how: { tty: boolean }): Promise<Dockerode.Container> {
+    const create = () =>
+      this.docker.createContainer({
+        Image: options.image,
+        Cmd: options.command,
+        Tty: how.tty,
+        OpenStdin: how.tty,
+        AttachStdin: how.tty,
+        AttachStdout: true,
+        AttachStderr: true,
+        Labels: { [HELPER_LABEL]: "true" },
+        HostConfig: {
+          AutoRemove: false,
+          Privileged: options.privileged === true,
+          ...(options.hostPid === true ? { PidMode: "host" } : {}),
+          ...(options.hostNetwork === true ? { NetworkMode: "host" } : {}),
+          ...(options.binds === undefined ? {} : { Binds: options.binds }),
+        },
+      });
+    try {
+      return await create();
+    } catch (error) {
+      if (!isNotFound(error)) {
+        throw toDriverError("create helper", error);
+      }
+    }
+    // The image isn't on this daemon yet. Fetching it is the only thing a helper ever pulls.
+    await this.pullImage(options.image, { signal: options.signal });
+    return this.call("create helper", create);
+  }
+
   async dispose(): Promise<void> {}
+
+  /** The container of a running task of this service. */
+  private async runningTaskContainer(options: ExecTarget): Promise<string> {
+    const containerId = await this.taskContainerOrNull(options);
+    if (containerId === null) {
+      throw new DockerDriverError(`No running task for service ${options.service}.`, 409);
+    }
+    return containerId;
+  }
+
+  private async taskContainerOrNull(options: ExecTarget): Promise<string | null> {
+    const task = (await this.listTasks({ service: options.service })).find(
+      (candidate) =>
+        candidate.state === "running" &&
+        candidate.containerId !== null &&
+        (options.taskId === undefined || candidate.id === options.taskId),
+    );
+    return task?.containerId ?? null;
+  }
 
   private dial(options: Parameters<Dockerode["modem"]["dial"]>[0]): Promise<unknown> {
     return new Promise((resolve, reject) => {
@@ -694,6 +1201,27 @@ export class DockerodeDriver implements DockerDriver {
       total: event.progressDetail?.total,
     });
   }
+}
+
+function toEngineEvent(line: string): EngineEvent | null {
+  if (line.trim() === "") {
+    return null;
+  }
+  let raw: RawEngineEvent;
+  try {
+    raw = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  const nanos = raw.timeNano;
+  return {
+    type: raw.Type ?? "",
+    action: raw.Action ?? raw.status ?? "",
+    actorId: raw.Actor?.ID ?? raw.id ?? "",
+    attributes: raw.Actor?.Attributes ?? {},
+    scope: raw.scope ?? null,
+    at: typeof nanos === "number" ? Math.floor(nanos / 1e6) : (raw.time ?? 0) * 1000,
+  };
 }
 
 function isReadable(value: unknown): value is Readable {

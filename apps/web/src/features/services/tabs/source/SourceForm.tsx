@@ -2,7 +2,15 @@ import { isBuildableSourceType, type ServiceSource, type ServiceSourceType } fro
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from "../../../../ui";
+import {
+  Pictogram,
+  Skeleton,
+  sourceTypePictogram,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../../../../ui";
 import { AutoDeploySection } from "./AutoDeploySection";
 import { sourceSettingsQuery } from "./api";
 import { BuildSection } from "./BuildSection";
@@ -38,7 +46,8 @@ export function SourceForm({ project, service, source, onSaved, submitLabel }: S
     <Tabs value={tab} onValueChange={(value) => setTab(value as ServiceSourceType)} className="grid gap-5">
       <TabsList aria-label={t("tabs.label")} className="overflow-x-auto [scrollbar-width:none]">
         {SOURCE_TABS.map((type) => (
-          <TabsTrigger key={type} value={type} className="shrink-0">
+          <TabsTrigger key={type} value={type} className="flex shrink-0 items-center gap-1.5">
+            <Pictogram name={sourceTypePictogram[type]} size={16} />
             {t(`tabs.${type}`)}
           </TabsTrigger>
         ))}
@@ -60,14 +69,14 @@ export function SourceForm({ project, service, source, onSaved, submitLabel }: S
       </TabsContent>
       {showBuildSection &&
         (settingsPending ? (
-          <Skeleton className="h-24 max-w-[520px]" />
+          <Skeleton className="h-24 max-w-[650px]" />
         ) : (
-          <div className="max-w-[520px]">
+          <div className="max-w-[650px]">
             <BuildSection key={JSON.stringify(build)} project={project} service={service} build={build} />
           </div>
         ))}
       {source?.type === "github" && tab === "github" && (
-        <div className="max-w-[520px]">
+        <div className="max-w-[650px]">
           <AutoDeploySection
             project={project}
             service={service}

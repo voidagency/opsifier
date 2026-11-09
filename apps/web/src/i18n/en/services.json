@@ -6,7 +6,8 @@
     "starting": "Starting",
     "running": "Running",
     "failing": "Failing",
-    "unknown": "Status unavailable"
+    "unknown": "Status unavailable",
+    "uncertain": "State uncertain"
   },
   "tabs": {
     "label": "Service sections",
@@ -42,7 +43,24 @@
     "cpu": "CPU",
     "memory": "Memory",
     "networkIn": "In",
-    "networkOut": "Out"
+    "networkOut": "Out",
+    "label": "Live readings",
+    "cpuText": "{{used}} of {{total}} cores",
+    "memoryText": "{{used}} of {{total}}",
+    "trend": "{{metric}} trend",
+    "neverRead": "no reading yet",
+    "lastRead": "last reading {{when}}",
+    "dockerAway": "Docker unavailable",
+    "notRunning": "Nothing running",
+    "scope_one": "{{count}} running task",
+    "scope_other": "{{count}} running tasks",
+    "scopeHint": "Added up across the service's running tasks, as Docker reports them. Network totals count from each task's start.",
+    "origins": {
+      "docker": "Docker statistics",
+      "host": "This server",
+      "simulated": "Simulated figures"
+    },
+    "scopeHintSimulated": "Added up across the service's running tasks, from the simulated Docker of development mode. Network totals count from each task's start."
   },
   "toolbar": {
     "deploy": "Deploy",
@@ -52,7 +70,7 @@
     "open": "Open this site",
     "more": "More actions",
     "notes": "Notes",
-    "rebuild": "Deploy without cache",
+    "rebuild": "Rebuild from scratch",
     "destroy": "Destroy service",
     "deployed": "Deployment finished",
     "deployFailed": "The deployment didn't finish",
@@ -61,7 +79,11 @@
     "stopped": "Service is down",
     "stopFailed": "The service didn't stop",
     "restarted": "Fresh tasks are running",
-    "restartFailed": "The restart didn't finish"
+    "restartFailed": "The restart didn't finish",
+    "busy": "Wait for the work in progress to finish.",
+    "notDeployed": "Deploy it first.",
+    "startFirst": "Start it first.",
+    "noDomain": "It has no domain yet."
   },
   "create": {
     "pageTitle": "Add to this project",
@@ -99,7 +121,7 @@
       },
       "box": {
         "name": "Box",
-        "hint": "A plain container to work in."
+        "hint": "Runtimes you choose, processes kept running."
       },
       "compose": {
         "name": "Compose",
@@ -109,14 +131,6 @@
         "name": "WordPress",
         "hint": "A site with its database."
       }
-    },
-    "templates": {
-      "title": "Templates are on their way",
-      "description": "Ready-made stacks you can start from will be listed here."
-    },
-    "custom": {
-      "title": "Custom setups are on their way",
-      "description": "Creating services from a saved description will live here."
     },
     "title": "Add an app",
     "description": "It starts empty: choose an image next.",
@@ -136,10 +150,12 @@
   },
   "destroy": {
     "title": "Destroy this service?",
-    "description": "Its containers, routes and data directory will be removed.",
+    "description": "You are about to destroy",
     "confirm": "Destroy",
     "copyName": "Copy the service's name",
-    "started": "Destroying {{name}}"
+    "started": "Destroying {{name}}",
+    "removed": "Its containers, domains, routes, settings and source files on this server.",
+    "kept": "Its named volumes and its backups. Delete kept volumes later under Monitor, Storage. A new service with the same name and volume picks the data up again."
   },
   "rename": {
     "open": "Rename or move this service",
@@ -148,7 +164,8 @@
     "project": "Project",
     "name": "Name",
     "submit": "Save",
-    "done": "Service is now {{name}}"
+    "done": "Service is now {{name}}",
+    "projectHint": "The project it moves to."
   },
   "notes": {
     "title": "Notes",
@@ -158,14 +175,49 @@
     "label": "Your notes",
     "save": "Save",
     "saved": "Notes saved",
-    "tooLong": "This is too long."
+    "tooLong": "This is too long.",
+    "empty": "None yet",
+    "add": "Add",
+    "hidden": "Hidden",
+    "show": "Show",
+    "hide": "Hide",
+    "labelHint": "Markdown works. Anyone with access to this service can read it."
   },
-  "placeholder": {
-    "title": "{{tab}} isn't configurable yet",
-    "descriptions": {
-      "redirects": "Rewrite rules for every domain of this service will be managed here.",
-      "security": "Password protection for this service's domains will be set here.",
-      "maintenance": "A maintenance page to show instead of the app will be set here."
+  "types": {
+    "app": "App",
+    "compose": "Compose",
+    "box": "Box",
+    "wordpress": "WordPress",
+    "postgres": "Postgres",
+    "mysql": "MySQL",
+    "mariadb": "MariaDB",
+    "mongo": "Mongo",
+    "redis": "Redis"
+  },
+  "notice": {
+    "stopped": {
+      "title": "This service is stopped",
+      "description": "Nothing runs until you start it again."
+    },
+    "undeployed": {
+      "title": "Not deployed yet",
+      "description": "Press Deploy to start it."
+    },
+    "uncertain": {
+      "interrupted": {
+        "title": "A deployment did not finish",
+        "description": "Nobody can say for certain what this service is running. Backups, restores, renames, deletion and changes to its ports and domains are refused until a deployment succeeds."
+      },
+      "restore_failed": {
+        "title": "The previous version could not be put back",
+        "description": "A deployment failed and bringing the previous version back failed too. Backups, restores, renames, deletion and changes to its ports and domains are refused until a deployment succeeds."
+      }
     }
+  },
+  "flags": {
+    "pending": "Changes waiting",
+    "pendingHint": "Saved settings the running version does not have yet. They arrive with the next deploy. Click to see them.",
+    "silent": "Not answering",
+    "silentHint": "Its tasks are running, but nothing answered on its port at the last deployment. A started container does not prove the app works."
   }
 }

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, formatDuration, formatPercent, formatRelativeTime } from "./format";
+import {
+  formatBytes,
+  formatClock,
+  formatDateTime,
+  formatDuration,
+  formatPercent,
+  formatRelativeTime,
+  timeZoneLabel,
+} from "./format";
 
 describe("formatBytes", () => {
   it("shows bytes in the largest sensible unit", () => {
@@ -10,17 +18,33 @@ describe("formatBytes", () => {
   });
 
   it.each([Number.NaN, Number.POSITIVE_INFINITY, -1, null, undefined])(
-    "never prints %j as a size",
+    "reads %j as missing, never as a size",
     (value) => {
-      expect(formatBytes(value)).toBe("0 B");
+      expect(formatBytes(value)).toBe("–");
     },
   );
 });
 
+describe("exact moments", () => {
+  const at = "2026-03-14T09:26:53.000Z";
+  // Whatever zone the tests run in, its name has to be on the screen.
+  const zone = timeZoneLabel("en", Date.parse(at));
+
+  it("always say their time zone, in either language", () => {
+    expect(zone).not.toBe("");
+    expect(formatDateTime(at, "en")).toContain(zone);
+    expect(formatDateTime(at, "en")).toContain("2026");
+    expect(formatClock(at, "en")).toContain(zone);
+    expect(formatDateTime(at, "fr")).toContain("2026");
+    expect(formatDateTime(at, "fr").length).toBeGreaterThan(10);
+  });
+});
+
 describe("formatPercent", () => {
-  it("keeps one decimal and survives bad input", () => {
+  it("keeps one decimal, and reads a missing value as missing", () => {
     expect(formatPercent(1.234)).toBe("1.2%");
-    expect(formatPercent(Number.NaN)).toBe("0.0%");
+    expect(formatPercent(Number.NaN)).toBe("–");
+    expect(formatPercent(null)).toBe("–");
   });
 });
 

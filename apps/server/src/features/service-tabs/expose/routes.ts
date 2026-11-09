@@ -1,11 +1,10 @@
 import { createRoute } from "@hono/zod-openapi";
-import { actionEntry, exposeSettings, servicePath } from "@opsifier/contract";
-import { toActionEntry } from "../../../core/actions";
+import { exposeSettings, exposeState, servicePath } from "@opsifier/contract";
 import { requirePrincipal } from "../../../core/auth";
 import type { Feature } from "../../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../../core/openapi";
-import { requireDatabase } from "../../databases/service";
-import { enqueueExpose } from "./service";
+import { publishedPort, requireDatabase } from "../../databases/service";
+import { saveExpose } from "./service";
 
 const PATH = "/api/v1/projects/{project}/services/{service}/expose";
 const tags = ["Service expose"];
@@ -19,7 +18,7 @@ const getRoute = createRoute({
   tags,
   request: { params: servicePath },
   responses: {
-    200: jsonResponse(exposeSettings, "The public port. Zero means not exposed."),
+    200: jsonResponse(exposeState, "The saved public port, zero if none, and what is published right now."),
     400: invalid,
     401: denied,
     404: missing,
@@ -30,10 +29,10 @@ const putRoute = createRoute({
   method: "put",
   path: PATH,
   tags,
-  description: "Publishes the database on a host port, or removes it with 0. Restarts the database.",
+  description: "Saves a host port for the database, or none with 0. It is published at the next deployment.",
   request: { params: servicePath, body: jsonBody(exposeSettings) },
   responses: {
-    202: jsonResponse(actionEntry, "The Action applying it."),
+    200: jsonResponse(exposeSettings, "Saved."),
     400: invalid,
     401: denied,
     404: missing,
@@ -48,22 +47,22 @@ const target = (params: { project: string; service: string }) => ({
 
 export const feature: Feature = {
   register(app, deps) {
-    app.openapi(getRoute, (c) =>
-      c.json({ port: requireDatabase(deps, target(c.req.valid("param"))).spec.database.exposedPort }, 200),
-    );
+    app.openapi(getRoute, async (c) => {
+      const service = target(c.req.valid("param"));
+      const { exposedPort: port } = requireDatabase(deps, service).spec.database;
+      return c.json({ port, publishedPort: await publishedPort(deps, service) }, 200);
+    });
 
     app.openapi(putRoute, async (c) => {
       const principal = requirePrincipal(c);
       return c.json(
-        toActionEntry(
-          await enqueueExpose(
-            deps,
-            target(c.req.valid("param")),
-            c.req.valid("json"),
-            principal.kind === "session" ? principal.user.email : undefined,
-          ),
+        await saveExpose(
+          deps,
+          target(c.req.valid("param")),
+          c.req.valid("json"),
+          principal.kind === "session" ? principal.user.email : undefined,
         ),
-        202,
+        200,
       );
     });
   },

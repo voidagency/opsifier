@@ -7,6 +7,7 @@
     "separator": "Ajouter un séparateur",
     "refresh": "Recharger les journaux",
     "fullscreen": "Ouvrir en plein écran",
+    "skipped": "Sortie ignorée pour rattraper le service",
     "connecting": "Connexion…",
     "waiting": "En attente du démarrage de {{name}}…",
     "empty": "Rien d'affiché pour le moment.",
@@ -15,7 +16,20 @@
       "label": "Comment lire les journaux",
       "live": "Direct",
       "search": "Recherche"
-    }
+    },
+    "pause": "Mettre en pause",
+    "resume": "Reprendre",
+    "filter": "Filtrer les lignes",
+    "filterPlaceholder": "N'importe quelle partie d'une ligne",
+    "noMatch": "Aucune ligne ne correspond à ce filtre.",
+    "live": "En direct",
+    "since": "depuis {{when}}",
+    "latest": "{{limit}} dernières lignes",
+    "paused_one": "En pause, {{count}} nouvelle ligne en attente",
+    "paused_other": "En pause, {{count}} nouvelles lignes en attente",
+    "scopeHelp": "Les {{tail}} dernières lignes de chaque tâche à l'ouverture du flux, puis tout ce qui a été écrit depuis. Le flux garde les {{ring}} dernières, cette vue les {{limit}} dernières. La recherche remonte plus loin.",
+    "scopeHelpShort": "Cette vue garde les {{limit}} dernières lignes. La recherche remonte plus loin.",
+    "timeZone": "Heures en {{zone}}"
   },
   "search": {
     "text": "Texte",
@@ -51,7 +65,13 @@
     "empty": {
       "title": "Aucune ligne trouvée",
       "description": "Essayez un autre mot ou une période plus longue."
-    }
+    },
+    "scope": "{{range}}, {{limit}} lignes au plus",
+    "limitHint": "Le nombre maximal de lignes à afficher.",
+    "rangeHint": "Jusqu'où remonter dans le temps.",
+    "levelHint": "Seulement les lignes de cette gravité.",
+    "streamHint": "Sortie normale, erreurs, ou les deux.",
+    "textHint": "Les mots à chercher dans les journaux conservés."
   },
   "console": {
     "open": "Console",
@@ -59,12 +79,15 @@
     "task": "Tâche",
     "choose": "Choisissez un programme pour ouvrir une session dans la tâche sélectionnée.",
     "noTasks": "Rien ne tourne pour l'instant. Démarrez le service pour ouvrir une console.",
+    "noShell": "Ce conteneur n'a aucun shell à ouvrir.",
     "notRunning": "Démarrez le service pour ouvrir une console",
     "adminOnly": "Seul un administrateur peut ouvrir une console",
     "disconnect": "Déconnecter",
     "ended": "Session terminée.",
     "endedWithCode": "Session terminée avec le code {{code}}.",
     "lost": "La connexion a été perdue.",
-    "refused": "La console n'a pas pu être ouverte."
+    "refused": "La console n'a pas pu être ouverte.",
+    "fallback": "Bash n'est pas dans ce conteneur : {{opened}} a été ouvert à la place.",
+    "sessionOpen": "Déconnectez-vous d'abord."
   }
 }

@@ -1,0 +1,89 @@
+{
+  "categories": {
+    "monitoring": "Monitoring",
+    "development": "Development",
+    "data": "Data",
+    "documents": "Documents",
+    "productivity": "Productivity",
+    "communication": "Communication",
+    "media": "Media",
+    "automation": "Automation",
+    "security": "Security",
+    "infrastructure": "Infrastructure"
+  },
+  "links": {
+    "website": "Website",
+    "docs": "Documentation",
+    "source": "Source code"
+  },
+  "catalogue": {
+    "search": "Search templates",
+    "tag": "Filter by tag",
+    "anyTag": "Any tag",
+    "categories": "Categories",
+    "verified": "Verified",
+    "emptyTitle": "No template matches",
+    "emptyBody": "Try another word, or clear the filters.",
+    "searchHint": "Filters the list as you type.",
+    "tagHint": "Only templates with this tag."
+  },
+  "form": {
+    "title": "Create {{name}}",
+    "description": "In project {{project}}. Nothing runs until you deploy it.",
+    "submit": "Create",
+    "created": "{{name}} created. Deploy it when you're ready.",
+    "required": "Required",
+    "invalidName": "Use lowercase letters, digits, dashes and underscores.",
+    "invalidImage": "Name an explicit version, such as name:1.2.3",
+    "generated": "Generated for you",
+    "name": "Name",
+    "image": "Image",
+    "databaseSource": "Database",
+    "newDatabase": "New database",
+    "kinds": {
+      "app": "App",
+      "database": "Database",
+      "compose": "Compose stack"
+    },
+    "hostAccessTitle": "This template can control the server",
+    "hostAccessBody": "It uses the Docker socket, which gives it full control of this machine and every container on it.",
+    "hostAccessConfirm": "I trust this template",
+    "hostAccessAdminOnly": "Only an administrator can install this template, because it can control the server.",
+    "imageHint": "The image this part runs.",
+    "nameHint": "What this part of the install is called.",
+    "databaseSourceHint": "Create a new database, or use one you already have."
+  },
+  "custom": {
+    "title": "Create from a schema",
+    "description": "Paste a template document. It goes through the same form as the catalogue, and nothing is created until you confirm.",
+    "body": "Use this to try a template that isn't in the catalogue, or one you wrote yourself.",
+    "open": "Paste a schema",
+    "dialogTitle": "Paste a template",
+    "schema": "Schema",
+    "schemaHint": "JSON, in the Opsifier template format.",
+    "next": "Continue",
+    "invalidJson": "This isn't valid JSON.",
+    "useExample": "Show an example"
+  },
+  "install": {
+    "projectHeading": "Installed templates",
+    "parts": "Parts",
+    "deploy": "Deploy",
+    "resume": "Deploy the rest",
+    "redeploy": "Redeploy all",
+    "deployed": "Everything is up",
+    "deployFailed": "The deployment didn't finish",
+    "remove": "Remove",
+    "removing": "Removing {{name}}",
+    "removeTitle": "Remove this install?",
+    "removeBody": "Every service this install created in this project goes. Other services are left alone.",
+    "nextSteps": "Next steps",
+    "secrets": "Passwords",
+    "reveal": "Show",
+    "copySecret": "Copy",
+    "custom": "From a schema",
+    "deployHint": "Services are started in dependency order, each with its own deployment you can follow.",
+    "removeRemoved": "Those services, with their domains, routes and settings.",
+    "removeKept": "Their named volumes and their backups. Delete kept volumes later under Monitor, Storage."
+  }
+}

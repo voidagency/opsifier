@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useForm } from "../../lib/forms";
 import { Button, Dialog, Field, FormBanner, Input, Select, toast } from "../../ui";
+import { domainsOverviewQuery } from "../domains/api";
 import { projectsKey, projectsQuery } from "../projects/api";
 import { serviceKey, servicesApi } from "./api";
 
@@ -23,6 +24,7 @@ export function RenameDialog({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { data } = useQuery(projectsQuery);
+  const managed = useQuery(domainsOverviewQuery).data?.managedProjects ?? null;
   const initial = { projectName: project, name: service };
 
   const form = useForm({
@@ -56,7 +58,11 @@ export function RenameDialog({
     }
   }, [open]);
 
-  const options = (data?.projects ?? [{ name: project }]).map((item) => ({
+  // Moving needs the operator role on both ends. The server decides: this only leaves out what it refuses.
+  const reachable = (data?.projects ?? [{ name: project }]).filter(
+    (item) => managed === null || managed.includes(item.name) || item.name === project,
+  );
+  const options = reachable.map((item) => ({
     value: item.name,
     label: <span className="font-mono">{item.name}</span>,
   }));
@@ -82,7 +88,7 @@ export function RenameDialog({
     >
       <div className="grid gap-4">
         {form.banner && <FormBanner>{form.banner}</FormBanner>}
-        <Field label={t("rename.project")}>
+        <Field label={t("rename.project")} hint={t("rename.projectHint")}>
           <Select
             value={form.values.projectName}
             onValueChange={(value) => form.set("projectName", value)}

@@ -3,31 +3,38 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { errorMessage, useForm } from "../../../../lib/forms";
-import { Button, ConfirmDialog, Field, FormBanner, Input, Skeleton, toast } from "../../../../ui";
+import {
+  Button,
+  ConfirmDialog,
+  ErrorState,
+  Field,
+  FormBanner,
+  Input,
+  Lamp,
+  SectionIntro,
+  Skeleton,
+  toast,
+} from "../../../../ui";
 import { databaseQuery, databasesApi, exposeQuery } from "../../../databases/api";
 import { useDatabaseParams } from "../../../databases/DatabaseLayout";
-import { useActionFollower } from "../../ActionFollower";
-import { serviceKey } from "../../api";
+import { serviceKey, serviceQuery } from "../../api";
+import { serviceState, serviceStateLabel } from "../../serviceState";
 
-/** Publishes the database on a port of the server. Saving restarts it, as the tab says. */
+/** Publishes the database on a port of the server, from its next deployment on. */
 export function ExposeTab() {
-  const { t } = useTranslation(["service-expose", "common"]);
+  const { t } = useTranslation(["service-expose", "services", "visual", "activity", "common"]);
   const { project, service } = useDatabaseParams();
   const queryClient = useQueryClient();
-  const follow = useActionFollower();
   const { data, error, refetch, isPending } = useQuery(exposeQuery(project, service));
   const { data: database } = useQuery(databaseQuery(project, service));
+  const { data: detail } = useQuery(serviceQuery(project, service));
   const [confirming, setConfirming] = useState(false);
   // Set while the confirmed submit runs, so that a conflict lands on the field, not in the dialog.
   const confirmedRisk = useRef(false);
 
   const submit = async (port: number) => {
-    const action = await databasesApi.saveExpose(project, service, { port });
-    follow(action.id, {
-      success: () => toast.success(port === 0 ? t("removed") : t("exposed", { port })),
-      failure: (ended) => toast.error(t("failed"), ended.error ?? undefined),
-    });
-    toast({ title: t("restarting") });
+    await databasesApi.saveExpose(project, service, { port });
+    toast.success(port === 0 ? t("removed") : t("exposed", { port }), t("savedHint"));
     await queryClient.invalidateQueries({ queryKey: serviceKey(project, service) });
   };
 
@@ -56,27 +63,43 @@ export function ExposeTab() {
 
   if (isPending) {
     return (
-      <div className="max-w-[520px] px-4 py-6 md:px-6 lg:px-8">
+      <div className="max-w-[650px] px-4 py-6 md:px-6 lg:px-8">
         <Skeleton className="h-16" />
       </div>
     );
   }
   if (data === undefined) {
     return (
-      <div className="grid max-w-[520px] justify-items-start gap-3 px-4 py-6 md:px-6 lg:px-8">
-        <FormBanner>{errorMessage(error, t)}</FormBanner>
-        <Button onClick={() => refetch()}>{t("common:actions.retry")}</Button>
+      <div className="px-4 py-6 md:px-6 lg:px-8">
+        <ErrorState message={errorMessage(error, t)} onRetry={() => refetch()} />
       </div>
     );
   }
 
   return (
-    <div className="grid max-w-[640px] gap-5 px-4 py-6 md:px-6 lg:px-8">
-      <p className="max-w-[60ch] text-muted">{t("intro", { port: database?.internalPort ?? "" })}</p>
+    <div className="grid max-w-[800px] gap-5 px-4 py-6 md:px-6 lg:px-8">
+      <SectionIntro
+        pictogram="port"
+        title={
+          data.publishedPort !== null && data.publishedPort > 0 && detail !== undefined ? (
+            <Lamp
+              state={serviceState(detail)}
+              label={`${t("state.on", { port: data.publishedPort })} · ${serviceStateLabel(detail, t)}`}
+              showLabel
+            />
+          ) : (
+            <Lamp state="stopped" label={t("state.off")} showLabel />
+          )
+        }
+        description={t("intro", { port: database?.internalPort ?? "" })}
+      />
       <FormBanner tone="warning" title={t("warning.title")}>
         {t("warning.description")}
       </FormBanner>
-      <form onSubmit={form.handleSubmit} className="grid max-w-[320px] gap-4">
+      {data.port > 0 && data.publishedPort !== null && data.publishedPort !== data.port && (
+        <FormBanner tone="info">{t("notPublishedYet", { port: data.port })}</FormBanner>
+      )}
+      <form onSubmit={form.handleSubmit} className="grid max-w-[400px] gap-4">
         {form.banner && <FormBanner>{form.banner}</FormBanner>}
         <Field label={t("port")} hint={t("hint")} error={form.errors.port}>
           <Input {...form.field("port")} inputMode="numeric" mono autoComplete="off" />

@@ -24,7 +24,8 @@
     "save": "Enregistrer",
     "username": "Nom d'utilisateur",
     "password": "Mot de passe",
-    "passwordKeep": "Laissez vide pour garder le mot de passe actuel."
+    "passwordKeep": "Laissez vide pour garder le mot de passe actuel.",
+    "usernameHint": "Le nom saisi par les visiteurs pour se connecter."
   },
   "errors": {
     "username": "Saisissez un nom sans espaces ni deux-points.",

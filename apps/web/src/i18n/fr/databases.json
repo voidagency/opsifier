@@ -11,6 +11,7 @@
     "overview": "Aperçu",
     "credentials": "Identifiants",
     "expose": "Exposition",
+    "backups": "Sauvegardes",
     "resources": "Ressources",
     "advanced": "Avancé"
   },
@@ -30,10 +31,12 @@
   },
   "destroy": {
     "title": "Supprimer cette base de données ?",
-    "description": "Le service et son volume de données {{volume}} seront supprimés définitivement. Les données ne pourront pas être récupérées. Pour confirmer, saisissez",
+    "description": "Vous allez supprimer",
     "confirm": "Supprimer la base",
     "copyName": "Copier le nom",
-    "started": "Suppression de {{name}}"
+    "started": "Suppression de {{name}}",
+    "removed": "Le service de base de données, ses outils web et ses réglages.",
+    "kept": "Son volume de données {{volume}} et ses sauvegardes. Supprimez le volume plus tard dans Supervision, Stockage. Une nouvelle base ne le réutilise jamais."
   },
   "create": {
     "title": "Ajouter une base {{engine}}",
@@ -48,14 +51,14 @@
     "rootPassword": "Mot de passe root",
     "passwordHint": "Laissez vide : un mot de passe robuste sera généré.",
     "image": "Image",
-    "imageHint": "Laissez vide pour {{image}}.",
+    "imageHint": "Une version précise uniquement : latest ou un simple numéro majeur évolueraient tout seuls. Laissez vide pour {{image}}.",
     "submit": "Ajouter la base",
     "required": "Donnez un nom au service.",
     "invalidName": "Utilisez des lettres minuscules, chiffres, tirets et underscores, et terminez par une lettre ou un chiffre.",
     "invalidDatabaseName": "Utilisez des lettres, chiffres, tirets et underscores.",
     "invalidUser": "Utilisez des lettres, chiffres, tirets, points et underscores.",
     "invalidPassword": "Utilisez 256 caractères au plus, sans saut de ligne ni autre caractère de contrôle.",
-    "invalidImage": "Saisissez une image, par exemple nom:version.",
+    "invalidImage": "Indiquez une version précise, par exemple postgres:18.6, ou un condensé.",
     "created": "La base {{name}} se déploie"
   }
 }

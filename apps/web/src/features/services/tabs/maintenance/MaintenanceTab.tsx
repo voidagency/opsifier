@@ -7,7 +7,19 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { errorMessage, schemaErrors, useForm } from "../../../../lib/forms";
-import { Button, Field, FormBanner, Input, Skeleton, Switch, Textarea, toast } from "../../../../ui";
+import {
+  Button,
+  ErrorState,
+  Field,
+  FormBanner,
+  Input,
+  Lamp,
+  SectionIntro,
+  Skeleton,
+  Switch,
+  Textarea,
+  toast,
+} from "../../../../ui";
 import { serviceKey, useServiceParams } from "../../api";
 import { maintenanceApi, maintenanceQuery } from "./api";
 
@@ -76,10 +88,11 @@ function MaintenanceForm({
   const logo = form.values.customLogo;
 
   return (
-    <form onSubmit={form.handleSubmit} noValidate className="grid max-w-[520px] gap-4">
+    <form onSubmit={form.handleSubmit} noValidate className="grid max-w-[650px] gap-4">
       {form.banner && <FormBanner>{form.banner}</FormBanner>}
+      {!initial.enabled && <Lamp state="stopped" label={t("stateOff")} showLabel />}
       {initial.enabled && (
-        <FormBanner tone="warning" title={t("activeTitle")}>
+        <FormBanner tone="warning" title={<Lamp state="degraded" label={t("activeTitle")} showLabel />}>
           {t("activeHint")}
         </FormBanner>
       )}
@@ -92,7 +105,7 @@ function MaintenanceForm({
       <Field label={t("pageTitle")} hint={t("pageTitleHint")} optional error={form.errors.title}>
         <Input {...form.field("title")} autoComplete="off" />
       </Field>
-      <Field label={t("subtitle")} optional error={form.errors.subtitle}>
+      <Field label={t("subtitle")} optional error={form.errors.subtitle} hint={t("subtitleHint")}>
         <Input {...form.field("subtitle")} autoComplete="off" />
       </Field>
       <fieldset className="m-0 grid gap-4 border-0 p-0">
@@ -103,7 +116,7 @@ function MaintenanceForm({
               <img
                 src={logo}
                 alt={t("logoPreview")}
-                className="h-10 max-w-[160px] border bg-raised object-contain"
+                className="h-10 max-w-[200px] border bg-raised object-contain"
               />
             )}
             <input
@@ -133,6 +146,7 @@ function MaintenanceForm({
         </Field>
         <Switch
           label={t("hideLogo")}
+          hint={t("hideLogoHint")}
           checked={form.values.hideLogo}
           onCheckedChange={(checked) => form.set("hideLogo", checked)}
         />
@@ -159,17 +173,11 @@ export function MaintenanceTab() {
 
   return (
     <section className="grid gap-x-10 gap-y-4 px-4 py-6 md:px-6 lg:grid-cols-[minmax(0,260px)_minmax(0,520px)] lg:px-8">
-      <div>
-        <h2 className="text-md font-medium">{t("title")}</h2>
-        <p className="mt-1 text-sm text-muted">{t("description")}</p>
-      </div>
+      <SectionIntro pictogram="maintenance" title={t("title")} description={t("description")} />
       {isPending ? (
         <Skeleton className="h-72" />
       ) : isError ? (
-        <div className="grid justify-items-start gap-3">
-          <FormBanner>{errorMessage(error, t)}</FormBanner>
-          <Button onClick={() => refetch()}>{t("common:actions.retry")}</Button>
-        </div>
+        <ErrorState message={errorMessage(error, t)} onRetry={() => refetch()} />
       ) : (
         <MaintenanceForm key={service} project={project} service={service} initial={data} />
       )}

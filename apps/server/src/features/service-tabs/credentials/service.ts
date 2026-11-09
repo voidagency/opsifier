@@ -3,7 +3,7 @@ import type { DatabaseCredentials, DatabaseSecretName, RevealedSecret } from "@o
 import { databaseActionTypes, databaseEngineInfo } from "@opsifier/contract";
 import type { AppDeps } from "../../../core/context";
 import { conflict } from "../../../core/errors";
-import { requireDatabase, unsealSecrets } from "../../databases/service";
+import { publishedPort, requireDatabase, unsealSecrets } from "../../databases/service";
 import { qualifiedName } from "../../services/compile";
 import { type ConnectionTarget, connectionUrl, maskedConnectionUrl } from "../../services/compile/database";
 import { listActiveServiceActions, type ServiceRecord } from "../../services/repo";
@@ -24,12 +24,12 @@ function externalHost(deps: AppDeps, requestHost: string | undefined): string {
   return getSystemInfo(deps).serverIp ?? "localhost";
 }
 
-function connectionTargets(
+async function connectionTargets(
   deps: AppDeps,
   record: ServiceRecord,
   target: ServiceTarget,
   requestHost: string | undefined,
-): { internal: ConnectionTarget; external: ConnectionTarget | null } {
+): Promise<{ internal: ConnectionTarget; external: ConnectionTarget | null }> {
   const database = record.spec.database;
   if (database === null) {
     throw new Error("Only a database has connection details.");
@@ -44,10 +44,10 @@ function connectionTargets(
     host: qualifiedName(target.projectName, target.serviceName),
     port: databaseEngineInfo[database.engine].port,
   };
+  // Only what a deployment has published can be connected to, whatever has been saved since.
+  const port = (await publishedPort(deps, target)) ?? database.exposedPort;
   const external: ConnectionTarget | null =
-    database.exposedPort === 0
-      ? null
-      : { ...base, host: externalHost(deps, requestHost), port: database.exposedPort };
+    port === 0 ? null : { ...base, host: externalHost(deps, requestHost), port };
   return { internal, external };
 }
 
@@ -63,14 +63,14 @@ const endpoint = (connection: ConnectionTarget) => ({
 });
 
 /** Who connects and how. There is no secret in here to leak. */
-export function getCredentials(
+export async function getCredentials(
   deps: AppDeps,
   target: ServiceTarget,
   requestHost: string | undefined,
-): DatabaseCredentials {
+): Promise<DatabaseCredentials> {
   const record = requireDatabase(deps, target);
   const { database } = record.spec;
-  const { internal, external } = connectionTargets(deps, record, target, requestHost);
+  const { internal, external } = await connectionTargets(deps, record, target, requestHost);
   return {
     engine: database.engine,
     user: database.user,
@@ -93,16 +93,16 @@ const SECRET_LABELS: Record<DatabaseSecretName, string> = {
  * Reads one secret, and leaves a line in the activity log naming who asked. The only place on
  * the API where a database password or a usable connection URL is ever returned.
  */
-export function revealSecret(
+export async function revealSecret(
   deps: AppDeps,
   target: ServiceTarget,
   secret: DatabaseSecretName,
   requestHost: string | undefined,
   actorEmail: string | undefined,
-): RevealedSecret {
+): Promise<RevealedSecret> {
   const record = requireDatabase(deps, target);
   const secrets = unsealSecrets(deps, record.spec.database);
-  const { internal, external } = connectionTargets(deps, record, target, requestHost);
+  const { internal, external } = await connectionTargets(deps, record, target, requestHost);
 
   let value: string;
   switch (secret) {

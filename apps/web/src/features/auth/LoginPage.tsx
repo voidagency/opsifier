@@ -126,7 +126,11 @@ export function LoginPage() {
         >
           {codeBanner && <FormBanner>{codeBanner}</FormBanner>}
           {recoveryMode ? (
-            <Field label={t("twoFactor.recoveryCode")} error={codeError}>
+            <Field
+              label={t("twoFactor.recoveryCode")}
+              error={codeError}
+              hint={t("twoFactor.recoveryCodeHint")}
+            >
               <Input
                 ref={recoveryInput}
                 name="recoveryCode"
@@ -144,7 +148,7 @@ export function LoginPage() {
               />
             </Field>
           ) : (
-            <Field label={t("twoFactor.code")} error={codeError}>
+            <Field label={t("twoFactor.code")} error={codeError} hint={t("twoFactor.codeHint")}>
               <CodeInput
                 ref={codeInput}
                 name="code"
@@ -191,10 +195,10 @@ export function LoginPage() {
     <AuthLayout title={t("login.title")} description={t("login.description")}>
       <form onSubmit={form.handleSubmit} noValidate className="grid gap-4">
         {form.banner && <FormBanner>{form.banner}</FormBanner>}
-        <Field label={t("fields.email")} error={form.errors.email}>
+        <Field label={t("fields.email")} error={form.errors.email} hint={t("fields.loginEmailHint")}>
           <Input {...form.field("email")} type="email" autoComplete="username" autoFocus spellCheck={false} />
         </Field>
-        <Field label={t("fields.password")} error={form.errors.password}>
+        <Field label={t("fields.password")} error={form.errors.password} hint={t("fields.passwordHint")}>
           <PasswordInput {...form.field("password")} autoComplete="current-password" />
         </Field>
         <Checkbox

@@ -1,0 +1,406 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  The Opsifier addresses API. Gives every server <id>.opsifier.dev and *.<id>.opsifier.dev. Everything
+  except the hosted zone, which is created separately and retained so its name servers never change.
+
+Parameters:
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: The existing hosted zone for ZoneName.
+  ZoneName:
+    Type: String
+    Default: opsifier.dev
+    AllowedPattern: "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$"
+    Description: The zone addresses live under. It must be the zone HostedZoneId holds.
+  ApiHostname:
+    Type: String
+    Default: names.opsifier.dev
+    Description: The public name of the API.
+  RegistrationsPerIpPerDay:
+    Type: Number
+    Default: 10
+    MinValue: 1
+  RegistrationsPerDay:
+    Type: Number
+    Default: 2000
+    MinValue: 1
+    Description: The global daily cap, a circuit breaker for the whole service.
+  ChangesPerServerPerHour:
+    Type: Number
+    Default: 30
+    MinValue: 1
+  InactiveAfterDays:
+    Type: Number
+    Default: 90
+    MinValue: 1
+  RemovalsPerRun:
+    Type: Number
+    Default: 500
+    MinValue: 1
+  ThrottleRate:
+    Type: Number
+    Default: 20
+    Description: Requests per second across the API. Route 53's own limit is five per second per account.
+  ThrottleBurst:
+    Type: Number
+    Default: 50
+
+Resources:
+  ServersTable:
+    Type: AWS::DynamoDB::Table
+    # A deleted table would forget every issued ID, and they must never be issued again.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  ApiLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 30
+
+  MaintenanceLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 90
+
+  ApiAccessLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 30
+
+  ApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: api
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt ApiLogs.Arn
+              - Sid: ServersTable
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                Resource: !GetAtt ServersTable.Arn
+              - Sid: ReadZone
+                Effect: Allow
+                Action: route53:ListResourceRecordSets
+                Resource: !Sub "arn:${AWS::Partition}:route53:::hostedzone/${HostedZoneId}"
+              - Sid: ChangeServerRecords
+                Effect: Allow
+                Action: route53:ChangeResourceRecordSets
+                Resource: !Sub "arn:${AWS::Partition}:route53:::hostedzone/${HostedZoneId}"
+                Condition:
+                  ForAllValues:StringEquals:
+                    route53:ChangeResourceRecordSetsRecordTypes:
+                      - A
+                      - TXT
+                  ForAllValues:StringLike:
+                    route53:ChangeResourceRecordSetsNormalizedRecordNames:
+                      - !Sub "*.${ZoneName}"
+              - Sid: KeepOffTheZonesOwnNames
+                Effect: Deny
+                Action: route53:ChangeResourceRecordSets
+                Resource: !Sub "arn:${AWS::Partition}:route53:::hostedzone/${HostedZoneId}"
+                Condition:
+                  ForAnyValue:StringEquals:
+                    route53:ChangeResourceRecordSetsNormalizedRecordNames:
+                      - !Ref ZoneName
+                      - !Ref ApiHostname
+                      - !Sub "_psl.${ZoneName}"
+                      - !Sub "www.${ZoneName}"
+
+  MaintenanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: maintenance
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt MaintenanceLogs.Arn
+              - Sid: ServersTable
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Scan
+                Resource: !GetAtt ServersTable.Arn
+              - Sid: ReadZone
+                Effect: Allow
+                Action: route53:ListResourceRecordSets
+                Resource: !Sub "arn:${AWS::Partition}:route53:::hostedzone/${HostedZoneId}"
+              - Sid: ChangeServerRecords
+                Effect: Allow
+                Action: route53:ChangeResourceRecordSets
+                Resource: !Sub "arn:${AWS::Partition}:route53:::hostedzone/${HostedZoneId}"
+                Condition:
+                  ForAllValues:StringEquals:
+                    route53:ChangeResourceRecordSetsRecordTypes:
+                      - A
+                      - TXT
+                  ForAllValues:StringLike:
+                    route53:ChangeResourceRecordSetsNormalizedRecordNames:
+                      - !Sub "*.${ZoneName}"
+              - Sid: KeepOffTheZonesOwnNames
+                Effect: Deny
+                Action: route53:ChangeResourceRecordSets
+                Resource: !Sub "arn:${AWS::Partition}:route53:::hostedzone/${HostedZoneId}"
+                Condition:
+                  ForAnyValue:StringEquals:
+                    route53:ChangeResourceRecordSetsNormalizedRecordNames:
+                      - !Ref ZoneName
+                      - !Ref ApiHostname
+                      - !Sub "_psl.${ZoneName}"
+                      - !Sub "www.${ZoneName}"
+
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: The names API.
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Handler: lambda.api
+      Code: dist/names.zip
+      Role: !GetAtt ApiRole.Arn
+      MemorySize: 256
+      # Under the lease in service.ts, so a lease left by a crash can never overlap a live request.
+      Timeout: 15
+      LoggingConfig:
+        LogGroup: !Ref ApiLogs
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ServersTable
+          HOSTED_ZONE_ID: !Ref HostedZoneId
+          ZONE_NAME: !Ref ZoneName
+          REGISTRATIONS_PER_IP_PER_DAY: !Ref RegistrationsPerIpPerDay
+          REGISTRATIONS_PER_DAY: !Ref RegistrationsPerDay
+          CHANGES_PER_SERVER_PER_HOUR: !Ref ChangesPerServerPerHour
+          INACTIVE_AFTER_DAYS: !Ref InactiveAfterDays
+          REMOVALS_PER_RUN: !Ref RemovalsPerRun
+          REMOVAL_PAUSE_MS: "400"
+          MAX_CHALLENGE_VALUES: "8"
+
+  MaintenanceFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: The daily cleanup, and disabling an address by hand.
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Handler: lambda.maintenance
+      Code: dist/names.zip
+      Role: !GetAtt MaintenanceRole.Arn
+      MemorySize: 256
+      Timeout: 900
+      LoggingConfig:
+        LogGroup: !Ref MaintenanceLogs
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ServersTable
+          HOSTED_ZONE_ID: !Ref HostedZoneId
+          ZONE_NAME: !Ref ZoneName
+          REGISTRATIONS_PER_IP_PER_DAY: !Ref RegistrationsPerIpPerDay
+          REGISTRATIONS_PER_DAY: !Ref RegistrationsPerDay
+          CHANGES_PER_SERVER_PER_HOUR: !Ref ChangesPerServerPerHour
+          INACTIVE_AFTER_DAYS: !Ref InactiveAfterDays
+          REMOVALS_PER_RUN: !Ref RemovalsPerRun
+          REMOVAL_PAUSE_MS: "400"
+          MAX_CHALLENGE_VALUES: "8"
+
+  DailyCleanup:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Removes addresses with no heartbeat, and finishes what a crash left half done.
+      ScheduleExpression: rate(1 day)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt MaintenanceFunction.Arn
+          Id: daily-cleanup
+
+  DailyCleanupPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref MaintenanceFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DailyCleanup.Arn
+
+  Api:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "${AWS::StackName}-api"
+      ProtocolType: HTTP
+      # Only the custom domain: nothing should depend on the generated hostname.
+      DisableExecuteApiEndpoint: true
+
+  ApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref Api
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ApiFunction.Arn
+      PayloadFormatVersion: "2.0"
+      TimeoutInMillis: 20000
+
+  ApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ApiFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*"
+
+  RegisterRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref Api
+      RouteKey: POST /v1/servers
+      Target: !Sub "integrations/${ApiIntegration}"
+
+  HeartbeatRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref Api
+      RouteKey: PUT /v1/servers/{id}
+      Target: !Sub "integrations/${ApiIntegration}"
+
+  ReleaseRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref Api
+      RouteKey: DELETE /v1/servers/{id}
+      Target: !Sub "integrations/${ApiIntegration}"
+
+  PresentRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref Api
+      RouteKey: POST /v1/acme/present
+      Target: !Sub "integrations/${ApiIntegration}"
+
+  CleanupRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref Api
+      RouteKey: POST /v1/acme/cleanup
+      Target: !Sub "integrations/${ApiIntegration}"
+
+  ApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    # Route settings name their routes, so those have to exist first.
+    DependsOn:
+      - RegisterRoute
+      - HeartbeatRoute
+      - ReleaseRoute
+      - PresentRoute
+      - CleanupRoute
+    Properties:
+      ApiId: !Ref Api
+      StageName: $default
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingRateLimit: !Ref ThrottleRate
+        ThrottlingBurstLimit: !Ref ThrottleBurst
+      # Literal numbers: this property is free-form JSON, where a Ref would arrive as a string.
+      RouteSettings:
+        POST /v1/servers:
+          ThrottlingRateLimit: 2
+          ThrottlingBurstLimit: 10
+        POST /v1/acme/present:
+          ThrottlingRateLimit: 5
+          ThrottlingBurstLimit: 20
+        POST /v1/acme/cleanup:
+          ThrottlingRateLimit: 5
+          ThrottlingBurstLimit: 20
+      AccessLogSettings:
+        # Without the trailing ":*" that GetAtt adds, which this property doesn't accept everywhere.
+        DestinationArn: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ApiAccessLogs}"
+        # Named fields only: no header, so no credential, can end up in here.
+        Format: '{"requestId":"$context.requestId","time":"$context.requestTime","sourceIp":"$context.identity.sourceIp","route":"$context.routeKey","status":"$context.status","error":"$context.integrationErrorMessage"}'
+
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref ApiHostname
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref ApiHostname
+          HostedZoneId: !Ref HostedZoneId
+
+  ApiDomain:
+    Type: AWS::ApiGatewayV2::DomainName
+    Properties:
+      DomainName: !Ref ApiHostname
+      DomainNameConfigurations:
+        - CertificateArn: !Ref Certificate
+          EndpointType: REGIONAL
+          SecurityPolicy: TLS_1_2
+
+  ApiMapping:
+    Type: AWS::ApiGatewayV2::ApiMapping
+    Properties:
+      ApiId: !Ref Api
+      DomainName: !Ref ApiDomain
+      Stage: !Ref ApiStage
+
+  ApiDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref ApiHostname
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiDomain.RegionalDomainName
+        HostedZoneId: !GetAtt ApiDomain.RegionalHostedZoneId
+
+Outputs:
+  ApiUrl:
+    Value: !Sub "https://${ApiHostname}"
+  TableName:
+    Value: !Ref ServersTable
+  MaintenanceFunctionName:
+    Description: Invoke this with {"action":"disable","id":"<id>"} to disable an address, or use disable.sh.
+    Value: !Ref MaintenanceFunction

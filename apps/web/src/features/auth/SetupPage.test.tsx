@@ -34,11 +34,13 @@ function renderPage() {
 }
 
 const codeField = () => screen.queryByLabelText("Setup code") as HTMLInputElement | null;
+const nameField = () => screen.getByLabelText("Name") as HTMLInputElement;
 const emailField = () => screen.getByLabelText("Email") as HTMLInputElement;
 const passwordField = () => screen.getByLabelText("Password") as HTMLInputElement;
 const submitButton = () => screen.getByRole("button", { name: "Create account" });
 
 function fillAccount() {
+  fireEvent.change(nameField(), { target: { value: "Ada Admin" } });
   fireEvent.change(emailField(), { target: { value: "admin@example.com" } });
   fireEvent.change(passwordField(), { target: { value: "a long enough password" } });
 }

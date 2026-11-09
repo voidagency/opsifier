@@ -5,6 +5,7 @@ import {
   call,
   createTestContext,
   setupAdmin,
+  signInMember,
   TEST_ORIGIN,
   type TestContext,
 } from "../../../testing/harness";
@@ -144,6 +145,23 @@ describe("published ports", () => {
 });
 
 describe("deploy settings", () => {
+  it("leaves new capabilities to an administrator", async () => {
+    const operator = await signInMember(context.app, cookie, "op@example.com", [
+      { project: "shop", role: "operator" },
+    ]);
+    const asOperator = (body: object) =>
+      call(context.app, DEPLOY, { method: "PUT", body, cookie: operator, origin: TEST_ORIGIN });
+
+    const refused = await asOperator({ capAdd: ["SYS_ADMIN"] });
+    expect(refused.status).toBe(403);
+    expect(apiErrorOf(refused).code).toBe("admin_required");
+
+    await api(DEPLOY, "PUT", { capAdd: ["NET_ADMIN"] });
+    // What an administrator granted can be left alone or taken back, by anyone working on the service.
+    expect((await asOperator({ capAdd: ["NET_ADMIN"], replicas: 2 })).status).toBe(200);
+    expect((await asOperator({ capAdd: [] })).status).toBe(200);
+  });
+
   it("defaults to one replica with zero downtime", async () => {
     const { body } = await api<AdvancedDocument>(PATH);
 
@@ -153,6 +171,8 @@ describe("deploy settings", () => {
         zeroDowntime: true,
         tiniInit: false,
         command: null,
+        stopSignal: null,
+        stopGraceSeconds: 10,
         capAdd: [],
         capDrop: [],
         sysctls: {},
@@ -169,6 +189,8 @@ describe("deploy settings", () => {
       zeroDowntime: false,
       tiniInit: true,
       command: "nginx -g 'daemon off;'",
+      stopSignal: "SIGQUIT",
+      stopGraceSeconds: 30,
       capAdd: ["NET_ADMIN"],
       capDrop: ["MKNOD"],
       sysctls: { "net.ipv4.ip_unprivileged_port_start": "0" },
@@ -201,6 +223,10 @@ describe("deploy settings", () => {
     ["a group that isn't numeric", { groups: ["wheel"] }, "groups.0"],
     ["a group beyond the range", { groups: ["4294967296"] }, "groups.0"],
     ["a blank command", { command: "   " }, "command"],
+    ["a signal Docker would not understand", { stopSignal: "SIGSTOPME" }, "stopSignal"],
+    ["a negative stop delay", { stopGraceSeconds: -1 }, "stopGraceSeconds"],
+    ["a stop delay that is not whole", { stopGraceSeconds: 1.5 }, "stopGraceSeconds"],
+    ["a stop delay past the limit", { stopGraceSeconds: 3601 }, "stopGraceSeconds"],
   ])("refuses %s", async (_label, body, field) => {
     const result = await api(DEPLOY, "PUT", body);
 
@@ -221,6 +247,43 @@ describe("deploy settings", () => {
     const redeploy = await api(`${SERVICE}/deploy`, "POST");
     expect(redeploy.status).toBe(409);
     expect(apiErrorOf(redeploy).code).toBe("service_has_no_replicas");
+  });
+});
+
+describe("a database's deploy settings", () => {
+  const database = "/api/v1/projects/shop/services/db";
+
+  beforeEach(async () => {
+    const created = await api<{ activeAction: { id: string } }>("/api/v1/projects/shop/databases", "POST", {
+      name: "db",
+      engine: "redis",
+    });
+    for (let attempt = 0; attempt < 1000; attempt += 1) {
+      const { body } = await api<ActionEntry>(`/api/v1/actions/${created.body.activeAction.id}`);
+      if (body.status !== "queued" && body.status !== "running") {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    throw new Error("The database did not deploy");
+  });
+
+  it.each([3, 2, 0])("refuses %i replicas instead of saving a number it would ignore", async (replicas) => {
+    const before = await context.docker.inspectService("shop_db");
+
+    const refused = await api(`${database}/advanced/deploy`, "PUT", { replicas });
+
+    expect(refused.status).toBe(400);
+    expect(apiErrorOf(refused)).toMatchObject({
+      code: "unsupported_topology",
+      fields: { replicas: "A database runs exactly one replica" },
+    });
+    expect((await api<AdvancedDocument>(`${database}/advanced`)).body.deploy.replicas).toBe(1);
+    expect(await context.docker.inspectService("shop_db")).toEqual(before);
+  });
+
+  it("accepts the one replica it runs", async () => {
+    expect((await api(`${database}/advanced/deploy`, "PUT", { replicas: 1 })).status).toBe(200);
   });
 });
 

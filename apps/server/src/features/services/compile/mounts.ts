@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { MountRisk, MountSpec } from "@opsifier/contract";
 import type { SwarmServiceSpec } from "../../../core/docker";
-import { qualifiedName } from "./names";
+import { idLabel, qualifiedName } from "./names";
 
 type ContainerMount = NonNullable<SwarmServiceSpec["TaskTemplate"]["ContainerSpec"]["Mounts"]>[number];
 
@@ -34,6 +34,8 @@ export interface MountsInput {
   project: string;
   service: string;
   dataDir: string;
+  /** The service's stable identifier, which outlives the name on the volume. */
+  id?: string | null;
 }
 
 const MANAGER_ONLY = "node.role==manager";
@@ -66,7 +68,11 @@ export function bindMountRisk(
   return exposes(hostPath, dataDir) ? "data-directory" : null;
 }
 
-export function compileMounts({ mounts, project, service, dataDir }: MountsInput): CompiledMounts {
+/** The Docker volume behind one named mount. */
+export const volumeName = (project: string, service: string, mount: string): string =>
+  `${qualifiedName(project, service)}_${mount}`;
+
+export function compileMounts({ mounts, project, service, dataDir, id }: MountsInput): CompiledMounts {
   const files: MountFile[] = [];
   const volumes: MountVolume[] = [];
   const serviceDirectory = join(dataDir, "projects", project, service);
@@ -81,11 +87,11 @@ export function compileMounts({ mounts, project, service, dataDir }: MountsInput
       return { Type: "bind", Source: mount.hostPath, Target: mount.mountPath };
     }
     if (mount.type === "volume") {
-      const name = `${qualifiedName(project, service)}_${mount.name}`;
+      const name = volumeName(project, service, mount.name);
       volumes.push({
         name,
         directory: join(serviceDirectory, "volumes", mount.name),
-        labels: { "opsifier.project": project, "opsifier.service": service },
+        labels: { "opsifier.project": project, "opsifier.service": service, ...idLabel(id) },
       });
       return { Type: "volume", Source: name, Target: mount.mountPath };
     }

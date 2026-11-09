@@ -18,7 +18,18 @@
       "user": "Utilisateur",
       "server": "Serveur"
     },
-    "github": "GitHub"
+    "github": "GitHub",
+    "storageProviders": "Stockages",
+    "apiKeys": "Clés API",
+    "api": "Référence de l'API",
+    "general": "Général",
+    "address": "Adresse",
+    "users": "Utilisateurs",
+    "notifications": "Notifications",
+    "certificates": "Certificats",
+    "monitoring": "Supervision",
+    "purpose": "Rôle",
+    "knownHosts": "Hôtes connus"
   },
   "server": {
     "copyIp": "Copier l'IP du serveur",
@@ -50,7 +61,11 @@
     "groups": {
       "navigation": "Aller à",
       "settings": "Réglages",
-      "preferences": "Préférences"
+      "preferences": "Préférences",
+      "projects": "Projets",
+      "services": "Services",
+      "user": "Utilisateur",
+      "server": "Serveur"
     }
   },
   "tape": {
@@ -76,7 +91,8 @@
       "running": "En cours",
       "succeeded": "Réussie",
       "failed": "Échouée",
-      "cancelled": "Annulée"
+      "cancelled": "Annulée",
+      "uncertain": "Incertaine"
     },
     "noLog": "Cette tâche ne produit aucune sortie."
   },
@@ -88,5 +104,16 @@
     "title": "Il n'y a rien à cette adresse",
     "description": "Le lien est peut-être ancien, ou la page a changé d'emplacement.",
     "back": "Retour à l'aperçu"
+  },
+  "storage": {
+    "title": "Modifications bloquées",
+    "full": "Le disque du panneau est plein : il ne peut plus enregistrer son état. Libérez de la place pour continuer.",
+    "read_only": "Le stockage du panneau est passé en lecture seule : il ne peut plus enregistrer son état.",
+    "locked": "Un autre programme retient la base de données du panneau : il ne peut plus enregistrer son état.",
+    "failed": "Le panneau ne parvient plus à écrire sur son stockage : il ne peut plus enregistrer son état."
+  },
+  "simulated": {
+    "label": "Simulation",
+    "detail": "Rien ici n'est réel : aucun conteneur ne tourne et rien n'est déployé."
   }
 }

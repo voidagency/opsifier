@@ -5,11 +5,22 @@ import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { copyText } from "../../../../lib/clipboard";
 import { errorMessage } from "../../../../lib/forms";
-import { Button, CopyButton, FormBanner, MonoValue, Skeleton, Tooltip, toast } from "../../../../ui";
+import {
+  Button,
+  CopyButton,
+  ErrorState,
+  FormBanner,
+  Lamp,
+  MonoValue,
+  Skeleton,
+  Tooltip,
+  toast,
+} from "../../../../ui";
 import { credentialsQuery, databasesApi } from "../../../databases/api";
 import { useDatabaseParams } from "../../../databases/DatabaseLayout";
 import { useActionFollower } from "../../ActionFollower";
-import { serviceKey } from "../../api";
+import { serviceKey, serviceQuery } from "../../api";
+import { serviceState, serviceStateLabel } from "../../serviceState";
 import { ChangePasswordDialog } from "./ChangePasswordDialog";
 
 /** A masked secret: revealing it, and copying it, both go through the audited reveal endpoint. */
@@ -123,11 +134,14 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Group({ title, children }: { title: string; children: ReactNode }) {
+function Group({ title, lamp, children }: { title: string; lamp?: ReactNode; children: ReactNode }) {
   return (
     <section className="grid gap-3">
-      <h2 className="eyebrow">{title}</h2>
-      <dl className="max-w-[820px] border-t">{children}</dl>
+      <h2 className="eyebrow flex items-center gap-2">
+        {lamp}
+        {title}
+      </h2>
+      <dl className="max-w-[1030px] border-t">{children}</dl>
     </section>
   );
 }
@@ -140,8 +154,13 @@ const copyableValue = (value: string, label: string) => (
 );
 
 function CredentialsContent({ credentials }: { credentials: DatabaseCredentials }) {
-  const { t } = useTranslation(["service-credentials", "common"]);
+  const { t } = useTranslation(["service-credentials", "common", "services", "visual", "activity"]);
   const { project, service } = useDatabaseParams();
+  const { data: detail } = useQuery(serviceQuery(project, service));
+  const lamp =
+    detail === undefined ? undefined : (
+      <Lamp state={serviceState(detail)} label={serviceStateLabel(detail, t)} />
+    );
   const [editing, setEditing] = useState(false);
   // Bumped after a password change, so nothing keeps showing the old secret.
   const [generation, setGeneration] = useState(0);
@@ -152,7 +171,7 @@ function CredentialsContent({ credentials }: { credentials: DatabaseCredentials 
     <div className="grid gap-8 px-4 py-6 md:px-6 lg:px-8">
       {credentials.rotationUnresolved && <RotationBanner />}
 
-      <Group title={t("internalGroup")}>
+      <Group title={t("internalGroup")} lamp={lamp}>
         <Row label={t("user")}>{copyableValue(user, t("copy", { field: t("user") }))}</Row>
         <SecretRow
           key={`password-${generation}`}
@@ -190,7 +209,7 @@ function CredentialsContent({ credentials }: { credentials: DatabaseCredentials 
       </Group>
 
       {external !== null && (
-        <Group title={t("externalGroup")}>
+        <Group title={t("externalGroup")} lamp={lamp}>
           <Row label={t("externalHost")}>
             {copyableValue(external.host, t("copy", { field: t("externalHost") }))}
           </Row>
@@ -269,7 +288,7 @@ export function CredentialsTab() {
 
   if (isPending) {
     return (
-      <div className="grid max-w-[820px] gap-3 px-4 py-6 md:px-6 lg:px-8">
+      <div className="grid max-w-[1030px] gap-3 px-4 py-6 md:px-6 lg:px-8">
         <Skeleton className="h-6" />
         <Skeleton className="h-6" />
         <Skeleton className="h-6" />
@@ -278,9 +297,8 @@ export function CredentialsTab() {
   }
   if (data === undefined) {
     return (
-      <div className="grid max-w-[520px] justify-items-start gap-3 px-4 py-6 md:px-6 lg:px-8">
-        <FormBanner>{errorMessage(error, t)}</FormBanner>
-        <Button onClick={() => refetch()}>{t("common:actions.retry")}</Button>
+      <div className="px-4 py-6 md:px-6 lg:px-8">
+        <ErrorState message={errorMessage(error, t)} onRetry={() => refetch()} />
       </div>
     );
   }

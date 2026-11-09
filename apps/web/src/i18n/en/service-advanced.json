@@ -35,7 +35,8 @@
       "title": "Remove all ports?",
       "description": "Every published port will close at the next deploy.",
       "confirm": "Remove all"
-    }
+    },
+    "protocolHint": "TCP for most services, UDP for DNS and game servers."
   },
   "deploy": {
     "title": "How it runs",
@@ -50,13 +51,21 @@
     "tiniInit": "Run with an init process",
     "tiniInitHint": "Adds a small init that reaps zombie processes and forwards signals.",
     "command": "Command",
-    "commandHint": "Replaces the image's command. Run by /bin/sh.",
+    "commandHint": "Replaces the image's command. It runs directly, unless it uses shell syntax such as $VAR, | or &&: then it needs /bin/sh in the image.",
+    "stopSignal": "Stop signal",
+    "stopSignalHint": "What a task is asked to stop with.",
+    "stopSignalImage": "Whatever the image declares",
+    "stopGraceSeconds": "Time to stop (seconds)",
+    "stopGraceSecondsHint": "How long a task gets to finish before it is killed.",
     "capAdd": "Add capabilities",
     "capDrop": "Drop capabilities",
     "sysctls": "Sysctls",
     "sysctlsHint": "Comma-separated key=value pairs.",
     "groups": "Extra groups",
-    "groupsHint": "Comma-separated numeric group IDs."
+    "groupsHint": "Comma-separated numeric group IDs.",
+    "capAddHint": "Linux capabilities to add. Only an administrator can.",
+    "adminOnly": "Only an administrator can set these.",
+    "capDropHint": "Linux capabilities to take away."
   },
   "errors": {
     "port": "Use a port from 1 to 65535.",
@@ -65,6 +74,7 @@
     "command": "Enter a command, or leave this empty.",
     "capabilities": "Use known capability names such as NET_ADMIN, each listed once and never in both fields.",
     "sysctls": "Use namespaced key=value pairs such as net.core.somaxconn=1024.",
-    "groups": "Use numeric group IDs."
+    "groups": "Use numeric group IDs.",
+    "stopGraceSeconds": "Use a whole number of seconds, from 0 to 3600."
   }
 }

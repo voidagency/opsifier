@@ -42,16 +42,15 @@ export function ConsoleButton({ project, service, running }: ConsoleButtonProps)
 
   return (
     <>
-      <Tooltip content={hint}>
-        <Button
-          size="icon"
-          aria-label={t("console.open")}
-          disabled={!allowed || !running}
-          onClick={() => setOpen(true)}
-        >
-          <SquareTerminal aria-hidden="true" className="size-4" />
-        </Button>
-      </Tooltip>
+      <Button
+        size="icon"
+        aria-label={t("console.open")}
+        tooltip={hint}
+        disabledReason={!allowed ? t("console.adminOnly") : running ? undefined : t("console.notRunning")}
+        onClick={() => setOpen(true)}
+      >
+        <SquareTerminal aria-hidden="true" className="size-4" />
+      </Button>
       {open && <ConsoleDialog project={project} service={service} open onOpenChange={setOpen} />}
     </>
   );

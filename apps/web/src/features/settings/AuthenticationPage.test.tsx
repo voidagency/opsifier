@@ -5,11 +5,18 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../../i18n";
 import { i18n } from "../../i18n";
+import { TooltipProvider } from "../../ui";
 import { sessionQuery } from "../auth/session";
 import { AuthenticationPage } from "./AuthenticationPage";
 
 const fetchMock = vi.fn();
-const user = { id: "1", email: "admin@example.com", role: "admin" as const, twoFactorEnabled: false };
+const user = {
+  id: "1",
+  email: "admin@example.com",
+  role: "admin" as const,
+  twoFactorEnabled: false,
+  hostAdmin: false,
+};
 const codes = Array.from({ length: 10 }, (_, index) => `aaaa-bbbb-cccc-000${index}`);
 const secret = "JBSWY3DPEHPK3PXP";
 
@@ -26,7 +33,9 @@ function renderPage(session: SessionState = { status: "signed-in", user }) {
   client.setQueryData(sessionQuery.queryKey, session);
   render(
     <QueryClientProvider client={client}>
-      <AuthenticationPage />
+      <TooltipProvider>
+        <AuthenticationPage />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }
@@ -116,7 +125,7 @@ describe("setting up two-factor sign-in", () => {
     fireEvent.click(dialog().getByRole("button", { name: "Close" }));
 
     expect(screen.getByRole("dialog")).toBeTruthy();
-    expect((dialog().getByRole("button", { name: "Done" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(dialog().getByRole("button", { name: "Done" }).getAttribute("aria-disabled")).toBe("true");
   });
 
   it("closes once the codes are confirmed as saved, and does not show them again", async () => {

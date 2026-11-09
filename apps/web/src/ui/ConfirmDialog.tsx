@@ -2,7 +2,7 @@ import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { errorMessage } from "../lib/forms";
 import { Button } from "./Button";
-import { Dialog } from "./Dialog";
+import { Dialog, type DialogProps } from "./Dialog";
 import { Field } from "./Field";
 import { FormBanner } from "./FormBanner";
 import { Input } from "./Input";
@@ -20,6 +20,8 @@ export interface ConfirmDialogProps {
   tone?: "danger" | "primary";
   /** When set, the confirm button stays off until exactly this text has been typed. */
   confirmText?: string;
+  /** For a dialog that has to show more than a sentence. Small otherwise. */
+  size?: DialogProps["size"];
   /**
    * May return a promise: the dialog waits for it, and stays open with the error if it rejects.
    * Returning `false` keeps it open with no message, for problems the caller already shows itself.
@@ -37,6 +39,7 @@ export function ConfirmDialog({
   cancelLabel,
   tone = "danger",
   confirmText,
+  size = "sm",
   onConfirm,
 }: ConfirmDialogProps) {
   const { t } = useTranslation();
@@ -81,7 +84,7 @@ export function ConfirmDialog({
       }}
       title={title}
       description={description}
-      size="sm"
+      size={size}
       onSubmit={handleSubmit}
       footer={
         <>
@@ -103,6 +106,7 @@ export function ConfirmDialog({
                 {t("confirm.typeToConfirm")} <MonoValue value={confirmText} className="font-medium" />
               </>
             }
+            hint={t("confirm.typeHint")}
           >
             <Input
               mono

@@ -94,6 +94,15 @@ describe("mapping domain statuses to states", () => {
     expect(stateFromService({ status: "running", activeAction: null })).toBe("running");
   });
 
+  it("says so when nobody can vouch for what a service is running", () => {
+    expect(stateFromService({ status: "running", runtimeUncertain: "interrupted" })).toBe("unknown");
+    expect(stateFromService({ status: "running", runtimeUncertain: null })).toBe("running");
+    // A deployment settling it is what is happening.
+    expect(
+      stateFromService({ status: "running", runtimeUncertain: "interrupted", activeAction: { id: "a" } }),
+    ).toBe("progress");
+  });
+
   it("maps actions and deployment outcomes", () => {
     expect(stateFromAction("queued")).toBe("progress");
     expect(stateFromAction("running")).toBe("progress");

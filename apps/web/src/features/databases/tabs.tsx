@@ -1,4 +1,6 @@
+import type { DatabaseEngine } from "@opsifier/contract";
 import type { ComponentType } from "react";
+import { BackupsTab } from "../services/tabs/backups/BackupsTab";
 import { CredentialsTab } from "../services/tabs/credentials/CredentialsTab";
 import { DatabaseAdvancedTab } from "../services/tabs/database-advanced/DatabaseAdvancedTab";
 import { DatabaseOverviewTab } from "../services/tabs/database-overview/DatabaseOverviewTab";
@@ -16,6 +18,11 @@ export const databaseTabs = [
   { key: "overview", path: "/", to: `${BASE}/`, component: DatabaseOverviewTab },
   { key: "credentials", path: "credentials", to: `${BASE}/credentials`, component: CredentialsTab },
   { key: "expose", path: "expose", to: `${BASE}/expose`, component: ExposeTab },
+  { key: "backups", path: "backups", to: `${BASE}/backups`, component: BackupsTab },
   { key: "resources", path: "resources", to: `${BASE}/resources`, component: DatabaseResourcesTab },
   { key: "advanced", path: "advanced", to: `${BASE}/advanced`, component: DatabaseAdvancedTab },
 ] as const satisfies ReadonlyArray<{ key: string; path: string; to: string; component: ComponentType }>;
+
+/** The tabs an engine shows. Redis has no backups, because it has no database to export. */
+export const databaseTabsFor = (engine: DatabaseEngine) =>
+  databaseTabs.filter((tab) => tab.key !== "backups" || engine !== "redis");

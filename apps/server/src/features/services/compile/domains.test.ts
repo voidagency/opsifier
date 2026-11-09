@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  BACKEND_TLS_TRANSPORT,
   BAD_GATEWAY_MIDDLEWARE,
   InvalidProxyInputError,
   PANEL_SERVICE,
@@ -46,15 +45,36 @@ describe("WRK-19 domains", () => {
     ]);
   });
 
-  it("writes the path into the rule and leaves it on the request", () => {
+  it("writes the path into the rule on a segment boundary and leaves it on the request", () => {
     const compiled = compile([plain({ path: "/api" })]);
 
+    // Neither half matches /apix: one is the exact path, the other needs the slash after it.
     expect(compiled.routers["http-shop_web-0"]?.rule).toBe(
-      "Host(`whoami.example.test`) && PathPrefix(`/api`)",
+      "Host(`whoami.example.test`) && (Path(`/api`) || PathPrefix(`/api/`))",
     );
     // No path-stripping middleware: the backend sees /api/hello.
     expect(compiled.middlewares).toEqual({});
     expect(compiled.routers["http-shop_web-0"]?.middlewares).toEqual([BAD_GATEWAY_MIDDLEWARE]);
+  });
+
+  it("keeps a single prefix for the root, which has no boundary to respect", () => {
+    expect(compile([plain()]).routers["http-shop_web-0"]?.rule).toBe(
+      "Host(`whoami.example.test`) && PathPrefix(`/`)",
+    );
+  });
+
+  it("gives a stored trailing slash the same boundary as the path without one", () => {
+    expect(compile([plain({ path: "/api/" })]).routers["http-shop_web-0"]?.rule).toBe(
+      "Host(`whoami.example.test`) && (Path(`/api`) || PathPrefix(`/api/`))",
+    );
+  });
+
+  it("still ranks a nested path above the one it sits under", () => {
+    const [outer, inner] = [
+      compile([plain({ path: "/api" })]).routers["http-shop_web-0"]?.rule ?? "",
+      compile([plain({ path: "/api/v2" })]).routers["http-shop_web-0"]?.rule ?? "",
+    ];
+    expect(inner.length).toBeGreaterThan(outer.length);
   });
 
   it("removes a domain's routers when the domain is gone", () => {
@@ -69,7 +89,35 @@ describe("WRK-19 domains", () => {
       { url: "https://shop_web:8080/" },
     ]);
     expect(internalUrl("shop_web", 8080, "https", "/")).toBe("https://shop_web:8080/");
-    expect(compiled.services["shop_web-0"]?.loadBalancer.serversTransport).toBe(BACKEND_TLS_TRANSPORT);
+  });
+
+  it("checks an HTTPS upstream's certificate against the public name, and never skips the check", () => {
+    const compiled = compile([plain({ port: 8443, destinationProtocol: "https" })]);
+
+    expect(compiled.services["shop_web-0"]?.loadBalancer.serversTransport).toBe("opsifier-tls-shop_web-0");
+    expect(compiled.transports).toEqual({
+      "opsifier-tls-shop_web-0": { serverName: "whoami.example.test" },
+    });
+    expect(JSON.stringify(compiled)).not.toContain("insecureSkipVerify");
+  });
+
+  it("uses the name and the certificates a domain says to trust", () => {
+    const upstreamCa = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----";
+    const compiled = compile([
+      plain({ destinationProtocol: "https", upstreamServerName: "backend.internal", upstreamCa }),
+    ]);
+
+    expect(compiled.transports["opsifier-tls-shop_web-0"]).toEqual({
+      serverName: "backend.internal",
+      rootCAs: [upstreamCa],
+    });
+  });
+
+  it("has no public name to fall back on for a wildcard, and leaves the default check", () => {
+    const compiled = compile([plain({ destinationProtocol: "https", wildcard: true })]);
+
+    expect(compiled.transports).toEqual({});
+    expect(compiled.services["shop_web-0"]?.loadBalancer.serversTransport).toBeUndefined();
   });
 
   it("leaves plain HTTP upstreams on the default transport", () => {
@@ -90,6 +138,31 @@ describe("WRK-19 domains", () => {
 
   it("adds nothing for the default destination path", () => {
     expect(compile([plain({ destinationPath: "/" })]).middlewares).toEqual({});
+  });
+
+  it("strips the path when asked, closest to the backend", () => {
+    const compiled = compile([plain({ path: "/api", stripPath: true })]);
+
+    expect(compiled.middlewares).toEqual({
+      "opsifier-strip-shop_web-0": { stripPrefix: { prefixes: ["/api"] } },
+    });
+    expect(compiled.routers["http-shop_web-0"]?.middlewares).toEqual([
+      BAD_GATEWAY_MIDDLEWARE,
+      "opsifier-strip-shop_web-0",
+    ]);
+  });
+
+  it("takes the path off before adding the destination path, or the backend would get both", () => {
+    const compiled = compile([plain({ path: "/api", stripPath: true, destinationPath: "/internal" })]);
+
+    expect(compiled.routers["http-shop_web-0"]?.middlewares?.slice(-2)).toEqual([
+      "opsifier-strip-shop_web-0",
+      "opsifier-prefix-shop_web-0",
+    ]);
+  });
+
+  it("has nothing to strip from the root", () => {
+    expect(compile([plain({ stripPath: true })]).middlewares).toEqual({});
   });
 });
 
@@ -128,6 +201,19 @@ describe("WRK-20 HTTPS, SSL options and middlewares", () => {
     expect(first).toBeLessThan(30);
     expect(first).toBeGreaterThan(1);
     expect(second).toBeGreaterThan(first);
+  });
+
+  it("ranks a deeper wildcard path first however long the paths get", () => {
+    const outer = `/${"a".repeat(40)}`;
+    const compiled = compile([
+      plain({ wildcard: true, certificateResolver: "cloudflare", path: outer }),
+      plain({ wildcard: true, certificateResolver: "cloudflare", path: `${outer}/b` }),
+    ]);
+    const first = compiled.routers["http-shop_web-0"]?.priority ?? 0;
+    const second = compiled.routers["http-shop_web-1"]?.priority ?? 0;
+
+    expect(second).toBeGreaterThan(first);
+    expect(second).toBeLessThan(30);
   });
 
   it("leaves an exact host on Traefik's default priority", () => {
@@ -185,6 +271,10 @@ describe("maintenance on the routers", () => {
       expect(router.middlewares?.at(-1)).toBe("opsifier-maintenance-shop_web");
       expect(router.middlewares).not.toContain("opsifier-prefix-shop_web-0");
     }
+    expect(
+      compile([plain({ path: "/api", stripPath: true })], { middlewares }).routers["http-shop_web-0"]
+        ?.middlewares,
+    ).not.toContain("opsifier-strip-shop_web-0");
     expect(compiled.routers["http-shop_web-0"]?.middlewares?.[0]).toBe(REDIRECT_HTTPS_MIDDLEWARE);
   });
 

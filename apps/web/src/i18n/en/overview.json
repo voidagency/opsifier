@@ -1,14 +1,11 @@
 {
   "title": "Overview",
-  "description": "Everything running on this server, at a glance.",
   "empty": {
     "title": "Nothing deployed here yet",
     "description": "Projects you deploy will appear here, each with its services, status and recent deployments."
   },
   "newProject": "New project",
   "createProject": "Create a project",
-  "serviceCount_one": "{{count}} service",
-  "serviceCount_other": "{{count}} services",
   "noServices": "No services here yet.",
   "links": {
     "view": "Open this project",
@@ -24,6 +21,8 @@
   "view": {
     "label": "Detail shown for each project",
     "expanded": "With services",
-    "collapsed": "Names only"
-  }
+    "collapsed": "Summary"
+  },
+  "healthLabel": "Services by state",
+  "noMatch": "Nothing is in this state right now."
 }

@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import "../../../../testing/browser-stubs";
-import { buildpacksBuilders, type ServiceDetail, type SourceSettings } from "@opsifier/contract";
+import {
+  buildpacksBuilders,
+  type DeploymentTrigger,
+  type ServiceDetail,
+  type SourceSettings,
+} from "@opsifier/contract";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -36,13 +41,17 @@ const detail = (overrides: Partial<ServiceDetail> = {}): ServiceDetail => ({
   status: "running",
   replicas: { running: 1, desired: 1 },
   activeAction: null,
+  runtimeUncertain: null,
   wake: ["succeeded"],
   lastDeployedAt: "2026-01-01T00:00:00.000Z",
   createdAt: "2026-01-01T00:00:00.000Z",
   source: { type: "image", image: "traefik/whoami:v1.10", username: null, hasPassword: false },
   notes: "",
+  notesHidden: false,
   stopped: false,
   primaryUrl: "https://shop-web.example.test/",
+  pendingChanges: false,
+  answering: null,
   ...overrides,
 });
 
@@ -50,6 +59,7 @@ const settings = (overrides: Partial<SourceSettings> = {}): SourceSettings => ({
   source: null,
   build: null,
   sshPublicKey: null,
+  sshKey: null,
   githubConfigured: false,
   ...overrides,
 });
@@ -200,7 +210,7 @@ describe("the build settings", () => {
     expect((await screen.findByLabelText(/Dockerfile path/)).getAttribute("placeholder")).toBe("Dockerfile");
 
     fireEvent.click(screen.getByRole("radio", { name: /^Buildpacks/ }));
-    expect(((await screen.findByLabelText("Builder")) as HTMLInputElement).value).toBe("heroku/builder:24");
+    expect(((await screen.findByLabelText("Builder")) as HTMLInputElement).value).toBe(buildpacksBuilders[0]);
     expect(screen.queryByLabelText(/Dockerfile path/)).toBeNull();
 
     fireEvent.click(screen.getByRole("radio", { name: /^Nixpacks/ }));
@@ -225,7 +235,9 @@ describe("the build settings", () => {
     fireEvent.focus(input);
 
     const options = await screen.findAllByRole("option");
-    expect(options.map((option) => option.textContent)).toEqual([...buildpacksBuilders]);
+    expect(options).toHaveLength(buildpacksBuilders.length);
+    expect(options[0]?.textContent).toContain("heroku/builder:24");
+    expect(options[0]?.textContent).toContain("sha256:7eaa43fc");
   });
 
   it("save on their own, and validate first", async () => {
@@ -563,37 +575,272 @@ describe("an upload", () => {
 
 describe("the deployment trigger", () => {
   const TRIGGER = "/projects/shop/services/web/deployments/trigger";
+  const WEBHOOK = "/projects/shop/services/web/deployments/webhook";
+  const status = (overrides: Partial<DeploymentTrigger> = {}): DeploymentTrigger => ({
+    path: "/api/v1/deploy",
+    hasToken: false,
+    legacyUrl: false,
+    createdAt: null,
+    webhook: null,
+    webhookAvailable: false,
+    ...overrides,
+  });
+  const WEBHOOK_STATUS = {
+    path: "/api/v1/deploy/hook/abc",
+    managed: false,
+    repository: "git.example.com/acme/shop",
+    ref: "main",
+    paused: false,
+    legacy: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
 
-  it("shows the URL and replaces it on request", async () => {
+  const open = (routesFor: FakeRoute) => {
     const server = installFakeServer(
       routes(detail(), {
         "GET /projects/shop/services/web/deployments": { items: [], nextCursor: null },
-        [`GET ${TRIGGER}`]: { path: "/api/v1/deploy/aaa" },
-        [`POST ${TRIGGER}/rotate`]: { path: "/api/v1/deploy/bbb" },
+        ...routesFor,
+      }),
+    );
+    renderApp("/projects/shop/app/web/deployments");
+    return server;
+  };
+
+  it("shows that no token exists and says so before one is issued", async () => {
+    open({ [`GET ${TRIGGER}`]: status() });
+
+    expect(await screen.findByText("No token")).toBeTruthy();
+    expect(screen.queryByText(/Authorization: Bearer/)).toBeNull();
+  });
+
+  it("shows a new token once, then only that one exists", async () => {
+    const server = open({
+      [`GET ${TRIGGER}`]: status(),
+      [`POST ${TRIGGER}/rotate`]: { ...status({ hasToken: true }), token: "a".repeat(48) },
+    });
+    await screen.findByText("No token");
+    server.set({ [`GET ${TRIGGER}`]: status({ hasToken: true }) });
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate a token" }));
+
+    expect(await screen.findByDisplayValue("a".repeat(48))).toBeTruthy();
+    expect(
+      screen.getByText("This is the only time it is shown. Send it as: Authorization: Bearer <token>."),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByDisplayValue("a".repeat(48))).toBeNull());
+    expect(await screen.findByText("Token active")).toBeTruthy();
+  });
+
+  it("asks before replacing or revoking a token", async () => {
+    const server = open({
+      [`GET ${TRIGGER}`]: status({ hasToken: true, createdAt: "2026-01-01T00:00:00.000Z" }),
+      [`POST ${TRIGGER}/rotate`]: { ...status({ hasToken: true }), token: "b".repeat(48) },
+      [`DELETE ${TRIGGER}`]: status(),
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Replace the token" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Replace" }));
+    expect(await screen.findByDisplayValue("b".repeat(48))).toBeTruthy();
+    expect(server.calls.some((call) => call.method === "POST" && call.path === `${TRIGGER}/rotate`)).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+    server.set({ [`GET ${TRIGGER}`]: status() });
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke the token" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke" }));
+    await waitFor(() =>
+      expect(server.calls.some((call) => call.method === "DELETE" && call.path === TRIGGER)).toBe(true),
+    );
+    expect(await screen.findByText("No token")).toBeTruthy();
+  });
+
+  it("warns about a token from before tokens moved to a header", async () => {
+    open({ [`GET ${TRIGGER}`]: status({ hasToken: true, legacyUrl: true }) });
+
+    expect(await screen.findByText(/its old address still works too/)).toBeTruthy();
+  });
+
+  it("reports a failure to issue a token", async () => {
+    open({
+      [`GET ${TRIGGER}`]: status(),
+      [`POST ${TRIGGER}/rotate`]: withStatus(502, {
+        error: { code: "github_unreachable", message: "GitHub could not be reached." },
+      }),
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Generate a token" }));
+
+    expect(await screen.findByText("GitHub could not be reached.")).toBeTruthy();
+  });
+
+  it("offers a webhook only for something with a repository", async () => {
+    open({ [`GET ${TRIGGER}`]: status() });
+
+    await screen.findByText("No token");
+    expect(screen.queryByText("Push webhook")).toBeNull();
+  });
+
+  it("issues a webhook, showing its secret once", async () => {
+    const server = open({
+      [`GET ${TRIGGER}`]: status({ webhookAvailable: true }),
+      [`POST ${WEBHOOK}/rotate`]: { webhook: WEBHOOK_STATUS, secret: "s".repeat(64) },
+    });
+    await screen.findByText("No webhook");
+    server.set({ [`GET ${TRIGGER}`]: status({ webhookAvailable: true, webhook: WEBHOOK_STATUS }) });
+
+    fireEvent.click(screen.getByRole("button", { name: "Create a webhook" }));
+
+    expect(await screen.findByDisplayValue("s".repeat(64))).toBeTruthy();
+    expect(screen.getByDisplayValue("http://localhost:3000/api/v1/deploy/hook/abc")).toBeTruthy();
+  });
+
+  it("shows no secret for a webhook the panel installed itself", async () => {
+    open({
+      [`GET ${TRIGGER}`]: status({ webhookAvailable: true, webhook: { ...WEBHOOK_STATUS, managed: true } }),
+      [`POST ${WEBHOOK}/rotate`]: { webhook: { ...WEBHOOK_STATUS, managed: true }, secret: null },
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Rotate the secret" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Rotate" }));
+
+    expect(await screen.findByText("Webhook secret replaced")).toBeTruthy();
+    expect(screen.queryByText("Copy this secret now")).toBeNull();
+  });
+
+  it("says why a webhook is paused and how to resume it", async () => {
+    open({
+      [`GET ${TRIGGER}`]: status({ webhookAvailable: true, webhook: { ...WEBHOOK_STATUS, paused: true } }),
+    });
+
+    expect(await screen.findByText("Paused")).toBeTruthy();
+    expect(screen.getByText(/Rotate its secret to resume/)).toBeTruthy();
+  });
+
+  it("records who and what started each deployment", async () => {
+    const entry = {
+      id: "a1",
+      type: "service.deploy",
+      title: "Deploy shop/web",
+      status: "succeeded",
+      projectName: "shop",
+      serviceName: "web",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      finishedAt: "2026-01-01T00:00:12.000Z",
+      error: null,
+      hasLog: true,
+      actorEmail: "admin@example.com",
+      deployment: null,
+    };
+    installFakeServer(
+      routes(detail(), {
+        "GET /projects/shop/services/web/deployments": {
+          items: [
+            {
+              ...entry,
+              id: "a1",
+              origin: "webhook",
+              originDetail: "Push to main at 0123456789ab by octocat",
+            },
+            { ...entry, id: "a2", origin: "api_key", originDetail: "deploy-bot" },
+            { ...entry, id: "a3", origin: "trigger", originDetail: null, actorEmail: null },
+            { ...entry, id: "a4", origin: "system", originDetail: null, actorEmail: null },
+          ],
+          nextCursor: null,
+        },
+        [`GET ${TRIGGER}`]: status(),
       }),
     );
     renderApp("/projects/shop/app/web/deployments");
 
-    expect(await screen.findByText("http://localhost:3000/api/v1/deploy/aaa")).toBeTruthy();
-    server.set({ [`GET ${TRIGGER}`]: { path: "/api/v1/deploy/bbb" } });
+    expect(await screen.findByText("Webhook")).toBeTruthy();
+    expect(screen.getByText("API key")).toBeTruthy();
+    expect(screen.getByText("CI trigger")).toBeTruthy();
+    expect(screen.getByText("Automated")).toBeTruthy();
+  });
+});
 
-    fireEvent.click(screen.getByRole("button", { name: "Replace the URL" }));
+describe("the deploy key's status", () => {
+  const PUBLIC_KEY = "ssh-ed25519 AAAAexample opsifier-shop-web";
+  const STATUS = {
+    fingerprint: "SHA256:abc",
+    boundTo: "git.example.com/acme/shop",
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
 
-    expect(await screen.findByText("http://localhost:3000/api/v1/deploy/bbb")).toBeTruthy();
-    expect(server.calls.some((call) => call.method === "POST" && call.path === `${TRIGGER}/rotate`)).toBe(
-      true,
+  const openKey = () =>
+    openSource(
+      { source: GIT },
+      {
+        [`GET ${SOURCE_PATH}`]: settings({ source: GIT, sshPublicKey: PUBLIC_KEY, sshKey: STATUS }),
+        [`POST ${SOURCE_PATH}/ssh-key/test`]: { ok: true, detail: "" },
+        [`DELETE ${SOURCE_PATH}/ssh-key`]: settings({ source: GIT }),
+      },
     );
+
+  it("shows the fingerprint and the one repository it is good for", async () => {
+    await openKey();
+    selectTab("Git");
+
+    expect(await screen.findByText("SHA256:abc")).toBeTruthy();
+    expect(screen.getByText("Only for git.example.com/acme/shop")).toBeTruthy();
+  });
+
+  it("tests the connection, and reports it", async () => {
+    await openKey();
+    selectTab("Git");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Test the connection" }));
+
+    expect(await screen.findByText("Connected: this key can read the repository.")).toBeTruthy();
+  });
+
+  it("says what went wrong when the connection is refused", async () => {
+    const { server } = await openKey();
+    selectTab("Git");
+    server.set({
+      [`POST ${SOURCE_PATH}/ssh-key/test`]: { ok: false, detail: "Permission denied (publickey)." },
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Test the connection" }));
+
+    expect(await screen.findByText("It could not connect: Permission denied (publickey).")).toBeTruthy();
+  });
+
+  it("asks before deleting a key and tells what is left to do", async () => {
+    const { server } = await openKey();
+    selectTab("Git");
+    server.set({ [`GET ${SOURCE_PATH}`]: settings({ source: GIT }) });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete the SSH key" }));
+    expect(await screen.findByText(/remove it there to revoke it fully/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() =>
+      expect(
+        server.calls.some((call) => call.method === "DELETE" && call.path === `${SOURCE_PATH}/ssh-key`),
+      ).toBe(true),
+    );
+    expect(await screen.findByRole("button", { name: "Generate SSH key" })).toBeTruthy();
   });
 });
 
 describe("the environment file", () => {
   const ENV_FILE = `${SOURCE_PATH}/env-file`;
+  const FILE_SWITCH = "Also write the build variables to a file";
 
   const openEnvironment = (source: ServiceDetail["source"], extra: FakeRoute = {}) => {
     const server = installFakeServer(
       routes(detail({ source }), {
-        "GET /projects/shop/services/web/environment": { env: "A=1\n" },
-        [`GET ${ENV_FILE}`]: { path: null },
+        "GET /projects/shop/services/web/environment": { names: ["A"], interpolation: false },
+        "GET /projects/shop/services/web/environment/build": {
+          variables: [],
+          secrets: [],
+          inheritsRuntime: false,
+        },
+        [`GET ${ENV_FILE}`]: { path: null, inImage: false },
         ...extra,
       }),
     );
@@ -601,19 +848,30 @@ describe("the environment file", () => {
     return server;
   };
 
-  it("is offered for a source that has a tree to write into", async () => {
-    const server = openEnvironment(GIT, { [`PUT ${ENV_FILE}`]: { path: ".env" } });
+  it("is offered for a source that has a tree to write into, and stays out of the image by default", async () => {
+    const server = openEnvironment(GIT, { [`PUT ${ENV_FILE}`]: { path: ".env", inImage: false } });
 
-    fireEvent.click(await screen.findByRole("switch"));
+    fireEvent.click(await screen.findByRole("switch", { name: FILE_SWITCH }));
     fireEvent.click(screen.getByRole("button", { name: "Save file setting" }));
 
-    await waitFor(() => expect(puts(server, ENV_FILE)[0]?.body).toEqual({ path: ".env" }));
+    await waitFor(() => expect(puts(server, ENV_FILE)[0]?.body).toEqual({ path: ".env", inImage: false }));
+  });
+
+  it("asks for a deliberate choice before the file can enter an image", async () => {
+    const server = openEnvironment(GIT, { [`PUT ${ENV_FILE}`]: { path: ".env", inImage: true } });
+
+    fireEvent.click(await screen.findByRole("switch", { name: FILE_SWITCH }));
+    fireEvent.click(await screen.findByRole("switch", { name: "Put this file in the build context" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save file setting" }));
+
+    await waitFor(() => expect(puts(server, ENV_FILE)[0]?.body).toEqual({ path: ".env", inImage: true }));
+    expect(await screen.findByText(/A COPY of the context/)).toBeTruthy();
   });
 
   it("is not offered for a Docker image", async () => {
     openEnvironment(detail().source);
 
-    await screen.findByRole("button", { name: "Save variables" });
-    expect(screen.queryByRole("switch")).toBeNull();
+    await screen.findByRole("button", { name: "Show and edit" });
+    expect(screen.queryByRole("switch", { name: FILE_SWITCH })).toBeNull();
   });
 });

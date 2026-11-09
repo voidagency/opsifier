@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { type CompanionTool, type DatabaseEngine, databaseEngineInfo } from "@opsifier/contract";
 import type { SwarmServiceSpec } from "../../../../core/docker";
 import { assertHostname } from "../../../../core/proxy";
-import { projectNetworkName, qualifiedName } from "../names";
+import { qualifiedName, routedNetworks } from "../names";
 import { type ConnectionTarget, connectionUrl } from "./connection";
 
 export interface CompanionCompileInput {
@@ -130,7 +130,7 @@ export function compileCompanion(input: CompanionCompileInput): CompiledCompanio
         Env: definition.env({ ...input, connection }),
       },
       RestartPolicy: { Condition: "any", Delay: 5 * NANOS_PER_SECOND, MaxAttempts: 0 },
-      Networks: [{ Target: projectNetworkName(project), Aliases: [name] }],
+      Networks: routedNetworks(project, [name]),
       LogDriver: { Name: "json-file", Options: { "max-file": "3", "max-size": "10m" } },
     },
     Mode: { Replicated: { Replicas: 1 } },

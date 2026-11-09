@@ -7,6 +7,11 @@ const PRODUCTION_DATA_DIR = "/var/lib/opsifier";
 const DEVELOPMENT_DATA_DIR = ".data";
 const DEFAULT_BUILD_TIMEOUT_SECONDS = 60 * 60;
 const DEFAULT_BUILDERS_DIR = "/opt/opsifier/builders";
+const DOCKER_RELEASES_URL = "https://api.github.com/repos/moby/moby/releases/latest";
+/** Replaced at release time: the project's own feed, a JSON file described in `core/config`. */
+const PANEL_RELEASES_URL = "https://github.com/voidagency/opsifier/releases/latest/download/release.json";
+const DEFAULT_UPDATE_VERIFY_SECONDS = 40;
+const NAMES_URL = "https://names.opsifier.dev";
 
 /** The dev server of `apps/web` proxies to us from this origin. Never allowed in production. */
 const DEVELOPMENT_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"];
@@ -41,6 +46,18 @@ const envSchema = z.object({
   OPSIFIER_BUILD_TIMEOUT_SECONDS: optional(z.coerce.number().int().min(1).optional()),
   OPSIFIER_BUILDERS_DIR: optional(z.string().optional()),
   OPSIFIER_VERSION: optional(z.string().optional()),
+  /** Where the panel learns about new releases of itself. `off` keeps it from asking at all. */
+  OPSIFIER_RELEASES_URL: optional(z.union([z.literal("off"), z.url()]).optional()),
+  /** How long a new version must keep running before its update counts as a success. */
+  OPSIFIER_UPDATE_VERIFY_SECONDS: optional(z.coerce.number().int().min(0).optional()),
+  /** The image host operations run from, when the panel is not itself a Swarm service. */
+  OPSIFIER_HELPER_IMAGE: optional(z.string().optional()),
+  /** Where the panel asks what the newest Docker engine is. */
+  OPSIFIER_DOCKER_RELEASES_URL: optional(z.url().optional()),
+  /** The address service, the one call home. `off`, or anything that isn't a URL, keeps it from being made. */
+  OPSIFIER_NAMES_URL: optional(z.string().optional()),
+  /** Where Telegram's API lives. Only ever moved for tests. */
+  OPSIFIER_TELEGRAM_API_URL: optional(z.url().optional()),
   OPSIFIER_LOG_LEVEL: optional(
     z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).optional(),
   ),
@@ -71,6 +88,17 @@ export interface Config {
   buildTimeoutMs: number;
   /** Where versioned builder tools are installed, as `<dir>/<tool>/<version>/<tool>`. */
   buildersDir: string;
+  /** The image host operations run from. Undefined means the panel's own running image. */
+  helperImage: string | undefined;
+  /** Where the panel asks what the newest Docker engine is. */
+  dockerReleasesUrl: string;
+  /** Where the panel learns about new releases of itself. Null means it never asks. */
+  releasesUrl: string | null;
+  /** How long a new version must keep running before its update counts as a success. */
+  updateVerifyMs: number;
+  /** The address service's base URL, with no trailing slash. Null means it is never called. */
+  namesUrl: string | null;
+  telegramApiUrl: string;
   /** Where Traefik reaches the panel. Undefined means the shared network's default name. */
   panelUpstream: string | undefined;
   /** Origins accepted in addition to the one the request itself was sent to. */
@@ -121,6 +149,25 @@ function parseTrustedProxies(entries: readonly string[]): BlockList {
   return blockList;
 }
 
+/** Only http or https and nothing else. A bad value turns this off: it must never be what stops a server. */
+function parseNamesUrl(value: string | undefined): string | null {
+  if (value === undefined) {
+    return NAMES_URL;
+  }
+  try {
+    const url = new URL(value);
+    const usable =
+      (url.protocol === "https:" || url.protocol === "http:") &&
+      url.username === "" &&
+      url.password === "" &&
+      url.search === "" &&
+      url.hash === "";
+    return usable ? url.href.replace(/\/+$/, "") : null;
+  } catch {
+    return null;
+  }
+}
+
 function chooseDriver(requested: DriverKind | undefined, isProduction: boolean): DriverKind {
   if (isProduction) {
     if (requested === "fake") {
@@ -167,6 +214,13 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     webDir: values.OPSIFIER_WEB_DIR === undefined ? undefined : resolve(values.OPSIFIER_WEB_DIR),
     buildTimeoutMs: (values.OPSIFIER_BUILD_TIMEOUT_SECONDS ?? DEFAULT_BUILD_TIMEOUT_SECONDS) * 1000,
     buildersDir: resolve(values.OPSIFIER_BUILDERS_DIR ?? DEFAULT_BUILDERS_DIR),
+    helperImage: values.OPSIFIER_HELPER_IMAGE,
+    dockerReleasesUrl: values.OPSIFIER_DOCKER_RELEASES_URL ?? DOCKER_RELEASES_URL,
+    releasesUrl:
+      values.OPSIFIER_RELEASES_URL === "off" ? null : (values.OPSIFIER_RELEASES_URL ?? PANEL_RELEASES_URL),
+    updateVerifyMs: (values.OPSIFIER_UPDATE_VERIFY_SECONDS ?? DEFAULT_UPDATE_VERIFY_SECONDS) * 1000,
+    namesUrl: parseNamesUrl(values.OPSIFIER_NAMES_URL),
+    telegramApiUrl: values.OPSIFIER_TELEGRAM_API_URL ?? "https://api.telegram.org",
     panelUpstream: values.OPSIFIER_PANEL_UPSTREAM,
     allowedOrigins: new Set(
       isProduction ? configuredOrigins : [...DEVELOPMENT_ORIGINS, ...configuredOrigins],

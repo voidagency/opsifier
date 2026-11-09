@@ -1,0 +1,58 @@
+{
+  "title": "Processes",
+  "description": "What this box keeps running. A process that exits is started again, waiting a little longer each time. Changes here reach the box at the next deploy.",
+  "add": "Add process",
+  "save": "Save",
+  "saved": "Saved. The next deploy applies it.",
+  "columns": {
+    "state": "State",
+    "name": "Name",
+    "command": "Command",
+    "restarts": "Restarts",
+    "exit": "Last exit",
+    "actions": "Actions"
+  },
+  "state": {
+    "running": "Running",
+    "restarting": "Restarting",
+    "stopped": "Stopped",
+    "disabled": "Switched off",
+    "unknown": "Can't tell"
+  },
+  "system": "From a module",
+  "startedByModule": "Started by a module",
+  "restart": "Restart {{name}}",
+  "restarted": "{{name}} restarted",
+  "restartFailed": "{{name}} did not restart",
+  "edit": "Edit {{name}}",
+  "remove": "Remove {{name}}",
+  "notRunning": "Switched off, so it isn't running.",
+  "unreachable": "This box isn't running, so its processes can't be read. Deploy or start it first.",
+  "identity": "Every process runs as {{user}} (uid {{uid}}) in {{path}}.",
+  "emptyTitle": "Nothing to keep running",
+  "emptyBody": "Add a process, or enable a web server on the Modules tab.",
+  "deleteTitle": "Remove this process?",
+  "deleteBody": "It stops at the next deploy. Its files stay in the workspace.",
+  "deleteConfirm": "Remove process",
+  "dialog": {
+    "add": "Add a process",
+    "edit": "Edit this process",
+    "description": "Run with /bin/sh in the workspace. It can use anything the modules install."
+  },
+  "fields": {
+    "name": "Name",
+    "nameHint": "Lowercase letters, digits and dashes.",
+    "command": "Command",
+    "commandHint": "Run by /bin/sh, so it can be a whole pipeline.",
+    "directory": "Folder",
+    "directoryHint": "Inside the workspace. Use . for the workspace itself.",
+    "enabled": "Run this process",
+    "enabledHint": "Switch off to keep it here without running it."
+  },
+  "errors": {
+    "name": "Use lowercase letters, digits and dashes, starting with a letter.",
+    "command": "Enter a command.",
+    "directory": "Use a folder inside the workspace.",
+    "duplicate": "Another process has this name."
+  }
+}

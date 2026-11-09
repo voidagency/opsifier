@@ -3,6 +3,11 @@ import type { SwarmServiceSpec } from "../../../core/docker";
 
 const BYTES_PER_MEGABYTE = 1024 * 1024;
 const NANOS_PER_CORE = 1e9;
+/**
+ * What keeps a task's processes bounded, orphans and runaway forks included, whether or not it runs
+ * an init to reap them. High enough that no normal workload notices.
+ */
+export const MAX_TASK_PROCESSES = 8192;
 
 type ResourceAmounts = { NanoCPUs?: number; MemoryBytes?: number };
 
@@ -18,7 +23,7 @@ export function compileResources(
   resources: ResourcesSpec,
 ): NonNullable<SwarmServiceSpec["TaskTemplate"]["Resources"]> {
   return {
-    Limits: amounts(resources.memoryLimit, resources.cpuLimit),
+    Limits: { ...amounts(resources.memoryLimit, resources.cpuLimit), Pids: MAX_TASK_PROCESSES },
     Reservations: amounts(resources.memoryReservation, resources.cpuReservation),
   };
 }

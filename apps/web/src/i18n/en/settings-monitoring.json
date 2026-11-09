@@ -1,0 +1,38 @@
+{
+  "title": "Monitoring",
+  "description": "How much history the panel keeps, and what keeping it costs.",
+  "retention": "Retention",
+  "unit": "Unit",
+  "units": {
+    "days": "Days",
+    "gb": "GB",
+    "hours": "Hours"
+  },
+  "metrics": {
+    "title": "Metrics",
+    "enabled": "Record metrics",
+    "interval": "Every",
+    "intervalHint": "How often the server is measured.",
+    "enabledHint": "Record CPU, memory and disk readings over time."
+  },
+  "logs": {
+    "title": "Logs",
+    "enabled": "Store service logs",
+    "enabledHint": "Keeps logs searchable after Docker has rotated them.",
+    "maxSize": "Max size (MB)",
+    "maxSizeHint": "The most disk space the logs may take, in MB."
+  },
+  "everySeconds": "{{count}} seconds",
+  "everyMinutes_one": "{{count}} minute",
+  "everyMinutes_other": "{{count}} minutes",
+  "usage": "Used",
+  "oldest": "Oldest",
+  "save": "Save",
+  "saved": "Settings saved",
+  "errors": {
+    "retention": "Must be more than zero.",
+    "size": "At least 10 MB."
+  },
+  "unitHint": "Days of history, or a size limit.",
+  "retentionHint": "How long readings are kept."
+}

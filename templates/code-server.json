@@ -1,0 +1,96 @@
+{
+  "id": "code-server",
+  "version": "1.0.0",
+  "name": "code-server",
+  "summary": {
+    "en": "VS Code in your browser.",
+    "fr": "VS Code dans votre navigateur."
+  },
+  "description": {
+    "en": "A full editor with extensions and a terminal, reached from any browser and protected by a password you get on the next screen.",
+    "fr": "Un éditeur complet avec extensions et terminal, accessible depuis n'importe quel navigateur et protégé par un mot de passe affiché à l'écran suivant."
+  },
+  "instructions": {
+    "en": "Sign in with the password shown below.",
+    "fr": "Connectez-vous avec le mot de passe affiché ci-dessous."
+  },
+  "category": "development",
+  "tags": ["ide", "editor", "remote-development"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://coder.com/docs/code-server"
+    },
+    {
+      "kind": "docs",
+      "url": "https://coder.com/docs/code-server/install"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/coder/code-server"
+    }
+  ],
+  "verified": false,
+  "params": [
+    {
+      "key": "password",
+      "label": {
+        "en": "Password",
+        "fr": "Mot de passe"
+      },
+      "type": "secret",
+      "required": false,
+      "help": {
+        "en": "Leave empty to generate one.",
+        "fr": "Laissez vide pour en générer un."
+      },
+      "generate": {
+        "length": 24,
+        "alphabet": "alphanumeric"
+      }
+    }
+  ],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "code-server",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "codercom/code-server:4.145.2"
+      },
+      "env": {
+        "PASSWORD": "{{params.password}}"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "extensions",
+          "path": "/home/coder/.local"
+        },
+        {
+          "type": "volume",
+          "name": "config",
+          "path": "/home/coder/.config"
+        },
+        {
+          "type": "volume",
+          "name": "project",
+          "path": "/home/coder/project"
+        }
+      ],
+      "domain": {
+        "port": 8080,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/healthz",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

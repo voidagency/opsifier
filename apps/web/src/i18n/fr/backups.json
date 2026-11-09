@@ -1,0 +1,223 @@
+{
+  "title": {
+    "database": "Sauvegardes",
+    "volume": "Sauvegardes de volumes"
+  },
+  "description": {
+    "database": "Des copies de cette base, faites selon un calendrier ou à la main. Chacune est l'export d'une seule base, vérifié avant de pouvoir être restauré. Les fichiers de sauvegarde ne sont pas chiffrés par le panneau : choisissez une destination de confiance.",
+    "volume": "Des copies des volumes nommés de ce service. Les fichiers sont lus pendant que l'application tourne : une copie prise à un moment chargé peut ne pas être cohérente. Arrêtez l'application avant si elle doit être exacte. Les fichiers de sauvegarde ne sont pas chiffrés par le panneau."
+  },
+  "actions": {
+    "restore": "Restaurer",
+    "create": "Ajouter une sauvegarde",
+    "run": "Lancer",
+    "edit": "Modifier",
+    "delete": "Retirer",
+    "restoreThis": "Restaurer cette sauvegarde",
+    "deleteBackup": "Supprimer le fichier stocké",
+    "discardEarlier": "Supprimer la copie précédente",
+    "viewLog": "Voir la sortie",
+    "noVolumes": "Ce service n'a aucun volume nommé.",
+    "destinationNotReady": "Sa destination est inaccessible pour l'instant.",
+    "download": "Télécharger ce fichier"
+  },
+  "history": {
+    "summary": "Sauvegardes et restaurations par état",
+    "title": "Historique",
+    "noneForFilter": "Rien ici n'est dans cet état.",
+    "state": "État",
+    "run": "Exécution",
+    "file": "Fichier",
+    "size": "Taille",
+    "destination": "Destination",
+    "when": "Quand",
+    "origin": {
+      "manual": "Manuelle",
+      "schedule": "Planifiée",
+      "safety": "Copie de sécurité"
+    },
+    "restore": {
+      "database": "Restauration",
+      "volume": "Restauration de volume"
+    },
+    "safetyDetail": "Prise avant une restauration",
+    "status": {
+      "running": "En cours",
+      "succeeded": "Réussie",
+      "failed": "En échec",
+      "cancelled": "Annulée",
+      "removed": "Supprimée",
+      "unresolved": "À vérifier"
+    }
+  },
+  "schedule": {
+    "presets": {
+      "everyMinute": "Chaque minute",
+      "everyHour": "Chaque heure",
+      "every6Hours": "Toutes les 6 heures",
+      "daily2": "Tous les jours à 2 h",
+      "daily0": "Tous les jours à 0 h",
+      "custom": "Personnalisé"
+    }
+  },
+  "config": {
+    "listLabel": "Configurations de sauvegarde",
+    "create": {
+      "database": "Ajouter une sauvegarde de base",
+      "volume": "Ajouter une sauvegarde de volume"
+    },
+    "edit": {
+      "database": "Modifier cette sauvegarde",
+      "volume": "Modifier cette sauvegarde de volume"
+    },
+    "enabled": "Selon un calendrier",
+    "enabledHint": "Désactivé, elle ne s'exécute qu'à la main. Si le panneau était arrêté à une heure prévue, elle s'exécute une seule fois à son retour, jamais une fois par heure manquée.",
+    "schedule": "Calendrier",
+    "cron": "Cron",
+    "cronHint": "Minute, heure, jour, mois, jour de semaine. Selon le fuseau horaire du serveur.",
+    "databaseName": "Base de données",
+    "databasePlaceholder": "app",
+    "volume": "Volume",
+    "volumePlaceholder": "Choisir un volume",
+    "provider": "Destination",
+    "providerLocalHint": "Cette destination est sur ce serveur : une copie ici disparaît avec lui.",
+    "providerPlaceholder": "Choisir une destination",
+    "path": "Dossier",
+    "pathHint": "Dans la destination. Lettres, chiffres, tirets, points et barres obliques.",
+    "retention": "Conserver",
+    "retentionHint": "Combien d'exécutions planifiées garder. Les sauvegardes manuelles et les copies de sécurité ne comptent jamais.",
+    "retentionPlaceholder": "Sans limite",
+    "save": "Enregistrer",
+    "created": "Sauvegarde ajoutée",
+    "updated": "Sauvegarde mise à jour",
+    "deleteTitle": "Retirer cette configuration de sauvegarde ?",
+    "deleteDescription": "Plus aucune sauvegarde de ce type ne sera prise. Les fichiers déjà stockés restent en place.",
+    "deleteConfirm": "Retirer",
+    "deleted": "Configuration de sauvegarde retirée",
+    "state": {
+      "failed": "La dernière exécution a échoué",
+      "degraded": "Destination absente ou non connectée",
+      "unknown": "Pas encore exécutée",
+      "progress": "En cours d'exécution",
+      "running": "La dernière exécution a réussi",
+      "stopped": "En pause"
+    },
+    "notScheduled": "Non planifiée",
+    "dueNow": "À lancer",
+    "nextRun": "Prochaine {{when}}",
+    "nextRunDetail": "{{at}} ({{zone}})",
+    "noDestination": "Pas de destination",
+    "manualOnly": "Manuelle seulement",
+    "keepAll": "Tout conserver",
+    "keepLast_one": "Garde la dernière",
+    "keepLast_other": "Garde les {{count}} dernières",
+    "scope": "Contenu",
+    "scopeHint": {
+      "database": "Une seule base et rien d'autre. Les comptes n'en font pas partie.",
+      "instance": "Toutes les bases de ce serveur, avec leurs utilisateurs et rôles.",
+      "accounts": "Utilisateurs et rôles uniquement, sans données."
+    },
+    "volumeHint": "Le volume nommé à copier.",
+    "databaseNameHint": "La base de données à copier.",
+    "scheduleHint": "Quand elle s'exécute, à l'heure du serveur.",
+    "providerHint": "L'endroit où le fichier de sauvegarde est conservé."
+  },
+  "run": {
+    "title": "Lancer cette sauvegarde maintenant",
+    "description": "{{target}} est copié vers sa destination tout de suite.",
+    "submit": "Lancer",
+    "name": "Nom",
+    "nameHint": "Affiché dans l'historique à côté de cette exécution.",
+    "started": "Sauvegarde lancée",
+    "done": "Sauvegarde terminée",
+    "failed": "La sauvegarde a échoué"
+  },
+  "restore": {
+    "title": {
+      "database": "Restaurer cette base ?",
+      "volume": "Restaurer ce volume ?",
+      "instance": "Restaurer ce serveur entier ?",
+      "accounts": "Restaurer ces utilisateurs et rôles ?"
+    },
+    "description": {
+      "database": "Les tables et données de {{target}} présentes dans la sauvegarde sont remplacées. Les données actuelles restent en place jusqu'à ce que la sauvegarde soit vérifiée, et une copie de sécurité est prise d'abord.",
+      "volume": "Le contenu de {{target}} est remplacé. Le service s'arrête brièvement pour l'échange, et l'ancien contenu est conservé dans un dossier à côté du volume.",
+      "instance": "Toutes les bases de {{target}} sont remplacées par le contenu de ce fichier, y compris ses utilisateurs et rôles. La sauvegarde est importée dans un nouveau serveur séparé, et le service n'y bascule qu'une fois que tout a réussi. Les données actuelles restent sur leur propre volume, listé dans Supervision, Stockage.",
+      "accounts": "Les utilisateurs et rôles de {{target}} présents dans ce fichier sont remis tels qu'ils étaient. Les données ne sont pas touchées, le compte du panneau reste tel quel, et les comptes ajoutés depuis sont conservés."
+    },
+    "confirm": "Restaurer",
+    "file": "Fichier",
+    "destination": "Depuis",
+    "checksum": "SHA-256",
+    "done": "Restauration terminée",
+    "failed": "La restauration a échoué",
+    "started": "Restauration lancée",
+    "confirmRequired": "Saisissez le nom pour confirmer",
+    "fromPath": {
+      "title": "Restaurer depuis un fichier",
+      "description": {
+        "database": "Pour une sauvegarde dont ce panneau n'a pas la trace. Un manifeste doit se trouver à côté du fichier, et il est vérifié avant tout changement.",
+        "volume": "Pour une sauvegarde dont ce panneau n'a pas la trace. Un manifeste doit se trouver à côté du fichier, et il est vérifié avant tout changement."
+      },
+      "path": "Fichier",
+      "pathHint": "Le chemin complet dans la destination, jusqu'au nom du fichier.",
+      "scope": "Contenu du fichier",
+      "scopeHint": "Il doit correspondre au manifeste placé à côté du fichier."
+    },
+    "confirmHint": "Saisir le nom exact confirme qu'il s'agit du bon.",
+    "targetHint": "Ce que la sauvegarde remplace. Son contenu actuel est écrasé."
+  },
+  "errors": {
+    "schedule": "Saisissez une expression cron valide, ou choisissez un modèle",
+    "retention": "Saisissez un nombre entier, ou laissez vide",
+    "databaseName": "Saisissez le nom de la base",
+    "volumeName": "Choisissez un volume",
+    "provider": "Choisissez une destination",
+    "path": "Lettres, chiffres, tirets, points et barres obliques seulement",
+    "restorePath": "Saisissez le chemin d'un fichier",
+    "runName": "C'est trop long",
+    "scope": "Choisissez le contenu"
+  },
+  "empty": {
+    "title": {
+      "database": "Aucune sauvegarde pour l'instant",
+      "volume": "Aucune sauvegarde de volume pour l'instant"
+    },
+    "description": {
+      "database": "Ajoutez-en une pour copier cette base vers la destination de votre choix, selon un calendrier ou à la main.",
+      "volume": "Ajoutez-en une pour copier un volume nommé vers la destination de votre choix, selon un calendrier ou à la main."
+    }
+  },
+  "unresolved": {
+    "title": "Une restauration demande votre attention",
+    "description": "Le panneau n'a pas pu savoir comment la dernière restauration s'est terminée : les sauvegardes et restaurations de ce service sont bloquées jusqu'à ce que quelqu'un vérifie.",
+    "useSafety": "Restaurer la copie de sécurité",
+    "markChecked": "Marquer comme vérifié",
+    "resolveTitle": "Les données sont-elles comme attendu ?",
+    "resolveDescription": "Ne continuez qu'après avoir regardé vous-même la base ou le volume. Cela lève le blocage des sauvegardes et restaurations de ce service.",
+    "resolved": "Marqué comme vérifié"
+  },
+  "deleteBackup": {
+    "title": "Supprimer ce fichier stocké ?",
+    "description": "{{file}} est retiré de sa destination pour de bon. Sa ligne reste dans l'historique.",
+    "confirm": "Supprimer le fichier",
+    "done": "Sauvegarde supprimée",
+    "failed": "Impossible de supprimer la sauvegarde"
+  },
+  "discard": {
+    "title": "Supprimer la copie précédente ?",
+    "description": "{{folder}} contenait le volume avant la restauration. Cela le supprime pour de bon.",
+    "confirm": "Supprimer",
+    "done": "Copie précédente supprimée"
+  },
+  "notAvailable": "Ce moteur n'a pas de sauvegardes.",
+  "log": {
+    "failed": "Impossible d'ouvrir la sortie"
+  },
+  "scope": {
+    "database": "Une base de données",
+    "instance": "Serveur entier",
+    "accounts": "Utilisateurs et rôles",
+    "volume": "Volume"
+  }
+}

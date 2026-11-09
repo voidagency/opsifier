@@ -18,7 +18,7 @@ export function Input({ mono = false, className, ...props }: InputProps) {
     <input
       {...props}
       {...a11y}
-      className={cn(controlClass, "h-9 px-2.5 text-base", mono && "font-mono text-sm", className)}
+      className={cn(controlClass, "h-9 px-2.5 text-base", mono && "font-mono", className)}
     />
   );
 }
@@ -67,7 +67,7 @@ export function Textarea({ mono = false, className, rows = 4, ...props }: Textar
       rows={rows}
       {...props}
       {...a11y}
-      className={cn(controlClass, "block px-2.5 py-1.5 text-base", mono && "font-mono text-sm", className)}
+      className={cn(controlClass, "block px-2.5 py-1.5 text-base", mono && "font-mono", className)}
     />
   );
 }

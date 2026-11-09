@@ -4,8 +4,9 @@ import { nanoid } from "nanoid";
 import type { AppDeps } from "../../../core/context";
 import type { DbHandle } from "../../../core/db";
 import { assertHostname, InvalidProxyInputError } from "../../../core/proxy";
+import { liveAddressDomain } from "../../opsifier-address/repo";
 import type { CompileDomain } from "../../services/compile";
-import { internalUrl, qualifiedName } from "../../services/compile";
+import { composeChildAddress, internalUrl, qualifiedName } from "../../services/compile";
 import type { ServiceTarget } from "../../services/service";
 import { getSetting, SERVICE_DOMAIN_KEY } from "../../system/repo";
 import { getSystemInfo } from "../../system/service";
@@ -19,15 +20,32 @@ export const toCompileDomains = (rows: readonly DomainRow[]): CompileDomain[] =>
   rows.map((row) => ({
     host: row.host,
     path: row.path,
+    stripPath: row.stripPath,
     port: row.port,
     https: row.https,
     primary: row.isPrimary,
     destinationProtocol: row.destinationProtocol,
     destinationPath: row.destinationPath,
+    upstreamServerName: row.upstreamServerName,
+    upstreamCa: row.upstreamCa,
     certificateResolver: row.certificateResolver,
     wildcard: row.wildcard,
     middlewares: row.middlewares,
+    ...composeUpstream(row),
   }));
+
+/** Where a Compose stack's domain goes. Null until a child is chosen, and no servers until then. */
+function composeUpstream(row: DomainRow): { upstreamHost: string | null } | Record<string, never> {
+  if (row.composeService === null) {
+    return {};
+  }
+  return {
+    upstreamHost:
+      row.composeService === ""
+        ? null
+        : composeChildAddress(qualifiedName(row.projectName, row.serviceName), row.composeService),
+  };
+}
 
 export function listDomainRows(db: DbHandle, target: ServiceTarget): DomainRow[] {
   return listServiceDomains(db, target.projectName, target.serviceName);
@@ -41,17 +59,21 @@ export function toEntry(row: DomainRow): DomainEntry {
     id: row.id,
     host: row.host,
     path: row.path,
+    stripPath: row.stripPath,
     port: row.port,
     https: row.https,
     primary: row.isPrimary,
     destinationProtocol: row.destinationProtocol,
     destinationPath: row.destinationPath,
+    upstreamServerName: row.upstreamServerName,
+    upstreamCa: row.upstreamCa,
     certificateResolver: row.certificateResolver,
     wildcard: row.wildcard,
     middlewares: row.middlewares,
+    composeService: row.composeService,
     url: externalUrl(row),
     internalUrl: internalUrl(
-      qualifiedName(row.projectName, row.serviceName),
+      composeUpstream(row).upstreamHost ?? qualifiedName(row.projectName, row.serviceName),
       row.port,
       row.destinationProtocol,
       row.destinationPath,
@@ -90,14 +112,18 @@ function isValidHostname(host: string): boolean {
   }
 }
 
-/** The configured base domain, or the sslip.io name of the server's address. Null if neither is known. */
-function defaultBaseDomain(deps: AppDeps, db: DbHandle): string | null {
+/** The configured base domain, or the server's address, or its sslip.io name. Null if none is known. */
+export function defaultBaseDomain(deps: AppDeps, db: DbHandle): string | null {
   const configured = getSetting(db, SERVICE_DOMAIN_KEY);
   if (typeof configured === "string" && configured !== "") {
     if (isValidHostname(`x.${configured}`)) {
       return configured;
     }
     deps.logger.warn({ value: configured }, "Ignoring an invalid service domain setting");
+  }
+  const address = liveAddressDomain(db);
+  if (address !== null) {
+    return address;
   }
   const { serverIp } = getSystemInfo(deps);
   return serverIp === null ? null : `${sslipLabel(serverIp)}.${SSLIP_SUFFIX}`;
@@ -112,31 +138,51 @@ function pickDefaultHost(db: DbHandle, target: ServiceTarget, base: string): str
   for (let attempt = 1; attempt <= 1000; attempt += 1) {
     const suffix = attempt === 1 ? "" : `-${attempt}`;
     const host = `${label.slice(0, MAX_LABEL - suffix.length)}${suffix}.${base}`;
-    if (isValidHostname(host) && isHostAvailable(db, host, "/")) {
+    if (isValidHostname(host) && isHostAvailable(db, target.projectName, host, "/")) {
       return host;
     }
   }
   return null;
 }
 
-/** Gives a new service its first domain. It stays with the service through renames. */
-export function assignDefaultDomain(deps: AppDeps, db: DbHandle, target: ServiceTarget, now: Date): void {
+export interface DefaultDomainOptions {
+  /** The port the container listens on. */
+  port?: number;
+  path?: string;
+  https?: boolean;
+  /** On a Compose stack: the child this reaches, or empty until one is chosen. */
+  composeService?: string | null;
+}
+
+/** Gives a new service its first domain and returns the host. It stays with the service through renames. */
+export function assignDefaultDomain(
+  deps: AppDeps,
+  db: DbHandle,
+  target: ServiceTarget,
+  now: Date,
+  options: DefaultDomainOptions = {},
+): string | null {
   const base = defaultBaseDomain(deps, db);
   const host = base === null ? null : pickDefaultHost(db, target, base);
   if (host === null) {
-    deps.logger.warn({ target }, "No default domain could be assigned: the server's address is unknown");
-    return;
+    deps.logger.warn(
+      { target, base },
+      "No default domain could be assigned: the server's address is unknown, or every name is taken",
+    );
+    return null;
   }
   insertDomain(db, {
     id: nanoid(),
     projectName: target.projectName,
     serviceName: target.serviceName,
     host,
-    path: "/",
-    port: DEFAULT_PORT,
-    https: true,
+    path: options.path ?? "/",
+    port: options.port ?? DEFAULT_PORT,
+    https: options.https ?? true,
     isPrimary: true,
+    composeService: options.composeService ?? null,
     createdAt: now,
     updatedAt: now,
   });
+  return host;
 }

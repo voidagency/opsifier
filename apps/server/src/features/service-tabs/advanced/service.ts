@@ -9,8 +9,12 @@ import { z } from "zod";
 import type { AppDeps } from "../../../core/context";
 import { services } from "../../../core/db/schema";
 import { badRequest, conflict, notFound } from "../../../core/errors";
-import { qualifiedName } from "../../services/compile";
-import { type ServiceRecord, saveServiceSpec } from "../../services/repo";
+import { requireHostAccess } from "../../access/guard";
+import type { Access } from "../../access/rules";
+import { isDatabaseRecord } from "../../databases/service";
+import { firstPortInUse } from "../../services/host-ports";
+import { saveServiceSpec } from "../../services/repo";
+import { assertRuntimeCertain } from "../../services/runtime-state";
 import { requireService, type ServiceTarget } from "../../services/service";
 
 /** The proxy holds these on every server. */
@@ -30,8 +34,26 @@ export function saveDeploySettings(
   deps: AppDeps,
   target: ServiceTarget,
   settings: DeploySettings,
+  access: Access,
 ): DeploySettings {
   const record = requireService(deps, target);
+  // Some capabilities are a way out of the container, so granting a new one is the server's to decide.
+  if (settings.capAdd.some((name) => !record.spec.deploy.capAdd.includes(name))) {
+    requireHostAccess(access);
+  }
+  if (isDatabaseRecord(record) && settings.replicas !== 1) {
+    // Saving a number that would then be ignored is how a topology that can't exist looks like it does.
+    throw badRequest("unsupported_topology", "A database runs as exactly one task.", {
+      replicas: "A database runs exactly one replica",
+    });
+  }
+  if (record.spec.box !== null) {
+    // It runs one task, stop-first, under its own supervisor: anything else breaks what a box promises.
+    throw conflict(
+      "box_deploy_managed",
+      "A box runs one task at a time under its own supervisor. Its processes and hooks have their own tabs.",
+    );
+  }
   if (settings.replicas < 1 && !record.spec.stopped) {
     throw replicasError();
   }
@@ -50,12 +72,14 @@ export function saveDeploySettings(
   return settings;
 }
 
+/** Read here, in one step with the write, because the checks before it can wait on Docker. */
 function savePorts(
   deps: AppDeps,
   target: ServiceTarget,
-  record: ServiceRecord,
-  ports: PortSpec[],
+  change: (ports: PortSpec[]) => PortSpec[],
 ): PortSpec[] {
+  const record = requireService(deps, target);
+  const ports = change(record.spec.ports);
   saveServiceSpec(
     deps.db,
     target.projectName,
@@ -87,29 +111,14 @@ function savedPortsElsewhere(deps: AppDeps, target: ServiceTarget): PortSpec[] {
     .flatMap((row) => anyServiceSpec.parse(row.spec).ports);
 }
 
-/** What Docker is publishing right now, which also covers services that are not Opsifier's. */
-async function publishedInDocker(deps: AppDeps, target: ServiceTarget): Promise<PortSpec[]> {
-  const self = qualifiedName(target.projectName, target.serviceName);
+/** What Docker or the host is holding right now, which also covers what is not Opsifier's. */
+async function isTakenOnHost(deps: AppDeps, target: ServiceTarget, port: PortSpec): Promise<boolean> {
   try {
-    const running = await deps.docker.listServices();
-    return running
-      .filter((service) => service.name !== self)
-      .flatMap((service) => service.spec.EndpointSpec?.Ports ?? [])
-      .flatMap((port) =>
-        port.PublishedPort === undefined
-          ? []
-          : [
-              {
-                protocol: port.Protocol === "udp" ? ("udp" as const) : ("tcp" as const),
-                published: port.PublishedPort,
-                target: port.TargetPort,
-              },
-            ],
-      );
+    return (await firstPortInUse(deps, target, [{ protocol: port.protocol, port: port.published }])) !== null;
   } catch (error) {
-    // A save never needs Docker. The rollout will report a clash if Docker comes back with one.
-    deps.logger.warn({ err: error }, "Could not read the ports Docker is publishing");
-    return [];
+    // A save never needs Docker. The deployment looks again before it replaces anything.
+    deps.logger.warn({ err: error }, "Could not read the ports in use on this server");
+    return false;
   }
 }
 
@@ -125,14 +134,13 @@ async function assertFreeForService(
     throw portTakenError("port_duplicate", "This service already publishes this port.");
   }
   assertNotReserved(deps, port);
-  if (savedPortsElsewhere(deps, target).some(same) || (await publishedInDocker(deps, target)).some(same)) {
-    throw portTakenError("port_in_use", "Another service already publishes this port.");
+  if (savedPortsElsewhere(deps, target).some(same) || (await isTakenOnHost(deps, target, port))) {
+    throw portTakenError("port_in_use", "This port is already in use on this server.");
   }
 }
 
 export async function addPort(deps: AppDeps, target: ServiceTarget, port: PortSpec): Promise<PortSpec[]> {
-  const record = requireService(deps, target);
-  const { ports, deploy } = record.spec;
+  const { ports, deploy } = requireService(deps, target).spec;
   if (ports.length >= MAX_PORTS) {
     throw badRequest("too_many_ports", "This service publishes as many ports as it can hold.");
   }
@@ -142,7 +150,7 @@ export async function addPort(deps: AppDeps, target: ServiceTarget, port: PortSp
     });
   }
   await assertFreeForService(deps, target, ports, port);
-  return savePorts(deps, target, record, [...ports, port]);
+  return savePorts(deps, target, (current) => [...current, port]);
 }
 
 export async function updatePort(
@@ -151,34 +159,27 @@ export async function updatePort(
   index: number,
   port: PortSpec,
 ): Promise<PortSpec[]> {
-  const record = requireService(deps, target);
-  const { ports } = record.spec;
+  const { ports } = requireService(deps, target).spec;
   if (index >= ports.length) {
     throw notFound("This port does not exist.");
   }
+  assertRuntimeCertain(deps, target);
   await assertFreeForService(deps, target, ports, port, index);
-  return savePorts(
-    deps,
-    target,
-    record,
-    ports.map((existing, position) => (position === index ? port : existing)),
+  return savePorts(deps, target, (current) =>
+    current.map((existing, position) => (position === index ? port : existing)),
   );
 }
 
 export function removePort(deps: AppDeps, target: ServiceTarget, index: number): PortSpec[] {
-  const record = requireService(deps, target);
-  const { ports } = record.spec;
+  const { ports } = requireService(deps, target).spec;
   if (index >= ports.length) {
     throw notFound("This port does not exist.");
   }
-  return savePorts(
-    deps,
-    target,
-    record,
-    ports.filter((_, position) => position !== index),
-  );
+  assertRuntimeCertain(deps, target);
+  return savePorts(deps, target, (current) => current.filter((_, position) => position !== index));
 }
 
 export function removeAllPorts(deps: AppDeps, target: ServiceTarget): PortSpec[] {
-  return savePorts(deps, target, requireService(deps, target), []);
+  assertRuntimeCertain(deps, target);
+  return savePorts(deps, target, () => []);
 }

@@ -1,40 +1,43 @@
-import { firstInvalidEnvLine } from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { errorMessage, useForm } from "../../lib/forms";
+import { errorMessage } from "../../lib/forms";
 import {
   Button,
-  CodeEditor,
   ConfirmDialog,
   CopyButton,
+  ErrorState,
   FormBanner,
   MonoValue,
   PageHeader,
+  Pictogram,
+  type PictogramName,
+  RetentionSummary,
+  SectionIntro,
   Skeleton,
   toast,
   useDocumentTitle,
 } from "../../ui";
+import { VariablesEditor } from "../services/tabs/environment/VariablesEditor";
 import { projectEnvQuery, projectQuery, projectSchemaQuery, projectsApi, projectsKey } from "./api";
 
 const route = getRouteApi("/app/projects/$project/settings");
 
 function Section({
+  pictogram,
   title,
   description,
   children,
 }: {
+  pictogram: PictogramName;
   title: ReactNode;
-  description: ReactNode;
+  description?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="grid gap-x-10 gap-y-4 border-b px-4 py-6 last:border-b-0 md:px-6 lg:grid-cols-[minmax(0,260px)_minmax(0,640px)] lg:px-8">
-      <div>
-        <h2 className="text-md font-medium">{title}</h2>
-        <p className="mt-1 text-sm text-muted">{description}</p>
-      </div>
+      <SectionIntro pictogram={pictogram} title={title} description={description} />
       <div className="min-w-0">{children}</div>
     </section>
   );
@@ -42,60 +45,43 @@ function Section({
 
 function EnvironmentSection({ project }: { project: string }) {
   const { t } = useTranslation(["projects", "common"]);
+  const queryClient = useQueryClient();
   const { data, isPending, isError, error, refetch } = useQuery(projectEnvQuery(project));
 
-  if (isPending) {
+  if (isPending || isError) {
     return (
-      <Section title={t("settings.env.title")} description={t("settings.env.description")}>
-        <Skeleton className="h-32" />
+      <Section
+        pictogram="environment"
+        title={t("settings.env.title")}
+        description={t("settings.env.description")}
+      >
+        {isPending ? (
+          <Skeleton className="h-32" />
+        ) : (
+          <ErrorState message={errorMessage(error, t)} onRetry={() => refetch()} />
+        )}
       </Section>
     );
   }
-  if (isError) {
-    return (
-      <Section title={t("settings.env.title")} description={t("settings.env.description")}>
-        <div className="grid justify-items-start gap-3">
-          <FormBanner>{errorMessage(error, t)}</FormBanner>
-          <Button onClick={() => refetch()}>{t("common:actions.retry")}</Button>
-        </div>
-      </Section>
-    );
-  }
-  return <EnvironmentForm key={project} project={project} initial={data.env} />;
-}
-
-function EnvironmentForm({ project, initial }: { project: string; initial: string }) {
-  const { t } = useTranslation(["projects", "common"]);
-  const form = useForm({
-    t,
-    initialValues: { env: initial },
-    validate: ({ env }) => {
-      const line = firstInvalidEnvLine(env);
-      return line === null ? {} : { env: t("settings.env.invalidLine", { line }) };
-    },
-    onSubmit: async ({ env }) => {
-      await projectsApi.saveEnv(project, env);
-      toast.success(t("settings.env.saved"), t("settings.env.savedHint"));
-    },
-  });
-
   return (
-    <Section title={t("settings.env.title")} description={t("settings.env.description")}>
-      <form onSubmit={form.handleSubmit} noValidate className="grid gap-4">
-        {form.banner && <FormBanner>{form.banner}</FormBanner>}
-        {form.errors.env && <FormBanner>{form.errors.env}</FormBanner>}
-        <CodeEditor
-          value={form.values.env}
-          onChange={(value) => form.set("env", value)}
-          label={t("settings.env.title")}
-          invalid={form.errors.env !== undefined}
-        />
-        <div>
-          <Button type="submit" variant="primary" pending={form.pending}>
-            {t("settings.env.submit")}
-          </Button>
-        </div>
-      </form>
+    <Section
+      pictogram="environment"
+      title={t("settings.env.title")}
+      description={t("settings.env.description")}
+    >
+      <VariablesEditor
+        key={project}
+        names={data.names}
+        label={t("settings.env.title")}
+        submitLabel={t("settings.env.submit")}
+        savedTitle={t("settings.env.saved")}
+        savedHint={t("settings.env.savedHint")}
+        reveal={() => projectsApi.revealEnv(project)}
+        save={(env) => projectsApi.saveEnv(project, env)}
+        onSaved={() => {
+          void queryClient.invalidateQueries({ queryKey: ["projects", project, "env"] });
+        }}
+      />
     </Section>
   );
 }
@@ -106,19 +92,22 @@ function SchemaSection({ project }: { project: string }) {
   const text = data === undefined ? "" : JSON.stringify(data, null, 2);
 
   return (
-    <Section title={t("settings.schema.title")} description={t("settings.schema.description")}>
+    <Section
+      pictogram="template"
+      title={t("settings.schema.title")}
+      description={t("settings.schema.description")}
+    >
       {isPending ? (
         <Skeleton className="h-24" />
       ) : isError ? (
-        <div className="grid justify-items-start gap-3">
-          <FormBanner>{errorMessage(error, t)}</FormBanner>
-          <Button onClick={() => refetch()}>{t("common:actions.retry")}</Button>
-        </div>
+        <ErrorState message={errorMessage(error, t)} onRetry={() => refetch()} />
       ) : (
         <div className="relative">
           <pre
             data-testid="project-schema"
-            className="max-h-[360px] overflow-auto rounded-sm border bg-raised p-3 pr-10 font-mono text-xs"
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: it scrolls, so the keyboard has to reach it
+            tabIndex={0}
+            className="max-h-[450px] overflow-auto rounded-sm border bg-raised p-3 pr-10 font-mono text-xs"
           >
             {text}
           </pre>
@@ -147,12 +136,17 @@ function DangerSection({ project }: { project: string }) {
   };
 
   return (
-    <Section title={t("settings.danger.title")} description={t("settings.danger.description")}>
+    <Section pictogram="maintenance" title={t("settings.danger.title")}>
       <div className="grid justify-items-start gap-3">
+        <p className="max-w-[60ch] text-sm text-muted">{t("settings.danger.description")}</p>
         {serviceCount > 0 && (
           <FormBanner tone="warning">{t("settings.danger.warning", { count: serviceCount })}</FormBanner>
         )}
-        <Button variant="danger" onClick={() => setOpen(true)}>
+        <Button
+          variant="danger"
+          disabled={data === undefined || serviceCount > 0}
+          onClick={() => setOpen(true)}
+        >
           {t("settings.danger.destroy")}
         </Button>
       </div>
@@ -169,7 +163,9 @@ function DangerSection({ project }: { project: string }) {
         confirmLabel={t("settings.danger.confirm")}
         confirmText={project}
         onConfirm={destroy}
-      />
+      >
+        <RetentionSummary removed={t("settings.danger.removed")} kept={t("settings.danger.kept")} />
+      </ConfirmDialog>
     </Section>
   );
 }
@@ -182,6 +178,7 @@ export function ProjectSettingsPage() {
   return (
     <>
       <PageHeader
+        leading={<Pictogram name="settings" size={24} className="mt-1 text-muted" />}
         title={t("settings.pageTitle", { name: project })}
         description={t("settings.pageDescription")}
       />

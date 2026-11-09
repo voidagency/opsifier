@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { AppDeps } from "../../../../core/context";
 import { Redactor, type ToolResult, ToolTimeoutError } from "../../../../core/tools";
 import { SSH_KEY_CONTEXT } from "../stored";
+import { exceedsTreeSize, MAX_UNPACKED_BYTES, watchTreeSize } from "./archive";
 import { inheritedEnv } from "./environment";
 
 /** Every protocol git may use, for the clone itself and for anything a repository redirects to. */
@@ -17,15 +18,72 @@ export interface GitRemote {
   sealedKey: string | null;
   /** The GitHub token, in the clear for as long as this operation holds it. */
   token: string | null;
-  /** Host keys seen so far for this service. Unknown hosts are added, changed ones are refused. */
-  knownHostsFile: string;
+  /** The registry's `known_hosts` lines for this host. ssh refuses anything not in them. */
+  knownHosts: string;
 }
 
-export type ProbeResult = { ok: true } | { ok: false; reason: "unreachable" | "ref-missing"; detail: string };
+/** What is wrong, which decides what can be done about it. `unreachable` is everything not told apart. */
+export type GitFailureKind = "access" | "ref-missing" | "network" | "size" | "unreachable";
+
+export type ProbeResult = { ok: true } | { ok: false; reason: GitFailureKind; detail: string };
+
+/** Git's phrasing of each kind of failure, from the transports the panel uses. */
+const GIT_FAILURE_PATTERNS: ReadonlyArray<readonly [GitFailureKind, RegExp]> = [
+  [
+    "ref-missing",
+    /couldn'?t find remote ref|not our ref|no such ref|bad object|upload-pack: not|unknown revision/i,
+  ],
+  [
+    "access",
+    /authentication failed|could not read (?:username|password)|permission denied|access denied|not found|does not appear to be a git repository|host key verification failed|\b40[134]\b|forbidden|unauthorized/i,
+  ],
+  ["size", /no space left|exceeds? (?:the )?(?:maximum|size|limit)|too large|file size limit|pack exceeds/i],
+  [
+    "network",
+    /could not resolve|couldn'?t resolve|timed? ?out|connection refused|network is unreachable|no route to host|connection reset|ssl certificate|tls handshake|gnutls|early eof|unexpected disconnect|hung up|failed to connect|temporary failure/i,
+  ],
+];
+
+export function gitFailureKind(tail: readonly string[]): GitFailureKind {
+  const text = tail.join("\n");
+  return GIT_FAILURE_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? "unreachable";
+}
+
+/** A fetch that failed, said in a way a person can act on. `kind` says which way it failed. */
+export class GitSourceError extends Error {
+  override readonly name = "GitSourceError";
+
+  constructor(
+    readonly kind: GitFailureKind,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+function failureMessage(kind: GitFailureKind, ref: string, detail: string): string {
+  const because = detail === "" ? "" : ` (${detail})`;
+  switch (kind) {
+    case "access":
+      return `The repository refused access to it, or isn't at that address${because}. Check the address and that the deploy key or GitHub token can still read it, then deploy again.`;
+    case "ref-missing":
+      return FULL_SHA.test(ref)
+        ? `Commit ${ref.slice(0, 12)} can no longer be fetched: it was rewritten by a force push or removed from the repository${because}. Nothing was deployed. Point the source at a branch, a tag or a commit that still exists, then deploy again.`
+        : `The repository has no branch, tag or commit named ${ref}${because}. Nothing was deployed. Point the source at one that exists, then deploy again.`;
+    case "network":
+      return `The repository could not be reached over the network${because}. Check that this server can reach it, then deploy again.`;
+    case "size":
+      return `The repository is too large to fetch${because}. Remove large files from it or free some disk space, then deploy again.`;
+    case "unreachable":
+      return `The repository could not be read${because}. Check the source, then deploy again.`;
+  }
+}
 
 export interface GitOptions {
   signal?: AbortSignal;
   onLine?: (line: string) => void;
+  /** How much a checkout may take up on disk. Defaults to the limit on uploaded archives. */
+  maxBytes?: number;
   /** Tests point this at `file:` to read a local repository. Nothing else ever sets it. */
   allowProtocols?: string;
 }
@@ -56,15 +114,18 @@ export async function withGitSession<T>(
     const config: Array<[string, string]> = [];
     if (remote.token !== null) {
       const file = join(dir, "credentials");
-      await writeFile(file, `https://x-access-token:${encodeURIComponent(remote.token)}@github.com\n`, {
-        mode: 0o600,
-        flag: "wx",
-      });
+      // With the path in the entry and useHttpPath below, the token answers for this repository alone.
+      const repository = new URL(remote.url);
+      const entry = `https://x-access-token:${encodeURIComponent(remote.token)}@${repository.host}${repository.pathname}\n`;
+      await writeFile(file, entry, { mode: 0o600, flag: "wx" });
       redact.addToken(remote.token);
       // The empty value clears any helper configured elsewhere. Git runs this one through a shell,
       // which is why the only variable part of it is a path this function chose.
       config.push(["credential.helper", ""], ["credential.helper", `store --file=${singleQuote(file)}`]);
+      config.push(["credential.useHttpPath", "true"]);
     }
+    // A redirect could carry a credential to a repository it was never given for.
+    config.push(["http.followRedirects", "false"], ["http.sslVerify", "true"]);
 
     let identity: string[] = [];
     if (remote.sealedKey !== null) {
@@ -75,6 +136,10 @@ export async function withGitSession<T>(
       identity = ["-i", singleQuote(file), "-o", "IdentitiesOnly=yes"];
     }
 
+    // Empty for a host the registry does not know, which makes ssh refuse it.
+    const knownHosts = join(dir, "known_hosts");
+    await writeFile(knownHosts, remote.knownHosts, { mode: 0o600, flag: "wx" });
+
     const env: Record<string, string> = {
       ...inheritedEnv(),
       HOME: dir,
@@ -82,7 +147,7 @@ export async function withGitSession<T>(
       GIT_ALLOW_PROTOCOL: options.allowProtocols ?? ALLOWED_GIT_PROTOCOLS,
       GIT_CONFIG_NOSYSTEM: "1",
       GIT_CONFIG_GLOBAL: "/dev/null",
-      // Unknown hosts are remembered on first contact, and a host that changes its key is refused.
+      // The server has to be one the registry knows, with the key the registry holds for it.
       GIT_SSH_COMMAND: [
         "ssh",
         "-F",
@@ -91,9 +156,11 @@ export async function withGitSession<T>(
         "-o",
         "BatchMode=yes",
         "-o",
-        "StrictHostKeyChecking=accept-new",
+        "StrictHostKeyChecking=yes",
         "-o",
-        singleQuote(`UserKnownHostsFile="${remote.knownHostsFile}"`),
+        "GlobalKnownHostsFile=/dev/null",
+        "-o",
+        singleQuote(`UserKnownHostsFile="${knownHosts}"`),
         "-o",
         "ConnectTimeout=20",
       ].join(" "),
@@ -110,12 +177,20 @@ export async function withGitSession<T>(
   }
 }
 
+/** What git adds to any failure of ssh, which would otherwise crowd out the reason ssh gave. */
+const GIT_BOILERPLATE = [
+  /^Could not read from remote repository\.?$/i,
+  /^Please make sure you have the correct access rights$/i,
+  /^and the repository exists\.?$/i,
+];
+
 /** What actually went wrong, in git's words: the last lines of its output, without secrets. */
 export function describeGitFailure(tail: readonly string[]): string {
   const lines = tail
     .map((line) => line.replace(/^(?:fatal|error|remote):\s*/i, "").trim())
     .filter((line) => line !== "");
-  return lines.slice(-2).join(" ").slice(0, 400);
+  const meaningful = lines.filter((line) => !GIT_BOILERPLATE.some((pattern) => pattern.test(line)));
+  return (meaningful.length > 0 ? meaningful : lines).slice(-2).join(" ").slice(0, 400);
 }
 
 async function runGit(
@@ -160,7 +235,7 @@ export function probeRemote(
       });
     } catch (error) {
       if (error instanceof ToolTimeoutError) {
-        return { ok: false, reason: "unreachable", detail: "The remote did not answer in time." };
+        return { ok: false, reason: "network", detail: "The remote did not answer in time." };
       }
       throw error;
     }
@@ -169,7 +244,7 @@ export function probeRemote(
     }
     return {
       ok: false,
-      reason: result.exitCode === 2 ? "ref-missing" : "unreachable",
+      reason: result.exitCode === 2 ? "ref-missing" : gitFailureKind(result.tail),
       detail: describeGitFailure(result.tail),
     };
   });
@@ -190,17 +265,27 @@ export function checkoutRemote(
   return withGitSession(deps, remote, options, async (session) => {
     const { gitDir, workTree } = paths;
     await mkdir(workTree, { recursive: true });
-    const run = (args: readonly string[], timeoutMs?: number) =>
-      runGit(deps, session, args, { ...options, timeoutMs });
+    const maxBytes = options.maxBytes ?? MAX_UNPACKED_BYTES;
 
-    // `--template=` keeps git's sample hooks out of a directory that holds untrusted data.
-    assertGitSucceeded(
-      "Preparing the checkout",
-      await run(["init", "--quiet", "--bare", "--template=", "--", gitDir]),
-    );
-    assertGitSucceeded(
-      `Fetching ${ref}`,
-      await run(
+    // Everything from here on is bounded in time and in what it may put on the disk.
+    const budget = new AbortController();
+    let tooLarge = false;
+    const stopWatching = watchTreeSize([gitDir, workTree], maxBytes, () => {
+      tooLarge = true;
+      budget.abort(new GitSourceError("size", failureMessage("size", ref, "")));
+    });
+    const signal =
+      options.signal === undefined ? budget.signal : AbortSignal.any([budget.signal, options.signal]);
+    const run = (args: readonly string[], timeoutMs?: number) =>
+      runGit(deps, session, args, { ...options, signal, timeoutMs });
+
+    try {
+      // `--template=` keeps git's sample hooks out of a directory that holds untrusted data.
+      assertGitSucceeded(
+        "Preparing the checkout",
+        await run(["init", "--quiet", "--bare", "--template=", "--", gitDir]),
+      );
+      const fetched = await run(
         [
           `--git-dir=${gitDir}`,
           "fetch",
@@ -212,29 +297,41 @@ export function checkoutRemote(
           ref,
         ],
         FETCH_TIMEOUT_MS,
-      ),
-    );
+      ).catch((error: unknown) => {
+        if (error instanceof ToolTimeoutError) {
+          throw new GitSourceError("network", failureMessage("network", ref, "it took too long to answer"));
+        }
+        throw error;
+      });
+      if (fetched.exitCode !== 0) {
+        const kind = gitFailureKind(fetched.tail);
+        throw new GitSourceError(kind, failureMessage(kind, ref, describeGitFailure(fetched.tail)));
+      }
 
-    const revision = await runGit(
-      deps,
-      session,
-      [`--git-dir=${gitDir}`, "rev-parse", "--verify", "FETCH_HEAD^{commit}"],
-      { signal: options.signal },
-    );
-    assertGitSucceeded("Reading the commit", revision);
-    const sha = revision.tail.at(-1)?.trim() ?? "";
+      const revision = await runGit(
+        deps,
+        session,
+        [`--git-dir=${gitDir}`, "rev-parse", "--verify", "FETCH_HEAD^{commit}"],
+        { signal },
+      );
+      assertGitSucceeded("Reading the commit", revision);
+      const sha = revision.tail.at(-1)?.trim() ?? "";
 
-    assertGitSucceeded(
-      "Checking out the commit",
-      await run([
-        `--git-dir=${gitDir}`,
-        `--work-tree=${workTree}`,
-        "checkout",
-        "--force",
-        "--detach",
-        "FETCH_HEAD",
-      ]),
-    );
-    return { sha };
+      assertGitSucceeded(
+        "Checking out the commit",
+        await run(
+          [`--git-dir=${gitDir}`, `--work-tree=${workTree}`, "checkout", "--force", "--detach", "FETCH_HEAD"],
+          FETCH_TIMEOUT_MS,
+        ),
+      );
+      if (await exceedsTreeSize([gitDir, workTree], maxBytes)) {
+        throw new GitSourceError("size", failureMessage("size", ref, ""));
+      }
+      return { sha };
+    } catch (error) {
+      throw tooLarge ? new GitSourceError("size", failureMessage("size", ref, "")) : error;
+    } finally {
+      stopWatching();
+    }
   });
 }

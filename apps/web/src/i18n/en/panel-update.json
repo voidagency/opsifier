@@ -1,0 +1,61 @@
+{
+  "details": {
+    "open": "Version details",
+    "title": "Panel version",
+    "active": "Running now",
+    "deployed": "Set to run",
+    "unmanaged": "Not managed by Swarm here",
+    "checked": "Last checked",
+    "neverChecked": "Not yet",
+    "last": "Last update"
+  },
+  "outcome": {
+    "update": {
+      "succeeded": "Updated from {{from}} to {{to}}",
+      "failed": "Update to {{to}} failed",
+      "rolled-back": "Went back to {{from}} after {{to}} failed"
+    },
+    "rollback": {
+      "succeeded": "Went back from {{from}} to {{to}}",
+      "failed": "Could not go back to {{to}}",
+      "rolled-back": "Could not go back to {{to}}"
+    }
+  },
+  "check": {
+    "action": "Check for updates",
+    "checking": "Checking for updates…",
+    "none": "No update available",
+    "available": "Version {{version}} is available",
+    "failed": "The update check failed"
+  },
+  "update": {
+    "action": "Update to {{version}}",
+    "title": "Update to version {{version}}",
+    "description": "This replaces version {{current}}. The panel restarts while it does: your services keep running.",
+    "confirm": "Update the panel",
+    "noNotes": "This release has no notes.",
+    "migrations": "Data changes",
+    "safety": "The panel's database and key are saved first. If the new version does not start, Swarm brings the old one back and the saved data is restored."
+  },
+  "rollback": {
+    "open": "Go back to {{version}}",
+    "explain": "Version {{version}} can come back. Your data stays as it is.",
+    "explainData": "Version {{version}} can come back, with the data saved on {{at}}.",
+    "title": "Go back to version {{version}}",
+    "description": "The panel restarts into the earlier version. Your data stays as it is, and your services keep running.",
+    "descriptionData": "This also restores the data saved on {{at}}: changes made in the panel since then are lost. Your services keep running.",
+    "confirm": "Go back"
+  },
+  "restart": {
+    "title": "Updating to {{version}}",
+    "progress": "In progress",
+    "applying": "Saving the panel's data and starting {{version}}…",
+    "verifying": "Version {{version}} has started. Making sure it stays up…",
+    "explain": "The panel restarts during this, and this page reconnects by itself. Your services keep running."
+  },
+  "result": {
+    "success": "The panel is on version {{version}}",
+    "failure": "Version {{version}} did not start. The panel is back on {{active}}.",
+    "notStarted": "The update could not start"
+  }
+}

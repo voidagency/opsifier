@@ -1,0 +1,80 @@
+{
+  "id": "meilisearch",
+  "version": "1.0.0",
+  "name": "Meilisearch",
+  "summary": {
+    "en": "A fast search engine with a simple API.",
+    "fr": "Un moteur de recherche rapide avec une API simple."
+  },
+  "description": {
+    "en": "Index your data and get instant, typo-tolerant search. Your applications connect with the master key shown on the next screen.",
+    "fr": "Indexez vos données et obtenez une recherche instantanée qui tolère les fautes de frappe. Vos applications se connectent avec la clé maître affichée à l'écran suivant."
+  },
+  "instructions": {
+    "en": "Use the master key below as the Authorization bearer token from your applications.",
+    "fr": "Utilisez la clé maître ci-dessous comme jeton Authorization dans vos applications."
+  },
+  "category": "infrastructure",
+  "tags": ["search", "api", "full-text"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://www.meilisearch.com"
+    },
+    {
+      "kind": "docs",
+      "url": "https://www.meilisearch.com/docs/learn/self_hosted/install_meilisearch_locally"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/meilisearch/meilisearch"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [
+    {
+      "key": "masterKey",
+      "length": 40,
+      "alphabet": "alphanumeric",
+      "label": {
+        "en": "Master key",
+        "fr": "Clé maître"
+      }
+    }
+  ],
+  "services": [
+    {
+      "key": "app",
+      "name": "meilisearch",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "getmeili/meilisearch:v1.56.1"
+      },
+      "env": {
+        "MEILI_ENV": "production",
+        "MEILI_MASTER_KEY": "{{secrets.masterKey}}",
+        "MEILI_NO_ANALYTICS": "true"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/meili_data"
+        }
+      ],
+      "domain": {
+        "port": 7700,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/health",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

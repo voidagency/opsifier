@@ -21,11 +21,15 @@ export interface TerminalPaneProps {
   task: string;
   /** What to run: a program, or a saved script by name. */
   target: { program: "sh" | "bash" } | { script: string };
+  /** The socket to connect to, for a console that is not a service's. */
+  socketPath?: string;
   /** Text for what the terminal itself says, in the interface's language. */
   messages: {
     ended: (code: number | null) => string;
     lost: string;
     refused: string;
+    /** Bash was asked for, and this container only has the shell it was replaced with. */
+    fallback?: (opened: string) => string;
   };
   onStatus: (status: TerminalStatus) => void;
 }
@@ -56,7 +60,7 @@ function terminalTheme(dark: boolean) {
 }
 
 function socketUrl(
-  props: Pick<TerminalPaneProps, "project" | "service" | "task" | "target">,
+  props: Pick<TerminalPaneProps, "project" | "service" | "task" | "target" | "socketPath">,
   cols: number,
   rows: number,
 ) {
@@ -67,7 +71,7 @@ function socketUrl(
   } else {
     query.set("script", props.target.script);
   }
-  return `${scheme}//${location.host}${terminalPath(props.project, props.service)}?${query}`;
+  return `${scheme}//${location.host}${props.socketPath ?? terminalPath(props.project, props.service)}?${query}`;
 }
 
 function* inputChunks(data: string) {
@@ -79,7 +83,7 @@ function* inputChunks(data: string) {
 
 /** One xterm joined to one console session, from mounting to unmounting. */
 export default function TerminalPane(props: TerminalPaneProps) {
-  const { project, service, task, target, messages, onStatus } = props;
+  const { project, service, task, target, socketPath, messages, onStatus } = props;
   const host = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
   const theme = useResolvedTheme();
@@ -95,7 +99,7 @@ export default function TerminalPane(props: TerminalPaneProps) {
 
     const term = new Terminal({
       fontFamily: "'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace",
-      fontSize: 13,
+      fontSize: 15,
       lineHeight: 1.2,
       cursorBlink: true,
       scrollback: SCROLLBACK_LINES,
@@ -109,7 +113,7 @@ export default function TerminalPane(props: TerminalPaneProps) {
     fit.fit();
 
     const socket = new WebSocket(
-      socketUrl({ project, service, task, target: JSON.parse(targetKey) }, term.cols, term.rows),
+      socketUrl({ project, service, task, socketPath, target: JSON.parse(targetKey) }, term.cols, term.rows),
     );
     socket.binaryType = "arraybuffer";
     let ended = false;
@@ -164,6 +168,9 @@ export default function TerminalPane(props: TerminalPaneProps) {
         case "ready":
           latest.current.onStatus("connected");
           term.focus();
+          if (frame.fallback !== undefined) {
+            say(latest.current.messages.fallback?.(frame.fallback) ?? "");
+          }
           break;
         case "exit":
           ended = true;
@@ -214,7 +221,7 @@ export default function TerminalPane(props: TerminalPaneProps) {
       term.dispose();
       terminal.current = null;
     };
-  }, [project, service, task, targetKey]);
+  }, [project, service, task, targetKey, socketPath]);
 
   useEffect(() => {
     if (terminal.current !== null) {

@@ -74,10 +74,14 @@ function CredentialsSection({ email }: { email: string }) {
     <Section title={t("credentials.title")} description={t("credentials.description")}>
       <form onSubmit={form.handleSubmit} noValidate className="grid gap-4">
         {form.banner && <FormBanner>{form.banner}</FormBanner>}
-        <Field label={t("credentials.email")} error={form.errors.email}>
+        <Field label={t("credentials.email")} error={form.errors.email} hint={t("credentials.emailHint")}>
           <Input {...form.field("email")} type="email" autoComplete="username" spellCheck={false} />
         </Field>
-        <Field label={t("credentials.currentPassword")} error={form.errors.currentPassword}>
+        <Field
+          label={t("credentials.currentPassword")}
+          error={form.errors.currentPassword}
+          hint={t("credentials.currentPasswordHint")}
+        >
           <PasswordInput {...form.field("currentPassword")} autoComplete="current-password" />
         </Field>
         <Field
@@ -234,7 +238,11 @@ function TwoFactorSetupDialog({
       }}
       footer={
         step === "codes" ? (
-          <Button type="submit" variant="primary" disabled={!saved}>
+          <Button
+            type="submit"
+            variant="primary"
+            disabledReason={saved ? undefined : t("twoFactor.recoverySaveFirst")}
+          >
             {t("twoFactor.recoveryDone")}
           </Button>
         ) : (
@@ -261,7 +269,11 @@ function TwoFactorSetupDialog({
       ) : setup === null ? (
         <div className="grid gap-4">
           {banner && <FormBanner>{banner}</FormBanner>}
-          <Field label={t("twoFactor.currentPassword")} error={passwordError}>
+          <Field
+            label={t("twoFactor.currentPassword")}
+            error={passwordError}
+            hint={t("twoFactor.currentPasswordHint")}
+          >
             <PasswordInput
               name="currentPassword"
               value={password}
@@ -299,7 +311,7 @@ function TwoFactorSetupDialog({
                 className="mt-0.5 text-xs break-all"
               />
             </div>
-            <Field label={t("twoFactor.codeLabel")} error={codeError}>
+            <Field label={t("twoFactor.codeLabel")} error={codeError} hint={t("twoFactor.codeLabelHint")}>
               <CodeInput
                 ref={codeInput}
                 name="code"
@@ -397,7 +409,11 @@ function DisableTwoFactorDialog({
       confirmLabel={t("twoFactor.disableConfirm")}
       onConfirm={confirm}
     >
-      <Field label={t("twoFactor.currentPassword")} error={passwordError}>
+      <Field
+        label={t("twoFactor.currentPassword")}
+        error={passwordError}
+        hint={t("twoFactor.currentPasswordHint")}
+      >
         <PasswordInput
           name="currentPassword"
           value={password}
@@ -410,7 +426,7 @@ function DisableTwoFactorDialog({
         />
       </Field>
       {recoveryMode ? (
-        <Field label={t("twoFactor.recoveryCode")} error={codeError}>
+        <Field label={t("twoFactor.recoveryCode")} error={codeError} hint={t("twoFactor.recoveryCodeHint")}>
           <Input
             name="recoveryCode"
             mono
@@ -426,7 +442,7 @@ function DisableTwoFactorDialog({
           />
         </Field>
       ) : (
-        <Field label={t("twoFactor.codeLabel")} error={codeError}>
+        <Field label={t("twoFactor.codeLabel")} error={codeError} hint={t("twoFactor.codeLabelHint")}>
           <CodeInput
             name="code"
             value={code}

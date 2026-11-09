@@ -28,7 +28,7 @@ export interface DatabaseEngineInfo {
 /** Everything specific to an engine that both the forms and the compiler rely on. */
 export const databaseEngineInfo: Record<DatabaseEngine, DatabaseEngineInfo> = {
   postgres: {
-    defaultImage: "postgres:18",
+    defaultImage: "postgres:18.6",
     defaultUser: "postgres",
     customUser: true,
     hasDatabaseName: true,
@@ -37,7 +37,7 @@ export const databaseEngineInfo: Record<DatabaseEngine, DatabaseEngineInfo> = {
     dataPath: "/var/lib/postgresql/data",
   },
   mysql: {
-    defaultImage: "mysql:9",
+    defaultImage: "mysql:9.7.4",
     defaultUser: "mysql",
     customUser: true,
     hasDatabaseName: true,
@@ -46,7 +46,7 @@ export const databaseEngineInfo: Record<DatabaseEngine, DatabaseEngineInfo> = {
     dataPath: "/var/lib/mysql",
   },
   mariadb: {
-    defaultImage: "mariadb:11",
+    defaultImage: "mariadb:11.8.9",
     defaultUser: "mariadb",
     customUser: true,
     hasDatabaseName: true,
@@ -55,7 +55,7 @@ export const databaseEngineInfo: Record<DatabaseEngine, DatabaseEngineInfo> = {
     dataPath: "/var/lib/mysql",
   },
   mongo: {
-    defaultImage: "mongo:8",
+    defaultImage: "mongo:8.3.13",
     defaultUser: "mongo",
     customUser: true,
     hasDatabaseName: false,
@@ -64,7 +64,7 @@ export const databaseEngineInfo: Record<DatabaseEngine, DatabaseEngineInfo> = {
     dataPath: "/data/db",
   },
   redis: {
-    defaultImage: "redis:7",
+    defaultImage: "redis:7.4.8",
     defaultUser: "default",
     customUser: false,
     hasDatabaseName: false,
@@ -95,6 +95,67 @@ export const databasePassword = z
   .regex(/^[^\u0000-\u001f\u007f]*$/, "Must not contain control characters")
   .refine((value) => value.trim() !== "", "Must not be only spaces");
 
+/** Shown when an image could change on its own, the next time it is pulled. */
+export const databaseImageRule = "Use a fixed version such as postgres:18.6, or pin it with a digest";
+
+const FIXED_VERSION_TAG = /^v?\d+\.\d+/;
+
+/** The tag of an image reference. Null for a bare name or a digest with no tag. */
+function imageTagOf(reference: string): string | null {
+  const name = reference.split("@", 1)[0] ?? "";
+  const last = name.split("/").at(-1) ?? "";
+  const colon = last.lastIndexOf(":");
+  return colon === -1 ? null : last.slice(colon + 1);
+}
+
+/** Everything before the tag and the digest. */
+function imageRepositoryOf(reference: string): string {
+  const name = reference.split("@", 1)[0] ?? "";
+  const tag = imageTagOf(name);
+  return tag === null ? name : name.slice(0, -(tag.length + 1));
+}
+
+/**
+ * `postgres:18.6`, `postgres:18.6-alpine` and a digest name one version. `latest`, no tag and a bare
+ * major such as `postgres:18` are names for whatever comes next, so the engine could change under the
+ * data at any pull. Only a digest or a tag with at least a major and a minor number stays put.
+ */
+export function isFixedDatabaseImage(reference: string): boolean {
+  if (reference.includes("@sha256:")) {
+    return true;
+  }
+  const tag = imageTagOf(reference);
+  return tag !== null && FIXED_VERSION_TAG.test(tag);
+}
+
+/** The image of a new database, which must not move by itself. */
+export const fixedDatabaseImage = imageReference.refine(isFixedDatabaseImage, databaseImageRule);
+
+/** The major version a tag names. Null when the reference does not say, as with a digest alone. */
+export function imageMajorVersion(reference: string): number | null {
+  const tag = imageTagOf(reference);
+  const major = tag === null ? undefined : /^v?(\d+)/.exec(tag)?.[1];
+  return major === undefined ? null : Number(major);
+}
+
+/**
+ * Whether moving from one image to another may need the engine's data to be migrated. A difference
+ * in the major number is one, and so is anything that can't be compared: another repository, or a
+ * tag or digest that does not say which major version it is. Only the same major of the same image
+ * is known to read the same files.
+ */
+export function isMajorVersionChange(from: string, to: string): boolean {
+  if (from === to) {
+    return false;
+  }
+  if (imageRepositoryOf(from) !== imageRepositoryOf(to)) {
+    return true;
+  }
+  const before = imageMajorVersion(from);
+  const after = imageMajorVersion(to);
+  return before === null || after === null || before !== after;
+}
+
 const optionalText = <T extends z.ZodType>(schema: T) =>
   z.preprocess((value) => (value === "" || value === null ? undefined : value), schema.optional());
 
@@ -106,7 +167,7 @@ export const createDatabaseRequest = z.object({
   user: optionalText(databaseUser),
   password: optionalText(databasePassword),
   rootPassword: optionalText(databasePassword),
-  image: optionalText(imageReference),
+  image: optionalText(fixedDatabaseImage),
 });
 export type CreateDatabaseRequest = z.infer<typeof createDatabaseRequest>;
 
@@ -131,7 +192,32 @@ export const databaseDetail = z.object({
   exposedPort: z.number().int().min(0).max(65535),
   internalHost: z.string(),
   internalPort: z.number().int(),
+  /** Kept apart on purpose: a newer catalogue default is never a reason to touch a running database. */
+  versions: z.object({
+    /** What the catalogue offers for new databases of this engine today. */
+    proposed: z.string(),
+    /** What this database is set to run. */
+    configured: z.string(),
+    /** What it really ran at its last deployment. Null before there has been one. */
+    running: z.object({ image: z.string(), digest: z.string().nullable(), imageId: z.string() }).nullable(),
+  }),
 });
 export type DatabaseDetail = z.infer<typeof databaseDetail>;
+
+/**
+ * GET .../database/availability: a process that has started and a server that accepts its credentials
+ * are not the same thing, and this says which of the two is true.
+ */
+export const databaseSignIns = ["accepted", "refused", "unknown"] as const;
+export const databaseAvailability = z.object({
+  /** Whether a task of this database is running, whatever it may answer. */
+  process: z.enum(["running", "not-running"]),
+  /** Whether the engine accepted the panel's own credentials just now. */
+  signIn: z.enum(databaseSignIns),
+  /** The engine's own words, with secrets removed, when it did not accept them or could not be asked. */
+  detail: z.string().nullable(),
+  checkedAt: z.iso.datetime(),
+});
+export type DatabaseAvailability = z.infer<typeof databaseAvailability>;
 
 export { imageReference };

@@ -1,0 +1,11 @@
+{
+  "title": "Référence de l'API",
+  "description": "Toutes les opérations du panneau. Envoyez une clé créée dans vos clés API comme jeton Bearer.",
+  "manageKeys": "Gérer les clés API",
+  "search": "Rechercher une opération",
+  "noResults": "Rien ne correspond à cette recherche.",
+  "parameters": "Paramètres",
+  "body": "Corps",
+  "responses": "Réponses",
+  "untagged": "Autres"
+}

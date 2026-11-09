@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { copyText } from "../../../../lib/clipboard";
 import { errorMessage } from "../../../../lib/forms";
-import { Button, ConfirmDialog, FormBanner, MonoValue, Skeleton, Tooltip, toast } from "../../../../ui";
+import { Button, ConfirmDialog, ErrorState, Lamp, MonoValue, Skeleton, Tooltip, toast } from "../../../../ui";
 import { companionsQuery, databasesApi } from "../../../databases/api";
 import { useDatabaseParams } from "../../../databases/DatabaseLayout";
 import { useActionFollower } from "../../ActionFollower";
@@ -122,7 +122,10 @@ function CompanionCard({ companion, busy }: { companion: CompanionState; busy: b
   return (
     <li className="grid gap-3 border-b py-4 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
       <div className="grid min-w-0 gap-1.5">
-        <h3 className="text-sm font-medium">{t(`tools.${tool}.name`)}</h3>
+        <div className="flex items-center gap-2">
+          <Lamp state={enabled ? "running" : "stopped"} label={t(enabled ? "state.on" : "state.off")} />
+          <h3 className="text-sm font-medium">{t(`tools.${tool}.name`)}</h3>
+        </div>
         <p className="max-w-[60ch] text-sm text-muted">{t(`tools.${tool}.description`)}</p>
         {enabled && url !== null && (
           <div className="grid gap-1">
@@ -178,14 +181,11 @@ export function CompanionCards({ busy }: { busy: boolean }) {
     <section className="grid gap-3">
       <h2 className="eyebrow">{t("heading")}</h2>
       {isPending ? (
-        <Skeleton className="h-16 max-w-[720px]" />
+        <Skeleton className="h-16 max-w-[900px]" />
       ) : data === undefined ? (
-        <div className="grid max-w-[520px] justify-items-start gap-3">
-          <FormBanner>{errorMessage(error, t)}</FormBanner>
-          <Button onClick={() => refetch()}>{t("common:actions.retry")}</Button>
-        </div>
+        <ErrorState message={errorMessage(error, t)} onRetry={() => refetch()} />
       ) : (
-        <ul className="max-w-[720px] border-t">
+        <ul className="max-w-[900px] border-t">
           {data.companions.map((companion) => (
             <CompanionCard key={companion.tool} companion={companion} busy={busy} />
           ))}

@@ -16,5 +16,11 @@
     "memoryLimit": "Use 0 for no limit, or at least 6 MB.",
     "cpuReservation": "Use 0, or at least 0.01 cores, and no more than the limit.",
     "cpuLimit": "Use 0 for no limit, or at least 0.01 cores."
+  },
+  "fieldHints": {
+    "memoryReservation": "Memory set aside for this service.",
+    "memoryLimit": "The most memory it may use.",
+    "cpuReservation": "CPU set aside for it.",
+    "cpuLimit": "The most CPU it may use."
   }
 }

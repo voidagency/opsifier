@@ -1,0 +1,82 @@
+{
+  "id": "matomo",
+  "version": "1.0.0",
+  "name": "Matomo",
+  "summary": {
+    "en": "Full web analytics that stay on your own server.",
+    "fr": "Une mesure d'audience complète qui reste sur votre serveur."
+  },
+  "description": {
+    "en": "An extensive analytics platform with goals, funnels and segments. The installer in your browser creates the first super user; the database settings are filled in for it.",
+    "fr": "Une plateforme d'analyse complète avec objectifs, entonnoirs et segments. L'installateur dans le navigateur crée le premier super-utilisateur, avec les réglages de base déjà remplis."
+  },
+  "instructions": {
+    "en": "Open the site and follow the installer. The database page is already filled in.",
+    "fr": "Ouvrez le site et suivez l'installateur. La page de base de données est déjà remplie."
+  },
+  "category": "monitoring",
+  "tags": ["analytics", "web", "statistics"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://matomo.org"
+    },
+    {
+      "kind": "docs",
+      "url": "https://hub.docker.com/_/matomo"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/matomo-org/matomo"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "db",
+      "name": "matomo-db",
+      "kind": "database",
+      "engine": "mariadb",
+      "image": "mariadb:11.8",
+      "databaseName": "matomo",
+      "user": "matomo"
+    },
+    {
+      "key": "app",
+      "name": "matomo",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "matomo:5.14.2-apache"
+      },
+      "env": {
+        "MATOMO_DATABASE_HOST": "{{services.db.host}}",
+        "MATOMO_DATABASE_ADAPTER": "mysql",
+        "MATOMO_DATABASE_TABLES_PREFIX": "matomo_",
+        "MATOMO_DATABASE_USERNAME": "{{services.db.user}}",
+        "MATOMO_DATABASE_PASSWORD": "{{services.db.password}}",
+        "MATOMO_DATABASE_DBNAME": "{{services.db.database}}"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "html",
+          "path": "/var/www/html"
+        }
+      ],
+      "domain": {
+        "port": 80,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/",
+        "expect": [200, 302]
+      },
+      "dependsOn": ["db"]
+    }
+  ]
+}

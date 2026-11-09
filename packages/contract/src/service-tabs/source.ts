@@ -36,15 +36,40 @@ export const railpackVersions = [
   "0.10.0",
   "0.9.2",
 ] as const;
-export const defaultBuildpacksBuilder = "heroku/builder:24";
+/** The Cloud Native Buildpacks command line. The image installs exactly this one. */
+export const packVersion = "0.40.0";
+/** Each one fixed to a digest or to a release that is never rebuilt, so the same code keeps building the same way. */
+export const defaultBuildpacksBuilder =
+  "heroku/builder:24@sha256:7eaa43fc56aefe79b3c35cd08399ba4852f168ad9836bc1144ea216ceb025d85";
 export const buildpacksBuilders = [
-  "heroku/builder:24",
-  "heroku/builder:22",
-  "heroku/builder:20",
-  "paketobuildpacks/builder-jammy-full:latest",
-  "paketobuildpacks/builder-jammy-base:latest",
-  "paketobuildpacks/builder-jammy-tiny:latest",
+  defaultBuildpacksBuilder,
+  "heroku/builder:22@sha256:4630eaab77371365c174bb39dcd1e43e9806f76588bb07c3fe7591bd13f4861c",
+  "heroku/builder:20@sha256:237c875783e9ead0bc1eafa84535d58fc16d34777692d5b5ccaf965082f5d11a",
+  "paketobuildpacks/builder-jammy-full:0.3.705",
+  "paketobuildpacks/builder-jammy-base:0.4.681",
+  "paketobuildpacks/builder-jammy-tiny:0.0.595",
 ] as const;
+
+/** Earlier releases offered these, which move by themselves. Each one reads as its pinned equivalent. */
+const SUPERSEDED_BUILDERS: Readonly<Record<string, string>> = {
+  "heroku/builder:24": defaultBuildpacksBuilder,
+  "heroku/builder:22":
+    "heroku/builder:22@sha256:4630eaab77371365c174bb39dcd1e43e9806f76588bb07c3fe7591bd13f4861c",
+  "heroku/builder:20":
+    "heroku/builder:20@sha256:237c875783e9ead0bc1eafa84535d58fc16d34777692d5b5ccaf965082f5d11a",
+  "paketobuildpacks/builder-jammy-full:latest": "paketobuildpacks/builder-jammy-full:0.3.705",
+  "paketobuildpacks/builder-jammy-base:latest": "paketobuildpacks/builder-jammy-base:0.4.681",
+  "paketobuildpacks/builder-jammy-tiny:latest": "paketobuildpacks/builder-jammy-tiny:0.0.595",
+};
+
+/** A reference that can't come to mean something else: a digest, or a tag that is a full release number. */
+export function isPinnedBuilder(reference: string): boolean {
+  if (reference.includes("@sha256:")) {
+    return true;
+  }
+  const tag = /:([^:/]+)$/.exec(reference)?.[1];
+  return tag !== undefined && /^v?\d+\.\d+\.\d+/.test(tag);
+}
 
 /** What the panel can unpack. The name only decides what is offered: the content is what gets read. */
 export const archiveExtensions = [
@@ -245,10 +270,16 @@ const dockerfileBuild = z.object({
   file: relativeFile("Use a path inside the build path, such as Dockerfile").default(""),
 });
 
-const buildpacksBuild = z.object({
-  type: z.literal("buildpacks"),
-  builder: imageReference.default(defaultBuildpacksBuilder),
-});
+const buildpacksBuild = (builder: z.ZodType<string>) =>
+  z.object({
+    type: z.literal("buildpacks"),
+    builder: builder.default(defaultBuildpacksBuilder),
+  });
+
+const pinnedBuilderReference = imageReference.refine(
+  isPinnedBuilder,
+  "Use a pinned builder: a full release such as 0.4.681, or a digest",
+);
 
 const nixpacksBuild = z.object({
   type: z.literal("nixpacks"),
@@ -275,11 +306,22 @@ const railpackBuild = z.object({
 /** How source code becomes an image. Null means: a Dockerfile if there is one, otherwise Nixpacks. */
 export const buildConfig = z.discriminatedUnion("type", [
   dockerfileBuild,
-  buildpacksBuild,
+  buildpacksBuild(pinnedBuilderReference),
   nixpacksBuild,
   railpackBuild,
 ]);
 export type BuildConfig = z.infer<typeof buildConfig>;
+
+/**
+ * Reads what was saved: a superseded builder comes back as its pinned equivalent, and anything else that
+ * isn't pinned is still read, so that the page can show it and the build can say what is wrong with it.
+ */
+export const storedBuildConfig = z.discriminatedUnion("type", [
+  dockerfileBuild,
+  buildpacksBuild(imageReference.transform((builder) => SUPERSEDED_BUILDERS[builder] ?? builder)),
+  nixpacksBuild,
+  railpackBuild,
+]);
 export type BuildType = BuildConfig["type"];
 
 /** What leaves the server about a source. Passwords, keys and tokens never do. */
@@ -332,6 +374,15 @@ export const sourceSettings = z.object({
   build: buildConfig.nullable(),
   /** The deploy key's public half. The private half stays sealed on the server. */
   sshPublicKey: z.string().nullable(),
+  /** What can be said about the deploy key without showing it. */
+  sshKey: z
+    .object({
+      fingerprint: z.string(),
+      /** The one repository it may be offered to. Null until it has been used for one. */
+      boundTo: z.string().nullable(),
+      createdAt: z.iso.datetime().nullable(),
+    })
+    .nullable(),
   /** Whether a GitHub token is stored, so the UI can offer the picker and auto-deploy. */
   githubConfigured: z.boolean(),
 });
@@ -403,13 +454,35 @@ export type UploadSourceQuery = z.infer<typeof uploadSourceQuery>;
 export const sshKeyResponse = z.object({ publicKey: z.string() });
 export type SshKeyResponse = z.infer<typeof sshKeyResponse>;
 
+/** POST /api/v1/projects/{project}/services/{service}/source/ssh-key/test */
+export const sshKeyTestResult = z.object({
+  ok: z.boolean(),
+  /** Git's own words when it failed, with secrets removed. */
+  detail: z.string(),
+});
+export type SshKeyTestResult = z.infer<typeof sshKeyTestResult>;
+
 /** PUT /api/v1/projects/{project}/services/{service}/source/auto-deploy */
 export const autoDeployRequest = z.object({ enabled: z.boolean() });
 export type AutoDeployRequest = z.infer<typeof autoDeployRequest>;
 
-/** GET and PUT /api/v1/projects/{project}/services/{service}/source/env-file */
+/** GET /api/v1/projects/{project}/services/{service}/source/env-file */
 export const envFileSettings = z.object({
-  /** Null when the environment is not written to a file. */
+  /** Null when no variables are written to a file. */
   path: envFilePath.nullable(),
+  /**
+   * True writes the file into the build context, where a `COPY` puts it in an image layer. False keeps
+   * it out of the context altogether, and a Dockerfile reads it as the build secret `env-file`.
+   */
+  inImage: z.boolean(),
 });
 export type EnvFileSettings = z.infer<typeof envFileSettings>;
+
+/** PUT .../source/env-file. Turning the file on has to say where it goes: nothing assumes that for you. */
+export const saveEnvFileRequest = z
+  .object({ path: envFilePath.nullable(), inImage: z.boolean().optional() })
+  .refine((request) => request.path === null || request.inImage !== undefined, {
+    path: ["inImage"],
+    message: "Say whether this file may enter the image",
+  });
+export type SaveEnvFileRequest = z.infer<typeof saveEnvFileRequest>;

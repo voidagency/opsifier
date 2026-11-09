@@ -1,0 +1,52 @@
+{
+  "id": "it-tools",
+  "version": "1.0.0",
+  "name": "IT Tools",
+  "summary": {
+    "en": "A hundred handy converters, generators and encoders.",
+    "fr": "Une centaine de convertisseurs, générateurs et encodeurs utiles."
+  },
+  "description": {
+    "en": "Hashes, UUIDs, tokens, base64, cron, JWT and many more small tools in one page. It is a static site with nothing to configure.",
+    "fr": "Empreintes, UUID, jetons, base64, cron, JWT et bien d'autres petits outils sur une seule page. C'est un site statique sans rien à configurer."
+  },
+  "category": "development",
+  "tags": ["utilities", "developer-tools", "web"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://it-tools.tech"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/CorentinTh/it-tools"
+    }
+  ],
+  "verified": true,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "it-tools",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "corentinth/it-tools:2024.10.22-7ca5933"
+      },
+      "env": {},
+      "command": null,
+      "mounts": [],
+      "domain": {
+        "port": 80,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

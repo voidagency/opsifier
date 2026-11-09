@@ -1,8 +1,9 @@
-import type { ServiceMetrics, ServicesMetrics, TaskMetrics } from "@opsifier/contract";
+import type { MetricOrigin, ServiceMetrics, ServicesMetrics, TaskMetrics } from "@opsifier/contract";
 import { servicesMetricsTopic } from "@opsifier/contract";
 import type { AppDeps } from "../../core/context";
 import { DockerDriverError, type TaskStats } from "../../core/docker";
 import type { TopicChannel, TopicFeed, TopicProvider } from "../../core/realtime";
+import { latestReadingAt, latestServiceReadingAt } from "../monitor/store";
 import { qualifiedName } from "../services/compile";
 import type { ServiceRef } from "./repo";
 import { sleep } from "./timing";
@@ -15,29 +16,56 @@ export const METRICS_INTERVAL_MS = 3000;
 const MIN_REST_MS = 200;
 const MAX_CONCURRENT_SERVICES = 4;
 
-/** Docker can leave out any figure while a container starts or dies. Nothing but a number gets past. */
-const reading = (value: number): number => (Number.isFinite(value) && value > 0 ? value : 0);
-const bytes = (value: number): number => Math.round(reading(value));
+/** Docker can leave out any figure while a container starts or dies. Only a real number gets past. */
+const reading = (value: number | null): number | null =>
+  value !== null && Number.isFinite(value) && value >= 0 ? value : null;
+const bytes = (value: number | null): number | null => {
+  const known = reading(value);
+  return known === null ? null : Math.round(known);
+};
 
-const NO_READINGS: ServiceMetrics = {
-  cpuPercent: 0,
-  memoryUsedBytes: 0,
-  networkRxBytes: 0,
-  networkTxBytes: 0,
+/** Adds what is known. Only a figure no task reported at all stays unknown. */
+const plus = (total: number | null, value: number | null): number | null =>
+  value === null ? total : (total ?? 0) + value;
+
+type Figures = Pick<
+  ServiceMetrics,
+  | "cpuPercent"
+  | "cpuCapacityPercent"
+  | "memoryUsedBytes"
+  | "memoryLimitBytes"
+  | "networkRxBytes"
+  | "networkTxBytes"
+  | "readAt"
+>;
+
+const NO_FIGURES: Figures = {
+  cpuPercent: null,
+  cpuCapacityPercent: null,
+  memoryUsedBytes: null,
+  memoryLimitBytes: null,
+  networkRxBytes: null,
+  networkTxBytes: null,
   readAt: null,
 };
 
+export function metricOriginOf(deps: Pick<AppDeps, "docker">): MetricOrigin {
+  return deps.docker.kind === "fake" ? "simulated" : "docker";
+}
+
 /** Adds up the tasks of a service. */
-export function sumTaskStats(samples: readonly TaskStats[]): ServiceMetrics {
-  return samples.reduce<ServiceMetrics>(
+export function sumTaskStats(samples: readonly TaskStats[]): Figures {
+  return samples.reduce<Figures>(
     (total, sample) => ({
-      cpuPercent: total.cpuPercent + reading(sample.cpuPercent),
-      memoryUsedBytes: total.memoryUsedBytes + bytes(sample.memoryUsedBytes),
-      networkRxBytes: total.networkRxBytes + bytes(sample.networkRxBytes),
-      networkTxBytes: total.networkTxBytes + bytes(sample.networkTxBytes),
+      cpuPercent: plus(total.cpuPercent, reading(sample.cpuPercent)),
+      cpuCapacityPercent: plus(total.cpuCapacityPercent, reading(sample.cpuCapacityPercent)),
+      memoryUsedBytes: plus(total.memoryUsedBytes, bytes(sample.memoryUsedBytes)),
+      memoryLimitBytes: plus(total.memoryLimitBytes, bytes(sample.memoryLimitBytes)),
+      networkRxBytes: plus(total.networkRxBytes, bytes(sample.networkRxBytes)),
+      networkTxBytes: plus(total.networkTxBytes, bytes(sample.networkTxBytes)),
       readAt: sample.readAt,
     }),
-    NO_READINGS,
+    NO_FIGURES,
   );
 }
 
@@ -48,36 +76,74 @@ function toTaskMetrics(sample: TaskStats): TaskMetrics {
     taskId: sample.taskId,
     slot: sample.slot,
     cpuPercent: reading(sample.cpuPercent),
+    cpuCapacityPercent: reading(sample.cpuCapacityPercent),
     memoryUsedBytes: used,
     memoryLimitBytes: limit,
-    memoryPercent: limit > 0 ? (used / limit) * 100 : 0,
+    memoryPercent: used === null || limit === null || limit <= 0 ? null : (used / limit) * 100,
     networkRxBytes: bytes(sample.networkRxBytes),
     networkTxBytes: bytes(sample.networkTxBytes),
   };
 }
 
-/** One reading of one service. A service with nothing running, or a daemon that is away, reads zero. */
+type ReadingDeps = Pick<AppDeps, "docker" | "db">;
+
+/** What these tasks add up to. With none there are no figures, and only the last reading can be dated. */
+export function serviceReading(
+  deps: ReadingDeps,
+  target: ServiceRef,
+  samples: readonly TaskStats[],
+): ServiceMetrics {
+  const figures = sumTaskStats(samples);
+  return {
+    ...figures,
+    available: true,
+    tasks: samples.length,
+    lastReadAt: figures.readAt ?? latestReadingAt(deps.db, `${target.projectName}/${target.serviceName}`),
+    origin: metricOriginOf(deps),
+    scope: "service",
+  };
+}
+
+/** Docker did not answer, which says nothing about the service except when it was last seen. */
+export function unavailableReading(deps: ReadingDeps, target: ServiceRef): ServiceMetrics {
+  return { ...serviceReading(deps, target, []), available: false };
+}
+
+/** One reading of one service. A service with nothing running has no figures, and that is not zero. */
 export async function readServiceMetrics(
-  deps: Pick<AppDeps, "docker">,
+  deps: ReadingDeps,
   target: ServiceRef,
   signal?: AbortSignal,
 ): Promise<ServiceMetrics> {
   try {
-    return sumTaskStats(
+    return serviceReading(
+      deps,
+      target,
       await deps.docker.serviceStats(qualifiedName(target.projectName, target.serviceName), { signal }),
     );
   } catch (error) {
-    if (error instanceof DockerDriverError) {
-      return NO_READINGS;
+    if (!(error instanceof DockerDriverError)) {
+      throw error;
     }
-    throw error;
+    // Docker knows no such service, so it is simply not running. Anything else is a daemon that is away.
+    return error.statusCode === 404 ? serviceReading(deps, target, []) : unavailableReading(deps, target);
   }
 }
 
 async function readAllServices(
-  deps: Pick<AppDeps, "docker" | "now">,
+  deps: Pick<AppDeps, "docker" | "now" | "db">,
   signal: AbortSignal,
 ): Promise<ServicesMetrics> {
+  const origin = metricOriginOf(deps);
+  const unavailable = (): ServicesMetrics => ({
+    available: false,
+    readAt: null,
+    lastReadAt: latestServiceReadingAt(deps.db),
+    origin,
+    scope: "containers",
+    services: [],
+  });
+
   let names: string[];
   try {
     // Only names with an underscore are workloads. The panel and the proxy have none.
@@ -86,12 +152,13 @@ async function readAllServices(
       .filter((name) => name.includes("_"));
   } catch (error) {
     if (error instanceof DockerDriverError) {
-      return { available: false, readAt: null, services: [] };
+      return unavailable();
     }
     throw error;
   }
 
   const services: ServicesMetrics["services"] = [];
+  let unanswered = 0;
   for (let start = 0; start < names.length && !signal.aborted; start += MAX_CONCURRENT_SERVICES) {
     const readings = await Promise.all(
       names.slice(start, start + MAX_CONCURRENT_SERVICES).map(async (name) => {
@@ -99,16 +166,24 @@ async function readAllServices(
         const separator = name.indexOf("_");
         const projectName = name.slice(0, separator);
         const serviceName = name.slice(separator + 1);
-        const samples = await deps.docker.serviceStats(name, { signal }).catch(() => [] as TaskStats[]);
+        const samples = await deps.docker.serviceStats(name, { signal }).catch(() => {
+          unanswered += 1;
+          return [] as TaskStats[];
+        });
         return { projectName, serviceName, tasks: samples.map(toTaskMetrics) };
       }),
     );
     services.push(...readings.filter((service) => service.tasks.length > 0));
   }
+  // Docker listed its services and then answered nothing about any of them: it went away just now.
+  if (names.length > 0 && unanswered === names.length) {
+    return unavailable();
+  }
   services.sort(
     (a, b) => a.projectName.localeCompare(b.projectName) || a.serviceName.localeCompare(b.serviceName),
   );
-  return { available: true, readAt: new Date(deps.now()).toISOString(), services };
+  const readAt = new Date(deps.now()).toISOString();
+  return { available: true, readAt, lastReadAt: readAt, origin, scope: "containers", services };
 }
 
 /**
@@ -159,7 +234,7 @@ export class PollingFeed<T> implements TopicFeed {
 }
 
 export function createMetricsProvider(
-  deps: Pick<AppDeps, "docker" | "logger" | "now">,
+  deps: Pick<AppDeps, "docker" | "logger" | "now" | "db">,
   options: { intervalMs?: number } = {},
 ): TopicProvider {
   const intervalMs = options.intervalMs ?? METRICS_INTERVAL_MS;

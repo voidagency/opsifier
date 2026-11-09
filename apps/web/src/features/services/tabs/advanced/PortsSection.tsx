@@ -8,6 +8,7 @@ import {
   ConfirmDialog,
   EmptyState,
   MonoValue,
+  Pictogram,
   Table,
   TBody,
   TD,
@@ -54,7 +55,12 @@ export function PortsSection({
   return (
     <div className="grid gap-4">
       {ports.length === 0 ? (
-        <EmptyState title={t("ports.empty.title")} description={t("ports.empty.description")} action={add} />
+        <EmptyState
+          illustration="no-services"
+          title={t("ports.empty.title")}
+          description={t("ports.empty.description")}
+          action={add}
+        />
       ) : (
         <>
           <Table>
@@ -69,7 +75,12 @@ export function PortsSection({
             <TBody>
               {ports.map((port, index) => (
                 <TR key={`${port.protocol}:${port.published}`}>
-                  <TD mono>{port.protocol.toUpperCase()}</TD>
+                  <TD mono>
+                    <span className="inline-flex items-center gap-2">
+                      <Pictogram name="port" size={16} className="text-muted" />
+                      {port.protocol.toUpperCase()}
+                    </span>
+                  </TD>
                   <TD numeric>
                     <MonoValue value={String(port.published)} />
                   </TD>

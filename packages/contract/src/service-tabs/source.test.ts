@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest";
+import { builderLanguages, buildpackLanguages, railpackLanguages } from "./builders";
 import {
   buildConfig,
   buildPath,
+  buildpacksBuilders,
+  defaultBuildpacksBuilder,
   envFilePath,
   githubRepository,
   gitRef,
   isAllowedGitRemote,
+  isPinnedBuilder,
   isSafeRelativeFile,
   isValidGitRef,
   normalizeBuildPath,
   saveSourceRequest,
+  storedBuildConfig,
   uploadSourceQuery,
 } from "./source";
 
@@ -176,12 +181,79 @@ describe("GitHub repositories", () => {
   );
 });
 
+describe("a pinned builder", () => {
+  it.each([...buildpacksBuilders])("%s is one the panel offers", (builder) => {
+    expect(isPinnedBuilder(builder)).toBe(true);
+    expect(buildConfig.safeParse({ type: "buildpacks", builder }).success).toBe(true);
+  });
+
+  it.each([
+    "paketobuildpacks/builder-jammy-full:latest",
+    "heroku/builder:24",
+    "registry:5000/org/builder",
+    "builder",
+  ])("%s can move, so it is refused", (builder) => {
+    expect(isPinnedBuilder(builder)).toBe(false);
+    const parsed = buildConfig.safeParse({ type: "buildpacks", builder });
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues[0]?.message).toMatch(/pinned/);
+  });
+
+  it.each(["org/builder:1.2.3", "org/builder:v2.0.0", "org/builder@sha256:".padEnd(84, "a")])(
+    "%s cannot",
+    (builder) => {
+      expect(isPinnedBuilder(builder)).toBe(true);
+    },
+  );
+
+  it("reads what an earlier release offered as the pinned build of the same line", () => {
+    expect(storedBuildConfig.parse({ type: "buildpacks", builder: "heroku/builder:24" })).toEqual({
+      type: "buildpacks",
+      builder: defaultBuildpacksBuilder,
+    });
+    expect(
+      storedBuildConfig.parse({ type: "buildpacks", builder: "paketobuildpacks/builder-jammy-full:latest" }),
+    ).toEqual({ type: "buildpacks", builder: "paketobuildpacks/builder-jammy-full:0.3.705" });
+  });
+
+  it("still reads an unpinned builder nobody can translate, so a build can say what is wrong", () => {
+    expect(storedBuildConfig.parse({ type: "buildpacks", builder: "myorg/builder:edge" })).toEqual({
+      type: "buildpacks",
+      builder: "myorg/builder:edge",
+    });
+  });
+});
+
+describe("what each builder supports", () => {
+  it("says which languages a Railpack version detects, oldest and newest", () => {
+    expect(railpackLanguages("0.9.2")).not.toContain(".NET");
+    expect(railpackLanguages("0.9.2")).not.toContain("Gleam");
+    expect(railpackLanguages("0.10.0")).toContain("Gleam");
+    expect(railpackLanguages("0.11.0")).toContain(".NET");
+    expect(railpackLanguages("0.13.0")).not.toContain("C and C++");
+    expect(railpackLanguages("0.14.0")).toContain("C and C++");
+  });
+
+  it("knows every builder image it offers, and answers null for one it doesn't", () => {
+    for (const builder of buildpacksBuilders) {
+      expect(buildpackLanguages(builder)?.length).toBeGreaterThan(0);
+    }
+    expect(buildpackLanguages("myorg/builder:1.2.3")).toBeNull();
+    expect(buildpackLanguages("paketobuildpacks/builder-jammy-tiny:0.0.595")).not.toContain("Node.js");
+  });
+
+  it("leaves a Dockerfile to decide for itself", () => {
+    expect(builderLanguages(buildConfig.parse({ type: "dockerfile" }))).toBeNull();
+    expect(builderLanguages(buildConfig.parse({ type: "nixpacks" }))).toContain("Python");
+  });
+});
+
 describe("build settings", () => {
   it("fills in the defaults of each builder", () => {
     expect(buildConfig.parse({ type: "dockerfile" })).toEqual({ type: "dockerfile", file: "" });
     expect(buildConfig.parse({ type: "buildpacks" })).toEqual({
       type: "buildpacks",
-      builder: "heroku/builder:24",
+      builder: defaultBuildpacksBuilder,
     });
     expect(buildConfig.parse({ type: "nixpacks" })).toMatchObject({ version: "1.41.0", installCommand: "" });
     expect(buildConfig.parse({ type: "railpack" })).toMatchObject({ version: "0.17.1", startCommand: "" });

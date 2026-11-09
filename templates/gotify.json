@@ -1,0 +1,97 @@
+{
+  "id": "gotify",
+  "version": "1.0.0",
+  "name": "Gotify",
+  "summary": {
+    "en": "Send yourself push notifications over a simple API.",
+    "fr": "Envoyez-vous des notifications par une API simple."
+  },
+  "description": {
+    "en": "A small server that receives messages from your scripts and pushes them to a web interface and mobile app. It stores everything in SQLite on a volume.",
+    "fr": "Un petit serveur qui reçoit des messages de vos scripts et les pousse vers une interface web et une application mobile. Tout est stocké dans SQLite sur un volume."
+  },
+  "instructions": {
+    "en": "Sign in as {{params.adminUser}} with the password shown below.",
+    "fr": "Connectez-vous avec {{params.adminUser}} et le mot de passe affiché ci-dessous."
+  },
+  "category": "communication",
+  "tags": ["notifications", "push", "messaging"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://gotify.net"
+    },
+    {
+      "kind": "docs",
+      "url": "https://gotify.net/docs/install"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/gotify/server"
+    }
+  ],
+  "verified": true,
+  "params": [
+    {
+      "key": "adminUser",
+      "label": {
+        "en": "Admin user",
+        "fr": "Utilisateur administrateur"
+      },
+      "type": "text",
+      "required": true,
+      "default": "admin"
+    },
+    {
+      "key": "adminPassword",
+      "label": {
+        "en": "Admin password",
+        "fr": "Mot de passe administrateur"
+      },
+      "type": "secret",
+      "required": false,
+      "help": {
+        "en": "Leave empty to generate one.",
+        "fr": "Laissez vide pour en générer un."
+      },
+      "generate": {
+        "length": 24,
+        "alphabet": "alphanumeric"
+      }
+    }
+  ],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "gotify",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "gotify/server:3.1.1"
+      },
+      "env": {
+        "GOTIFY_DEFAULTUSER_NAME": "{{params.adminUser}}",
+        "GOTIFY_DEFAULTUSER_PASS": "{{params.adminPassword}}"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/app/data"
+        }
+      ],
+      "domain": {
+        "port": 80,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/health",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

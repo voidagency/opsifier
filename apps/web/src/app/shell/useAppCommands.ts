@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Activity, Gauge, Globe, KeyRound, Languages, LayoutGrid, LogOut } from "lucide-react";
+import { Languages, LogOut } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { languages, setLanguage } from "../../i18n";
@@ -23,7 +23,7 @@ export function useAppCommands(): void {
         id: "go.overview",
         group: navigation,
         title: t("nav.overview"),
-        icon: LayoutGrid,
+        pictogram: "node",
         keywords: ["home", "dashboard"],
         run: () => navigate({ to: "/" }),
       },
@@ -31,7 +31,7 @@ export function useAppCommands(): void {
         id: "go.activity",
         group: navigation,
         title: t("nav.activity"),
-        icon: Activity,
+        pictogram: "activity",
         keywords: ["actions", "log", "history"],
         run: () => navigate({ to: "/activity" }),
       },
@@ -39,7 +39,7 @@ export function useAppCommands(): void {
         id: "go.monitor",
         group: navigation,
         title: t("nav.monitor"),
-        icon: Gauge,
+        pictogram: "metrics",
         keywords: ["cpu", "memory", "metrics"],
         run: () => navigate({ to: "/monitor" }),
       },
@@ -47,7 +47,7 @@ export function useAppCommands(): void {
         id: "go.domains",
         group: navigation,
         title: t("nav.domains"),
-        icon: Globe,
+        pictogram: "domain",
         keywords: ["dns", "routes", "certificates"],
         run: () => navigate({ to: "/domains" }),
       },
@@ -55,7 +55,7 @@ export function useAppCommands(): void {
         id: "go.authentication",
         group: settings,
         title: t("settingsNav.authentication"),
-        icon: KeyRound,
+        pictogram: "access",
         keywords: ["password", "email", "two-factor", "2fa", "security"],
         run: () => navigate({ to: "/settings/user/authentication" }),
       },

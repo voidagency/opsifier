@@ -1,12 +1,11 @@
 import type { ActionEntry, DatabaseEngine, ServiceDetail } from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
-import { MoreHorizontal, Pencil, Play, Square } from "lucide-react";
+import { MoreHorizontal, Play, Square } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { errorMessage } from "../../lib/forms";
 import {
-  Badge,
   Button,
   ConfirmDialog,
   DropdownMenu,
@@ -14,25 +13,22 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  FormBanner,
+  ErrorState,
   MonoValue,
-  PageHeader,
+  RetentionSummary,
   Skeleton,
-  StatusLamp,
-  Tooltip,
   toast,
   useDocumentTitle,
 } from "../../ui";
-import { actionLabel } from "../activity/labels";
 import { projectsKey } from "../projects/api";
-import { MetricsRow } from "../service-runtime/MetricsRow";
 import { ConsoleButton, LogsButton } from "../service-runtime/RuntimeButtons";
 import { useActionFollower } from "../services/ActionFollower";
-import { lampForService, serviceKey, serviceQuery, servicesApi, statusLabelKey } from "../services/api";
+import { serviceKey, serviceQuery, servicesApi } from "../services/api";
 import { NotesDialog } from "../services/NotesDialog";
 import { RenameDialog } from "../services/RenameDialog";
+import { ServiceHeader, TabPictogram, tabLinkClass } from "../services/ServiceHeader";
 import { databaseQuery } from "./api";
-import { databaseTabs } from "./tabs";
+import { databaseTabsFor } from "./tabs";
 
 /** The project, engine and service the current route is about. */
 export function useDatabaseParams(): { project: string; engine: DatabaseEngine; service: string } {
@@ -43,15 +39,19 @@ function DatabaseTabNav() {
   const { t } = useTranslation("databases");
   const { project, engine, service } = useDatabaseParams();
   return (
-    <nav aria-label={t("tabs.label")} className="-mb-px flex gap-5 overflow-x-auto [scrollbar-width:none]">
-      {databaseTabs.map((tab) => (
+    <nav
+      aria-label={t("tabs.label")}
+      className="-mb-px flex gap-x-5 overflow-x-auto [scrollbar-width:none] md:flex-wrap md:overflow-visible"
+    >
+      {databaseTabsFor(engine).map((tab) => (
         <Link
           key={tab.key}
           to={tab.to}
           params={{ project, engine, service }}
           activeOptions={{ exact: tab.key === "overview", includeHash: false, includeSearch: false }}
-          className="relative h-9 shrink-0 whitespace-nowrap text-sm leading-9 text-muted after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:origin-left after:scale-x-0 after:bg-highlight after:transition-transform after:duration-[160ms] after:ease-out hover:text-ink data-[status=active]:font-medium data-[status=active]:text-ink data-[status=active]:after:scale-x-100"
+          className={tabLinkClass}
         >
+          <TabPictogram tab={tab.key} />
           {t(`tabs.${tab.key}`)}
         </Link>
       ))}
@@ -97,30 +97,27 @@ function DatabaseToolbar({ detail }: { detail: ServiceDetail }) {
     await navigate({ to: "/projects/$project", params: { project } });
   };
 
+  const busyReason = busy ? t("services:toolbar.busy") : undefined;
+
   return (
     <>
-      <Tooltip content={stopped ? t("toolbar.start") : t("toolbar.stop")}>
-        <Button
-          size="icon"
-          aria-label={stopped ? t("toolbar.start") : t("toolbar.stop")}
-          disabled={busy || detail.status === "undeployed"}
-          onClick={() =>
-            stopped
-              ? start(
-                  () => servicesApi.start(project, service),
-                  t("toolbar.started"),
-                  t("toolbar.startFailed"),
-                )
-              : start(() => servicesApi.stop(project, service), t("toolbar.stopped"), t("toolbar.stopFailed"))
-          }
-        >
-          {stopped ? (
-            <Play aria-hidden="true" className="size-4" />
-          ) : (
-            <Square aria-hidden="true" className="size-4" />
-          )}
-        </Button>
-      </Tooltip>
+      <Button
+        size="icon"
+        aria-label={stopped ? t("toolbar.start") : t("toolbar.stop")}
+        tooltip={stopped ? t("toolbar.start") : t("toolbar.stop")}
+        disabledReason={detail.status === "undeployed" ? t("services:toolbar.notDeployed") : busyReason}
+        onClick={() =>
+          stopped
+            ? start(() => servicesApi.start(project, service), t("toolbar.started"), t("toolbar.startFailed"))
+            : start(() => servicesApi.stop(project, service), t("toolbar.stopped"), t("toolbar.stopFailed"))
+        }
+      >
+        {stopped ? (
+          <Play aria-hidden="true" className="size-4" />
+        ) : (
+          <Square aria-hidden="true" className="size-4" />
+        )}
+      </Button>
       <LogsButton project={project} service={service} />
       <ConsoleButton project={project} service={service} running={running} />
       <DropdownMenu>
@@ -132,7 +129,7 @@ function DatabaseToolbar({ detail }: { detail: ServiceDetail }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent>
           <DropdownMenuItem onSelect={() => setNotesOpen(true)}>{t("toolbar.notes")}</DropdownMenuItem>
-          <DropdownMenuItem disabled={busy} onSelect={redeploy}>
+          <DropdownMenuItem disabledReason={busyReason} onSelect={redeploy}>
             {t("toolbar.redeploy")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -154,22 +151,26 @@ function DatabaseToolbar({ detail }: { detail: ServiceDetail }) {
         title={t("destroy.title")}
         description={
           <>
-            {t("destroy.description", { volume: database?.volume ?? "" })}{" "}
-            <MonoValue value={service} copy copyLabel={t("destroy.copyName")} />
+            {t("destroy.description")} <MonoValue value={service} copy copyLabel={t("destroy.copyName")} />
           </>
         }
         confirmLabel={t("destroy.confirm")}
         confirmText={service}
         onConfirm={destroy}
-      />
+      >
+        <RetentionSummary
+          removed={t("destroy.removed")}
+          kept={t("destroy.kept", { volume: database?.volume ?? "" })}
+        />
+      </ConfirmDialog>
     </>
   );
 }
 
 /** The frame of every database tab: identity, toolbar, readings and the tab strip. */
 export function DatabaseLayout() {
-  const { t } = useTranslation(["databases", "services", "common"]);
-  const { project, engine, service } = useDatabaseParams();
+  const { t } = useTranslation("databases");
+  const { project, service } = useDatabaseParams();
   const {
     data: detail,
     error,
@@ -182,10 +183,7 @@ export function DatabaseLayout() {
     return (
       <div className="px-4 py-6 md:px-6 lg:px-8">
         {error ? (
-          <div className="grid max-w-[520px] justify-items-start gap-3">
-            <FormBanner>{errorMessage(error, t)}</FormBanner>
-            <Button onClick={() => refetch()}>{t("common:actions.retry")}</Button>
-          </div>
+          <ErrorState message={errorMessage(error, t)} onRetry={() => refetch()} />
         ) : (
           <Skeleton className="h-16" />
         )}
@@ -195,44 +193,14 @@ export function DatabaseLayout() {
 
   return (
     <>
-      <PageHeader
-        title={
-          <span className="inline-flex flex-wrap items-center gap-x-2.5 gap-y-1">
-            <StatusLamp
-              status={lampForService(detail.status, detail.activeAction)}
-              label={t(`services:${statusLabelKey(detail.status)}`)}
-            />
-            <span className="font-mono">{service}</span>
-            <Badge mono>{t(`databases:engines.${engine}`)}</Badge>
-            <Tooltip content={t("services:rename.open")}>
-              <button
-                type="button"
-                aria-label={t("services:rename.open")}
-                onClick={() => setRenaming(true)}
-                className="flex size-7 items-center justify-center rounded-sm text-muted hover:bg-wash hover:text-ink"
-              >
-                <Pencil aria-hidden="true" className="size-3.5" />
-              </button>
-            </Tooltip>
-          </span>
-        }
-        description={
-          detail.activeAction !== null ? (
-            t("services:activeAction", {
-              label: actionLabel({ type: detail.activeAction.type, title: detail.activeAction.type }, t),
-            })
-          ) : (
-            <span className="font-mono text-sm">
-              {t(`services:${statusLabelKey(detail.status)}`)} · {detail.replicas.running}/
-              {detail.replicas.desired}
-            </span>
-          )
-        }
-        actions={<DatabaseToolbar detail={detail} />}
-      >
-        <MetricsRow project={project} service={service} />
-        <DatabaseTabNav />
-      </PageHeader>
+      <ServiceHeader
+        project={project}
+        service={service}
+        detail={detail}
+        toolbar={<DatabaseToolbar detail={detail} />}
+        tabs={<DatabaseTabNav />}
+        onRename={() => setRenaming(true)}
+      />
       <Outlet />
       <RenameDialog project={project} service={service} open={renaming} onOpenChange={setRenaming} />
     </>

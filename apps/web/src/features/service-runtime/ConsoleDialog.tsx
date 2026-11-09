@@ -2,10 +2,10 @@ import type { ConsoleProgram } from "@opsifier/contract";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { useQuery } from "@tanstack/react-query";
 import { Power, X } from "lucide-react";
-import { lazy, Suspense, useState } from "react";
+import { lazy, type RefObject, Suspense, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { errorMessage } from "../../lib/forms";
-import { Button, FormBanner, Select, Skeleton } from "../../ui";
+import { Button, FormBanner, Select, Skeleton, useReturnFocus } from "../../ui";
 import { consoleInfoQuery } from "./api";
 import type { TerminalPaneProps, TerminalStatus } from "./TerminalPane";
 
@@ -26,16 +26,24 @@ interface ConsoleDialogProps {
 export function ConsoleDialog({ project, service, open, onOpenChange }: ConsoleDialogProps) {
   const { t } = useTranslation();
   const { t: tRuntime } = useTranslation("service-runtime");
+  const returnFocus = useReturnFocus(open);
+  const sessionOpen = useRef(false);
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
         <RadixDialog.Overlay className="fixed inset-0 z-50 bg-scrim data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
         <RadixDialog.Content
           aria-describedby={undefined}
-          // Terminal programs use Escape, and a stray click must not end a session.
-          onEscapeKeyDown={(event) => event.preventDefault()}
+          // During a session Escape belongs to the program in the terminal.
+          onEscapeKeyDown={(event) => {
+            if (sessionOpen.current) {
+              event.preventDefault();
+            }
+          }}
+          // A stray click must not end a session.
           onInteractOutside={(event) => event.preventDefault()}
-          className="fixed inset-x-4 inset-y-4 z-50 mx-auto flex max-w-[1100px] flex-col rounded-sm border bg-raised shadow-overlay focus-visible:outline-none data-[state=closed]:animate-rise-out data-[state=open]:animate-rise-in md:inset-y-[6dvh]"
+          onCloseAutoFocus={returnFocus}
+          className="fixed inset-x-4 inset-y-4 z-50 mx-auto flex max-w-[1380px] flex-col rounded-sm border bg-raised shadow-overlay focus-visible:outline-none data-[state=closed]:animate-rise-out data-[state=open]:animate-rise-in md:inset-y-[6dvh]"
         >
           <header className="flex items-center gap-3 border-b py-3 pr-3 pl-5">
             <RadixDialog.Title className="min-w-0 flex-1 truncate text-md font-medium">
@@ -48,14 +56,22 @@ export function ConsoleDialog({ project, service, open, onOpenChange }: ConsoleD
               <X aria-hidden="true" className="size-4" />
             </RadixDialog.Close>
           </header>
-          {open && <ConsoleBody project={project} service={service} />}
+          {open && <ConsoleBody project={project} service={service} sessionOpen={sessionOpen} />}
         </RadixDialog.Content>
       </RadixDialog.Portal>
     </RadixDialog.Root>
   );
 }
 
-function ConsoleBody({ project, service }: { project: string; service: string }) {
+function ConsoleBody({
+  project,
+  service,
+  sessionOpen,
+}: {
+  project: string;
+  service: string;
+  sessionOpen: RefObject<boolean>;
+}) {
   const { t } = useTranslation(["service-runtime", "common"]);
   const { data, isPending, isError, error, refetch } = useQuery(consoleInfoQuery(project, service));
   const [chosenTask, setChosenTask] = useState<string | undefined>();
@@ -79,7 +95,9 @@ function ConsoleBody({ project, service }: { project: string; service: string })
   }
 
   const task = chosenTask ?? data.tasks[0]?.id;
+  const programs = data.tasks.find((item) => item.id === task)?.programs ?? [];
   const connected = session !== null && status !== "ended";
+  sessionOpen.current = connected;
 
   const start = (target: Target) => {
     if (task !== undefined) {
@@ -97,7 +115,7 @@ function ConsoleBody({ project, service }: { project: string; service: string })
         {data.tasks.length === 0 ? (
           <p className="text-sm text-muted">{t("console.noTasks")}</p>
         ) : (
-          <div className="w-full max-w-[420px] min-w-[220px] flex-1">
+          <div className="w-full max-w-[530px] min-w-[280px] flex-1">
             <Select
               aria-label={t("console.task")}
               value={task}
@@ -109,10 +127,12 @@ function ConsoleBody({ project, service }: { project: string; service: string })
           </div>
         )}
         <div className="flex flex-wrap items-center gap-1.5">
-          {data.programs.map((program) => (
+          {programs.map((program) => (
             <Button
               key={program}
-              disabled={task === undefined || connected}
+              disabledReason={
+                connected ? t("console.sessionOpen") : task === undefined ? t("console.noTasks") : undefined
+              }
               variant={isCurrent({ program }) && connected ? "primary" : "secondary"}
               onClick={() => start({ program })}
             >
@@ -122,7 +142,15 @@ function ConsoleBody({ project, service }: { project: string; service: string })
           {data.scripts.map((script) => (
             <Button
               key={script}
-              disabled={task === undefined || connected}
+              disabledReason={
+                connected
+                  ? t("console.sessionOpen")
+                  : task === undefined
+                    ? t("console.noTasks")
+                    : programs.includes("sh")
+                      ? undefined
+                      : t("console.noShell")
+              }
               variant={isCurrent({ script }) && connected ? "primary" : "secondary"}
               onClick={() => start({ script })}
             >
@@ -143,7 +171,9 @@ function ConsoleBody({ project, service }: { project: string; service: string })
       </div>
       <div className="min-h-0 flex-1 bg-raised p-3">
         {session === null ? (
-          <p className="text-sm text-muted">{data.tasks.length === 0 ? null : t("console.choose")}</p>
+          <p className="text-sm text-muted">
+            {data.tasks.length === 0 ? null : t(programs.length === 0 ? "console.noShell" : "console.choose")}
+          </p>
         ) : (
           <Suspense fallback={<Skeleton className="h-full" />}>
             <TerminalPane
@@ -156,6 +186,7 @@ function ConsoleBody({ project, service }: { project: string; service: string })
                 ended: (code) => (code === null ? t("console.ended") : t("console.endedWithCode", { code })),
                 lost: t("console.lost"),
                 refused: t("console.refused"),
+                fallback: (opened) => t("console.fallback", { opened }),
               }}
               onStatus={setStatus}
             />

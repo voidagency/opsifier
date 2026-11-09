@@ -1,17 +1,68 @@
 {
   "title": "Variables",
   "description": "Un NOM=valeur par ligne. Elles passent après les variables partagées du projet et parviennent au conteneur à son prochain déploiement.",
+  "descriptionBuilt": "Un NOM=valeur par ligne. Elles passent après les variables partagées du projet et parviennent au conteneur à son prochain déploiement. Elles n'atteignent pas un build.",
   "submit": "Enregistrer les variables",
   "saved": "Variables enregistrées",
   "savedHint": "Elles s'appliquent au prochain déploiement.",
   "invalidLine": "La ligne {{line}} doit ressembler à NOM=valeur.",
   "file": {
-    "label": "Écrire aussi ces variables dans un fichier",
-    "hint": "Créé dans la source avant chaque build.",
+    "label": "Écrire aussi les variables de build dans un fichier",
+    "hint": "Préparé avant chaque build.",
     "path": "Chemin du fichier",
     "pathHint": "Relatif au chemin de build.",
     "pathInvalid": "Utilisez un chemin à l'intérieur de la source, comme .env.",
+    "inImage": "Mettre ce fichier dans le contexte de build",
+    "inImageOff": "Il reste hors du contexte : aucun COPY ne peut le mettre dans l'image. Un Dockerfile le lit avec RUN --mount=type=secret,id=env-file,dst=.env. Les autres constructeurs ne le reçoivent pas.",
+    "inImageOn": "Un COPY du contexte le met dans une couche de l'image, lisible par quiconque a l'image. Il ne contient que les variables de build.",
     "submit": "Enregistrer le réglage",
     "saved": "Réglage enregistré"
+  },
+  "interpolation": {
+    "label": "Remplacer $(PROJECT_NAME), $(SERVICE_NAME) et $(PRIMARY_DOMAIN)",
+    "hint": "Désactivé, ils restent tels que vous les saisissez. Tout autre $(...) ou ${...} n'est jamais touché.",
+    "saved": "Réglage enregistré",
+    "failed": "Impossible de modifier ce réglage"
+  },
+  "reveal": "Afficher et modifier",
+  "revealHint": "L'affichage de ces valeurs est consigné dans le journal d'activité.",
+  "hide": "Masquer",
+  "masked": "Valeur masquée",
+  "build": {
+    "title": "Build",
+    "description": "Ce que reçoit un build. Rien des variables du conteneur ne lui parvient de lui-même.",
+    "inherited": {
+      "title": "Ses variables sont encore partagées avec le build",
+      "body": "Ce service était construit avant l'existence des variables de build : ses builds reçoivent donc encore ses variables d'exécution, hors valeurs scellées. Une valeur déclarée en ARG dans un Dockerfile reste dans l'historique de l'image. Définissez ci-dessous ce dont le build a besoin, puis cessez de les partager.",
+      "stop": "Cesser de les partager",
+      "stopped": "Les variables d'exécution n'atteignent plus le build",
+      "confirmTitle": "Cesser de partager les variables d'exécution avec le build ?",
+      "confirmBody": "Ensuite, le build ne reçoit plus que ce qui est défini ici pour lui. Un build qui comptait sur autre chose peut se mettre à échouer ou à fonctionner différemment."
+    },
+    "variables": {
+      "title": "Variables de build",
+      "hint": "Un NOM=valeur par ligne. Elles atteignent le build comme arguments, et ce qu'un Dockerfile déclare en ARG peut être relu dans l'historique de l'image : rien de secret ici.",
+      "submit": "Enregistrer les variables de build",
+      "saved": "Variables de build enregistrées"
+    },
+    "secrets": {
+      "title": "Secrets de build",
+      "hint": "Pour une étape de build qui a besoin d'un identifiant. Un Dockerfile en lit un avec RUN --mount=type=secret,id=NOM. Il ne fait jamais partie de l'image et ne peut pas être relu. Nixpacks ne peut pas en recevoir sans l'écrire dans l'image : il n'en reçoit donc aucun.",
+      "empty": "Aucun secret de build.",
+      "name": "Nom",
+      "value": "Valeur",
+      "updated": "Modifié",
+      "submit": "Enregistrer le secret",
+      "saved": "Secret de build enregistré",
+      "nameInvalid": "Utilisez des lettres, des chiffres et des tirets bas, en commençant par une lettre.",
+      "valueRequired": "Indiquez sa valeur.",
+      "remove": "Supprimer {{name}}",
+      "removeTitle": "Supprimer {{name}} ?",
+      "removeHint": "Les builds ne recevront plus ce secret. Sa valeur est irrécupérable.",
+      "removeConfirm": "Supprimer",
+      "removed": "Secret de build supprimé",
+      "nameHint": "Le nom sous lequel une étape de construction la lit.",
+      "valueHint": "Conservée scellée et transmise uniquement à la construction."
+    }
   }
 }

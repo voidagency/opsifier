@@ -7,6 +7,8 @@ import {
   servicePictograms,
   sourcePictograms,
 } from "./pictograms";
+import { purposePictograms } from "./purpose-pictograms";
+import { templatePictograms } from "./template-pictograms";
 
 const pictograms = {
   ...servicePictograms,
@@ -14,6 +16,8 @@ const pictograms = {
   ...builderPictograms,
   ...resourcePictograms,
   ...conceptPictograms,
+  ...purposePictograms,
+  ...templatePictograms,
 } satisfies Record<string, ReactNode>;
 
 export type PictogramName = keyof typeof pictograms;
@@ -49,7 +53,7 @@ export const buildTypePictogram: Record<
 
 export interface PictogramProps {
   name: PictogramName;
-  /** Drawn for 16, 20 and 24 pixels. */
+  /** The drawing's size class. On screen it is a quarter larger, in step with the interface's 5px grid. */
   size?: 16 | 20 | 24;
   /** The accessible name. Leave it out next to text that already says the same thing. */
   label?: string;
@@ -57,11 +61,12 @@ export interface PictogramProps {
 }
 
 export function Pictogram({ name, size = 20, label, className }: PictogramProps) {
+  const pixels = size * 1.25;
   return (
     <svg
       viewBox="0 0 24 24"
-      width={size}
-      height={size}
+      width={pixels}
+      height={pixels}
       fill="none"
       stroke="currentColor"
       strokeWidth="2"

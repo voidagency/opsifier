@@ -1,0 +1,141 @@
+{
+  "purposes": {
+    "development": "Développement",
+    "staging": "Préproduction",
+    "production": "Production",
+    "unset": "Non défini"
+  },
+  "purposeHints": {
+    "development": "Travail en cours. Mot de passe sur chaque site, invisible des moteurs de recherche.",
+    "staging": "Répétition avant la mise en ligne. Mot de passe sur chaque site, invisible des moteurs de recherche.",
+    "production": "En ligne pour tous. Les sites sont publics et faits pour être indexés."
+  },
+  "saved": "Rôle du serveur : {{purpose}}",
+  "indicator": {
+    "publicCount_one": "{{count}} public",
+    "publicCount_other": "{{count}} publics",
+    "summaryPublic_one": "{{purpose}} : {{count}} domaine, public par choix.",
+    "summaryPublic_other": "{{purpose}} : {{count}} domaines, publics par choix.",
+    "summaryProtected": "{{purpose}} : {{protected}} domaines protégés sur {{total}}.",
+    "summaryGap": "{{purpose}} : seuls {{protected}} domaines sur {{total}} sont protégés. Quelque chose est ouvert.",
+    "summaryLocked": "{{purpose}} : aucun identifiant, tous les sites sont verrouillés.",
+    "unknown": "Rôle du serveur inconnu"
+  },
+  "lamp": {
+    "protected": "Protégé",
+    "exposed": "Exposé : non protégé",
+    "public": "Public",
+    "unknown": "Protection inconnue"
+  },
+  "firstUse": {
+    "title": "À quoi sert ce serveur ?",
+    "description": "Opsifier protège tous les sites de ce serveur tant que vous ne dites pas le contraire.",
+    "meanwhile": "Tant que vous n'avez pas choisi, chaque site demande un mot de passe et reste hors des moteurs de recherche.",
+    "later": "Décider plus tard",
+    "credentialsTitle": "Le mot de passe de votre serveur"
+  },
+  "credentialsOnce": {
+    "title": "Nouveaux identifiants",
+    "warning": "Copiez-le maintenant. Il ne sera plus affiché.",
+    "username": "Nom d'utilisateur",
+    "password": "Mot de passe",
+    "copyUsername": "Copier le nom d'utilisateur",
+    "copyPassword": "Copier le mot de passe",
+    "done": "Terminé"
+  },
+  "toProduction": {
+    "title": "Passer en production ?",
+    "description_one": "{{count}} domaine deviendra public, sans mot de passe et indexable.",
+    "description_other": "{{count}} domaines deviendront publics, sans mot de passe et indexables.",
+    "confirm": "Passer en production"
+  },
+  "leaveProduction": {
+    "title": "Protéger ce serveur ?",
+    "description": "Chaque site demandera un mot de passe et sera masqué des moteurs de recherche, dès maintenant. Nouveau rôle : {{purpose}}.",
+    "confirm": "Protéger ce serveur"
+  },
+  "purpose": {
+    "title": "Rôle",
+    "description": "Le rôle de ce serveur décide de la façon dont chaque site est exposé.",
+    "unset": "Aucun rôle choisi pour l'instant. Le serveur se comporte comme hors production : protégé.",
+    "adminOnly": "Seul un administrateur peut modifier ceci."
+  },
+  "protection": {
+    "title": "Protection",
+    "description": "Relue depuis ce que le proxy détient réellement, et non depuis ce qui lui a été demandé.",
+    "descriptionProduction": "Un serveur de production est public par choix : rien n'est protégé ici.",
+    "empty": {
+      "title": "Aucun domaine pour l'instant",
+      "description": "Les sites ajoutés seront protégés dès leur création."
+    }
+  },
+  "problems": {
+    "no_credentials": "Aucun identifiant : tous les sites sont verrouillés. Ajoutez un utilisateur ci-dessous.",
+    "panel_exposed": "Les pages du panneau n'ont pas leurs règles pour les robots.",
+    "unreadable_file": "Le fichier de routage {{file}} n'a pas pu être lu."
+  },
+  "credentials": {
+    "title": "Identifiants",
+    "description": "Un seul jeu pour tout le serveur. Les mots de passe sont stockés sous forme de hachage et affichés une seule fois, à leur création.",
+    "add": "Ajouter un utilisateur",
+    "addTitle": "Ajouter un utilisateur",
+    "added": "Utilisateur ajouté",
+    "username": "Nom d'utilisateur",
+    "password": "Mot de passe",
+    "passwordHint": "Laissez vide pour en générer un solide.",
+    "hidden": "Mot de passe stocké sous forme de hachage",
+    "rotate": "Changer le mot de passe",
+    "rotateTitle": "Changer le mot de passe ?",
+    "rotateDescription": "Le mot de passe actuel de {{username}} cesse de fonctionner immédiatement.",
+    "rotateConfirm": "Changer le mot de passe",
+    "remove": "Retirer cet utilisateur",
+    "removeTitle": "Retirer cet utilisateur ?",
+    "removeDescription": "{{username}} ne pourra plus passer. Un serveur protégé garde toujours un utilisateur.",
+    "removeConfirm": "Retirer l'utilisateur",
+    "changed": "Mot de passe changé",
+    "removed": "Utilisateur retiré",
+    "empty": {
+      "title": "Aucun identifiant pour l'instant",
+      "description": "Ils sont générés dès que ce serveur reçoit un rôle protégé."
+    },
+    "usernameHint": "Chaque site protégé le demande."
+  },
+  "allowlist": {
+    "title": "Exemptions",
+    "description": "Chemins ou plages d'adresses d'un service qui peuvent se passer du mot de passe, pour les rappels et les sondes.",
+    "warning": "Chaque exemption contourne le mot de passe. Gardez-les rares et étroites.",
+    "empty": "Aucune exemption.",
+    "added": "Exemption ajoutée",
+    "add": "Ajouter une exemption",
+    "service": "Service",
+    "servicePlaceholder": "Choisissez un service",
+    "kind": "Type",
+    "kinds": {
+      "path": "Chemin",
+      "ip": "Plage IP"
+    },
+    "path": "Chemin",
+    "pathHint": "Exactement ce chemin, ou tout ce qui se trouve dessous avec /hooks/*.",
+    "ip": "Plage IP",
+    "ipHint": "Une adresse, ou une plage comme 203.0.113.0/24.",
+    "remove": "Retirer cette exemption",
+    "removeTitle": "Retirer cette exemption ?",
+    "removeDescription": "{{value}} demandera de nouveau le mot de passe.",
+    "removeConfirm": "Retirer",
+    "removed": "Exemption retirée",
+    "kindHint": "Par chemin, ou selon l'adresse du visiteur.",
+    "serviceHint": "Le service dispensé de mot de passe."
+  },
+  "certificates": {
+    "title": "Noms dans les journaux",
+    "description": "Les certificats laissent une trace publique, même pour un site protégé.",
+    "advice": "Les certificats émis par une autorité publique sont inscrits dans des journaux publics (Certificate Transparency) : un nom d'hôte de ce serveur peut donc être découvert même s'il est protégé. Un certificat wildcard garderait chaque nom d'hôte hors des journaux, mais le HTTPS sur un wildcard n'a pas encore été vérifié sur ce panneau."
+  },
+  "errors": {
+    "username": "Utilisez des lettres, des chiffres, des points, des tirets, des tirets bas et @, 64 caractères au plus.",
+    "password": "Au moins 12 caractères, et pas plus de 72 octets.",
+    "target": "Choisissez un service.",
+    "path": "Saisissez un chemin comme /healthz, ou /hooks/* pour tout ce qui se trouve dessous.",
+    "ip": "Saisissez une adresse ou une plage comme 203.0.113.0/24, pas plus large que /8."
+  }
+}

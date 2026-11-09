@@ -3,7 +3,8 @@ import pino from "pino";
 import { afterEach, describe, expect, it } from "vitest";
 import type { DockerDriver, LogLine, LogOptions, ServiceInfo, TaskInfo } from "../../core/docker";
 import { FakeDriver } from "../../core/docker";
-import { detectLevel, LogFeed, type LogFeedTiming, searchServiceLogs } from "./logs";
+import { Redactor } from "../../core/tools";
+import { detectLevel, LogFeed, type LogFeedTiming, redactLogEntries, searchServiceLogs } from "./logs";
 
 const logger = pino({ level: "silent" });
 const FAST: Partial<LogFeedTiming> = { flushMs: 1, settleMs: 0, watchMs: 5, retryMs: 2, paceMs: 0 };
@@ -63,7 +64,7 @@ async function runningDriver(): Promise<FakeDriver> {
 
 /** A driver whose log stream is whatever the test yields, so reads can be counted. */
 function scriptedDriver(source: (options: LogOptions) => AsyncGenerator<LogLine>): DockerDriver {
-  const service = { id: "s1", name: "shop_web" } as ServiceInfo;
+  const service = { id: "s1", name: "shop_web", spec: spec("shop_web") } as ServiceInfo;
   const task = { desiredState: "running" } as TaskInfo;
   return {
     inspectService: async () => service,
@@ -261,7 +262,7 @@ describe("the log feed", () => {
 
   it("notices a service that was replaced, since Docker leaves the old follow open", async () => {
     let follows = 0;
-    let service = { id: "first", name: "shop_web" } as ServiceInfo;
+    let service = { id: "first", name: "shop_web", spec: spec("shop_web") } as ServiceInfo;
     const docker = {
       inspectService: async () => service,
       listTasks: async () => [{ desiredState: "running" } as TaskInfo],
@@ -275,7 +276,7 @@ describe("the log feed", () => {
     open(docker, output);
     await until(() => follows === 1);
 
-    service = { id: "second", name: "shop_web" } as ServiceInfo;
+    service = { id: "second", name: "shop_web", spec: spec("shop_web") } as ServiceInfo;
 
     await until(() => follows === 2);
     await until(() => linesOf(output.events).some((line) => line.line === "follow 2"));
@@ -302,6 +303,149 @@ describe("the log feed", () => {
     expect(seen[1]?.since).toBe(Math.floor(Date.parse("2026-01-01T00:00:10.5Z") / 1000));
   });
 
+  it("numbers lines in the order they are sent, so that a client never loses one", async () => {
+    const docker = scriptedDriver(async function* () {
+      yield { stream: "stdout", line: "newest", timestamp: "2026-01-01T00:00:09Z" };
+      yield { stream: "stdout", line: "oldest", timestamp: "2026-01-01T00:00:01Z" };
+      yield { stream: "stdout", line: "middle", timestamp: "2026-01-01T00:00:05Z" };
+      await new Promise(() => {});
+    });
+    const output = channel();
+    open(docker, output, { timing: { ...FAST, settleMs: 20 } });
+
+    await until(() => linesOf(output.events).length === 3);
+
+    const lines = linesOf(output.events);
+    expect(lines.map((line) => line.line)).toEqual(["oldest", "middle", "newest"]);
+    expect(lines.map((line) => line.seq)).toEqual([0, 1, 2]);
+  });
+
+  describe("falling behind", () => {
+    const CATCHING_UP: Partial<LogFeedTiming> = { ...FAST, paceMs: 1, behindMs: 40 };
+
+    function backlog(seen: LogOptions[], options: { history?: boolean } = {}) {
+      return scriptedDriver(async function* (requested) {
+        seen.push(requested);
+        if (seen.length > 1) {
+          yield { stream: "stdout", line: "the present", timestamp: new Date().toISOString() };
+          await new Promise<void>((resolve) =>
+            requested.signal?.addEventListener("abort", () => resolve(), { once: true }),
+          );
+          return;
+        }
+        // Docker's queue: everything was printed the moment the service started.
+        const printedAt = new Date(
+          options.history === true ? Date.now() - 3_600_000 : Date.now(),
+        ).toISOString();
+        for (let index = 0; ; index += 1) {
+          yield { stream: "stdout", line: `queued ${index}`, timestamp: printedAt };
+        }
+      });
+    }
+
+    it("drops what Docker has queued and starts again from the present, leaving a mark", async () => {
+      const seen: LogOptions[] = [];
+      const output = channel();
+      open(backlog(seen), output, { limits: { batchLines: 20 }, timing: CATCHING_UP });
+
+      await until(() => linesOf(output.events).some((line) => line.line === "the present"));
+
+      const lines = linesOf(output.events);
+      const gap = lines.findIndex((line) => line.gap === true);
+      expect(gap).toBeGreaterThan(0);
+      expect(lines[gap]).toMatchObject({ line: "", stream: "stdout" });
+      expect(lines.slice(gap + 1).map((line) => line.line)).toEqual(["the present"]);
+      expect(seen).toHaveLength(2);
+      expect(seen[1]?.since).toBeGreaterThan(Date.now() / 1000 - 10);
+      expect(seen[1]?.tail).toBe(200);
+    });
+
+    it("keeps the marks in order for whoever joins later", async () => {
+      const seen: LogOptions[] = [];
+      const output = channel();
+      const feed = open(backlog(seen), output, { limits: { batchLines: 20 }, timing: CATCHING_UP });
+
+      await until(() => linesOf(output.events).some((line) => line.line === "the present"));
+
+      const [snapshot] = feed.replay();
+      const replayed = snapshot?.kind === "snapshot" ? snapshot.lines : [];
+      const seqs = replayed.map((line) => line.seq);
+      expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+      expect(replayed.some((line) => line.gap === true)).toBe(true);
+    });
+
+    it("does not count old history as falling behind", async () => {
+      const seen: LogOptions[] = [];
+      const output = channel();
+      open(backlog(seen, { history: true }), output, { limits: { batchLines: 20 }, timing: CATCHING_UP });
+
+      await until(() => linesOf(output.events).length > 400);
+
+      expect(linesOf(output.events).some((line) => line.gap === true)).toBe(false);
+      expect(seen).toHaveLength(1);
+    });
+
+    it("keeps reading a fast stream that it is keeping up with", async () => {
+      const seen: LogOptions[] = [];
+      const docker = scriptedDriver(async function* (requested) {
+        seen.push(requested);
+        for (let index = 0; index < 400; index += 1) {
+          yield { stream: "stdout", line: `live ${index}`, timestamp: new Date().toISOString() };
+          if (index % 20 === 0) {
+            await new Promise((resolve) => setTimeout(resolve, 1));
+          }
+        }
+        await new Promise(() => {});
+      });
+      const output = channel();
+      open(docker, output, { limits: { batchLines: 20 }, timing: CATCHING_UP });
+
+      await until(() => linesOf(output.events).length === 400);
+
+      expect(linesOf(output.events).some((line) => line.gap === true)).toBe(false);
+      expect(seen).toHaveLength(1);
+    });
+  });
+
+  it("says how far back it reads and how much it keeps", async () => {
+    const docker = await runningDriver();
+    const feed = open(docker, channel(), { limits: { ringLines: 50 } });
+
+    expect(feed.replay()[0]).toMatchObject({ kind: "snapshot", tailLines: 200, ringLines: 50 });
+  });
+
+  it("keeps identifiable lines of two services apart, live and in search", async () => {
+    const docker = await runningDriver();
+    await docker.createService(spec("shop_api"));
+    docker.advance(8);
+    const web = channel();
+    const api = channel();
+    open(docker, web, { name: "shop_web" });
+    open(docker, api, { name: "shop_api" });
+    await until(() => states(web.events).includes("streaming") && states(api.events).includes("streaming"));
+
+    docker.writeLog("shop_web", "marker from web");
+    docker.writeLog("shop_api", "marker from api");
+
+    await until(() => linesOf(web.events).some((line) => line.line === "marker from web"));
+    await until(() => linesOf(api.events).some((line) => line.line === "marker from api"));
+    const printedBy = (output: ReturnType<typeof channel>) =>
+      linesOf(output.events)
+        .map((line) => line.line)
+        .filter((line) => line.startsWith("marker"));
+    expect(printedBy(web)).toEqual(["marker from web"]);
+    expect(printedBy(api)).toEqual(["marker from api"]);
+
+    const search = (serviceName: string) =>
+      searchServiceLogs(
+        { docker, now: () => Date.now() },
+        { projectName: "shop", serviceName },
+        { q: "marker", stream: "all", level: "any", limit: 500 },
+      );
+    expect((await search("web")).lines.map((line) => line.line)).toEqual(["marker from web"]);
+    expect((await search("api")).lines.map((line) => line.line)).toEqual(["marker from api"]);
+  });
+
   it("reports an error when Docker fails, and recovers by itself", async () => {
     const docker = await runningDriver();
     docker.failNext("inspectService");
@@ -310,6 +454,147 @@ describe("the log feed", () => {
 
     await until(() => states(output.events).includes("error"));
     await until(() => states(output.events).includes("streaming"));
+  });
+});
+
+describe("secrets in a service's logs", () => {
+  const SECRET = "correct-horse-battery-staple";
+  const redactor = () => new Redactor().addSecret(SECRET);
+  const text = (output: ReturnType<typeof channel>) =>
+    linesOf(output.events)
+      .map((line) => line.line)
+      .join("\n");
+
+  it("are removed from what subscribers get, and from what a late one catches up on", async () => {
+    const docker = await runningDriver();
+    const output = channel();
+    const feed = open(docker, output, { redactor });
+    await until(() => states(output.events).includes("streaming"));
+
+    docker.writeLog("shop_web", `connecting with ${SECRET} now`);
+    await until(() => text(output).includes("connecting with"));
+
+    expect(text(output)).toContain("connecting with [redacted] now");
+    expect(text(output)).not.toContain(SECRET);
+    expect(JSON.stringify(feed.replay())).not.toContain(SECRET);
+  });
+
+  it("are removed from a line too long to keep whole, before it is cut", async () => {
+    const docker = await runningDriver();
+    const output = channel();
+    open(docker, output, { redactor });
+    await until(() => states(output.events).includes("streaming"));
+
+    docker.writeLog("shop_web", `${"x".repeat(16 * 1024 - 8)}${SECRET}${"y".repeat(100)}`);
+    await until(() => text(output).includes("xxxx"));
+
+    expect(text(output)).not.toContain("correct-");
+  });
+
+  it("are put back together when Docker delivers a line in pieces", async () => {
+    const docker = scriptedDriver(async function* () {
+      yield { stream: "stdout", line: "first piece correct-horse-", timestamp: "2026-01-01T00:00:01.1Z" };
+      yield { stream: "stdout", line: "battery-staple second piece", timestamp: "2026-01-01T00:00:01.2Z" };
+      await new Promise(() => {});
+    });
+    const output = channel();
+    open(docker, output, { redactor });
+
+    await until(() => linesOf(output.events).length === 2);
+
+    expect(text(output)).not.toContain("correct-");
+    expect(text(output)).not.toContain("battery-staple");
+    expect(text(output)).toBe("first piece [redacted]\n[redacted] second piece");
+  });
+
+  it("stay removed from a high volume of output, without slowing it down to a stop", async () => {
+    const docker = await runningDriver();
+    const output = channel();
+    open(docker, output, { redactor });
+    await until(() => states(output.events).includes("streaming"));
+
+    for (let line = 0; line < 4000; line += 1) {
+      docker.writeLog("shop_web", `line ${line} of the flood with ${SECRET} in it`);
+    }
+
+    await until(() => linesOf(output.events).length >= 100);
+    expect(text(output)).not.toContain(SECRET);
+  });
+
+  it("stay removed after the follow drops and starts again", async () => {
+    let follows = 0;
+    const docker = scriptedDriver(async function* () {
+      follows += 1;
+      yield {
+        stream: "stdout",
+        line: `follow ${follows} ${SECRET}`,
+        timestamp: `2026-01-01T00:00:0${follows}Z`,
+      };
+      if (follows > 1) {
+        await new Promise(() => {});
+      }
+    });
+    const output = channel();
+    open(docker, output, { redactor });
+
+    await until(() => linesOf(output.events).length === 2);
+
+    expect(text(output)).toBe("follow 1 [redacted]\nfollow 2 [redacted]");
+  });
+
+  it("are asked about again as the service changes, with what its container was started with", async () => {
+    const docker = await runningDriver();
+    const output = channel();
+    const seen: Array<readonly string[]> = [];
+    let current = new Redactor();
+    open(docker, output, {
+      redactor: (applied) => {
+        seen.push(applied);
+        return current;
+      },
+    });
+    await until(() => states(output.events).includes("streaming"));
+
+    current = new Redactor().addSecret("rotated-in-meanwhile");
+    const asked = seen.length;
+    await until(() => seen.length > asked);
+    docker.writeLog("shop_web", "now rotated-in-meanwhile");
+    await until(() => text(output).includes("now "));
+
+    expect(text(output)).toContain("now [redacted]");
+    expect(seen.at(-1)).toEqual([]);
+  });
+
+  it("are removed from a search, whichever way they were printed", async () => {
+    const docker = scriptedDriver(async function* () {
+      yield { stream: "stdout", line: `whole ${SECRET}` };
+      yield { stream: "stdout", line: "split correct-horse-" };
+      yield { stream: "stdout", line: "battery-staple tail" };
+    });
+
+    const result = await searchServiceLogs(
+      {
+        docker,
+        now: () => 1_700_000_000_000,
+      },
+      { projectName: "shop", serviceName: "web" },
+      { q: "", stream: "all", level: "any", limit: 500 },
+    );
+    // With no panel behind it there is nothing to know about, and the function is still usable.
+    expect(result.lines).toHaveLength(3);
+
+    const entries = redactLogEntries(redactor(), [
+      { stream: "stdout", line: `whole ${SECRET}` },
+      { stream: "stdout", line: "split correct-horse-" },
+      { stream: "stderr", line: "another stream" },
+      { stream: "stdout", line: "battery-staple tail" },
+    ]);
+    expect(entries.map((entry) => entry.line)).toEqual([
+      "whole [redacted]",
+      "split [redacted]",
+      "another stream",
+      "[redacted] tail",
+    ]);
   });
 });
 

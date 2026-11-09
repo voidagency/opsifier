@@ -2,14 +2,24 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, ConfirmDialog, MonoValue, PageHeader, useDocumentTitle } from "../../ui";
+import {
+  Button,
+  ConfirmDialog,
+  Lamp,
+  MonoValue,
+  PageHeader,
+  Pictogram,
+  RetentionSummary,
+  useDocumentTitle,
+} from "../../ui";
 import { projectsKey } from "../projects/api";
 import { serviceQuery, servicesApi, useServiceParams } from "./api";
+import { servicePictogram, serviceState, serviceStateLabel, serviceTypeLabel } from "./serviceState";
 import { SourceForm } from "./tabs/source/SourceForm";
 
 /** A new service has no source yet, so this is all it shows until one is saved. */
 export function ServiceInitPage() {
-  const { t } = useTranslation("services");
+  const { t } = useTranslation(["services", "visual", "activity"]);
   const { project, service } = useServiceParams();
   const { data: detail } = useQuery(serviceQuery(project, service));
   const queryClient = useQueryClient();
@@ -26,7 +36,29 @@ export function ServiceInitPage() {
   return (
     <>
       <PageHeader
-        title={<span className="font-mono">{service}</span>}
+        leading={
+          detail === undefined ? undefined : (
+            <Lamp
+              state={serviceState(detail)}
+              size="xl"
+              label={serviceStateLabel(detail, t)}
+              className="mt-1"
+            />
+          )
+        }
+        title={
+          <span className="inline-flex items-center gap-2.5">
+            {detail !== undefined && (
+              <Pictogram
+                name={servicePictogram(detail.type)}
+                size={24}
+                label={serviceTypeLabel(detail.type, t)}
+                className="text-muted"
+              />
+            )}
+            <span className="font-mono">{service}</span>
+          </span>
+        }
         description={t("init.description")}
         actions={
           <Button variant="danger" onClick={() => setDestroying(true)}>
@@ -65,7 +97,9 @@ export function ServiceInitPage() {
         confirmLabel={t("destroy.confirm")}
         confirmText={service}
         onConfirm={destroy}
-      />
+      >
+        <RetentionSummary removed={t("destroy.removed")} kept={t("destroy.kept")} />
+      </ConfirmDialog>
     </>
   );
 }

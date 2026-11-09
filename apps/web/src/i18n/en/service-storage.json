@@ -46,11 +46,14 @@
     "name": "Name",
     "nameHint": "Lowercase letters, digits, dashes and underscores.",
     "mountPath": "Path in the container",
-    "content": "Content"
+    "content": "Content",
+    "hostPathAdminOnly": "Only an administrator can mount a path on the server.",
+    "contentHint": "The text of the file.",
+    "mountPathHint": "Where it appears inside the container."
   },
   "deleteDialog": {
     "title": "Remove this mount?",
-    "description": "{{path}} will no longer be mounted after the next deploy. Volume data stays on the server until the service is destroyed.",
+    "description": "{{path}} will no longer be mounted after the next deploy. The volume and its data stay on the server, even after the service is destroyed, until you delete them under Monitor, Storage.",
     "confirm": "Remove mount"
   },
   "risk": {

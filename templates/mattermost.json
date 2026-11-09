@@ -1,0 +1,104 @@
+{
+  "id": "mattermost",
+  "version": "1.0.0",
+  "name": "Mattermost",
+  "summary": {
+    "en": "Team messaging you run yourself.",
+    "fr": "La messagerie d'équipe que vous hébergez vous-même."
+  },
+  "description": {
+    "en": "Channels, threads, calls and integrations for teams that want their conversations on their own server. The first account created becomes the system administrator.",
+    "fr": "Canaux, fils, appels et intégrations pour les équipes qui veulent garder leurs conversations chez elles. Le premier compte créé devient administrateur système."
+  },
+  "instructions": {
+    "en": "Open the site and create the first account, which becomes the system administrator.",
+    "fr": "Ouvrez le site et créez le premier compte, qui devient administrateur système."
+  },
+  "category": "communication",
+  "tags": ["chat", "team", "messaging"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://mattermost.com"
+    },
+    {
+      "kind": "docs",
+      "url": "https://docs.mattermost.com/deployment-guide/server/deploy-containers.html"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/mattermost/mattermost"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "db",
+      "name": "mattermost-db",
+      "kind": "database",
+      "engine": "postgres",
+      "image": "postgres:17.11-alpine",
+      "databaseName": "mattermost",
+      "user": "mattermost"
+    },
+    {
+      "key": "app",
+      "name": "mattermost",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "mattermost/mattermost-team-edition:12.1.0"
+      },
+      "env": {
+        "MM_SQLSETTINGS_DRIVERNAME": "postgres",
+        "MM_SQLSETTINGS_DATASOURCE": "postgres://{{services.db.user}}:{{services.db.passwordEncoded}}@{{services.db.host}}:{{services.db.port}}/{{services.db.database}}?sslmode=disable&connect_timeout=10",
+        "MM_SERVICESETTINGS_SITEURL": "{{services.app.url}}"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "config",
+          "path": "/mattermost/config"
+        },
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/mattermost/data"
+        },
+        {
+          "type": "volume",
+          "name": "logs",
+          "path": "/mattermost/logs"
+        },
+        {
+          "type": "volume",
+          "name": "plugins",
+          "path": "/mattermost/plugins"
+        },
+        {
+          "type": "volume",
+          "name": "client-plugins",
+          "path": "/mattermost/client/plugins"
+        },
+        {
+          "type": "volume",
+          "name": "bleve",
+          "path": "/mattermost/bleve-indexes"
+        }
+      ],
+      "domain": {
+        "port": 8065,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/api/v4/system/ping",
+        "expect": [200]
+      },
+      "dependsOn": ["db"]
+    }
+  ]
+}

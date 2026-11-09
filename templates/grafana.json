@@ -1,0 +1,105 @@
+{
+  "id": "grafana",
+  "version": "1.0.0",
+  "name": "Grafana",
+  "summary": {
+    "en": "Dashboards for your metrics, logs and traces.",
+    "fr": "Des tableaux de bord pour vos métriques, journaux et traces."
+  },
+  "description": {
+    "en": "Connect Grafana to data sources such as Prometheus or Postgres and build dashboards and alerts on top of them. Data is kept in SQLite on a volume by default.",
+    "fr": "Reliez Grafana à des sources comme Prometheus ou Postgres, puis construisez tableaux de bord et alertes. Les données restent dans SQLite sur un volume par défaut."
+  },
+  "instructions": {
+    "en": "Sign in as {{params.adminUser}} with the password shown below.",
+    "fr": "Connectez-vous avec {{params.adminUser}} et le mot de passe affiché ci-dessous."
+  },
+  "category": "monitoring",
+  "tags": ["dashboards", "metrics", "observability"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://grafana.com/oss/grafana/"
+    },
+    {
+      "kind": "docs",
+      "url": "https://grafana.com/docs/grafana/latest/setup-grafana/installation/docker/"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/grafana/grafana"
+    }
+  ],
+  "verified": false,
+  "params": [
+    {
+      "key": "adminUser",
+      "label": {
+        "en": "Admin user",
+        "fr": "Utilisateur administrateur"
+      },
+      "type": "text",
+      "required": true,
+      "default": "admin"
+    },
+    {
+      "key": "adminPassword",
+      "label": {
+        "en": "Admin password",
+        "fr": "Mot de passe administrateur"
+      },
+      "type": "secret",
+      "required": false,
+      "help": {
+        "en": "Leave empty to generate one.",
+        "fr": "Laissez vide pour en générer un."
+      },
+      "generate": {
+        "length": 24,
+        "alphabet": "alphanumeric"
+      }
+    }
+  ],
+  "secrets": [
+    {
+      "key": "secretKey",
+      "length": 40,
+      "alphabet": "alphanumeric"
+    }
+  ],
+  "services": [
+    {
+      "key": "app",
+      "name": "grafana",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "grafana/grafana:13.0.12"
+      },
+      "env": {
+        "GF_SECURITY_ADMIN_USER": "{{params.adminUser}}",
+        "GF_SECURITY_ADMIN_PASSWORD": "{{params.adminPassword}}",
+        "GF_SECURITY_SECRET_KEY": "{{secrets.secretKey}}",
+        "GF_SERVER_ROOT_URL": "{{services.app.url}}/"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/var/lib/grafana"
+        }
+      ],
+      "domain": {
+        "port": 3000,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/api/health",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}

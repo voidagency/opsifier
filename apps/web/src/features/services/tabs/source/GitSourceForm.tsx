@@ -50,7 +50,7 @@ export function GitSourceForm({ project, service, source, build, onSaved, submit
   });
 
   return (
-    <div className="grid max-w-[520px] gap-6">
+    <div className="grid max-w-[650px] gap-6">
       <form onSubmit={form.handleSubmit} noValidate className="grid gap-4">
         {form.banner && <FormBanner>{form.banner}</FormBanner>}
         <Field label={t("git.url")} hint={t("git.urlHint")} error={form.errors.url}>
@@ -69,6 +69,7 @@ export function GitSourceForm({ project, service, source, build, onSaved, submit
           <Input {...form.field("path")} mono placeholder="/" autoComplete="off" spellCheck={false} />
         </Field>
         {shared && <EmbeddedBuild draft={draft} />}
+        {saved !== null && <p className="text-sm text-muted">{t("changeRevokes")}</p>}
         <div>
           <Button type="submit" variant="primary" pending={form.pending}>
             {submitLabel}

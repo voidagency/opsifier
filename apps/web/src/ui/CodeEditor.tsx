@@ -147,7 +147,7 @@ export function CodeEditor({
   return (
     <div
       ref={host}
-      className={cn("min-h-[220px] w-full", invalid && "[&_.cm-editor]:border-bad", className)}
+      className={cn("min-h-[280px] w-full", invalid && "[&_.cm-editor]:border-bad", className)}
     />
   );
 }

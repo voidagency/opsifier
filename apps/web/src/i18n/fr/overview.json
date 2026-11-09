@@ -1,14 +1,11 @@
 {
   "title": "Aperçu",
-  "description": "Tout ce qui tourne sur ce serveur, en un coup d'œil.",
   "empty": {
     "title": "Rien n'est déployé ici pour l'instant",
     "description": "Les projets que vous déployez apparaîtront ici, avec leurs services, leur état et leurs derniers déploiements."
   },
   "newProject": "Nouveau projet",
   "createProject": "Créer un projet",
-  "serviceCount_one": "{{count}} service",
-  "serviceCount_other": "{{count}} services",
   "noServices": "Aucun service ici pour le moment.",
   "links": {
     "view": "Ouvrir ce projet",
@@ -24,6 +21,8 @@
   "view": {
     "label": "Détail affiché pour chaque projet",
     "expanded": "Avec les services",
-    "collapsed": "Noms seuls"
-  }
+    "collapsed": "Résumé"
+  },
+  "healthLabel": "Services par état",
+  "noMatch": "Rien n'est dans cet état pour l'instant."
 }

@@ -3,6 +3,7 @@ import { mountItemPath, mountSpec, servicePath, storageDocument } from "@opsifie
 import { requirePrincipal } from "../../../core/auth";
 import type { AppDeps, Feature } from "../../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../../core/openapi";
+import { requestAccess } from "../../access/guard";
 import type { ServiceTarget } from "../../services/service";
 import { addMount, getStorage, removeMount, updateMount } from "./service";
 
@@ -10,6 +11,7 @@ const PATH = "/api/v1/projects/{project}/services/{service}/storage";
 const tags = ["Service storage"];
 const invalid = errorResponse("The request failed validation.");
 const denied = errorResponse("Not signed in.");
+const refused = errorResponse("A path on the host takes an administrator.");
 const missing = errorResponse("No such service or mount.");
 const taken = errorResponse("Another mount already uses this path.");
 const document = jsonResponse(storageDocument, "The service's mounts.");
@@ -27,7 +29,7 @@ const addRoute = createRoute({
   path: `${PATH}/mounts`,
   tags,
   request: { params: servicePath, body: jsonBody(mountSpec) },
-  responses: { 201: document, 400: invalid, 401: denied, 404: missing, 409: taken },
+  responses: { 201: document, 400: invalid, 401: denied, 403: refused, 404: missing, 409: taken },
 });
 
 const updateRoute = createRoute({
@@ -35,7 +37,7 @@ const updateRoute = createRoute({
   path: `${PATH}/mounts/{index}`,
   tags,
   request: { params: mountItemPath, body: jsonBody(mountSpec) },
-  responses: { 200: document, 400: invalid, 401: denied, 404: missing, 409: taken },
+  responses: { 200: document, 400: invalid, 401: denied, 403: refused, 404: missing, 409: taken },
 });
 
 const removeRoute = createRoute({
@@ -69,7 +71,7 @@ export const feature: Feature = {
 
     app.openapi(addRoute, (c) => {
       const serviceTarget = target(c.req.valid("param"));
-      const storage = addMount(deps, serviceTarget, c.req.valid("json"));
+      const storage = addMount(deps, serviceTarget, c.req.valid("json"), requestAccess(deps, c));
       recordChange(deps, serviceTarget, actorEmailOf(requirePrincipal(c)));
       return c.json(storage, 201);
     });
@@ -77,7 +79,13 @@ export const feature: Feature = {
     app.openapi(updateRoute, (c) => {
       const params = c.req.valid("param");
       const serviceTarget = target(params);
-      const storage = updateMount(deps, serviceTarget, params.index, c.req.valid("json"));
+      const storage = updateMount(
+        deps,
+        serviceTarget,
+        params.index,
+        c.req.valid("json"),
+        requestAccess(deps, c),
+      );
       recordChange(deps, serviceTarget, actorEmailOf(requirePrincipal(c)));
       return c.json(storage, 200);
     });

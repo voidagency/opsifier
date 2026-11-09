@@ -1,0 +1,78 @@
+{
+  "id": "umami",
+  "version": "1.0.0",
+  "name": "Umami",
+  "summary": {
+    "en": "Privacy-friendly website analytics.",
+    "fr": "Mesure d'audience respectueuse de la vie privée."
+  },
+  "description": {
+    "en": "See where your visitors come from and what they read, without cookies and without sending anything to a third party. It stores its data in Postgres.",
+    "fr": "Voyez d'où viennent vos visiteurs et ce qu'ils lisent, sans cookies et sans rien envoyer à un tiers. Les données sont stockées dans Postgres."
+  },
+  "instructions": {
+    "en": "Sign in with admin and umami, then change that password right away.",
+    "fr": "Connectez-vous avec admin et umami, puis changez ce mot de passe sans attendre."
+  },
+  "category": "monitoring",
+  "tags": ["analytics", "privacy", "web"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://umami.is"
+    },
+    {
+      "kind": "docs",
+      "url": "https://docs.umami.is/docs/install"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/umami-software/umami"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [
+    {
+      "key": "appSecret",
+      "length": 64,
+      "alphabet": "hex"
+    }
+  ],
+  "services": [
+    {
+      "key": "db",
+      "name": "umami-db",
+      "kind": "database",
+      "engine": "postgres",
+      "image": "postgres:17.11-alpine",
+      "databaseName": "umami",
+      "user": "umami"
+    },
+    {
+      "key": "app",
+      "name": "umami",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "ghcr.io/umami-software/umami:3.4.1"
+      },
+      "env": {
+        "DATABASE_URL": "{{services.db.url}}",
+        "APP_SECRET": "{{secrets.appSecret}}"
+      },
+      "command": null,
+      "mounts": [],
+      "domain": {
+        "port": 3000,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/api/heartbeat",
+        "expect": [200]
+      },
+      "dependsOn": ["db"]
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "id": "dozzle",
+  "version": "1.0.0",
+  "name": "Dozzle",
+  "summary": {
+    "en": "Read the logs of every container on this server.",
+    "fr": "Lisez les journaux de tous les conteneurs de ce serveur."
+  },
+  "description": {
+    "en": "A live log viewer for Docker. It reads the Docker socket, which gives it control of this server, so it needs your confirmation and should not stay reachable by others.",
+    "fr": "Un visualiseur de journaux en direct pour Docker. Il lit le socket Docker, ce qui lui donne le contrôle de ce serveur : il faut donc votre confirmation, et il ne doit pas rester accessible à d'autres."
+  },
+  "instructions": {
+    "en": "Protect it with basic authentication on the Security tab: anyone who reaches it can read every log on this server.",
+    "fr": "Protégez-le par mot de passe dans l'onglet Sécurité : quiconque y accède peut lire tous les journaux de ce serveur."
+  },
+  "category": "infrastructure",
+  "tags": ["logs", "docker", "monitoring"],
+  "links": [
+    {
+      "kind": "website",
+      "url": "https://dozzle.dev"
+    },
+    {
+      "kind": "docs",
+      "url": "https://dozzle.dev/guide/getting-started"
+    },
+    {
+      "kind": "source",
+      "url": "https://github.com/amir20/dozzle"
+    }
+  ],
+  "verified": false,
+  "params": [],
+  "secrets": [],
+  "services": [
+    {
+      "key": "app",
+      "name": "dozzle",
+      "kind": "app",
+      "source": {
+        "type": "image",
+        "image": "amir20/dozzle:v11.4.2"
+      },
+      "env": {
+        "DOZZLE_NO_ANALYTICS": "true"
+      },
+      "command": null,
+      "mounts": [
+        {
+          "type": "docker-socket",
+          "path": "/var/run/docker.sock"
+        },
+        {
+          "type": "volume",
+          "name": "data",
+          "path": "/data"
+        }
+      ],
+      "domain": {
+        "port": 8080,
+        "https": true
+      },
+      "ports": [],
+      "startup": {
+        "path": "/healthcheck",
+        "expect": [200]
+      },
+      "dependsOn": []
+    }
+  ]
+}
