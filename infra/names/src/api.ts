@@ -1,14 +1,18 @@
 import {
+  approveServer,
   cleanupChallenge,
   type Deps,
   disableServer,
   heartbeat,
+  listRequests,
   presentChallenge,
   Refusal,
-  register,
+  refuseServer,
   release,
+  requestAddress,
   type SweepReport,
   sweep,
+  type WaitingRequest,
 } from "./service";
 
 const MAX_SECRET_LENGTH = 256;
@@ -59,7 +63,8 @@ function bodyOf(event: HttpEvent): string | undefined {
 type Route = (event: HttpEvent, deps: Deps, sourceIp: string) => Promise<HttpResult>;
 
 const routes: Record<string, Route> = {
-  "POST /v1/servers": async (_event, deps, sourceIp) => respond(201, await register(deps, sourceIp)),
+  "POST /v1/servers": async (event, deps, sourceIp) =>
+    respond(202, await requestAddress(deps, sourceIp, bodyOf(event))),
 
   "PUT /v1/servers/{id}": async (event, deps, sourceIp) =>
     respond(200, await heartbeat(deps, credentialsOf(event), event.pathParameters?.id, sourceIp)),
@@ -115,9 +120,17 @@ export type OperatorEvent = { action?: unknown; id?: unknown };
 export async function runMaintenance(
   event: OperatorEvent | undefined,
   deps: Deps,
-): Promise<SweepReport | { id: string; status: "disabled" }> {
-  if (event?.action === "disable") {
-    return disableServer(deps, typeof event.id === "string" ? event.id : "");
+): Promise<SweepReport | WaitingRequest[] | { id: string; status: string }> {
+  const id = typeof event?.id === "string" ? event.id : "";
+  switch (event?.action) {
+    case "disable":
+      return disableServer(deps, id);
+    case "approve":
+      return approveServer(deps, id);
+    case "refuse":
+      return refuseServer(deps, id);
+    case "requests":
+      return listRequests(deps);
   }
   const report = await sweep(deps);
   deps.log("sweep", { ...report });

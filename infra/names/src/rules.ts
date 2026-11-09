@@ -142,6 +142,20 @@ const CHALLENGE_VALUE = /^[A-Za-z0-9_-]{43}$/;
 
 export const isChallengeValue = (value: string): boolean => CHALLENGE_VALUE.test(value);
 
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_EMAIL_LENGTH = 254;
+const MAX_PURPOSE_LENGTH = 500;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: finding them is the point.
+const CONTROL_CHARACTERS = /[\u0000-\u0009\u000b\u000c\u000e-\u001f\u007f]/;
+
+export const isEmail = (value: string): boolean => value.length <= MAX_EMAIL_LENGTH && EMAIL.test(value);
+
+/** Read by a person deciding, so it has to say something and fit on a screen. */
+export function isPurpose(value: string): boolean {
+  const length = value.trim().length;
+  return length > 0 && length <= MAX_PURPOSE_LENGTH && !CONTROL_CHARACTERS.test(value);
+}
+
 export const domainOf = (id: string, zone: string): string => `${id}.${zone}`;
 export const wildcardOf = (id: string, zone: string): string => `*.${id}.${zone}`;
 export const challengeNameOf = (id: string, zone: string): string => `_acme-challenge.${id}.${zone}`;

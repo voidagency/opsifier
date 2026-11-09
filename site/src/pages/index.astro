@@ -1,0 +1,11 @@
+---
+import Home from "../components/Home.astro";
+import { content } from "../content";
+import Base from "../layouts/Base.astro";
+
+const t = content.en;
+---
+
+<Base locale="en" title={t.meta.title} description={t.meta.description} path="/" otherPath="/fr/">
+  <Home locale="en" />
+</Base>

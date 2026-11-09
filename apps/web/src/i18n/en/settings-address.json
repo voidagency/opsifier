@@ -1,17 +1,19 @@
 {
   "title": "Address",
-  "description": "A ready-made name for this server, with one certificate for everything under it. It is this server's only call home: the registration and a daily check, carrying nothing else. Turn it off by releasing it here.",
+  "description": "A ready-made name for this server, with one certificate for everything under it. You ask for one and someone approves it. After that, this server's only call home is a daily check, carrying nothing else. Turn it off by releasing it here.",
   "status": {
     "active": "Active",
     "unreachable": "Service unreachable",
     "lost": "No longer valid",
     "disabled": "Disabled",
+    "requested": "Waiting for approval",
+    "refused": "Refused",
     "off": "Off"
   },
   "problem": {
     "unreachable": "The last daily check did not get through. Names already issued keep working, and it tries again.",
-    "lost": "The service no longer knows this server, so names under this address stopped resolving. Register again to get a new one.",
-    "disabled": "This address was disabled by the service's operator. Register again to get a new one, or release it to use generated names."
+    "lost": "The service no longer knows this server, so names under this address stopped resolving. Release it, then ask for a new one.",
+    "disabled": "This address was disabled by the service's operator. Release it to go back to generated names, then ask for a new one if you need it."
   },
   "copyAddress": "Copy address",
   "panel": "Panel",
@@ -32,17 +34,34 @@
   "unknownIp": "Unknown",
   "lastCheck": "Last check",
   "never": "Not yet",
-  "register": "Register",
-  "registered": "This server is now {{domain}}",
-  "registerAgain": "Register again",
-  "registerAgainTitle": "Get a new address?",
-  "registerAgainDescription": "This server gets a new name in place of this one, and every name under the old one moves to it. Bookmarks and links to the old names stop working.",
   "release": "Release",
   "released": "The address was released",
   "releaseTitle": "Release this address?",
   "releaseDescription": "Its records are removed for good and the name is never issued again. Generated names go back to sslip.io, and this server stops calling the service.",
   "movedTo": "The panel now answers at",
   "emptyTitle": "No address",
-  "emptyDescription": "Generated names use sslip.io. Register to give this server its own name and one certificate for everything under it.",
-  "emptyDescriptionOff": "This server is set to never call the address service, so generated names use sslip.io."
+  "emptyDescription": "Generated names use sslip.io. Ask for an address to give this server its own name and one certificate for everything under it.",
+  "emptyDescriptionOff": "This server is set to never call the address service, so generated names use sslip.io.",
+  "requestAction": "Ask for an address",
+  "refusedNote": "The last request was refused. You can ask again, or keep using generated names and your own domains.",
+  "requestForm": {
+    "title": "Ask for an address",
+    "description": "Someone reads each request before a name is issued. Once it is approved, this server moves to its address by itself.",
+    "email": "Email",
+    "emailHint": "Only used to reach you about this address.",
+    "emailInvalid": "Enter a valid email address.",
+    "purpose": "What will you use it for?",
+    "purposeHint": "A few words are enough.",
+    "purposeInvalid": "Say in a few words what you will use it for, in 500 characters at most.",
+    "submit": "Send the request",
+    "sent": "Your request was sent"
+  },
+  "waiting": {
+    "hint": "Someone reads each request. Once this one is approved, this server moves to the address by itself, and the panel also answers at {{panel}}.",
+    "asked": "Asked",
+    "withdraw": "Withdraw",
+    "withdrawTitle": "Withdraw this request?",
+    "withdrawDescription": "The name held for this server is let go. You can ask again at any time.",
+    "withdrawn": "The request was withdrawn"
+  }
 }

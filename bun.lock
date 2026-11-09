@@ -7,6 +7,7 @@
       "devDependencies": {
         "@aws-sdk/client-dynamodb": "3",
         "@aws-sdk/client-route-53": "3",
+        "@aws-sdk/client-sns": "3",
         "@biomejs/biome": "^2.6.6",
         "@types/node": "22",
         "esbuild": "0.28.2",
@@ -135,6 +136,8 @@
     "@aws-sdk/client-dynamodb": ["@aws-sdk/client-dynamodb@3.1164.0", "", { "dependencies": { "@aws-sdk/core": "^3.980.1", "@aws-sdk/credential-provider-node": "^3.972.94", "@aws-sdk/dynamodb-codec": "^3.973.56", "@aws-sdk/middleware-endpoint-discovery": "^3.972.37", "@aws-sdk/types": "^3.975.0", "@smithy/core": "^3.38.0", "@smithy/fetch-http-handler": "^5.8.0", "@smithy/node-http-handler": "^4.14.0", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-jrX0BtmtyRelTW/yAGgFpXvDj8BioL80njIGVfOsMsCrSKi+Ai0QZ45AqWgA0h1r7uzqfpWFhNUQZO77sOoyzg=="],
 
     "@aws-sdk/client-route-53": ["@aws-sdk/client-route-53@3.1164.0", "", { "dependencies": { "@aws-sdk/core": "^3.980.1", "@aws-sdk/credential-provider-node": "^3.972.94", "@aws-sdk/middleware-sdk-route53": "^3.972.28", "@aws-sdk/types": "^3.975.0", "@smithy/core": "^3.38.0", "@smithy/fetch-http-handler": "^5.8.0", "@smithy/node-http-handler": "^4.14.0", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-J1dYgmCbaK2dNfXkC4dxQTLjsKk196sTzYgPe372q5am4dWAiIkIz/SgjoS9y9TRg7qFCDbLtABujszWdJT/lg=="],
+
+    "@aws-sdk/client-sns": ["@aws-sdk/client-sns@3.1164.0", "", { "dependencies": { "@aws-sdk/core": "^3.980.1", "@aws-sdk/credential-provider-node": "^3.972.94", "@aws-sdk/types": "^3.975.0", "@smithy/core": "^3.38.0", "@smithy/fetch-http-handler": "^5.8.0", "@smithy/node-http-handler": "^4.14.0", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-Pa3E9JvC6ixdRtCtIPjIX0m6yjNeiPFfyqZywHQaLBs1CPb2Af7nxCWetEDonB5SHPkJwaLSCqFuQ3YnyPeAog=="],
 
     "@aws-sdk/core": ["@aws-sdk/core@3.980.1", "", { "dependencies": { "@aws-sdk/types": "^3.975.0", "@aws-sdk/xml-builder": "^3.972.42", "@aws/lambda-invoke-store": "^0.3.0", "@smithy/core": "^3.38.0", "@smithy/signature-v4": "^5.7.5", "@smithy/types": "^4.19.0", "bowser": "^2.11.0", "tslib": "^2.6.2" } }, "sha512-W7jDWUPucezIUjFZpr8MudQQtz/m6yPMyAFrOyyQcHjuF4UrZdcCdP8eV1js06U9sH3dxp0AbhN+s9uHwQyXzQ=="],
 

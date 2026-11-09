@@ -1,0 +1,11 @@
+---
+import Abuse from "../components/Abuse.astro";
+import { content } from "../content";
+import Base from "../layouts/Base.astro";
+
+const t = content.en;
+---
+
+<Base locale="en" title={`${t.abuse.title} | Opsifier`} description={t.abuse.description} path="/abuse/" otherPath="/fr/abuse/">
+  <Abuse locale="en" />
+</Base>

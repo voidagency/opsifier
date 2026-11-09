@@ -31,9 +31,9 @@ import {
   applyAddressCertificates,
   isCoveredByWildcard,
 } from "./certificates";
-import { NamesServiceError, registerServer } from "./client";
+import { NamesServiceError, requestServerAddress } from "./client";
 import { ADDRESS_SECRET_CONTEXT, type RegisteredAddress, readAddress, saveAddress } from "./repo";
-import { getAddressState, reconcileAddress, sendDueHeartbeat } from "./service";
+import { checkAddressRequest, getAddressState, reconcileAddress, sendDueHeartbeat } from "./service";
 
 const NAMES_URL = "https://names.test";
 const ID = "bcdfghjk";
@@ -56,8 +56,18 @@ interface NamesCall {
 
 const answer = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
 
+/** What the service says, both to the request and to the check after someone has approved it. */
 const registered = (overrides: Record<string, unknown> = {}) =>
-  answer(201, { id: ID, secret: SECRET, domain: DOMAIN, ip: "93.184.216.34", ...overrides });
+  answer(202, {
+    id: ID,
+    secret: SECRET,
+    domain: DOMAIN,
+    ip: "93.184.216.34",
+    status: "active",
+    ...overrides,
+  });
+
+const REQUEST = { email: "owner@example.com", purpose: "Our shop" };
 
 function stubNames(respond: (call: NamesCall) => Response | Promise<Response>): NamesCall[] {
   const calls: NamesCall[] = [];
@@ -96,7 +106,16 @@ const api = <T = unknown>(method: string, path: string, body?: unknown) =>
 
 const ROUTE = "/api/v1/server/opsifier-address";
 const state = () => api<OpsifierAddressState>("GET", ROUTE);
-const register = () => api<OpsifierAddressState>("POST", `${ROUTE}/register`);
+const ask = () => api<OpsifierAddressState>("POST", `${ROUTE}/request`, REQUEST);
+/** Asked for, and approved: the check finds out and takes the address up. */
+const register = async () => {
+  const asked = await ask();
+  if (asked.status !== 200) {
+    return asked;
+  }
+  await checkAddressRequest(context.deps);
+  return state();
+};
 const release = (confirm = DOMAIN) => api<OpsifierAddressState>("DELETE", ROUTE, { confirm });
 
 const storedAddress = () => readAddress(context.deps.db) as RegisteredAddress;
@@ -172,7 +191,7 @@ describe("the configured service", () => {
   );
 });
 
-describe("registering from Settings", () => {
+describe("an address once it has been approved", () => {
   it("starts with no address", async () => {
     const { body } = await state();
 
@@ -330,9 +349,9 @@ describe("registering from Settings", () => {
         }),
     );
 
-    const first = register();
+    const first = ask();
     await vi.waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled());
-    const second = await register();
+    const second = await ask();
     finish(registered());
 
     expect(second.status).toBe(409);
@@ -348,9 +367,10 @@ describe("registering from Settings", () => {
       name: "ci",
       level: "write",
     });
-    const withKey = await call(context.app, `${ROUTE}/register`, {
+    const withKey = await call(context.app, `${ROUTE}/request`, {
       method: "POST",
       headers: { authorization: `Bearer ${created.body.token}` },
+      body: REQUEST,
     });
 
     expect(withKey.status).toBe(403);
@@ -359,15 +379,15 @@ describe("registering from Settings", () => {
 });
 
 describe("the requests themselves", () => {
-  it("register with nothing identifying in them", async () => {
+  it("carry only what was typed, and nothing that identifies the server", async () => {
     const calls = stubNames(() => registered());
 
-    await register();
+    await ask();
 
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({ method: "POST", path: "/v1/servers" });
-    expect(calls[0]?.body).toBeUndefined();
-    expect(Object.keys(calls[0]?.headers ?? {}).sort()).toEqual(["accept", "user-agent"]);
+    expect(JSON.parse(String(calls[0]?.body))).toEqual(REQUEST);
+    expect(Object.keys(calls[0]?.headers ?? {}).sort()).toEqual(["accept", "content-type", "user-agent"]);
     expect(calls[0]?.headers["user-agent"]).toBe("opsifier");
   });
 
@@ -375,7 +395,7 @@ describe("the requests themselves", () => {
     const spy = vi.fn(async () => registered());
     vi.stubGlobal("fetch", spy);
 
-    await registerServer(NAMES_URL);
+    await requestServerAddress(NAMES_URL, REQUEST);
 
     const init = (spy.mock.calls[0] as unknown as [string, RequestInit])[1];
     expect(init.redirect).toBe("error");
@@ -392,7 +412,7 @@ describe("the requests themselves", () => {
       }),
     );
 
-    await expect(registerServer(NAMES_URL)).rejects.toMatchObject({
+    await expect(requestServerAddress(NAMES_URL, REQUEST)).rejects.toMatchObject({
       kind: "unreachable",
       message: expect.stringContaining("in time"),
     });
@@ -400,7 +420,7 @@ describe("the requests themselves", () => {
 
   it("report a refusal by kind", async () => {
     stubNames(() => answer(401, {}));
-    await expect(registerServer(NAMES_URL)).rejects.toBeInstanceOf(NamesServiceError);
+    await expect(requestServerAddress(NAMES_URL, REQUEST)).rejects.toBeInstanceOf(NamesServiceError);
   });
 });
 
@@ -484,44 +504,202 @@ describe("releasing", () => {
   });
 });
 
-describe("registering again", () => {
-  const NEW_ID = "mnpqrstv";
-  const NEW_DOMAIN = `${NEW_ID}.addresses.example`;
+describe("asking for an address", () => {
+  const SSLIP = "203.0.113.10.sslip.io";
+  const still = (ip = "93.184.216.34") => answer(200, { ip, status: "requested" });
 
-  it("moves every name to the new address, then lets go of the old one", async () => {
+  it("waits, with the name it would get and nothing changed on the server", async () => {
     stubNames(() => registered());
-    await register();
-    await createService();
 
-    const calls = stubNames((entry) =>
-      entry.method === "POST"
-        ? registered({ id: NEW_ID, secret: "n".repeat(43), domain: NEW_DOMAIN })
-        : answer(200, {}),
-    );
-    const result = await register();
+    const result = await ask();
 
-    expect(result.body.domain).toBe(NEW_DOMAIN);
-    expect(await serviceDomains()).toEqual([expect.objectContaining({ host: `shop-web.${NEW_DOMAIN}` })]);
-    expect(calls.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "POST /v1/servers",
-      `DELETE /v1/servers/${ID}`,
-    ]);
-    expect(routingFile("shop__web.yaml").http.routers["https-shop_web-0"].tls.domains).toEqual([
-      { main: `*.${NEW_DOMAIN}` },
-    ]);
-    expect(readFileSync(secretFile(), "utf8")).toBe("n".repeat(43));
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({
+      status: "requested",
+      domain: DOMAIN,
+      wildcard: null,
+      panelUrl: `https://panel.${SSLIP}`,
+      requestedAt: expect.any(String),
+    });
+    expect(defaultPanelDomain(context.deps)).toBe(`panel.${SSLIP}`);
+    expect(existsSync(secretFile())).toBe(false);
   });
 
-  it("keeps the old address when the new one can't be had", async () => {
+  it("keeps the secret sealed while it waits", async () => {
+    stubNames(() => registered());
+
+    await ask();
+
+    expect(JSON.stringify(getSetting(context.deps.db, "opsifier_address"))).not.toContain(SECRET);
+    expect(JSON.stringify((await state()).body)).not.toContain(SECRET);
+  });
+
+  it.each([
+    ["no email", { purpose: "Our shop" }],
+    ["an email that isn't one", { email: "nope", purpose: "Our shop" }],
+    ["no purpose", { email: "owner@example.com" }],
+    ["an empty purpose", { email: "owner@example.com", purpose: "   " }],
+    ["a purpose that is far too long", { email: "owner@example.com", purpose: "x".repeat(501) }],
+  ])("refuses %s before calling anyone", async (_name, body) => {
+    const calls = stubNames(() => registered());
+
+    const result = await api("POST", `${ROUTE}/request`, body);
+
+    expect(result.status).toBe(400);
+    expect(calls).toEqual([]);
+  });
+
+  it("won't ask twice", async () => {
+    stubNames(() => registered());
+    await ask();
+
+    const again = await ask();
+
+    expect(again.status).toBe(409);
+    expect(apiErrorOf(again)?.code).toBe("address_request_waiting");
+  });
+
+  it("won't ask while the server has an address", async () => {
     stubNames(() => registered());
     await register();
-    stubNames(() => answer(429, {}));
 
-    const result = await register();
+    const again = await ask();
+
+    expect(again.status).toBe(409);
+    expect(apiErrorOf(again)?.code).toBe("address_already_registered");
+  });
+
+  it("says when it has asked too many times today", async () => {
+    stubNames(() => answer(429, { error: { code: "rate_limited" } }));
+
+    const result = await ask();
 
     expect(result.status).toBe(502);
-    expect(storedAddress().domain).toBe(DOMAIN);
-    expect(readFileSync(secretFile(), "utf8")).toBe(SECRET);
+    expect(apiErrorOf(result)?.message).toContain("too many times");
+  });
+
+  describe("and checking on it", () => {
+    it("changes nothing while it is still waiting", async () => {
+      stubNames(() => registered());
+      await ask();
+      const calls = stubNames(() => still());
+
+      await expect(checkAddressRequest(context.deps)).resolves.toBe(true);
+
+      expect(calls.map(({ method, path }) => `${method} ${path}`)).toEqual([`PUT /v1/servers/${ID}`]);
+      expect((await state()).body.status).toBe("requested");
+      expect(existsSync(secretFile())).toBe(false);
+    });
+
+    it("does not call anyone when nothing is waiting", async () => {
+      const calls = stubNames(() => still());
+
+      await expect(checkAddressRequest(context.deps)).resolves.toBe(false);
+
+      expect(calls).toEqual([]);
+    });
+
+    it("takes up an approved address by itself, and moves generated names to it", async () => {
+      stubNames(() => registered());
+      await createService();
+      expect(await serviceDomains()).toEqual([expect.objectContaining({ host: `shop-web.${SSLIP}` })]);
+      await ask();
+
+      stubNames(() => answer(200, { ip: "151.101.1.69", status: "active" }));
+      await checkAddressRequest(context.deps);
+
+      expect((await state()).body).toMatchObject({
+        status: "active",
+        domain: DOMAIN,
+        ip: "151.101.1.69",
+        panelUrl: `https://panel.${DOMAIN}`,
+      });
+      expect(readFileSync(secretFile(), "utf8")).toBe(SECRET);
+      expect(await serviceDomains()).toEqual([expect.objectContaining({ host: `shop-web.${DOMAIN}` })]);
+    });
+
+    it("restarts the proxy so that the certificate can be asked for", async () => {
+      await installProxy();
+      stubNames(() => registered());
+      await ask();
+      expect(await latestProxyAction()).toBeUndefined();
+
+      await checkAddressRequest(context.deps);
+
+      expect(await proxyEnv()).toContain(`HTTPREQ_USERNAME=${ID}`);
+    });
+
+    it("keeps the panel on the name people were using, as well as the new one", async () => {
+      stubNames(() => registered());
+      await register();
+
+      const rules = JSON.stringify(routingFile("_base.yaml").http.routers);
+
+      expect(rules).toContain(`panel.${SSLIP}`);
+      expect(rules).toContain(`panel.${DOMAIN}`);
+    });
+
+    it("says so when the request was refused, and lets it ask again", async () => {
+      stubNames(() => registered());
+      await ask();
+      stubNames(() => answer(410, { error: { code: "refused", message: "No." } }));
+
+      await checkAddressRequest(context.deps);
+
+      expect((await state()).body).toMatchObject({ status: "refused", domain: null });
+      stubNames(() => registered());
+      expect((await ask()).status).toBe(200);
+    });
+
+    it("goes back to no address when the service has let the request go", async () => {
+      stubNames(() => registered());
+      await ask();
+      stubNames(() => answer(401, {}));
+
+      await checkAddressRequest(context.deps);
+
+      expect((await state()).body).toMatchObject({ status: "off", domain: null });
+    });
+
+    it("keeps waiting when the service can't be reached", async () => {
+      stubNames(() => registered());
+      await ask();
+      stubNames(() => answer(503, {}));
+
+      await checkAddressRequest(context.deps);
+
+      expect((await state()).body.status).toBe("requested");
+    });
+  });
+
+  describe("and withdrawing it", () => {
+    it("tells the service, and leaves no address", async () => {
+      stubNames(() => registered());
+      await ask();
+      const calls = stubNames(() => answer(200, {}));
+
+      const result = await api<OpsifierAddressState>("DELETE", `${ROUTE}/request`);
+
+      expect(result.body).toMatchObject({ status: "off", domain: null });
+      expect(calls.map(({ method, path }) => `${method} ${path}`)).toEqual([`DELETE /v1/servers/${ID}`]);
+    });
+
+    it("works even when the service can't be reached", async () => {
+      stubNames(() => registered());
+      await ask();
+      stubNames(() => answer(503, {}));
+
+      const result = await api<OpsifierAddressState>("DELETE", `${ROUTE}/request`);
+
+      expect(result.body.status).toBe("off");
+    });
+
+    it("is refused when nothing is waiting", async () => {
+      const result = await api("DELETE", `${ROUTE}/request`);
+
+      expect(result.status).toBe(409);
+      expect(apiErrorOf(result)?.code).toBe("address_no_request");
+    });
   });
 });
 
@@ -532,14 +710,14 @@ describe("the daily heartbeat", () => {
   });
 
   it("waits a day after registering", async () => {
-    const calls = stubNames(() => answer(200, { ip: "93.184.216.34" }));
+    const calls = stubNames(() => answer(200, { ip: "93.184.216.34", status: "active" }));
 
     expect(await sendDueHeartbeat(context.deps)).toBe(false);
     expect(calls).toEqual([]);
   });
 
   it("sends the server's credentials and nothing else, once a day", async () => {
-    const calls = stubNames(() => answer(200, { ip: "151.101.1.69" }));
+    const calls = stubNames(() => answer(200, { ip: "151.101.1.69", status: "active" }));
     context.advance(DAY);
 
     expect(await sendDueHeartbeat(context.deps)).toBe(true);
@@ -554,7 +732,7 @@ describe("the daily heartbeat", () => {
   });
 
   it("notices sooner after a restart, when asked to", async () => {
-    stubNames(() => answer(200, { ip: "151.101.1.69" }));
+    stubNames(() => answer(200, { ip: "151.101.1.69", status: "active" }));
     context.advance(2 * 3_600_000);
 
     expect(await sendDueHeartbeat(context.deps, 3_600_000)).toBe(true);
@@ -579,7 +757,7 @@ describe("the daily heartbeat", () => {
     stubNames(() => answer(503, {}));
     context.advance(DAY);
     await sendDueHeartbeat(context.deps);
-    stubNames(() => answer(200, { ip: "93.184.216.34" }));
+    stubNames(() => answer(200, { ip: "93.184.216.34", status: "active" }));
 
     await sendDueHeartbeat(context.deps);
 
@@ -604,7 +782,7 @@ describe("the daily heartbeat", () => {
 
     expect((await getAddressState(context.deps)).status).toBe("disabled");
 
-    const calls = stubNames(() => answer(200, { ip: "93.184.216.34" }));
+    const calls = stubNames(() => answer(200, { ip: "93.184.216.34", status: "active" }));
     context.advance(DAY);
     expect(await sendDueHeartbeat(context.deps)).toBe(false);
     expect(calls).toEqual([]);
@@ -613,7 +791,7 @@ describe("the daily heartbeat", () => {
   it("is never sent once the address is released", async () => {
     stubNames(() => answer(200, {}));
     await release();
-    const calls = stubNames(() => answer(200, { ip: "93.184.216.34" }));
+    const calls = stubNames(() => answer(200, { ip: "93.184.216.34", status: "active" }));
     context.advance(2 * DAY);
 
     expect(await sendDueHeartbeat(context.deps)).toBe(false);
@@ -633,7 +811,7 @@ describe("the daily heartbeat", () => {
     await vi.waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled());
     saveAddress(context.deps.db, { status: "off", at: new Date().toISOString() }, new Date());
 
-    finish(answer(200, { ip: "93.184.216.34" }));
+    finish(answer(200, { ip: "93.184.216.34", status: "active" }));
     await beat;
 
     expect(readAddress(context.deps.db)?.status).toBe("off");
@@ -772,7 +950,9 @@ describe("the certificate of a route", () => {
 
     const routers = routingFile("_base.yaml").http.routers;
 
-    expect(routers["opsifier-panel"].rule).toBe("Host(`panel.example.com`)");
+    expect(routers["opsifier-panel"].rule).toBe(
+      "Host(`panel.example.com`) || Host(`panel.203.0.113.10.sslip.io`)",
+    );
     expect(routers["opsifier-panel"].tls).toEqual({ certResolver: "letsencrypt" });
     expect(routers["opsifier-panel-address"].rule).toBe(`Host(\`panel.${DOMAIN}\`)`);
     expect(routers["opsifier-panel-address"].tls).toEqual({

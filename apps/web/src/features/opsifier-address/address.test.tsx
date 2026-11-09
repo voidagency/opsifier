@@ -19,6 +19,7 @@ const active: OpsifierAddressState = {
   panelUrl: `https://panel.${DOMAIN}`,
   ip: "93.184.216.34",
   registeredAt: "2026-11-01T00:00:00.000Z",
+  requestedAt: null,
   lastHeartbeatAt: "2026-11-08T00:00:00.000Z",
 };
 
@@ -31,7 +32,15 @@ const off: OpsifierAddressState = {
   panelUrl: null,
   ip: null,
   registeredAt: null,
+  requestedAt: null,
   lastHeartbeatAt: null,
+};
+
+const waiting: OpsifierAddressState = {
+  ...off,
+  status: "requested",
+  domain: DOMAIN,
+  requestedAt: "2026-11-08T00:00:00.000Z",
 };
 
 const open = (routes: FakeRoute) => {
@@ -84,28 +93,91 @@ describe("the address page", () => {
     expect(lampOf("Waiting for it")?.getAttribute("data-state")).toBe("progress");
   });
 
-  it("offers to register when there is no address, in the empty state", async () => {
+  it("offers to ask for one when there is no address, and sends what was typed", async () => {
     const server = open({
       "GET /server/opsifier-address": off,
-      "POST /server/opsifier-address/register": () => {
-        server.set({ "GET /server/opsifier-address": active });
-        return active;
+      "POST /server/opsifier-address/request": () => {
+        server.set({ "GET /server/opsifier-address": waiting });
+        return waiting;
       },
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Register" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Ask for an address" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/^Email/), { target: { value: "me@example.com" } });
+    fireEvent.change(within(dialog).getByLabelText(/What will you use it for/), {
+      target: { value: "Our shop" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Send the request" }));
 
     await waitFor(() =>
-      expect(server.calls.some((call) => call.path === "/server/opsifier-address/register")).toBe(true),
+      expect(server.calls.find((call) => call.method === "POST")?.body).toEqual({
+        email: "me@example.com",
+        purpose: "Our shop",
+      }),
     );
     expect(await screen.findByText(DOMAIN)).toBeTruthy();
+  });
+
+  it("won't send a request that doesn't say what the server is for", async () => {
+    const server = open({ "GET /server/opsifier-address": off });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Ask for an address" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/^Email/), { target: { value: "me@example.com" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Send the request" }));
+
+    expect(await within(dialog).findByText(/in 500 characters at most/)).toBeTruthy();
+    expect(server.calls.some((call) => call.method === "POST")).toBe(false);
+  });
+
+  it("shows a request as waiting, with a turning lamp and the name it will get", async () => {
+    open({ "GET /server/opsifier-address": waiting });
+
+    expect(await screen.findByText(DOMAIN)).toBeTruthy();
+    expect(lampOf("Waiting for approval")?.getAttribute("data-state")).toBe("progress");
+    expect(screen.getByText(new RegExp(`panel\\.${DOMAIN}`))).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Release" })).toBeNull();
+  });
+
+  it("asks before withdrawing a request", async () => {
+    const server = open({
+      "GET /server/opsifier-address": waiting,
+      "DELETE /server/opsifier-address/request": () => {
+        server.set({ "GET /server/opsifier-address": off });
+        return off;
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Withdraw" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(server.calls.some((call) => call.method === "DELETE")).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Withdraw" }));
+
+    await waitFor(() => expect(server.calls.some((call) => call.method === "DELETE")).toBe(true));
+    expect(await screen.findByRole("button", { name: "Ask for an address" })).toBeTruthy();
+  });
+
+  it("says a request was refused, and that it is possible to ask again", async () => {
+    open({ "GET /server/opsifier-address": { ...off, status: "refused" } });
+
+    expect(await screen.findByText(/last request was refused/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ask for an address" })).toBeTruthy();
+  });
+
+  it("no longer offers to replace an address that works", async () => {
+    open({ "GET /server/opsifier-address": active });
+    await screen.findByText(DOMAIN);
+
+    expect(screen.queryByRole("button", { name: "Ask for an address" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Release" })).toBeTruthy();
   });
 
   it("offers nothing to do when this server was told never to call the service", async () => {
     open({ "GET /server/opsifier-address": { ...off, available: false } });
 
     expect(await screen.findByText(/never call/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Register" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ask for an address" })).toBeNull();
   });
 
   it("shows why it could not load, and a way to try again", async () => {
@@ -137,37 +209,23 @@ describe("the address page", () => {
     );
   });
 
-  it("asks before registering again, and shows where the panel moved to", async () => {
-    const next = {
-      ...active,
-      domain: "mnpqrstv.opsifier.dev",
-      panelUrl: "https://panel.mnpqrstv.opsifier.dev",
-    };
-    const server = open({
-      "GET /server/opsifier-address": active,
-      "POST /server/opsifier-address/register": next,
-    });
-    fireEvent.click(await screen.findByRole("button", { name: "Register again" }));
-
-    const dialog = await screen.findByRole("dialog");
-    expect(server.calls.some((call) => call.method === "POST")).toBe(false);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Register again" }));
-
-    await waitFor(() => expect(server.calls.some((call) => call.method === "POST")).toBe(true));
-    expect(await screen.findByText("https://panel.mnpqrstv.opsifier.dev", { selector: "span" })).toBeTruthy();
-  });
-
-  it("says it failed, and keeps what was there", async () => {
+  it("says it failed, and keeps the form open", async () => {
     open({
       "GET /server/opsifier-address": off,
-      "POST /server/opsifier-address/register": withStatus(502, {
+      "POST /server/opsifier-address/request": withStatus(502, {
         error: { code: "address_service_failed", message: "No." },
       }),
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Register" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Ask for an address" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/^Email/), { target: { value: "me@example.com" } });
+    fireEvent.change(within(dialog).getByLabelText(/What will you use it for/), {
+      target: { value: "Our shop" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Send the request" }));
 
-    expect(await screen.findByText(/could not be used/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Register" })).toBeTruthy();
+    expect(await within(dialog).findByText(/could not be used/)).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Send the request" })).toBeTruthy();
   });
 });

@@ -14,8 +14,10 @@ import {
   domainOf,
   hashSecret,
   isChallengeValue,
+  isEmail,
   isIpv4,
   isPublicIpv4,
+  isPurpose,
   isValidId,
   secretMatches,
   wildcardOf,
@@ -28,11 +30,36 @@ const LEASE_MS = 30_000;
 const LEASE_ATTEMPTS = 8;
 const LEASE_RETRY_MS = 400;
 const ID_ATTEMPTS = 8;
-/** Well past the longest a registration can take, so the job never undoes one in flight. */
-const PENDING_GRACE_MS = 15 * 60_000;
+/** A request nobody answered goes, so a name isn't held for ever by someone who has moved on. */
+const REQUEST_LIFETIME_DAYS = 30;
 const COUNTER_LIFETIME_SECONDS = 2 * 86_400;
 const DAY_MS = 86_400_000;
 const MAX_CHALLENGE_BODY = 1024;
+const MAX_REQUEST_BODY = 2048;
+
+/** What whoever decides gets to see. */
+export interface WaitingRequest {
+  id: string;
+  email: string;
+  purpose: string;
+  ip: string;
+  requestedAt: string;
+}
+
+/** What is said to whoever decides, including the two commands that answer it. */
+export const requestMessage = (request: WaitingRequest, zone: string): string =>
+  [
+    "A server is asking for an address.",
+    "",
+    `Address: ${domainOf(request.id, zone)}`,
+    `Email: ${request.email}`,
+    `Purpose: ${request.purpose}`,
+    `Server IP: ${request.ip}`,
+    `Requested: ${request.requestedAt}`,
+    "",
+    `Approve: infra/names/requests.sh <aws-profile> approve ${request.id}`,
+    `Refuse: infra/names/requests.sh <aws-profile> refuse ${request.id}`,
+  ].join("\n");
 
 export interface Limits {
   registrationsPerIpPerDay: number;
@@ -59,6 +86,8 @@ export interface Deps {
   sleep(ms: number): Promise<void>;
   /** Named facts only. Nothing a request carries is ever passed here. */
   log(event: string, fields?: Record<string, string | number | boolean>): void;
+  /** Says a request is waiting. If this fails the request still stands, and can be listed. */
+  notify(request: WaitingRequest): Promise<void>;
 }
 
 /** A request the service refuses, and what the caller is told. */
@@ -185,17 +214,21 @@ async function authenticate(
   if (server.status === "disabled") {
     throw new Refusal(410, "disabled", "This address has been disabled.");
   }
+  if (server.status === "refused") {
+    throw new Refusal(410, "refused", "This request was refused.");
+  }
   if (!allow.includes(server.status)) {
     throw unauthorized();
   }
   return server;
 }
 
-export interface Registered {
+export interface Requested {
   id: string;
   secret: string;
   domain: string;
   ip: string;
+  status: "requested";
 }
 
 async function withinRegistrationLimits(deps: Deps, sourceIp: string, now: number): Promise<void> {
@@ -215,59 +248,65 @@ async function withinRegistrationLimits(deps: Deps, sourceIp: string, now: numbe
 async function claimId(deps: Deps, draft: Omit<ServerRecord, "id">): Promise<string> {
   for (let attempt = 0; attempt < ID_ATTEMPTS; attempt += 1) {
     const id = deps.newId();
-    if (isValidId(id) && (await deps.store.createPending({ ...draft, id }))) {
+    if (isValidId(id) && (await deps.store.create({ ...draft, id }))) {
       return id;
     }
   }
   throw unavailable();
 }
 
-/**
- * Takes back a registration that did not complete. Records first and the row last: the other way
- * round, a crash in between would leave records nothing knows about. A row left here is `pending`,
- * which is what the daily job looks for.
- */
-async function undoRegistration(deps: Deps, id: string): Promise<void> {
-  try {
-    await removeRecords(deps, id);
-    // This process made the row and nobody else knows its ID, so `active` is safe to take back too:
-    // a retried write can have succeeded even though the answer said it didn't.
-    await deps.store.deleteRow(id, ["pending", "active"]);
-  } catch (error) {
-    deps.log("undo_failed", { id, error: errorName(error) });
+function parseRequest(body: string | undefined): { email: string; purpose: string } {
+  if (body === undefined || body.length > MAX_REQUEST_BODY) {
+    throw invalid("Send { email, purpose }.");
   }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    throw invalid("The body is not JSON.");
+  }
+  const { email, purpose } = (typeof parsed === "object" && parsed !== null ? parsed : {}) as Record<
+    string,
+    unknown
+  >;
+  if (typeof email !== "string" || !isEmail(email)) {
+    throw invalid("This is not an email address.");
+  }
+  if (typeof purpose !== "string" || !isPurpose(purpose)) {
+    throw invalid("Say in a few words what this server is for.");
+  }
+  // On one line: it ends up in a message whose other lines are the commands that answer it.
+  return { email, purpose: purpose.trim().replace(/\s+/g, " ") };
 }
 
 /**
- * The row is written first, as `pending`, so records can never exist with nothing to account for them.
- * It only becomes `active` once both records do, and nobody learns the ID before that. Route 53 applies
- * the batch whole, and UPSERT makes a retried request safe where CREATE would fail on its own success.
+ * Asks for an address. Nothing reaches the zone here: the row holds a name and says who asked, and the
+ * records only exist once someone has approved it, so an open form can't put anything on the domain.
  */
-export async function register(deps: Deps, sourceIp: string): Promise<Registered> {
+export async function requestAddress(
+  deps: Deps,
+  sourceIp: string,
+  body: string | undefined,
+): Promise<Requested> {
   assertPublicSource(sourceIp);
+  const request = parseRequest(body);
   const now = deps.now();
   await withinRegistrationLimits(deps, sourceIp, now);
 
   const secret = deps.newSecret();
   const id = await claimId(deps, {
-    status: "pending",
+    status: "requested",
     secretHash: hashSecret(secret),
     ip: sourceIp,
     createdAt: now,
     lastSeen: now,
+    ...request,
   });
-
-  try {
-    await deps.dns.change(addressRecords(id, deps.zone, sourceIp).map(upsert));
-    if (!(await deps.store.activate(id, deps.now()))) {
-      throw new Error("The registration was no longer pending");
-    }
-  } catch (error) {
-    deps.log("register_failed", { id, error: errorName(error) });
-    await undoRegistration(deps, id);
-    throw unavailable();
-  }
-  return { id, secret, domain: domainOf(id, deps.zone), ip: sourceIp };
+  const waiting = { id, ...request, ip: sourceIp, requestedAt: new Date(now).toISOString() };
+  await deps.notify(waiting).catch((error: unknown) => {
+    deps.log("notify_failed", { id, error: errorName(error) });
+  });
+  return { id, secret, domain: domainOf(id, deps.zone), ip: sourceIp, status: "requested" };
 }
 
 export interface Heartbeat {
@@ -275,6 +314,8 @@ export interface Heartbeat {
   domain: string;
   ip: string;
   lastSeen: string;
+  /** While `requested` the server is only asking whether it has been answered. */
+  status: "active" | "requested";
 }
 
 /** Most heartbeats change nothing but a timestamp. Only an address that moved goes near Route 53. */
@@ -284,7 +325,7 @@ export async function heartbeat(
   pathId: string | undefined,
   sourceIp: string,
 ): Promise<Heartbeat> {
-  const server = await authenticate(deps, { credentials, pathId });
+  const server = await authenticate(deps, { credentials, pathId, allow: ["active", "requested"] });
   assertPublicSource(sourceIp);
   const now = deps.now();
   const answer = {
@@ -292,7 +333,18 @@ export async function heartbeat(
     domain: domainOf(server.id, deps.zone),
     ip: sourceIp,
     lastSeen: new Date(now).toISOString(),
+    status: "active" as const,
   };
+  if (server.status === "requested") {
+    // Kept current so that an approval points at where the server is by then. Still nothing in the zone.
+    if (server.ip !== sourceIp) {
+      await spendChange(deps, server.id);
+      await withLease(deps, server.id, ["requested"], async (lease) => {
+        await deps.store.update(lease, { ip: sourceIp, lastSeen: now });
+      });
+    }
+    return { ...answer, status: "requested" };
+  }
   if (server.ip === sourceIp && (await deps.store.touch(server.id, sourceIp, now))) {
     return answer;
   }
@@ -321,8 +373,10 @@ async function removeUnderLease(deps: Deps, lease: Lease, target: FinalStatus): 
     status: target,
     removeTo: null,
     ip: null,
-    // A disabled server keeps its hash, to be told so rather than treated as a stranger.
-    ...(target === "disabled" ? {} : { secretHash: null }),
+    email: null,
+    purpose: null,
+    // A disabled or refused server keeps its hash, to be told so rather than treated as a stranger.
+    ...(target === "disabled" || target === "refused" ? {} : { secretHash: null }),
   });
 }
 
@@ -332,7 +386,8 @@ export async function release(
   credentials: Credentials | null,
   pathId: string | undefined,
 ): Promise<{ id: string; released: true }> {
-  const allow: ServerStatus[] = ["active", "removing"];
+  // Also how a server withdraws a request nobody has answered yet.
+  const allow: ServerStatus[] = ["active", "requested", "removing"];
   const server = await authenticate(deps, { credentials, pathId, allow });
   await withLease(deps, server.id, allow, async (lease) => {
     try {
@@ -422,8 +477,7 @@ export async function cleanupChallenge(
   });
 }
 
-/** An operator's decision, reached only by invoking the function directly: no route leads here. */
-export async function disableServer(deps: Deps, id: string): Promise<{ id: string; status: "disabled" }> {
+async function operatorTarget(deps: Deps, id: string): Promise<ServerRecord> {
   if (!isValidId(id)) {
     throw invalid("This is not an ID.");
   }
@@ -431,21 +485,90 @@ export async function disableServer(deps: Deps, id: string): Promise<{ id: strin
   if (server === null) {
     throw new Refusal(404, "not_found", "No server has this ID.");
   }
+  return server;
+}
+
+const notWaiting = () => new Refusal(409, "not_waiting", "This server is not waiting for an answer.");
+
+/** An operator's decision, reached only by invoking the function directly: no route leads here. */
+export async function disableServer(deps: Deps, id: string): Promise<{ id: string; status: "disabled" }> {
+  const server = await operatorTarget(deps, id);
   if (server.status !== "disabled") {
-    await withLease(deps, id, ["pending", "active", "removing", "released", "expired"], (lease) =>
-      removeUnderLease(deps, lease, "disabled"),
+    await withLease(
+      deps,
+      id,
+      ["requested", "active", "removing", "released", "expired", "refused"],
+      (lease) => removeUnderLease(deps, lease, "disabled"),
     );
   }
   return { id, status: "disabled" };
 }
 
+/**
+ * Also an operator's decision. UPSERT and the lease make it safe to repeat, so if a step fails, or the
+ * answer is lost, approving again finishes it. The records use the IP from the row as it is now.
+ */
+export async function approveServer(
+  deps: Deps,
+  id: string,
+): Promise<{ id: string; status: "active"; domain: string }> {
+  const server = await operatorTarget(deps, id);
+  if (server.status !== "active") {
+    if (server.status !== "requested") {
+      throw notWaiting();
+    }
+    await withLease(deps, id, ["requested"], async (lease) => {
+      const ip = (await deps.store.get(id))?.ip;
+      if (ip === undefined) {
+        throw unavailable();
+      }
+      await deps.dns.change(addressRecords(id, deps.zone, ip).map(upsert));
+      if (!(await deps.store.update(lease, { status: "active", lastSeen: deps.now() }))) {
+        throw unavailable();
+      }
+    });
+  }
+  return { id, status: "active", domain: domainOf(id, deps.zone) };
+}
+
+export async function refuseServer(deps: Deps, id: string): Promise<{ id: string; status: "refused" }> {
+  const server = await operatorTarget(deps, id);
+  if (server.status !== "refused") {
+    if (server.status !== "requested") {
+      throw notWaiting();
+    }
+    await withLease(deps, id, ["requested"], (lease) => removeUnderLease(deps, lease, "refused"));
+  }
+  return { id, status: "refused" };
+}
+
+/** Oldest first: whoever has been waiting longest is answered first. */
+export async function listRequests(deps: Deps): Promise<WaitingRequest[]> {
+  const waiting: WaitingRequest[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await deps.store.scan(cursor);
+    for (const server of page.servers) {
+      if (server.status === "requested") {
+        waiting.push({
+          id: server.id,
+          email: server.email ?? "",
+          purpose: server.purpose ?? "",
+          ip: server.ip ?? "",
+          requestedAt: new Date(server.createdAt).toISOString(),
+        });
+      }
+    }
+    cursor = page.cursor;
+  } while (cursor !== undefined);
+  return waiting.sort((a, b) => a.requestedAt.localeCompare(b.requestedAt));
+}
+
 export interface SweepReport {
   scanned: number;
-  /** Undone registrations that never finished. */
-  undone: number;
   /** Removals that had been interrupted, now finished. */
   finished: number;
-  /** Addresses with no heartbeat for too long. */
+  /** Addresses with no heartbeat for too long, and requests nobody answered. */
   expired: number;
   failed: number;
   /** Set when the run stopped at its limit, leaving the rest for the next one. */
@@ -464,13 +587,14 @@ async function expireIfStillSilent(deps: Deps, id: string, cutoff: number): Prom
   });
 }
 
-type RepairOutcome = "undone" | "finished" | "expired" | null;
+type RepairOutcome = "finished" | "expired" | null;
 
 async function repair(deps: Deps, server: ServerRecord, cutoff: number): Promise<RepairOutcome> {
   const { id, status } = server;
-  if (status === "pending" && server.createdAt + PENDING_GRACE_MS < deps.now()) {
-    await removeRecords(deps, id);
-    return (await deps.store.deleteRow(id, ["pending"])) ? "undone" : null;
+  if (status === "requested") {
+    // Through the same removal as anything else: an approval that crashed halfway can have left records.
+    await withLease(deps, id, ["requested"], (lease) => removeUnderLease(deps, lease, "expired"));
+    return "expired";
   }
   if (status === "removing") {
     await withLease(deps, id, ["removing"], (lease) =>
@@ -484,20 +608,20 @@ async function repair(deps: Deps, server: ServerRecord, cutoff: number): Promise
   return null;
 }
 
-const needsAttention = (server: ServerRecord, cutoff: number, pendingBefore: number): boolean =>
+const needsAttention = (server: ServerRecord, cutoff: number, requestsBefore: number): boolean =>
   server.status === "removing" ||
-  (server.status === "pending" && server.createdAt < pendingBefore) ||
+  (server.status === "requested" && server.createdAt < requestsBefore) ||
   (server.status === "active" && server.lastSeen < cutoff);
 
 /**
  * The daily job. Dangling records are a takeover risk, because cloud IPs get reused, so an address with
- * no heartbeat for too long goes, and whatever a crash left half done is finished. One failure never
+ * no heartbeat for too long goes, so does a request nobody answered, and whatever a crash left half done
+ * is finished. One failure never
  * stops the run, and the work is paced to stay inside Route 53's rate limit.
  */
 export async function sweep(deps: Deps): Promise<SweepReport> {
   const report: SweepReport = {
     scanned: 0,
-    undone: 0,
     finished: 0,
     expired: 0,
     failed: 0,
@@ -505,14 +629,14 @@ export async function sweep(deps: Deps): Promise<SweepReport> {
   };
   const now = deps.now();
   const cutoff = now - deps.limits.inactiveAfterDays * DAY_MS;
-  const pendingBefore = now - PENDING_GRACE_MS;
+  const requestsBefore = now - REQUEST_LIFETIME_DAYS * DAY_MS;
   let removals = 0;
   let cursor: string | undefined;
   do {
     const page = await deps.store.scan(cursor);
     for (const server of page.servers) {
       report.scanned += 1;
-      if (!needsAttention(server, cutoff, pendingBefore)) {
+      if (!needsAttention(server, cutoff, requestsBefore)) {
         continue;
       }
       if (removals >= deps.limits.removalsPerRun) {

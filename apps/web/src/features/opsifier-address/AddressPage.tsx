@@ -1,27 +1,33 @@
-import type {
-  OpsifierAddressCertificateState,
-  OpsifierAddressState,
-  OpsifierAddressStatus,
+import {
+  type OpsifierAddressCertificateState,
+  type OpsifierAddressState,
+  type OpsifierAddressStatus,
+  requestOpsifierAddressRequest,
 } from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatDateTime, formatRelativeTime } from "../../lib/format";
-import { errorMessage } from "../../lib/forms";
+import { errorMessage, useForm } from "../../lib/forms";
 import {
   Button,
   ConfirmDialog,
+  Dialog,
   EmptyState,
   ErrorState,
+  Field,
   FormBanner,
+  Input,
   Lamp,
   MonoValue,
   SectionIntro,
   Skeleton,
+  Textarea,
   Tooltip,
   toast,
   type VisualState,
 } from "../../ui";
+import { useCurrentUser } from "../auth/session";
 import { addressApi, addressKey, addressQuery } from "./api";
 
 const statusStates: Record<OpsifierAddressStatus, VisualState> = {
@@ -29,6 +35,8 @@ const statusStates: Record<OpsifierAddressStatus, VisualState> = {
   unreachable: "degraded",
   lost: "failed",
   disabled: "failed",
+  requested: "progress",
+  refused: "failed",
   off: "stopped",
 };
 
@@ -60,12 +68,10 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 function RegisteredAddress({
   state,
   domain,
-  onRegister,
   onRelease,
 }: {
   state: OpsifierAddressState;
   domain: string;
-  onRegister: () => void;
   onRelease: () => void;
 }) {
   const { t, i18n } = useTranslation("settings-address");
@@ -80,12 +86,9 @@ function RegisteredAddress({
             <p className="text-sm text-muted">{t(`status.${state.status}`)}</p>
           </div>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <Button onClick={onRegister}>{t("registerAgain")}</Button>
-          <Button variant="danger" onClick={onRelease}>
-            {t("release")}
-          </Button>
-        </div>
+        <Button variant="danger" onClick={onRelease} className="shrink-0">
+          {t("release")}
+        </Button>
       </header>
 
       {hasProblem(state.status) && (
@@ -133,12 +136,120 @@ function RegisteredAddress({
   );
 }
 
+function RequestedAddress({
+  state,
+  domain,
+  onWithdraw,
+}: {
+  state: OpsifierAddressState;
+  domain: string;
+  onWithdraw: () => void;
+}) {
+  const { t, i18n } = useTranslation("settings-address");
+  return (
+    <>
+      <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b pb-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <Lamp state={statusStates[state.status]} size="lg" label={t(`status.${state.status}`)} />
+          <div className="min-w-0">
+            <MonoValue value={domain} className="text-md font-medium" />
+            <p className="text-sm text-muted">{t(`status.${state.status}`)}</p>
+          </div>
+        </div>
+        <Button onClick={onWithdraw} className="shrink-0">
+          {t("waiting.withdraw")}
+        </Button>
+      </header>
+      <FormBanner tone="info">{t("waiting.hint", { panel: `panel.${domain}` })}</FormBanner>
+      {state.requestedAt !== null && (
+        <dl className="divide-y">
+          <Fact label={t("waiting.asked")}>
+            <time
+              className="text-sm"
+              dateTime={state.requestedAt}
+              title={formatDateTime(state.requestedAt, i18n.language)}
+            >
+              {formatRelativeTime(state.requestedAt, i18n.language)}
+            </time>
+          </Fact>
+        </dl>
+      )}
+    </>
+  );
+}
+
+function RequestDialog({
+  open,
+  onOpenChange,
+  onSent,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSent: (next: OpsifierAddressState) => Promise<void>;
+}) {
+  const { t } = useTranslation(["settings-address", "common"]);
+  const email = useCurrentUser()?.email ?? "";
+  const form = useForm({
+    t,
+    initialValues: { email, purpose: "" },
+    validate: (values) => {
+      const parsed = requestOpsifierAddressRequest.safeParse(values);
+      const invalid = (field: string) =>
+        !parsed.success && parsed.error.issues.some((issue) => issue.path[0] === field);
+      return {
+        ...(invalid("email") ? { email: t("requestForm.emailInvalid") } : {}),
+        ...(invalid("purpose") ? { purpose: t("requestForm.purposeInvalid") } : {}),
+      };
+    },
+    onSubmit: async (values) => {
+      await onSent(await addressApi.request(values));
+      toast.success(t("requestForm.sent"));
+      onOpenChange(false);
+      form.reset({ email: values.email, purpose: "" });
+    },
+  });
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t("requestForm.title")}
+      description={t("requestForm.description")}
+      onSubmit={form.handleSubmit}
+      footer={
+        <>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            {t("common:actions.cancel")}
+          </Button>
+          <Button type="submit" variant="primary" pending={form.pending}>
+            {t("requestForm.submit")}
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-4">
+        {form.banner && <FormBanner>{form.banner}</FormBanner>}
+        <Field label={t("requestForm.email")} hint={t("requestForm.emailHint")} error={form.errors.email}>
+          <Input {...form.field("email")} type="email" autoComplete="email" />
+        </Field>
+        <Field
+          label={t("requestForm.purpose")}
+          hint={t("requestForm.purposeHint")}
+          error={form.errors.purpose}
+        >
+          <Textarea {...form.field("purpose")} rows={3} maxLength={500} autoFocus />
+        </Field>
+      </div>
+    </Dialog>
+  );
+}
+
 export function AddressPage() {
   const { t } = useTranslation(["settings-address", "common"]);
   const queryClient = useQueryClient();
   const { data, isPending, isError, error, refetch } = useQuery(addressQuery);
-  const [registering, setRegistering] = useState(false);
-  const [asking, setAsking] = useState<"register" | "release" | null>(null);
+  const [requesting, setRequesting] = useState(false);
+  const [asking, setAsking] = useState<"withdraw" | "release" | null>(null);
   const [moved, setMoved] = useState<string | null>(null);
 
   const refresh = async (next: OpsifierAddressState) => {
@@ -146,18 +257,9 @@ export function AddressPage() {
     await queryClient.invalidateQueries({ queryKey: ["server"] });
   };
 
-  const register = async () => {
-    setRegistering(true);
-    try {
-      const next = await addressApi.register();
-      await refresh(next);
-      setMoved(next.panelUrl);
-      toast.success(t("registered", { domain: next.domain ?? "" }));
-    } catch (failure) {
-      toast.error(errorMessage(failure, t));
-    } finally {
-      setRegistering(false);
-    }
+  const withdraw = async () => {
+    await refresh(await addressApi.withdraw());
+    toast.success(t("waiting.withdrawn"));
   };
 
   const release = async () => {
@@ -184,6 +286,7 @@ export function AddressPage() {
               {t("movedTo")} <MonoValue value={moved} copy copyLabel={t("copyAddress")} />
             </FormBanner>
           )}
+          {data.status === "refused" && <FormBanner tone="error">{t("refusedNote")}</FormBanner>}
           {data.domain === null ? (
             <EmptyState
               illustration="no-domains"
@@ -191,30 +294,27 @@ export function AddressPage() {
               description={t(data.available ? "emptyDescription" : "emptyDescriptionOff")}
               action={
                 data.available && (
-                  <Button variant="primary" pending={registering} onClick={register}>
-                    {t("register")}
+                  <Button variant="primary" onClick={() => setRequesting(true)}>
+                    {t("requestAction")}
                   </Button>
                 )
               }
             />
+          ) : data.status === "requested" ? (
+            <RequestedAddress state={data} domain={data.domain} onWithdraw={() => setAsking("withdraw")} />
           ) : (
-            <RegisteredAddress
-              state={data}
-              domain={data.domain}
-              onRegister={() => setAsking("register")}
-              onRelease={() => setAsking("release")}
-            />
+            <RegisteredAddress state={data} domain={data.domain} onRelease={() => setAsking("release")} />
           )}
         </>
       )}
+      <RequestDialog open={requesting} onOpenChange={setRequesting} onSent={refresh} />
       <ConfirmDialog
-        open={asking === "register"}
+        open={asking === "withdraw"}
         onOpenChange={(open) => !open && setAsking(null)}
-        title={t("registerAgainTitle")}
-        description={t("registerAgainDescription")}
-        confirmLabel={t("registerAgain")}
-        tone="primary"
-        onConfirm={register}
+        title={t("waiting.withdrawTitle")}
+        description={t("waiting.withdrawDescription")}
+        confirmLabel={t("waiting.withdraw")}
+        onConfirm={withdraw}
       />
       <ConfirmDialog
         open={asking === "release"}

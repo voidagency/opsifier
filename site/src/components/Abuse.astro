@@ -1,0 +1,37 @@
+---
+import { content, type Locale, REPORT_ABUSE } from "../content";
+import Sprite from "./Sprite.astro";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = content[locale];
+const home = locale === "en" ? "/" : "/fr/";
+---
+
+<Sprite />
+
+<article class="page wrap on-light">
+  <svg class="lamp page__lamp" data-state="degraded" aria-hidden="true"><use href="#l-degraded"></use></svg>
+  <h1>{t.abuse.title}</h1>
+  <p class="page__lead">{t.abuse.lead}</p>
+
+  <h2>{t.abuse.howTitle}</h2>
+  <p>{t.abuse.how}</p>
+  <a class="btn btn--navy" href={REPORT_ABUSE} rel="noopener">
+    {t.abuse.action}
+    <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12H20M14 6l6 6-6 6"></path></svg>
+  </a>
+
+  <h2>{t.abuse.includeTitle}</h2>
+  <ul>
+    {t.abuse.include.map((item) => <li>{item}</li>)}
+  </ul>
+
+  <h2>{t.abuse.afterTitle}</h2>
+  <p>{t.abuse.after}</p>
+
+  <p class="page__back"><a href={home}>{t.abuse.back}</a></p>
+</article>

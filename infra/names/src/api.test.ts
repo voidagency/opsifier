@@ -1,20 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { handle } from "./api";
 import { ID_LENGTH, isValidId } from "./rules";
+import { approveServer } from "./service";
 import {
   acmeEvent,
   basic,
   body,
   challengeValue,
   createHarness,
+  EMAIL,
   errorCode,
   event,
   heartbeatEvent,
   OTHER_PUBLIC_IP,
   PUBLIC_IP,
+  PURPOSE,
   recordNames,
   register,
   releaseEvent,
+  requestEvent,
   ZONE,
 } from "./testing";
 
@@ -51,7 +55,7 @@ describe("registering", () => {
       const harness = createHarness();
 
       const result = await handle(
-        event("POST /v1/servers", PUBLIC_IP, {
+        requestEvent(PUBLIC_IP, {
           headers: {
             "x-forwarded-for": FORGED,
             "x-real-ip": FORGED,
@@ -64,7 +68,8 @@ describe("registering", () => {
       );
 
       expect(body<{ ip: string }>(result).ip).toBe(PUBLIC_IP);
-      const { domain } = body<{ domain: string }>(result);
+      const { domain, id } = body<{ domain: string; id: string }>(result);
+      await approveServer(harness.deps, id);
       expect(harness.dns.get(domain, "A")?.values).toEqual([PUBLIC_IP]);
     });
 
@@ -72,14 +77,21 @@ describe("registering", () => {
       const harness = createHarness();
 
       const result = await handle(
-        event("POST /v1/servers", PUBLIC_IP, {
-          body: JSON.stringify({ ip: FORGED, sourceIp: FORGED, address: FORGED }),
+        requestEvent(PUBLIC_IP, {
+          body: JSON.stringify({
+            email: EMAIL,
+            purpose: PURPOSE,
+            ip: FORGED,
+            sourceIp: FORGED,
+            address: FORGED,
+          }),
           pathParameters: { ip: FORGED },
         }),
         harness.deps,
       );
 
-      const { domain } = body<{ domain: string }>(result);
+      const { domain, id } = body<{ domain: string; id: string }>(result);
+      await approveServer(harness.deps, id);
       expect(harness.dns.get(domain, "A")?.values).toEqual([PUBLIC_IP]);
     });
 
@@ -193,7 +205,7 @@ describe("registering", () => {
       const harness = createHarness();
       harness.deps.newId = () => "www";
 
-      const result = await handle(event("POST /v1/servers", PUBLIC_IP), harness.deps);
+      const result = await handle(requestEvent(PUBLIC_IP), harness.deps);
 
       expect(result.statusCode).toBe(503);
       expect(harness.dns.records.size).toBe(0);
@@ -206,7 +218,7 @@ describe("registering", () => {
       await register(harness);
       await register(harness);
 
-      const result = await handle(event("POST /v1/servers", PUBLIC_IP), harness.deps);
+      const result = await handle(requestEvent(PUBLIC_IP), harness.deps);
 
       expect(result.statusCode).toBe(429);
       expect(errorCode(result)).toBe("rate_limited");
@@ -217,10 +229,10 @@ describe("registering", () => {
       const harness = createHarness({ registrationsPerIpPerDay: 3 });
 
       const results = await Promise.all(
-        Array.from({ length: 10 }, () => handle(event("POST /v1/servers", PUBLIC_IP), harness.deps)),
+        Array.from({ length: 10 }, () => handle(requestEvent(PUBLIC_IP), harness.deps)),
       );
 
-      expect(results.filter((result) => result.statusCode === 201)).toHaveLength(3);
+      expect(results.filter((result) => result.statusCode === 202)).toHaveLength(3);
       expect(results.filter((result) => result.statusCode === 429)).toHaveLength(7);
     });
 
@@ -228,7 +240,7 @@ describe("registering", () => {
       const harness = createHarness({ registrationsPerDay: 1 });
       await register(harness);
 
-      const result = await handle(event("POST /v1/servers", OTHER_PUBLIC_IP), harness.deps);
+      const result = await handle(requestEvent(OTHER_PUBLIC_IP), harness.deps);
 
       expect(result.statusCode).toBe(503);
       expect(errorCode(result)).toBe("capacity");
@@ -238,7 +250,7 @@ describe("registering", () => {
     it("does not let someone over their own limit use up the global cap", async () => {
       const harness = createHarness({ registrationsPerIpPerDay: 1, registrationsPerDay: 2 });
       await register(harness);
-      await handle(event("POST /v1/servers", PUBLIC_IP), harness.deps);
+      await handle(requestEvent(PUBLIC_IP), harness.deps);
 
       expect(await register(harness, OTHER_PUBLIC_IP)).toBeDefined();
     });
@@ -644,11 +656,11 @@ describe("when a request has nothing to do with this API", () => {
 
   it("turns an unexpected failure into a 503 that says nothing about why", async () => {
     const harness = createHarness();
-    harness.store.failNext("createPending");
+    harness.store.failNext("create");
 
-    const result = await handle(event("POST /v1/servers", PUBLIC_IP), harness.deps);
+    const result = await handle(requestEvent(PUBLIC_IP), harness.deps);
 
     expect(result.statusCode).toBe(503);
-    expect(result.body).not.toContain("createPending");
+    expect(result.body).not.toContain("create");
   });
 });

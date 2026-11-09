@@ -1,0 +1,116 @@
+---
+import "@fontsource/poppins/latin-400.css";
+import "@fontsource/poppins/latin-500.css";
+import "@fontsource/poppins/latin-600.css";
+import "@fontsource/ibm-plex-mono/latin-400.css";
+import "@fontsource/ibm-plex-mono/latin-500.css";
+import "../styles/site.css";
+import poppins400 from "@fontsource/poppins/files/poppins-latin-400-normal.woff2?url";
+import poppins500 from "@fontsource/poppins/files/poppins-latin-500-normal.woff2?url";
+import { content, type Locale, REPOSITORY } from "../content";
+
+interface Props {
+  locale: Locale;
+  title: string;
+  description: string;
+  /** This page's path, and the same page in the other language. Null on a page that has only one. */
+  path: string;
+  otherPath: string | null;
+}
+
+const { locale, title, description, path, otherPath } = Astro.props;
+const t = content[locale];
+const home = locale === "en" ? "/" : "/fr/";
+const canonical = new URL(path, Astro.site).href;
+const other = otherPath === null ? null : new URL(otherPath, Astro.site).href;
+const image = new URL("/og.png", Astro.site).href;
+const abuse = locale === "en" ? "/abuse/" : "/fr/abuse/";
+const structured = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Opsifier",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "Linux",
+  license: "https://www.apache.org/licenses/LICENSE-2.0",
+  url: "https://opsifier.com/",
+  codeRepository: REPOSITORY,
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+};
+---
+
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {
+      other !== null && (
+        <>
+          <link rel="alternate" hreflang={locale} href={canonical} />
+          <link rel="alternate" hreflang={t.nav.switchLang} href={other} />
+          <link rel="alternate" hreflang="x-default" href={locale === "en" ? canonical : other} />
+        </>
+      )
+    }
+    <link rel="preload" href={poppins500} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={poppins400} as="font" type="font/woff2" crossorigin />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="sitemap" href="/sitemap.xml" />
+    <meta name="theme-color" content="#16264A" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Opsifier" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={image} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script is:inline type="application/ld+json" set:html={JSON.stringify(structured)} />
+  </head>
+  <body>
+    <a class="skip" href="#main">{t.nav.skip}</a>
+    <header class="bar">
+      <div class="bar__in">
+        <a class="brand" href={home} aria-label={t.nav.home}>
+          <svg viewBox="0 0 1024 1024" fill="none" aria-hidden="true">
+            <circle cx="512" cy="512" r="323" stroke="#fff" stroke-width="120"></circle>
+            <path d="M480 190.6A323 323 0 0 1 544 190.6" stroke="#E3A33A" stroke-width="120"></path>
+          </svg>
+          <span>Opsifier</span>
+        </a>
+        <nav aria-label={t.nav.label}>
+          <a class="hide-s" href={`${home}#runs`}>{t.nav.what}</a>
+          <a class="hide-s" href={`${home}#status`}>{t.nav.status}</a>
+          <a href={REPOSITORY} rel="noopener">{t.nav.github}</a>
+          {
+            otherPath !== null && (
+              <a href={otherPath} hreflang={t.nav.switchLang} lang={t.nav.switchLang}>
+                {t.nav.switchLabel}
+              </a>
+            )
+          }
+        </nav>
+      </div>
+    </header>
+    <main id="main"><slot /></main>
+    <footer class="foot">
+      <div class="wrap foot__in">
+        <p class="foot__brand">Opsifier</p>
+        <ul>
+          <li><a href={`${home}#runs`}>{t.nav.what}</a></li>
+          <li><a href={`${home}#status`}>{t.nav.status}</a></li>
+          <li><a href={REPOSITORY} rel="noopener">{t.nav.github}</a></li>
+          <li><a href={`${REPOSITORY}/blob/main/LICENSE`} rel="noopener">{t.footer.license}</a></li>
+          <li><a href={abuse}>{t.footer.abuse}</a></li>
+        </ul>
+        <p class="foot__note">{t.footer.independent}</p>
+      </div>
+    </footer>
+    <script>
+      import "../scripts/site.ts";
+    </script>
+  </body>
+</html>

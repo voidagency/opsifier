@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 22
+# documented-changes: 23
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -4250,7 +4250,8 @@ DELETE /api/v1/server/opsifier-address
   200 lastHeartbeatAt!: null|string
   200 panelUrl!: null|string
   200 registeredAt!: null|string
-  200 status!: enum(active|disabled|lost|off|unreachable)
+  200 requestedAt!: null|string
+  200 status!: enum(active|disabled|lost|off|refused|requested|unreachable)
   200 wildcard!: null|string
   400
   401
@@ -4265,11 +4266,12 @@ GET /api/v1/server/opsifier-address
   200 lastHeartbeatAt!: null|string
   200 panelUrl!: null|string
   200 registeredAt!: null|string
-  200 status!: enum(active|disabled|lost|off|unreachable)
+  200 requestedAt!: null|string
+  200 status!: enum(active|disabled|lost|off|refused|requested|unreachable)
   200 wildcard!: null|string
   401
   403
-POST /api/v1/server/opsifier-address/register
+DELETE /api/v1/server/opsifier-address/request
   200 available!: boolean
   200 certificate!: enum(expired|expiring|issued|null|pending)
   200 domain!: null|string
@@ -4277,12 +4279,30 @@ POST /api/v1/server/opsifier-address/register
   200 lastHeartbeatAt!: null|string
   200 panelUrl!: null|string
   200 registeredAt!: null|string
-  200 status!: enum(active|disabled|lost|off|unreachable)
+  200 requestedAt!: null|string
+  200 status!: enum(active|disabled|lost|off|refused|requested|unreachable)
   200 wildcard!: null|string
   401
   403
   409
+POST /api/v1/server/opsifier-address/request
+  200 available!: boolean
+  200 certificate!: enum(expired|expiring|issued|null|pending)
+  200 domain!: null|string
+  200 ip!: null|string
+  200 lastHeartbeatAt!: null|string
+  200 panelUrl!: null|string
+  200 registeredAt!: null|string
+  200 requestedAt!: null|string
+  200 status!: enum(active|disabled|lost|off|refused|requested|unreachable)
+  200 wildcard!: null|string
+  400
+  401
+  403
+  409
   502
+  body email!: string
+  body purpose!: string
 GET /api/v1/server/overview
   200 dailyCleanup!: boolean
   200 docker!.apiVersion!: null|string

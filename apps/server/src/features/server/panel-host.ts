@@ -26,14 +26,19 @@ export function readPanelDomain(db: DbHandle): PanelDomain {
   };
 }
 
-/** The generated hostname the panel always answers on: under its address, or `panel.<server-ip>.sslip.io`. */
-export function defaultPanelDomain(deps: Pick<AppDeps, "db" | "config">): string | null {
-  const address = liveAddressDomain(deps.db);
-  if (address !== null) {
-    return `panel.${address}`;
-  }
+/**
+ * The panel's name on sslip.io. It keeps answering once the server has an address too: a request can be
+ * approved while nobody is looking, and that must not take away the name people have been using.
+ */
+export function sslipPanelDomain(deps: Pick<AppDeps, "db" | "config">): string | null {
   const { serverIp } = getSystemInfo(deps as AppDeps);
   return serverIp === null ? null : `panel.${serverIp.replaceAll(":", "-")}.sslip.io`;
+}
+
+/** The generated hostname the panel is known by: under its address, or `panel.<server-ip>.sslip.io`. */
+export function defaultPanelDomain(deps: Pick<AppDeps, "db" | "config">): string | null {
+  const address = liveAddressDomain(deps.db);
+  return address === null ? sslipPanelDomain(deps) : `panel.${address}`;
 }
 
 function stripPort(host: string): string {
@@ -51,7 +56,11 @@ export function isPanelHostAllowed(
   }
   const host = stripPort(hostHeader?.trim().toLowerCase() ?? "");
   return (
-    host === domain.customDomain || host === defaultPanelDomain(deps) || host === "localhost" || host === ""
+    host === domain.customDomain ||
+    host === defaultPanelDomain(deps) ||
+    host === sslipPanelDomain(deps) ||
+    host === "localhost" ||
+    host === ""
   );
 }
 
@@ -61,9 +70,11 @@ export function assertHostAvailableForPanel(
   host: string,
   wildcard: boolean,
 ): void {
-  const reserved = [readPanelDomain(deps.db).customDomain, defaultPanelDomain(deps)].filter(
-    (name): name is string => name !== null,
-  );
+  const reserved = [
+    readPanelDomain(deps.db).customDomain,
+    defaultPanelDomain(deps),
+    sslipPanelDomain(deps),
+  ].filter((name): name is string => name !== null);
   const claim = { host, path: "/", wildcard };
   if (reserved.some((name) => routesOverlap(claim, { host: name, path: "/", wildcard: false }))) {
     throw conflict("domain_reserved", "This hostname belongs to the panel.", {

@@ -10,9 +10,6 @@
 #   --server-ip <ip>        The address people reach this server on, when it differs, as behind NAT.
 #   --force                 Passed on to the setup command: replace what is in the way, such as a
 #                           service named opsifier that setup did not create. Off by default.
-#   --no-opsifier-address   Do not register this server for a <id>.opsifier.dev address. Registering
-#                           is the only call home, it carries nothing but the registration itself,
-#                           and generated names then use sslip.io instead. On by default.
 #   --clean-up              Do not install. Show what an install that stopped partway made, and what
 #                           stays because it was not that install's to remove. Changes nothing.
 #   --yes                   With --clean-up, remove what it lists. Docker itself and the panel's
@@ -33,7 +30,6 @@ version="latest"
 advertise_addr=""
 server_ip=""
 force=false
-no_opsifier_address=false
 clean_up=false
 yes=false
 
@@ -52,11 +48,10 @@ parse_args() {
       --advertise-addr) advertise_addr="${2:?--advertise-addr needs a value}"; shift 2 ;;
       --server-ip) server_ip="${2:?--server-ip needs a value}"; shift 2 ;;
       --force) force=true; shift ;;
-      --no-opsifier-address) no_opsifier_address=true; shift ;;
       --clean-up) clean_up=true; shift ;;
       --yes) yes=true; shift ;;
       -h | --help)
-        sed -n '2,21p' "${BASH_SOURCE[0]:-/dev/null}" | sed 's/^# \{0,1\}//'
+        sed -n '2,18p' "${BASH_SOURCE[0]:-/dev/null}" | sed 's/^# \{0,1\}//'
         exit 0
         ;;
       *) die "Unknown option: $1" ;;
@@ -201,7 +196,6 @@ run_setup() {
   [ -z "$advertise_addr" ] || args+=(--advertise-addr "$advertise_addr")
   [ -z "$server_ip" ] || args+=(--server-ip "$server_ip")
   [ "$force" = false ] || args+=(--force)
-  [ "$no_opsifier_address" = false ] || args+=(--no-opsifier-address)
   local env_args=()
   [ -z "${OPSIFIER_NAMES_URL:-}" ] || env_args+=(-e "OPSIFIER_NAMES_URL=${OPSIFIER_NAMES_URL}")
 

@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Deploys the names service to AWS.
 #
-#   infra/names/deploy.sh <aws-profile> [hosted-zone-id]
+#   NOTIFICATION_EMAIL=you@example.com infra/names/deploy.sh <aws-profile> [hosted-zone-id]
+#
+# NOTIFICATION_EMAIL is told about each request for an address, once it has confirmed the message AWS
+# sends it. Leave it out and the address already set stays. With none, infra/names/requests.sh lists them.
 #
 # The hosted zone must already exist and be delegated: the certificate is validated through it, and the
 # stack waits for that. Without an ID the zone is found by name. A low SOA negative TTL on the zone helps
@@ -46,8 +49,10 @@ zip -j -q dist/names.zip dist/lambda.js
 
 aws_cli cloudformation package --template-file template.yaml --s3-bucket "$bucket" \
   --s3-prefix "$STACK" --output-template-file dist/packaged.yaml >/dev/null
+overrides=("HostedZoneId=${zone_id}")
+[ -z "${NOTIFICATION_EMAIL:-}" ] || overrides+=("NotificationEmail=${NOTIFICATION_EMAIL}")
 aws_cli cloudformation deploy --template-file dist/packaged.yaml --stack-name "$STACK" \
-  --capabilities CAPABILITY_IAM --parameter-overrides "HostedZoneId=${zone_id}" \
+  --capabilities CAPABILITY_IAM --parameter-overrides "${overrides[@]}" \
   --no-fail-on-empty-changeset
 
 # A brand-new address must resolve at once, so a "no such name" is only remembered for a minute.

@@ -26,10 +26,6 @@ Options for setup:
   --force                  Replace what is in the way: a service named opsifier or opsifier-traefik
                            that setup did not create, a network named opsifier of the wrong kind,
                            and a Swarm this node can't manage. Without it, those are left alone.
-  --no-opsifier-address    Do not register this server for a <id>.opsifier.dev address: generated
-                           names use sslip.io instead. Registering is the only call home, and it
-                           carries nothing but the registration itself. OPSIFIER_NAMES_URL moves
-                           or turns off the service.
   --help                   Show this.
 
 Options for clean-setup:
@@ -42,7 +38,6 @@ interface ParsedArgs {
   force: boolean;
   help: boolean;
   yes?: boolean;
-  noOpsifierAddress?: boolean;
   image?: string;
   advertiseAddr?: string;
   serverIp?: string;
@@ -65,8 +60,6 @@ export function parseArgs(args: readonly string[]): ParsedArgs {
       parsed.force = true;
     } else if (argument === "--help" || argument === "-h") {
       parsed.help = true;
-    } else if (argument === "--no-opsifier-address") {
-      parsed.noOpsifierAddress = true;
     } else if (argument === "--yes") {
       parsed.yes = true;
     } else {
@@ -119,7 +112,6 @@ async function setup(args: ParsedArgs): Promise<void> {
         advertiseAddr: args.advertiseAddr,
         serverIp: args.serverIp,
         image,
-        noOpsifierAddress: args.noOpsifierAddress,
         namesUrl: process.env.OPSIFIER_NAMES_URL?.trim() || undefined,
       },
       {

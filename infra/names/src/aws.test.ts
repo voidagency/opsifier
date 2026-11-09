@@ -1,10 +1,8 @@
 import {
   ConditionalCheckFailedException,
-  DeleteItemCommand,
   GetItemCommand,
   PutItemCommand,
   ScanCommand,
-  UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
 import { ChangeResourceRecordSetsCommand, ListResourceRecordSetsCommand } from "@aws-sdk/client-route-53";
 import { describe, expect, it, vi } from "vitest";
@@ -36,9 +34,9 @@ describe("the DynamoDB store", () => {
     const { client, commands } = fakeClient();
     const store = createDynamoStore(client, "table");
 
-    const created = await store.createPending({
+    const created = await store.create({
       id: "bcdfghjk",
-      status: "pending",
+      status: "requested",
       secretHash: "abc",
       ip: "93.184.216.34",
       createdAt: 1,
@@ -50,7 +48,7 @@ describe("the DynamoDB store", () => {
     expect(commands[0]?.input).toMatchObject({
       TableName: "table",
       ConditionExpression: "attribute_not_exists(pk)",
-      Item: { pk: { S: "server#bcdfghjk" }, status: { S: "pending" }, secretHash: { S: "abc" } },
+      Item: { pk: { S: "server#bcdfghjk" }, status: { S: "requested" }, secretHash: { S: "abc" } },
     });
   });
 
@@ -60,9 +58,9 @@ describe("the DynamoDB store", () => {
     });
 
     expect(
-      await createDynamoStore(client, "t").createPending({
+      await createDynamoStore(client, "t").create({
         id: "bcdfghjk",
-        status: "pending",
+        status: "requested",
         createdAt: 1,
         lastSeen: 1,
       }),
@@ -74,7 +72,9 @@ describe("the DynamoDB store", () => {
       throw new Error("Throttled");
     });
 
-    await expect(createDynamoStore(client, "t").activate("bcdfghjk", 1)).rejects.toThrow("Throttled");
+    await expect(createDynamoStore(client, "t").touch("bcdfghjk", "93.184.216.34", 1)).rejects.toThrow(
+      "Throttled",
+    );
   });
 
   it("reads with strong consistency and maps a row back", async () => {
@@ -99,15 +99,6 @@ describe("the DynamoDB store", () => {
       lastSeen: 2,
       removeTo: "expired",
     });
-  });
-
-  it("activates only what is still pending", async () => {
-    const { client, commands } = fakeClient();
-
-    await createDynamoStore(client, "t").activate("bcdfghjk", 5);
-
-    expect(commands[0]).toBeInstanceOf(UpdateItemCommand);
-    expect(commands[0]?.input).toMatchObject({ ConditionExpression: "#status = :pending" });
   });
 
   it("refreshes a heartbeat only while the row is active at that address", async () => {
@@ -166,15 +157,6 @@ describe("the DynamoDB store", () => {
       ConditionExpression: "leaseToken = :token",
       UpdateExpression: "SET #status = :status, lastSeen = :lastSeen REMOVE ip, removeTo, secretHash",
     });
-  });
-
-  it("deletes only a row in one of the statuses given", async () => {
-    const { client, commands } = fakeClient();
-
-    await createDynamoStore(client, "t").deleteRow("x", ["pending"]);
-
-    expect(commands[0]).toBeInstanceOf(DeleteItemCommand);
-    expect(commands[0]?.input).toMatchObject({ ConditionExpression: "#status IN (:s0)" });
   });
 
   it("counts atomically, and expires the counter with the table's TTL", async () => {

@@ -2,7 +2,7 @@ import type { HttpEvent, HttpResult } from "./api";
 import { handle } from "./api";
 import { FakeDns, FakeStore } from "./fakes";
 import { randomId, randomSecret, randomToken } from "./rules";
-import type { Deps, Limits } from "./service";
+import { approveServer, type Deps, type Limits, type WaitingRequest } from "./service";
 
 /** Not a test itself: what the test files in this folder share. */
 
@@ -10,6 +10,9 @@ export const ZONE = "opsifier.dev";
 export const PUBLIC_IP = "93.184.216.34";
 export const OTHER_PUBLIC_IP = "151.101.1.69";
 export const NOW = Date.UTC(2026, 10, 8, 12);
+export const EMAIL = "owner@example.com";
+export const PURPOSE = "Staging for our shop";
+export const REQUEST_BODY = JSON.stringify({ email: EMAIL, purpose: PURPOSE });
 
 export interface Harness {
   deps: Deps;
@@ -18,8 +21,10 @@ export interface Harness {
   /** Lines of what was logged, in order, to check that nothing sensitive reaches them. */
   logs: string[];
   advance(ms: number): void;
-  /** Handed out by the next registrations, ahead of random ones. */
+  /** Handed out by the next requests, ahead of random ones. */
   ids: string[];
+  /** Every request someone was told about, in order. */
+  notified: WaitingRequest[];
 }
 
 export function createHarness(limits: Partial<Limits> = {}): Harness {
@@ -27,6 +32,7 @@ export function createHarness(limits: Partial<Limits> = {}): Harness {
   const dns = new FakeDns();
   const logs: string[] = [];
   const ids: string[] = [];
+  const notified: WaitingRequest[] = [];
   let clock = NOW;
   const deps: Deps = {
     store,
@@ -48,6 +54,9 @@ export function createHarness(limits: Partial<Limits> = {}): Harness {
     newToken: randomToken,
     sleep: async () => {},
     log: (event, fields) => logs.push(JSON.stringify({ event, ...fields })),
+    notify: async (request) => {
+      notified.push(request);
+    },
   };
   return {
     deps,
@@ -55,6 +64,7 @@ export function createHarness(limits: Partial<Limits> = {}): Harness {
     dns,
     logs,
     ids,
+    notified,
     advance: (ms) => {
       clock += ms;
     },
@@ -83,12 +93,25 @@ export interface Registration {
   ip: string;
 }
 
-export async function register(harness: Harness, sourceIp = PUBLIC_IP): Promise<Registration> {
-  const result = await handle(event("POST /v1/servers", sourceIp), harness.deps);
-  if (result.statusCode !== 201) {
-    throw new Error(`Registration failed: ${result.body}`);
+export const requestEvent = (
+  sourceIp = PUBLIC_IP,
+  extra: Partial<Omit<HttpEvent, "routeKey" | "requestContext">> = {},
+): HttpEvent => event("POST /v1/servers", sourceIp, { body: REQUEST_BODY, ...extra });
+
+/** Asked for, and not answered yet. */
+export async function ask(harness: Harness, sourceIp = PUBLIC_IP): Promise<Registration> {
+  const result = await handle(requestEvent(sourceIp), harness.deps);
+  if (result.statusCode !== 202) {
+    throw new Error(`The request failed: ${result.body}`);
   }
   return body<Registration>(result);
+}
+
+/** Asked for and approved: where most tests start from. */
+export async function register(harness: Harness, sourceIp = PUBLIC_IP): Promise<Registration> {
+  const server = await ask(harness, sourceIp);
+  await approveServer(harness.deps, server.id);
+  return server;
 }
 
 export const heartbeatEvent = (server: Registration, sourceIp = PUBLIC_IP): HttpEvent =>

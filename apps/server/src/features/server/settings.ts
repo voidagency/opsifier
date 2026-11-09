@@ -10,7 +10,7 @@ import { liveAddressDomain, registeredDomain } from "../opsifier-address/repo";
 import { overlappingRoutes } from "../service-tabs/domains/repo";
 import { getSetting, putSetting, SERVICE_DOMAIN_KEY } from "../system/repo";
 import { getSystemInfo } from "../system/service";
-import { defaultPanelDomain, PANEL_DOMAIN_KEY, readPanelDomain } from "./panel-host";
+import { defaultPanelDomain, PANEL_DOMAIN_KEY, readPanelDomain, sslipPanelDomain } from "./panel-host";
 
 export const LETS_ENCRYPT_EMAIL_KEY = "letsencrypt_email";
 export const DAILY_CLEANUP_KEY = "daily_docker_cleanup";
@@ -45,8 +45,8 @@ export function getPanelDomainSettings(deps: AppDeps): PanelDomainSettings {
 /** Every hostname the proxy should send to the panel. */
 export function panelHosts(deps: AppDeps): string[] {
   const domain = readPanelDomain(deps.db);
-  const defaultDomain = defaultPanelDomain(deps);
-  return [domain.customDomain, defaultDomain].filter((host): host is string => host !== null);
+  const hosts = [domain.customDomain, defaultPanelDomain(deps), sslipPanelDomain(deps)];
+  return [...new Set(hosts)].filter((host): host is string => host !== null);
 }
 
 /**

@@ -1,7 +1,6 @@
 import {
   type AttributeValue,
   ConditionalCheckFailedException,
-  DeleteItemCommand,
   type DynamoDBClient,
   GetItemCommand,
   PutItemCommand,
@@ -46,6 +45,8 @@ function toItem(server: ServerRecord): Item {
     lastSeen: N(server.lastSeen),
     ...(server.secretHash === undefined ? {} : { secretHash: S(server.secretHash) }),
     ...(server.ip === undefined ? {} : { ip: S(server.ip) }),
+    ...(server.email === undefined ? {} : { email: S(server.email) }),
+    ...(server.purpose === undefined ? {} : { purpose: S(server.purpose) }),
   };
 }
 
@@ -58,6 +59,8 @@ function fromItem(item: Item): ServerRecord {
     ...(item.secretHash?.S === undefined ? {} : { secretHash: item.secretHash.S }),
     ...(item.ip?.S === undefined ? {} : { ip: item.ip.S }),
     ...(item.removeTo?.S === undefined ? {} : { removeTo: item.removeTo.S as FinalStatus }),
+    ...(item.email?.S === undefined ? {} : { email: item.email.S }),
+    ...(item.purpose?.S === undefined ? {} : { purpose: item.purpose.S }),
   };
 }
 
@@ -120,6 +123,12 @@ function renderPatch(patch: Parameters<Store["update"]>[1]): {
   if (patch.secretHash === null) {
     remove.push("secretHash");
   }
+  if (patch.email === null) {
+    remove.push("email");
+  }
+  if (patch.purpose === null) {
+    remove.push("purpose");
+  }
   const expression = [
     ...(set.length > 0 ? [`SET ${set.join(", ")}`] : []),
     ...(remove.length > 0 ? [`REMOVE ${remove.join(", ")}`] : []),
@@ -133,7 +142,7 @@ export function createDynamoStore(client: Pick<DynamoDBClient, "send">, tableNam
   const STATUS = { "#status": "status" };
 
   return {
-    createPending: (server) =>
+    create: (server) =>
       conditional(() =>
         client.send(
           new PutItemCommand({
@@ -151,20 +160,6 @@ export function createDynamoStore(client: Pick<DynamoDBClient, "send">, tableNam
       );
       return item === undefined ? null : fromItem(item);
     },
-
-    activate: (id, at) =>
-      conditional(() =>
-        client.send(
-          new UpdateItemCommand({
-            TableName,
-            Key: Key(id),
-            UpdateExpression: "SET #status = :active, lastSeen = :at",
-            ConditionExpression: "#status = :pending",
-            ExpressionAttributeNames: STATUS,
-            ExpressionAttributeValues: { ":active": S("active"), ":pending": S("pending"), ":at": N(at) },
-          }),
-        ),
-      ),
 
     touch: (id, ip, at) =>
       conditional(() =>
@@ -234,21 +229,6 @@ export function createDynamoStore(client: Pick<DynamoDBClient, "send">, tableNam
             UpdateExpression: "REMOVE leaseToken, leaseUntil",
             ConditionExpression: "leaseToken = :token",
             ExpressionAttributeValues: { ":token": S(lease.token) },
-          }),
-        ),
-      );
-    },
-
-    deleteRow(id, statuses) {
-      const placeholders = statusPlaceholders(statuses);
-      return conditional(() =>
-        client.send(
-          new DeleteItemCommand({
-            TableName,
-            Key: Key(id),
-            ConditionExpression: `#status IN (${placeholders.names})`,
-            ExpressionAttributeNames: STATUS,
-            ExpressionAttributeValues: placeholders.values,
           }),
         ),
       );

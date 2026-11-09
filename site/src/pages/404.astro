@@ -1,0 +1,20 @@
+---
+import Sprite from "../components/Sprite.astro";
+import { content } from "../content";
+import Base from "../layouts/Base.astro";
+
+const t = content.en;
+---
+
+<Base locale="en" title={`${t.notFound.title} | Opsifier`} description={t.notFound.description} path="/404/" otherPath={null}>
+  <Sprite />
+  <section class="missing wrap">
+    <svg class="lamp missing__lamp" data-state="unknown" aria-hidden="true"><use href="#l-unknown"></use></svg>
+    <h1>{t.notFound.title}</h1>
+    <p>{t.notFound.body}</p>
+    <a class="btn btn--amber" href="/">
+      {t.notFound.back}
+      <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12H20M14 6l6 6-6 6"></path></svg>
+    </a>
+  </section>
+</Base>

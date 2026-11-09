@@ -1,13 +1,19 @@
 import { createRoute } from "@hono/zod-openapi";
-import { opsifierAddressState, releaseOpsifierAddressRequest } from "@opsifier/contract";
+import {
+  opsifierAddressState,
+  releaseOpsifierAddressRequest,
+  requestOpsifierAddressRequest,
+} from "@opsifier/contract";
 import { requireSessionPrincipal } from "../../core/auth";
 import type { AppDeps, Feature } from "../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
 import {
+  cancelAddressRequest,
+  checkAddressRequest,
   getAddressState,
   reconcileAddress,
-  registerAddress,
   releaseAddress,
+  requestAddress,
   sendDueHeartbeat,
 } from "./service";
 
@@ -28,12 +34,21 @@ const getRoute = createRoute({
   responses: { 200: state, 401: denied, 403: refused },
 });
 
-const registerRoute = createRoute({
+const requestRoute = createRoute({
   method: "post",
-  path: `${PATH}/register`,
+  path: `${PATH}/request`,
   tags,
-  summary: "Give this server an address, or a new one in place of the one it has",
-  responses: { 200: state, 401: denied, 403: refused, 409: clash, 502: failed },
+  summary: "Ask for an address for this server, which someone then approves or refuses",
+  request: { body: jsonBody(requestOpsifierAddressRequest) },
+  responses: { 200: state, 400: invalid, 401: denied, 403: refused, 409: clash, 502: failed },
+});
+
+const cancelRequestRoute = createRoute({
+  method: "delete",
+  path: `${PATH}/request`,
+  tags,
+  summary: "Withdraw a request that is still waiting for an answer",
+  responses: { 200: state, 401: denied, 403: refused, 409: clash },
 });
 
 const releaseRoute = createRoute({
@@ -46,6 +61,8 @@ const releaseRoute = createRoute({
 });
 
 const HOUR_MS = 60 * 60 * 1000;
+/** How long an approval can take to reach a server. Only a server with a request waiting calls this often. */
+const REQUEST_CHECK_MS = 5 * 60 * 1000;
 /** Spread out, so a fleet restarted together doesn't all call at the same moment. */
 const FIRST_HEARTBEAT_JITTER_MS = 5 * 60 * 1000;
 
@@ -56,12 +73,21 @@ function startHeartbeat(deps: AppDeps): void {
     sendDueHeartbeat(deps, minimumGapMs).catch((error: unknown) => {
       deps.logger.warn({ err: error }, "Could not send the address heartbeat");
     });
+  const check = () =>
+    checkAddressRequest(deps).catch((error: unknown) => {
+      deps.logger.warn({ err: error }, "Could not check on the address request");
+    });
   // After a restart an hour is enough: the server may have come back on a different address.
-  const first = setTimeout(() => void beat(HOUR_MS), Math.random() * FIRST_HEARTBEAT_JITTER_MS);
+  const first = setTimeout(() => {
+    void beat(HOUR_MS);
+    void check();
+  }, Math.random() * FIRST_HEARTBEAT_JITTER_MS);
   const daily = setInterval(() => void beat(), HOUR_MS);
+  const requests = setInterval(() => void check(), REQUEST_CHECK_MS);
   first.unref();
   daily.unref();
-  timers.set(deps, [first, daily]);
+  requests.unref();
+  timers.set(deps, [first, daily, requests]);
 }
 
 export const feature: Feature = {
@@ -83,7 +109,11 @@ export const feature: Feature = {
 
     app.openapi(getRoute, async (c) => c.json(await getAddressState(deps), 200));
 
-    app.openapi(registerRoute, async (c) => c.json(await registerAddress(deps, actor(c)), 200));
+    app.openapi(requestRoute, async (c) =>
+      c.json(await requestAddress(deps, c.req.valid("json"), actor(c)), 200),
+    );
+
+    app.openapi(cancelRequestRoute, async (c) => c.json(await cancelAddressRequest(deps, actor(c)), 200));
 
     app.openapi(releaseRoute, async (c) =>
       c.json(await releaseAddress(deps, c.req.valid("json").confirm, actor(c)), 200),

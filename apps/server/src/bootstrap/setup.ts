@@ -56,8 +56,6 @@ export interface SetupOptions {
   /** The address people reach the panel on, when it isn't the advertised one, as behind NAT. */
   serverIp?: string;
   image: string;
-  /** Skips registering this server with the address service. */
-  noOpsifierAddress?: boolean;
   /** `OPSIFIER_NAMES_URL` as it was given, to hand on to the panel. */
   namesUrl?: string;
 }
@@ -437,14 +435,10 @@ function buildUrls(ip: string | null, token: string | null, addressDomain: strin
 }
 
 /**
- * Gets an address for this server, or settles for sslip.io. Nothing in here can fail an install or
- * hold it up: a failure of any kind, or a step that takes too long, is the same as not having asked.
+ * Picks up the address this server already has, or settles for sslip.io. Nothing in here can fail an
+ * install or hold it up: a failure of any kind, or a step that takes too long, is the same as having none.
  */
-async function resolveAddress(
-  options: SetupOptions,
-  deps: SetupDeps,
-  ledger: SetupLedger,
-): Promise<AddressForProxy | null> {
+async function resolveAddress(deps: SetupDeps, ledger: SetupLedger): Promise<AddressForProxy | null> {
   if (deps.address === undefined) {
     return null;
   }
@@ -458,13 +452,10 @@ async function resolveAddress(
     }, addressMs);
   });
   try {
-    return await Promise.race([
-      deps.address.ensure({ optedOut: options.noOpsifierAddress === true, log: deps.log }),
-      deadline,
-    ]);
+    return await Promise.race([deps.address.ensure({ log: deps.log }), deadline]);
   } catch (error) {
     deps.log(
-      `Address: could not register (${error instanceof Error ? error.message : String(error)}), so generated names use sslip.io.`,
+      `Address: could not read it (${error instanceof Error ? error.message : String(error)}), so generated names use sslip.io.`,
     );
     return null;
   } finally {
@@ -512,7 +503,7 @@ export async function runSetup(options: SetupOptions, deps: SetupDeps): Promise<
     mkdirSync(join(deps.dataDir, "traefik", "dynamic"), { recursive: true, mode: 0o755 });
     chmodSync(join(deps.dataDir, "traefik"), 0o755);
 
-    const address = await resolveAddress(options, deps, ledger);
+    const address = await resolveAddress(deps, ledger);
 
     ledger.phase("proxy");
     await pullProxyImage(deps, ledger);

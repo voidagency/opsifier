@@ -22,7 +22,7 @@ Opsifier is an open-source control panel for your own server. It deploys apps an
 - Deployments from a Docker image, a Git repository, GitHub, an inline Dockerfile or an uploaded archive, with signed webhooks and deployment tokens.
 - Going back to an earlier release in one action, with the exact image of every deployment recorded.
 - Domains with HTTPS through Traefik, redirects, basic authentication and maintenance mode.
-- A free `<id>.opsifier.dev` address for every server, with one wildcard certificate. It can be turned off at install, and a server can use its own domain instead.
+- A free `<id>.opsifier.dev` address on request, with one wildcard certificate. Someone approves each request, and a server can always use its own domain instead.
 - Development, staging and production server roles. Anything that isn't production stays behind a password and out of search engines.
 - Environment variables sealed at rest, with build inputs kept apart from runtime secrets, plus volumes, published ports, resource limits and replicas.
 - Live logs with search, an in-browser console, per-service metrics and scheduled scripts with a run history.
@@ -57,7 +57,7 @@ Taken on a demo server with sample data.
   </tr>
   <tr>
     <td><img src="docs/screenshots/purpose.png" alt="The server role and its protection" /><br /><b>Server role.</b> Development, staging or production, and proof of what is protected.</td>
-    <td><img src="docs/screenshots/address.png" alt="The server's opsifier.dev address" /><br /><b>Your address.</b> A free name under opsifier.dev, with one wildcard certificate.</td>
+    <td><img src="docs/screenshots/address.png" alt="The server's opsifier.dev address" /><br /><b>Your address.</b> A free name under opsifier.dev, on request, with one wildcard certificate.</td>
   </tr>
   <tr>
     <td><img src="docs/screenshots/activity.png" alt="The activity log" /><br /><b>Activity.</b> What happened, who did it and how it ended.</td>
@@ -86,7 +86,7 @@ Open <http://127.0.0.1:5173>. The first-run page asks for a one-time setup code,
 
 Docker Swarm runs the workloads and Traefik routes the traffic. Desired state lives in SQLite, and every deployment compiles it into a Swarm service and a Traefik route. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
-The only call a server makes home is to the `opsifier.dev` address service: the registration and a daily heartbeat, and nothing else. It is documented in the architecture notes and can be turned off.
+A server only calls home if you ask for an address. That is the request, then a daily heartbeat, and nothing else. It is documented in the architecture notes.
 
 ## Security
 

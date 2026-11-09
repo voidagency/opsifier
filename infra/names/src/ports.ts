@@ -27,8 +27,9 @@ export interface Dns {
   change(changes: readonly DnsChange[]): Promise<void>;
 }
 
-export type FinalStatus = "released" | "disabled" | "expired";
-export type ServerStatus = "pending" | "active" | "removing" | FinalStatus;
+export type FinalStatus = "released" | "disabled" | "expired" | "refused";
+/** `requested` holds a name and no records. Only an operator's approval takes it to `active`. */
+export type ServerStatus = "requested" | "active" | "removing" | FinalStatus;
 
 export interface ServerRecord {
   id: string;
@@ -43,6 +44,10 @@ export interface ServerRecord {
   lastSeen: number;
   /** Set while `removing`: where it ends up. */
   removeTo?: FinalStatus;
+  /** Who asked, for whoever decides. Absent once the row is a tombstone. */
+  email?: string;
+  /** What they said it is for. Absent once the row is a tombstone. */
+  purpose?: string;
 }
 
 export interface ServerPatch {
@@ -51,6 +56,8 @@ export interface ServerPatch {
   lastSeen?: number;
   secretHash?: null;
   removeTo?: FinalStatus | null;
+  email?: null;
+  purpose?: null;
 }
 
 /** A hold on one server, so that a change in DNS and the row that describes it can't be overtaken. */
@@ -69,10 +76,8 @@ export interface ServerPage {
 
 export interface Store {
   /** Creates the row only if the ID has never been used. False if it has, in any status. */
-  createPending(server: ServerRecord): Promise<boolean>;
+  create(server: ServerRecord): Promise<boolean>;
   get(id: string): Promise<ServerRecord | null>;
-  /** Flips `pending` to `active`. False if the row is no longer pending. */
-  activate(id: string, at: number): Promise<boolean>;
   /** Refreshes `lastSeen`, only while active and still at this address. */
   touch(id: string, ip: string, at: number): Promise<boolean>;
   /** Takes the lease if the status is one of these and nobody else holds it. `until` bounds a crash. */
@@ -80,8 +85,6 @@ export interface Store {
   /** Writes these fields, as long as this lease still holds. False if it no longer does. */
   update(lease: Lease, patch: ServerPatch): Promise<boolean>;
   unlease(lease: Lease): Promise<void>;
-  /** Removes a row that never became usable, if it is in one of these statuses. */
-  deleteRow(id: string, statuses: readonly ServerStatus[]): Promise<boolean>;
   /** Counts one more against `limit`, atomically. False once the limit is reached. */
   hit(key: string, limit: number, expiresAtSeconds: number): Promise<boolean>;
   scan(cursor?: string): Promise<ServerPage>;

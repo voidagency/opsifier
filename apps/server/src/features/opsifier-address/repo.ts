@@ -24,10 +24,25 @@ const registered = z.object({
 });
 export type RegisteredAddress = z.infer<typeof registered>;
 
+/** Holds a name and a secret that nothing can use until the request is approved. */
+const requested = z.object({
+  status: z.literal("requested"),
+  id: z.string(),
+  domain: z.string(),
+  sealedSecret: z.string(),
+  requestedAt: z.iso.datetime(),
+});
+export type RequestedAddress = z.infer<typeof requested>;
+
 const stored = z.discriminatedUnion("status", [
   registered,
+  requested,
   z.object({
-    /** A decision that was made: nothing registers again until someone asks. */
+    status: z.literal("refused"),
+    at: z.iso.datetime(),
+  }),
+  z.object({
+    /** The address was released, and nothing happens until someone asks for another. */
     status: z.literal("off"),
     at: z.iso.datetime(),
   }),

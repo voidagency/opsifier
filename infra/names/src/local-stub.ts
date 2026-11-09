@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage } from "node:http";
 import { type HttpEvent, handle } from "./api";
 import { FakeDns, FakeStore } from "./fakes";
 import { randomId, randomSecret, randomToken } from "./rules";
-import type { Deps } from "./service";
+import { approveServer, type Deps, refuseServer } from "./service";
 
 /**
  * The real request handling in front of in-memory DNS and storage, for trying the product without AWS:
@@ -11,6 +11,7 @@ import type { Deps } from "./service";
  *   OPSIFIER_NAMES_URL=http://127.0.0.1:8787
  *
  * A connection from this machine has a private source address, so the one that is reported can be set.
+ * Nobody is there to decide here, so a request is answered with `POST /__answer/<id>/approve` or `refuse`.
  */
 const port = Number(process.env.STUB_PORT ?? 8787);
 const sourceIp = process.env.STUB_SOURCE_IP ?? "93.184.216.34";
@@ -35,6 +36,7 @@ const deps: Deps = {
   newToken: randomToken,
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   log: (event, fields = {}) => console.log(JSON.stringify({ event, ...fields })),
+  notify: async (request) => console.log(JSON.stringify({ event: "request_waiting", id: request.id })),
 };
 
 const ROUTES: ReadonlyArray<readonly [RegExp, string]> = [
@@ -56,6 +58,12 @@ async function readBody(request: IncomingMessage): Promise<string> {
 createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", "http://stub");
   const key = `${request.method} ${url.pathname}`;
+  const answer = /^POST \/__answer\/([^/]+)\/(approve|refuse)$/.exec(key);
+  if (answer !== null) {
+    const decided = await (answer[2] === "approve" ? approveServer : refuseServer)(deps, answer[1] ?? "");
+    response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(decided));
+    return;
+  }
   const match = ROUTES.find(([pattern]) => pattern.test(key));
   const id = match?.[0].exec(key)?.[1];
   const event: HttpEvent = {

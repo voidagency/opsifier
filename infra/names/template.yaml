@@ -18,11 +18,11 @@ Parameters:
     Description: The public name of the API.
   RegistrationsPerIpPerDay:
     Type: Number
-    Default: 10
+    Default: 3
     MinValue: 1
   RegistrationsPerDay:
     Type: Number
-    Default: 2000
+    Default: 100
     MinValue: 1
     Description: The global daily cap, a circuit breaker for the whole service.
   ChangesPerServerPerHour:
@@ -44,8 +44,41 @@ Parameters:
   ThrottleBurst:
     Type: Number
     Default: 50
+  NotificationEmail:
+    Type: String
+    Default: ""
+    Description: Told about each request for an address. Empty, requests wait to be listed.
+
+Conditions:
+  NotifyRequests: !Not [!Equals [!Ref NotificationEmail, ""]]
 
 Resources:
+  RequestsTopic:
+    Type: AWS::SNS::Topic
+    Condition: NotifyRequests
+
+  RequestsSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: NotifyRequests
+    Properties:
+      Protocol: email
+      TopicArn: !Ref RequestsTopic
+      Endpoint: !Ref NotificationEmail
+
+  TellOfRequests:
+    Type: AWS::IAM::Policy
+    Condition: NotifyRequests
+    Properties:
+      PolicyName: tell-of-requests
+      Roles:
+        - !Ref ApiRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: sns:Publish
+            Resource: !Ref RequestsTopic
+
   ServersTable:
     Type: AWS::DynamoDB::Table
     # A deleted table would forget every issued ID, and they must never be issued again.
@@ -108,7 +141,6 @@ Resources:
                   - dynamodb:GetItem
                   - dynamodb:PutItem
                   - dynamodb:UpdateItem
-                  - dynamodb:DeleteItem
                 Resource: !GetAtt ServersTable.Arn
               - Sid: ReadZone
                 Effect: Allow
@@ -164,7 +196,6 @@ Resources:
                 Action:
                   - dynamodb:GetItem
                   - dynamodb:UpdateItem
-                  - dynamodb:DeleteItem
                   - dynamodb:Scan
                 Resource: !GetAtt ServersTable.Arn
               - Sid: ReadZone
@@ -215,6 +246,7 @@ Resources:
           TABLE_NAME: !Ref ServersTable
           HOSTED_ZONE_ID: !Ref HostedZoneId
           ZONE_NAME: !Ref ZoneName
+          REQUESTS_TOPIC_ARN: !If [NotifyRequests, !Ref RequestsTopic, ""]
           REGISTRATIONS_PER_IP_PER_DAY: !Ref RegistrationsPerIpPerDay
           REGISTRATIONS_PER_DAY: !Ref RegistrationsPerDay
           CHANGES_PER_SERVER_PER_HOUR: !Ref ChangesPerServerPerHour
@@ -226,7 +258,7 @@ Resources:
   MaintenanceFunction:
     Type: AWS::Lambda::Function
     Properties:
-      Description: The daily cleanup, and disabling an address by hand.
+      Description: The daily cleanup, and an operator's answers to requests.
       Runtime: nodejs22.x
       Architectures:
         - arm64

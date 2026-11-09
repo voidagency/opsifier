@@ -9,7 +9,14 @@ const intrinsic = (tag: string, key: string): Tags[number] => ({
 });
 
 const template = parse(readFileSync(join(import.meta.dirname, "..", "template.yaml"), "utf8"), {
-  customTags: [intrinsic("!Ref", "Ref"), intrinsic("!Sub", "Fn::Sub"), intrinsic("!GetAtt", "Fn::GetAtt")],
+  customTags: [
+    intrinsic("!Ref", "Ref"),
+    intrinsic("!Sub", "Fn::Sub"),
+    intrinsic("!GetAtt", "Fn::GetAtt"),
+    { tag: "!If", collection: "seq" },
+    { tag: "!Not", collection: "seq" },
+    { tag: "!Equals", collection: "seq" },
+  ],
 }) as {
   Parameters: Record<string, { Type: string }>;
   Resources: Record<string, Resource>;

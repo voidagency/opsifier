@@ -95,7 +95,7 @@ interface StoredServer extends ServerRecord {
   leaseUntil?: number;
 }
 
-type FailableMethod = "createPending" | "activate" | "update" | "deleteRow" | "get";
+type FailableMethod = "create" | "update" | "get";
 
 /** The same conditional writes as DynamoDB, evaluated atomically one call at a time. */
 export class FakeStore implements Store {
@@ -132,9 +132,9 @@ export class FakeStore implements Store {
     return server.leaseToken === lease.token;
   }
 
-  async createPending(server: ServerRecord): Promise<boolean> {
+  async create(server: ServerRecord): Promise<boolean> {
     await yieldNow();
-    this.maybeFail("createPending");
+    this.maybeFail("create");
     if (this.servers.has(server.id)) {
       return false;
     }
@@ -147,19 +147,6 @@ export class FakeStore implements Store {
     this.maybeFail("get");
     const server = this.servers.get(id);
     return server === undefined ? null : { ...server };
-  }
-
-  async activate(id: string, at: number): Promise<boolean> {
-    await yieldNow();
-    this.maybeFail("activate");
-    const server = this.servers.get(id);
-    if (server?.status !== "pending") {
-      return false;
-    }
-    server.status = "active";
-    server.lastSeen = at;
-    this.maybeLoseAnswer("activate");
-    return true;
   }
 
   async touch(id: string, ip: string, at: number): Promise<boolean> {
@@ -217,6 +204,12 @@ export class FakeStore implements Store {
     if (patch.secretHash === null) {
       delete server.secretHash;
     }
+    if (patch.email === null) {
+      delete server.email;
+    }
+    if (patch.purpose === null) {
+      delete server.purpose;
+    }
     this.maybeLoseAnswer("update");
     return true;
   }
@@ -228,17 +221,6 @@ export class FakeStore implements Store {
       delete server.leaseToken;
       delete server.leaseUntil;
     }
-  }
-
-  async deleteRow(id: string, statuses: readonly ServerStatus[]): Promise<boolean> {
-    await yieldNow();
-    this.maybeFail("deleteRow");
-    const server = this.servers.get(id);
-    if (server === undefined || !statuses.includes(server.status)) {
-      return false;
-    }
-    this.servers.delete(id);
-    return true;
   }
 
   async hit(key: string, limit: number): Promise<boolean> {

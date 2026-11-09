@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { handle, runMaintenance } from "./api";
-import { hashSecret } from "./rules";
-import { disableServer, sweep } from "./service";
+import { approveServer, disableServer, sweep } from "./service";
 import {
   acmeEvent,
+  ask,
   body,
   challengeValue,
   createHarness,
   errorCode,
-  event,
   heartbeatEvent,
   NOW,
   OTHER_PUBLIC_IP,
@@ -20,114 +19,60 @@ import {
 } from "./testing";
 
 const DAY = 86_400_000;
-const registerEvent = event("POST /v1/servers", PUBLIC_IP);
-
-describe("a registration that fails between DynamoDB and Route 53", () => {
-  it("leaves nothing behind when Route 53 refuses the batch", async () => {
+describe("an approval that fails between DynamoDB and Route 53", () => {
+  it("leaves the request waiting when Route 53 refuses the batch, and can be repeated", async () => {
     const harness = createHarness();
+    const server = await ask(harness);
     harness.dns.failNext = "before";
 
-    const result = await handle(registerEvent, harness.deps);
+    await expect(approveServer(harness.deps, server.id)).rejects.toThrow();
 
-    expect(result.statusCode).toBe(503);
     expect(harness.dns.records.size).toBe(0);
-    expect(harness.store.servers.size).toBe(0);
+    expect(harness.store.servers.get(server.id)?.status).toBe("requested");
+
+    await approveServer(harness.deps, server.id);
+    expect(harness.store.servers.get(server.id)?.status).toBe("active");
+    expect(harness.dns.get(server.domain, "A")?.values).toEqual([PUBLIC_IP]);
   });
 
-  it("takes the records back when Route 53 applied them but the answer was lost", async () => {
+  it("can be repeated when Route 53 applied the batch but the answer was lost", async () => {
     const harness = createHarness();
+    const server = await ask(harness);
     harness.dns.failNext = "applied";
 
-    const result = await handle(registerEvent, harness.deps);
+    await expect(approveServer(harness.deps, server.id)).rejects.toThrow();
+    expect(harness.store.servers.get(server.id)?.status).toBe("requested");
 
-    expect(result.statusCode).toBe(503);
-    expect(harness.dns.records.size).toBe(0);
-    expect(harness.store.servers.size).toBe(0);
+    await approveServer(harness.deps, server.id);
+    expect(harness.store.servers.get(server.id)?.status).toBe("active");
+    expect(recordNames(harness)).toHaveLength(2);
   });
 
-  it("takes the records back when the row cannot be activated", async () => {
+  it("can be repeated when the row could not be updated", async () => {
     const harness = createHarness();
-    harness.store.failNext("activate");
+    const server = await ask(harness);
+    harness.store.failNext("update");
 
-    const result = await handle(registerEvent, harness.deps);
+    await expect(approveServer(harness.deps, server.id)).rejects.toThrow();
+    expect(harness.store.servers.get(server.id)?.status).toBe("requested");
 
-    expect(result.statusCode).toBe(503);
-    expect(harness.dns.records.size).toBe(0);
-    expect(harness.store.servers.size).toBe(0);
+    await approveServer(harness.deps, server.id);
+    expect(harness.store.servers.get(server.id)?.status).toBe("active");
   });
 
-  it("removes an active row too, when the activation went through but its answer was lost", async () => {
+  it("does not leave records behind if the request then expires", async () => {
     const harness = createHarness();
-    harness.store.loseNextAnswer("activate");
+    const server = await ask(harness);
+    harness.store.failNext("update");
+    await expect(approveServer(harness.deps, server.id)).rejects.toThrow();
+    expect(recordNames(harness)).toHaveLength(2);
 
-    const result = await handle(registerEvent, harness.deps);
-
-    expect(result.statusCode).toBe(503);
-    expect(harness.dns.records.size).toBe(0);
-    expect(harness.store.servers.size).toBe(0);
-  });
-
-  it("never shows a pending ID to anyone: it has no usable credentials and no records yet", async () => {
-    const harness = createHarness();
-    harness.dns.failNext = "before";
-    harness.store.failNext("deleteRow");
-
-    const result = await handle(registerEvent, harness.deps);
-
-    expect(body(result)).toEqual({
-      error: { code: "unavailable", message: expect.any(String) },
-    });
-    const [row] = [...harness.store.servers.values()];
-    expect(row?.status).toBe("pending");
-    expect(harness.dns.records.size).toBe(0);
-  });
-
-  it("leaves a row the daily job finishes, when even undoing it fails", async () => {
-    const harness = createHarness();
-    harness.store.failNext("activate");
-    harness.dns.failNext = null;
-    const realChange = harness.dns.change.bind(harness.dns);
-    let calls = 0;
-    harness.dns.change = async (changes) => {
-      calls += 1;
-      if (calls === 2) {
-        throw new Error("Route 53 is unavailable");
-      }
-      return realChange(changes);
-    };
-
-    const result = await handle(registerEvent, harness.deps);
-
-    expect(result.statusCode).toBe(503);
-    expect(harness.dns.records.size).toBe(2);
-    expect([...harness.store.servers.values()][0]?.status).toBe("pending");
-
-    // Within the grace period the job can't tell it from a registration in flight, so it waits.
-    await sweep(harness.deps);
-    expect(harness.dns.records.size).toBe(2);
-
-    harness.advance(16 * 60_000);
+    harness.advance(31 * DAY);
     const report = await sweep(harness.deps);
 
-    expect(report.undone).toBe(1);
+    expect(report.expired).toBe(1);
     expect(harness.dns.records.size).toBe(0);
-    expect(harness.store.servers.size).toBe(0);
-  });
-
-  it("does not undo a pending registration still within its grace period", async () => {
-    const harness = createHarness();
-    harness.store.servers.set("bcdfghjk", {
-      id: "bcdfghjk",
-      status: "pending",
-      secretHash: hashSecret("x"),
-      ip: PUBLIC_IP,
-      createdAt: harness.deps.now() - 60_000,
-      lastSeen: harness.deps.now() - 60_000,
-    });
-
-    await sweep(harness.deps);
-
-    expect(harness.store.servers.get("bcdfghjk")?.status).toBe("pending");
+    expect(harness.store.servers.get(server.id)?.status).toBe("expired");
   });
 });
 

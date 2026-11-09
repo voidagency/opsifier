@@ -516,22 +516,6 @@ describe("the server's address", () => {
     expect(asked).toBe(false);
   });
 
-  it("tells the address step about the flag", async () => {
-    const docker = new FakeDriver({ swarmActive: false, tickMs: 1 });
-    writeToken();
-    let optedOut: boolean | undefined;
-    const address: SetupAddress = {
-      ensure: async (input) => {
-        optedOut = input.optedOut;
-        return null;
-      },
-    };
-
-    await setup(docker, { noOpsifierAddress: true }, { address });
-
-    expect(optedOut).toBe(true);
-  });
-
   it("changes nothing on a second run with the same address", async () => {
     const docker = new FakeDriver({ swarmActive: false, tickMs: 1 });
     writeToken();
@@ -575,17 +559,12 @@ describe("the installer", () => {
     "utf8",
   );
 
-  it("documents the flag inside the lines --help prints", () => {
+  it("keeps its help inside the lines --help prints", () => {
     const range = /sed -n '2,(\d+)p'/.exec(script);
     const help = script.split("\n").slice(1, Number(range?.[1]));
 
-    expect(help.join("\n")).toContain("--no-opsifier-address");
     expect(help.join("\n")).toContain("Running it again");
     expect(help.join("\n")).not.toContain("set -euo pipefail");
-  });
-
-  it("passes the flag on to setup", () => {
-    expect(script).toContain("args+=(--no-opsifier-address)");
   });
 
   it("can undo an install that stopped partway, and only with --yes", () => {
@@ -635,11 +614,6 @@ describe("the command line", () => {
     expect(
       parseArgs(["--image", "a:b", "--force", "--advertise-addr=10.1.2.3", "--server-ip", "1.2.3.4"]),
     ).toEqual({ force: true, help: false, image: "a:b", advertiseAddr: "10.1.2.3", serverIp: "1.2.3.4" });
-  });
-
-  it("reads the flag that turns the address off", () => {
-    expect(parseArgs(["--no-opsifier-address"]).noOpsifierAddress).toBe(true);
-    expect(parseArgs([]).noOpsifierAddress).toBeUndefined();
   });
 
   it("reads the confirmation that clean-setup needs", () => {
