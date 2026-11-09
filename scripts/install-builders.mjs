@@ -21,7 +21,7 @@ if (arch !== "amd64" && arch !== "arm64") {
 const source = await readFile(sourceFile, "utf8");
 
 function versions(name) {
-  const body = new RegExp(`${name}\\s*=\\s*\\[([^\\]]*)\\]`).exec(source)?.[1];
+  const body = new RegExp(`\\b${name}\\s*=\\s*\\[([^\\]]*)\\]`).exec(source)?.[1];
   const found = [...(body ?? "").matchAll(/"([^"]+)"/g)].map((match) => match[1]);
   if (found.length === 0) {
     throw new Error(`No versions found for ${name} in ${sourceFile}.`);
@@ -30,7 +30,8 @@ function versions(name) {
 }
 
 function single(name) {
-  const value = new RegExp(`${name}\\s*=\\s*"([^"]+)"`).exec(source)?.[1];
+  // The word boundary matters: without it, "packVersion" also matches inside "defaultRailpackVersion".
+  const value = new RegExp(`\\b${name}\\s*=\\s*"([^"]+)"`).exec(source)?.[1];
   if (value === undefined) {
     throw new Error(`No version found for ${name} in ${sourceFile}.`);
   }
