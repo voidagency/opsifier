@@ -1,6 +1,7 @@
 export type Locale = "en" | "fr";
 
 export const REPOSITORY = "https://github.com/voidagency/opsifier";
+export const REPORT_VULNERABILITY = `${REPOSITORY}/security/advisories/new`;
 export const REPORT_ABUSE = `${REPOSITORY}/issues/new?title=Abuse%20report`;
 
 const NB = " ";
@@ -122,6 +123,7 @@ const en = {
   },
   footer: {
     license: "Apache 2.0",
+    vulnerability: "Report a vulnerability",
     abuse: "Report abuse",
     independent: "An independent project, not affiliated with any other control panel vendor.",
   },
@@ -265,6 +267,7 @@ const fr: Content = {
   },
   footer: {
     license: "Apache 2.0",
+    vulnerability: "Signaler une vulnérabilité",
     abuse: "Signaler un abus",
     independent: "Un projet indépendant, sans lien avec un autre éditeur de panneau de contrôle.",
   },

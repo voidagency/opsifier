@@ -7,7 +7,7 @@ import "@fontsource/ibm-plex-mono/latin-500.css";
 import "../styles/site.css";
 import poppins400 from "@fontsource/poppins/files/poppins-latin-400-normal.woff2?url";
 import poppins500 from "@fontsource/poppins/files/poppins-latin-500-normal.woff2?url";
-import { content, type Locale, REPOSITORY } from "../content";
+import { content, type Locale, REPORT_VULNERABILITY, REPOSITORY } from "../content";
 
 interface Props {
   locale: Locale;
@@ -104,6 +104,7 @@ const structured = {
           <li><a href={`${home}#status`}>{t.nav.status}</a></li>
           <li><a href={REPOSITORY} rel="noopener">{t.nav.github}</a></li>
           <li><a href={`${REPOSITORY}/blob/main/LICENSE`} rel="noopener">{t.footer.license}</a></li>
+          <li><a href={REPORT_VULNERABILITY} rel="noopener">{t.footer.vulnerability}</a></li>
           <li><a href={abuse}>{t.footer.abuse}</a></li>
         </ul>
         <p class="foot__note">{t.footer.independent}</p>
