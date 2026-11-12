@@ -18,7 +18,8 @@ export function escapeHtml(value: string): string {
 /** Whatever was stored, the text can't end the style element it is written into. */
 const sanitizeCss = (css: string): string => css.replace(/<\/style/gi, "<\\/style");
 
-const MARK = `<svg class="logo" viewBox="0 0 32 32" fill="none" aria-hidden="true" width="40" height="40"><circle cx="16" cy="16" r="12.5" stroke="currentColor" stroke-width="4.2"/><path d="M14.3 3.62A12.5 12.5 0 0 1 17.7 3.62" stroke="#e3a33a" stroke-width="4.2"/><path d="M11.5 9.5H21.2V12.4H14.9V14.8H19.8V17.5H14.9V22.5H11.5Z" fill="currentColor"/></svg>`;
+// The panel's own mark, the ring and its amber tick, as in apps/web/public/favicon.svg.
+const MARK = `<svg class="logo" viewBox="0 0 32 32" fill="none" aria-hidden="true" width="40" height="40"><circle cx="16" cy="16" r="11.9" stroke="currentColor" stroke-width="5"/><path d="M14.1 4.25A11.9 11.9 0 0 1 17.9 4.25" stroke="#e3a33a" stroke-width="5"/></svg>`;
 
 const BASE_STYLES = `
   :root { color-scheme: light dark; --bg: #ffffff; --ink: #16264a; --muted: #5b6781; --rule: #dfe3ec; --signal: #e3a33a; }

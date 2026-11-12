@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { MaintenanceSettings } from "@opsifier/contract";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { call, createTestContext, setupAdmin, TEST_ORIGIN, type TestContext } from "../../testing/harness";
@@ -146,6 +148,14 @@ describe("rendering a maintenance page", () => {
     const html = renderMaintenancePage(maintenance(), "en");
     expect(html).toContain('class="logo"');
     expect(html).toContain("Try again");
+  });
+
+  it("draws exactly the panel's mark, as the favicon does, and nothing else", () => {
+    const favicon = readFileSync(join(import.meta.dirname, "../../../../web/public/favicon.svg"), "utf8");
+    const shapes = (svg: string) => [...svg.matchAll(/<(circle|path)\b[^>]*>/g)].map(([tag]) => tag.match(/ (cx|cy|r|d)="[^"]*"/g)?.join(""));
+    const mark = /<svg class="logo"[\s\S]*?<\/svg>/.exec(renderProxyPage("not-found", "en").html)?.[0] ?? "";
+
+    expect(shapes(mark)).toEqual(shapes(favicon));
   });
 });
 
