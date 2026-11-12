@@ -326,9 +326,11 @@ function ChannelDialog({
               key={key}
               label={t(`events.${key}`)}
               checked={events[key]}
-              onChange={(event) =>
-                setEvents((current) => ({ ...current, [key]: event.currentTarget.checked }))
-              }
+              onChange={(event) => {
+                // Read now: React runs the update later, when the event no longer has a target.
+                const checked = event.currentTarget.checked;
+                setEvents((current) => ({ ...current, [key]: checked }));
+              }}
             />
           ))}
           <div className="grid gap-2">

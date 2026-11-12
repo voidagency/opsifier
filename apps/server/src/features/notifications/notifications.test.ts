@@ -82,10 +82,22 @@ describe("private destinations", () => {
       "::1",
       "fd00::1",
       "::ffff:10.0.0.1",
+      // NAT64 addresses of private IPv4 ones, as a resolver with DNS64 would hand them out.
+      "64:ff9b::a00:1",
+      "64:ff9b::7f00:1",
+      "64:ff9b::192.168.1.1",
+      "64:ff9b::a9fe:a9fe",
+      "64:ff9b::",
     ]) {
       expect(isPrivateAddress(address), address).toBe(true);
     }
-    for (const address of ["1.1.1.1", "2606:4700:4700::1111"]) {
+    for (const address of [
+      "1.1.1.1",
+      "2606:4700:4700::1111",
+      "64:ff9b::3412:a5dc",
+      "64:ff9b::34.240.193.206",
+      "64:ff9b:0:0:0:0:3412:a5dc",
+    ]) {
       expect(isPrivateAddress(address), address).toBe(false);
     }
   });

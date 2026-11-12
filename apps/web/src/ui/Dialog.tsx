@@ -48,6 +48,9 @@ export function Dialog({
         <RadixDialog.Content
           {...(description ? {} : { "aria-describedby": undefined })}
           onCloseAutoFocus={returnFocus}
+          // A click beside the dialog is too easy to make to cost what was typed in it. It closes by
+          // its close control, a button of its own, or Escape.
+          onInteractOutside={(event) => event.preventDefault()}
           className={cn(
             "fixed inset-x-4 top-[max(1rem,9dvh)] z-50 mx-auto flex max-h-[calc(100dvh-max(1rem,9dvh)-1rem)] flex-col rounded-sm border bg-raised shadow-overlay focus-visible:outline-none data-[state=closed]:animate-rise-out data-[state=open]:animate-rise-in sm:max-h-[82dvh]",
             sizes[size],

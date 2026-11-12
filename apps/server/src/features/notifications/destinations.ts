@@ -27,9 +27,36 @@ for (const [address, prefix] of [
   ["fe80::", 10],
   ["ff00::", 8],
   ["2001:db8::", 32],
-  ["64:ff9b::", 96],
 ] as const) {
   blocked.addSubnet(address, prefix, "ipv6");
+}
+
+/** The NAT64 well-known prefix (RFC 6052). Its addresses carry an IPv4 address in their last 32 bits. */
+const nat64 = new BlockList();
+nat64.addSubnet("64:ff9b::", 96, "ipv6");
+
+/** The eight 16-bit groups of an IPv6 address, in any of the ways it can be written. */
+function ipv6Groups(address: string): number[] {
+  const dotted = /^(.*:)(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(address);
+  const text =
+    dotted === null
+      ? address
+      : `${dotted[1]}${((Number(dotted[2]) << 8) | Number(dotted[3])).toString(16)}:${((Number(dotted[4]) << 8) | Number(dotted[5])).toString(16)}`;
+  const [head = "", tail] = text.split("::");
+  const groups = (side: string) =>
+    side === "" ? [] : side.split(":").map((group) => Number.parseInt(group, 16));
+  const before = groups(head);
+  if (tail === undefined) {
+    return before;
+  }
+  const after = groups(tail);
+  return [...before, ...new Array<number>(8 - before.length - after.length).fill(0), ...after];
+}
+
+/** The IPv4 address a NAT64 address reaches. */
+function nat64Target(address: string): string {
+  const [high = 0, low = 0] = ipv6Groups(address).slice(6);
+  return [high >> 8, high & 0xff, low >> 8, low & 0xff].join(".");
 }
 
 /** Addresses a request from this server should not reach unless the owner has said so. */
@@ -40,7 +67,15 @@ export function isPrivateAddress(address: string): boolean {
   }
   if (family === 6) {
     const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address)?.[1];
-    return mapped === undefined ? blocked.check(address, "ipv6") : blocked.check(mapped, "ipv4");
+    if (mapped !== undefined) {
+      return blocked.check(mapped, "ipv4");
+    }
+    // A network with DNS64 gives every name without an IPv6 address of its own a NAT64 one, so the
+    // IPv4 address it reaches is what decides: refusing them all would refuse half the internet.
+    if (nat64.check(address, "ipv6")) {
+      return blocked.check(nat64Target(address), "ipv4");
+    }
+    return blocked.check(address, "ipv6");
   }
   return true;
 }

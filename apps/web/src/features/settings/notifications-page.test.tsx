@@ -153,3 +153,19 @@ describe("editing a notification channel", () => {
     ).toBeTruthy();
   });
 });
+
+describe("choosing a channel's events", () => {
+  it("turns events off and on again", async () => {
+    const { dialog } = await editChannel(MAIL);
+    const box = (name: string) => dialog.getByRole("checkbox", { name }) as HTMLInputElement;
+    expect(box("Deployments").checked).toBe(true);
+
+    fireEvent.click(box("Deployments"));
+    fireEvent.click(box("Backups"));
+    expect(box("Deployments").checked).toBe(false);
+    expect(box("Backups").checked).toBe(false);
+
+    fireEvent.click(box("Deployments"));
+    expect(box("Deployments").checked).toBe(true);
+  });
+});
