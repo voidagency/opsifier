@@ -36,6 +36,14 @@ describe("resolveRequestScheme", () => {
     expect(resolveRequestScheme({ ...signals, forwardedProto: "https, http" }, proxies)).toBe("http");
     expect(resolveRequestScheme({ ...signals, forwardedProto: "http, HTTPS" }, proxies)).toBe("https");
   });
+
+  it("reads the wss a proxy such as Traefik sends on a WebSocket upgrade as https", () => {
+    const signals = { encrypted: false, peer: "10.0.0.2" };
+    expect(resolveRequestScheme({ ...signals, forwardedProto: "wss" }, proxies)).toBe("https");
+    expect(resolveRequestScheme({ ...signals, forwardedProto: "WSS" }, proxies)).toBe("https");
+    expect(resolveRequestScheme({ ...signals, forwardedProto: "ws" }, proxies)).toBe("http");
+    expect(resolveRequestScheme({ ...plain, forwardedProto: "wss" }, proxies)).toBe("http");
+  });
 });
 
 describe("isOriginAllowed", () => {

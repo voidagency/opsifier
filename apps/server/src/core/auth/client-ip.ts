@@ -56,7 +56,8 @@ export interface SchemeSignals {
 /**
  * The scheme the browser used. Like `X-Forwarded-For`, `X-Forwarded-Proto` can be set by anyone,
  * so it only counts when the direct peer is a configured proxy. Of a list, only the last entry
- * is that proxy's own word: anything before it may have come from the client.
+ * is that proxy's own word: anything before it may have come from the client. On a WebSocket
+ * upgrade, some proxies, Traefik among them, say `wss` or `ws` instead of `https` or `http`.
  */
 export function resolveRequestScheme(signals: SchemeSignals, trustedProxies: BlockList): RequestScheme {
   if (signals.encrypted) {
@@ -65,5 +66,6 @@ export function resolveRequestScheme(signals: SchemeSignals, trustedProxies: Blo
   if (signals.peer === undefined || !isTrusted(normalize(signals.peer), trustedProxies)) {
     return "http";
   }
-  return signals.forwardedProto?.split(",").at(-1)?.trim().toLowerCase() === "https" ? "https" : "http";
+  const proxied = signals.forwardedProto?.split(",").at(-1)?.trim().toLowerCase();
+  return proxied === "https" || proxied === "wss" ? "https" : "http";
 }

@@ -167,6 +167,11 @@ describe("authentication at upgrade", () => {
       expect(await outcome(openProxied({ Origin: `https://${secureHost}`, Cookie: secureCookie }))).toBe(101);
     });
 
+    it("connects when the proxy says wss, as Traefik does on an upgrade", async () => {
+      const headers = { Origin: `https://${secureHost}`, Cookie: secureCookie, "X-Forwarded-Proto": "wss" };
+      expect(await outcome(openProxied(headers))).toBe(101);
+    });
+
     it("refuses a plain-HTTP origin", async () => {
       expect(await outcome(openProxied({ Origin: `http://${secureHost}`, Cookie: secureCookie }))).toBe(403);
     });
