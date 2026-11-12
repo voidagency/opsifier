@@ -237,6 +237,82 @@ function requireChannel(deps: AppDeps, id: string): repo.ChannelRow {
   return row;
 }
 
+/** The stored secret of each type that belongs to one destination. */
+const BOUND_SECRET: Record<string, string> = { smtp: "password", webhook: "secret" };
+
+function sameUrl(given: string, stored: string | undefined): boolean {
+  try {
+    return stored !== undefined && new URL(given).href === new URL(stored).href;
+  } catch {
+    return given === stored;
+  }
+}
+
+/**
+ * Whether a channel still points where its stored secret was saved for: an SMTP password belongs to one
+ * host, port and username, a webhook's signing secret to one URL. A Discord or Slack URL is the
+ * destination itself, and a Telegram token only ever goes to Telegram's API, whatever the chat.
+ */
+function sameDestination(
+  row: repo.ChannelRow,
+  stored: Record<string, string>,
+  open: Config,
+  given: Record<string, string>,
+): boolean {
+  switch (row.type) {
+    case "smtp":
+      return (
+        String(open.host).toLowerCase() === String(row.config.host).toLowerCase() &&
+        Number(open.port) === Number(row.config.port) &&
+        String(open.username ?? "") === String(row.config.username ?? "")
+      );
+    case "webhook":
+      return given.url === undefined || sameUrl(given.url, stored.url);
+    default:
+      return true;
+  }
+}
+
+/**
+ * The secrets given, with the stored ones filling in any left empty, as long as the channel still points
+ * where they were saved for. Otherwise whoever can edit a channel could aim it at a server of their own
+ * and have the stored password sent there, by a test send or by the next event.
+ */
+function withStoredSecrets(
+  deps: AppDeps,
+  row: repo.ChannelRow,
+  open: Config,
+  given: Record<string, string>,
+): Record<string, string> {
+  const stored = unsealSecrets(deps, row);
+  const field = BOUND_SECRET[row.type];
+  if (
+    field === undefined ||
+    given[field] !== undefined ||
+    stored[field] === undefined ||
+    sameDestination(row, stored, open, given)
+  ) {
+    return { ...stored, ...given };
+  }
+  // An SMTP channel with no username never signs in, so the password it no longer needs is dropped.
+  if (row.type === "smtp" && String(open.username ?? "") === "") {
+    const { [field]: _dropped, ...rest } = stored;
+    return { ...rest, ...given };
+  }
+  throw badRequest(
+    "secret_destination_changed",
+    row.type === "smtp"
+      ? "The stored password belongs to another host, port or username, so it is not sent to this one."
+      : "The stored signing secret belongs to another URL, so it is not used for this one.",
+    {
+      [field]:
+        row.type === "smtp"
+          ? "Enter the password for this server again"
+          : "Enter the signing secret for this URL again",
+    },
+  );
+}
+
 export async function updateChannel(
   deps: AppDeps,
   id: string,
@@ -244,15 +320,15 @@ export async function updateChannel(
   actorEmail: string | undefined,
 ): Promise<NotificationChannel> {
   const row = requireChannel(deps, id);
-  const stored = unsealSecrets(deps, row);
-  const { open, secrets } = splitConfig(request.config);
-  // A secret left empty stays as it is, so editing a name never means typing a token again.
-  const merged = { ...stored, ...secrets };
   if (row.type !== request.config.type) {
     throw badRequest("validation_failed", "Some fields need attention.", {
       type: "A channel's type can't change",
     });
   }
+  const { open, secrets } = splitConfig(request.config);
+  // A secret left empty stays as it is while the destination does, so editing a name never means
+  // typing a token again.
+  const merged = withStoredSecrets(deps, row, open, secrets);
   requireSecrets({ ...open, ...merged });
   await assertDestinationAllowed(deps, { ...open, ...merged });
   repo.updateChannel(deps.db, id, {
@@ -282,6 +358,17 @@ export function deleteChannel(deps: AppDeps, id: string, actorEmail: string | un
 
 const allSecrets = (secrets: Record<string, string>) => Object.values(secrets);
 
+function smtpConfigOf(config: Config, secrets: Record<string, string>, recipients: readonly string[]) {
+  return {
+    host: String(config.host),
+    port: Number(config.port),
+    username: String(config.username ?? ""),
+    password: secrets.password,
+    from: String(config.from),
+    recipients,
+  };
+}
+
 async function dispatch(
   config: Config,
   secrets: Record<string, string>,
@@ -296,18 +383,7 @@ async function dispatch(
     case "telegram":
       return sendTelegram(secrets.botToken ?? "", String(config.chatId), message, options);
     case "smtp":
-      return sendSmtp(
-        {
-          host: String(config.host),
-          port: Number(config.port),
-          username: String(config.username ?? ""),
-          password: secrets.password,
-          from: String(config.from),
-          recipients: config.recipients as string[],
-        },
-        message,
-        options,
-      );
+      return sendSmtp(smtpConfigOf(config, secrets, config.recipients as string[]), message, options);
     case "webhook":
       return sendWebhook(secrets.url ?? "", secrets.secret, message, options);
     default:
@@ -315,7 +391,10 @@ async function dispatch(
   }
 }
 
-/** A test send from what the form holds right now, with stored secrets filling in any left empty. */
+/**
+ * A test send from what the form holds right now, with stored secrets filling in any left empty while
+ * the destination is the one they were saved for.
+ */
 export async function testChannel(
   deps: AppDeps,
   request: z.output<typeof import("@opsifier/contract").testNotificationRequest>,
@@ -325,7 +404,7 @@ export async function testChannel(
   if (request.id !== undefined) {
     const row = repo.findChannel(deps.db, request.id);
     if (row !== undefined && row.type === request.config.type) {
-      merged = { ...unsealSecrets(deps, row), ...secrets };
+      merged = withStoredSecrets(deps, row, open, secrets);
     }
   }
   requireSecrets({ ...open, ...merged });
@@ -344,6 +423,52 @@ export async function testChannel(
   } catch (error) {
     const reason = error instanceof Error ? error.message : "The test could not be sent.";
     return { ok: false, detail: redact(reason, allSecrets(merged)) };
+  }
+}
+
+/** An SMTP channel that can carry e-mail for another feature, or nothing if there is none by that id. */
+export function findSmtpChannel(deps: Pick<AppDeps, "db">, id: string): { id: string; name: string } | null {
+  const row = repo.findChannel(deps.db, id);
+  return row === undefined || row.type !== "smtp" ? null : { id: row.id, name: row.name };
+}
+
+export interface Mail {
+  /** Names this message in the mail server's log. Never a secret. */
+  id: string;
+  subject: string;
+  body: string;
+}
+
+/**
+ * Sends one e-mail through an SMTP channel to an address of the caller's choosing, instead of the
+ * channel's own recipients, over exactly the path a notification takes. An error never holds a secret.
+ */
+export async function sendMailThrough(
+  deps: AppDeps,
+  channelId: string,
+  to: string,
+  mail: Mail,
+): Promise<string> {
+  const row = repo.findChannel(deps.db, channelId);
+  if (row === undefined || row.type !== "smtp") {
+    throw new DeliveryError("This e-mail channel no longer exists.");
+  }
+  const secrets = unsealSecrets(deps, row);
+  const message: OutgoingMessage = {
+    eventId: mail.id,
+    event: "mail",
+    title: mail.subject,
+    body: mail.body,
+    at: new Date(deps.now()).toISOString(),
+  };
+  try {
+    return redact(
+      await sendSmtp(smtpConfigOf(row.config, secrets, [to]), message, senderOptions(deps)),
+      allSecrets(secrets),
+    );
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "The e-mail could not be sent.";
+    throw new DeliveryError(redact(reason, allSecrets(secrets)));
   }
 }
 

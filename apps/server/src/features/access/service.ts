@@ -20,6 +20,7 @@ import {
 } from "../../core/auth";
 import type { AppDeps } from "../../core/context";
 import { badRequest, conflict, forbidden, notFound } from "../../core/errors";
+import { deleteInvitationsBy } from "../invitations/repo";
 import { revokeBoxIdeTokensOfAccount } from "../service-tabs/box-ide/service";
 import { revokeTriggersOfAccount } from "../service-tabs/deployments/trigger";
 import * as repo from "./repo";
@@ -258,6 +259,10 @@ export async function updatePanelUser(
           ended = revokeUserCredentials(tx, id);
           revokeTriggersOfAccount(tx, id, lostTriggerReach(before, after), now);
         }
+        if (current.role === "admin" && request.role !== "admin") {
+          // An invitation speaks for whoever sent it, and they can no longer send one.
+          deleteInvitationsBy(tx, id);
+        }
       },
       { behavior: "immediate" },
     );
@@ -353,6 +358,7 @@ export function setPanelUserActive(
       if (!active) {
         ended = revokeUserCredentials(tx, id);
         revokeBoxIdeTokensOfAccount(tx, id, now);
+        deleteInvitationsBy(tx, id);
       }
     },
     { behavior: "immediate" },

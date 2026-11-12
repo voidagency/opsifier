@@ -9,14 +9,18 @@ export type ProjectRole = z.infer<typeof projectRole>;
 export const projectGrant = z.strictObject({ project: projectName, role: projectRole });
 export type ProjectGrant = z.infer<typeof projectGrant>;
 
-const accountEmail = z.email("Enter a valid email address").max(254, "Must be at most 254 characters");
-const accountPassword = z
+/** An account's sign-in address. */
+export const accountEmail = z.email("Enter a valid email address").max(254, "Must be at most 254 characters");
+
+/** A password someone chooses: long enough, and not only spaces. */
+export const accountPassword = z
   .string()
   .min(12, "Use at least 12 characters")
   .max(passwordMaxLength, `Must be at most ${passwordMaxLength} characters`)
   .refine((value) => value.trim() !== "", "Must not be blank");
 
-const projectGrants = z
+/** What a member reaches, at most once per project. */
+export const projectGrants = z
   .array(projectGrant)
   .max(256, "At most 256 projects")
   .refine(

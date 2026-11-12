@@ -139,6 +139,7 @@
     "name_holds_kept_data": "Des volumes conservés d'un ancien service de ce nom sont encore sur le serveur. Supprimez-les dans Supervision, Stockage, ou choisissez un autre nom.",
     "ssh_host_unknown": "Opsifier ne connaît pas encore l'identité de ce serveur. Un administrateur peut l'ajouter dans Réglages, Hôtes connus.",
     "ssh_key_bound": "La clé de déploiement est liée à un autre dépôt. Supprimez-la et générez-en une nouvelle pour utiliser celui-ci.",
+    "secret_destination_changed": "Le mot de passe ou le secret enregistré correspond à une autre destination : il n'est pas envoyé à celle-ci. Saisissez-le à nouveau.",
     "source_not_ssh": "Enregistrez d'abord une adresse de dépôt SSH.",
     "github_token_not_granted": "Un administrateur doit enregistrer cette source pour que le jeton GitHub du panneau serve pour ce dépôt.",
     "webhook_paused": "Ce webhook est en pause. Renouvelez son secret pour reprendre.",
@@ -173,7 +174,10 @@
     "box_source_managed": "Une box se construit à partir de ses modules. Modifiez-les dans son onglet Modules.",
     "box_deploy_managed": "Une box décide elle-même de son fonctionnement. Ses processus et ses hooks ont leurs propres onglets.",
     "box_workspace_mount": "L'espace de travail d'une box ne peut être ni déplacé ni supprimé.",
-    "box_not_running": "Cette box n'a pas de tâche en marche pour faire cela."
+    "box_not_running": "Cette box n'a pas de tâche en marche pour faire cela.",
+    "invitation_invalid": "Ce lien d'invitation ne fonctionne plus. Demandez-en un nouveau à un administrateur.",
+    "too_many_invitations": "Ce panneau garde déjà autant d'invitations qu'il le peut. Révoquez-en d'abord.",
+    "panel_address_unknown": "Ce panneau n'a pas de domaine à lui à mettre dans un e-mail. Indiquez-en un dans Réglages → Général, ou affichez plutôt les liens."
   },
   "retention": {
     "removed": "Supprimé",

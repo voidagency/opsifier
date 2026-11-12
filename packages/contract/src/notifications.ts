@@ -48,7 +48,10 @@ const httpsUrlOn = (hosts: readonly string[], message: string) =>
     return host !== undefined && hosts.includes(host);
   }, message);
 
-/** A secret left empty on an update keeps the value already stored. */
+/**
+ * A secret left empty on an update keeps the value already stored, while the destination it was saved
+ * for stays the same: an SMTP host, port and username, a webhook URL.
+ */
 const secret = (max: number) => z.string().max(max, "This is too long").optional();
 
 export const notificationChannelConfig = z.discriminatedUnion("type", [
@@ -102,7 +105,10 @@ export const saveNotificationChannelRequest = z.strictObject({
 });
 export type SaveNotificationChannelRequest = z.input<typeof saveNotificationChannelRequest>;
 
-/** POST /api/v1/notifications/test: unsaved form values, with an `id` to reuse stored secrets. */
+/**
+ * POST /api/v1/notifications/test: unsaved form values, with an `id` to reuse stored secrets for the
+ * destination they were saved for.
+ */
 export const testNotificationRequest = z.strictObject({
   id: z.string().max(64).optional(),
   config: notificationChannelConfig,

@@ -1,13 +1,6 @@
-import type {
-  ApiKey,
-  CreatedApiKey,
-  PanelUser,
-  ProjectGrant,
-  ProjectRole,
-  UserRole,
-} from "@opsifier/contract";
+import type { ApiKey, CreatedApiKey, PanelUser, ProjectGrant, UserRole } from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Pencil, Plus, ShieldCheck, Trash2, UserCheck, UserX } from "lucide-react";
+import { KeyRound, MailPlus, Pencil, Plus, ShieldCheck, Trash2, UserCheck, UserX } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatRelativeTime } from "../../../lib/format";
@@ -15,7 +8,6 @@ import { errorMessage, useForm } from "../../../lib/forms";
 import {
   Badge,
   Button,
-  Checkbox,
   ConfirmDialog,
   Dialog,
   EmptyState,
@@ -28,68 +20,17 @@ import {
   PasswordInput,
   Pictogram,
   Segmented,
-  Select,
   Skeleton,
   Switch,
   Tooltip,
   toast,
 } from "../../../ui";
 import { useCurrentUser } from "../../auth/session";
-import { projectsQuery } from "../../projects/api";
 import { CreateKeyDialog, KeySecretDialog, KeysTable } from "../user/ApiKeysPage";
 import { accessApi, userKeysQuery, usersQuery } from "./api";
-
-function GrantsEditor({
-  grants,
-  onChange,
-}: {
-  grants: ProjectGrant[];
-  onChange: (next: ProjectGrant[]) => void;
-}) {
-  const { t } = useTranslation("settings-access");
-  const { data } = useQuery(projectsQuery);
-  const projects = data?.projects.map((project) => project.name) ?? [];
-  const setRole = (project: string, role: ProjectRole | null) => {
-    const others = grants.filter((grant) => grant.project !== project);
-    onChange(role === null ? others : [...others, { project, role }]);
-  };
-  return (
-    <fieldset className="grid gap-2">
-      <legend className="text-sm font-medium">{t("users.access")}</legend>
-      <p className="text-xs text-muted">{t("users.accessHint")}</p>
-      {projects.length === 0 ? (
-        <p className="text-sm text-muted">{t("users.noProjects")}</p>
-      ) : (
-        <ul className="grid max-h-56 gap-1 overflow-y-auto">
-          {projects.map((project) => {
-            const grant = grants.find((candidate) => candidate.project === project);
-            return (
-              <li key={project} className="flex items-center justify-between gap-3 py-0.5">
-                <Checkbox
-                  label={<span className="font-mono text-xs">{project}</span>}
-                  checked={grant !== undefined}
-                  onChange={(event) => setRole(project, event.currentTarget.checked ? "viewer" : null)}
-                />
-                {grant !== undefined && (
-                  <Select
-                    aria-label={t("users.projectRole", { project })}
-                    value={grant.role}
-                    onValueChange={(value) => setRole(project, value as ProjectRole)}
-                    className="h-7 w-32 text-xs"
-                    options={[
-                      { value: "viewer", label: t("users.roles.viewer") },
-                      { value: "operator", label: t("users.roles.operator") },
-                    ]}
-                  />
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </fieldset>
-  );
-}
+import { GrantsEditor } from "./GrantsEditor";
+import { InviteDialog } from "./invitations/InviteDialog";
+import { PendingInvitations } from "./invitations/PendingInvitations";
 
 function UserDialog({
   open,
@@ -370,6 +311,7 @@ export function UsersPage() {
   const currentUser = useCurrentUser();
   const { data, isPending, isError, error, refetch } = useQuery(usersQuery);
   const [creating, setCreating] = useState(false);
+  const [inviting, setInviting] = useState(false);
   const [editing, setEditing] = useState<PanelUser | null>(null);
   const [deleting, setDeleting] = useState<PanelUser | null>(null);
   const [deactivating, setDeactivating] = useState<PanelUser | null>(null);
@@ -405,13 +347,18 @@ export function UsersPage() {
           <h2 className="text-md font-medium">{t("users.title")}</h2>
           <p className="mt-1 max-w-[60ch] text-sm text-muted">{t("users.description")}</p>
         </div>
-        <Button
-          variant="primary"
-          icon={<Plus aria-hidden="true" className="size-4" />}
-          onClick={() => setCreating(true)}
-        >
-          {t("users.new")}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button icon={<Plus aria-hidden="true" className="size-4" />} onClick={() => setCreating(true)}>
+            {t("users.new")}
+          </Button>
+          <Button
+            variant="primary"
+            icon={<MailPlus aria-hidden="true" className="size-4" />}
+            onClick={() => setInviting(true)}
+          >
+            {t("invitations.invite")}
+          </Button>
+        </div>
       </div>
       {isPending ? (
         <Skeleton className="h-24" />
@@ -435,6 +382,8 @@ export function UsersPage() {
           ))}
         </ul>
       )}
+      <PendingInvitations />
+      <InviteDialog open={inviting} onOpenChange={setInviting} />
       <UserDialog
         open={creating || editing !== null}
         onOpenChange={(open) => {

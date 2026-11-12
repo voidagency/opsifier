@@ -203,6 +203,16 @@ function ChannelDialog({
 
   const type = form.values.type;
   const secretPlaceholder = channel?.hasSecret ? t("stored") : undefined;
+  // The server only sends a stored password to the host, port and username it was saved for, and a
+  // stored signing secret to its URL, which this form never sees: a new URL may need it again.
+  const { host, port, username, url } = form.values;
+  const keepsPassword =
+    channel?.type === "smtp" &&
+    host.trim().toLowerCase() === String(channel.config.host ?? "").toLowerCase() &&
+    (Number(port) || 587) === Number(channel.config.port) &&
+    username === String(channel.config.username ?? "");
+  const passwordAgain = channel?.type === "smtp" && channel.hasSecret && !keepsPassword && username !== "";
+  const signingSecretAgain = channel?.type === "webhook" && url !== "";
 
   return (
     <Dialog
@@ -270,8 +280,16 @@ function ChannelDialog({
             <Field label={t("username")} error={form.errors.username} hint={t("usernameHint")}>
               <Input {...form.field("username")} autoComplete="off" />
             </Field>
-            <Field label={t("password")} error={form.errors.password} hint={t("passwordHint")}>
-              <PasswordInput {...form.field("password")} autoComplete="off" placeholder={secretPlaceholder} />
+            <Field
+              label={t("password")}
+              error={form.errors.password}
+              hint={t(passwordAgain ? "passwordAgain" : "passwordHint")}
+            >
+              <PasswordInput
+                {...form.field("password")}
+                autoComplete="off"
+                placeholder={keepsPassword ? secretPlaceholder : undefined}
+              />
             </Field>
             <Field label={t("from")} error={form.errors.from} hint={t("fromHint")}>
               <Input {...form.field("from")} />
@@ -290,9 +308,13 @@ function ChannelDialog({
               label={t("signingSecret")}
               optional
               error={form.errors.secret}
-              hint={t("signingSecretHint")}
+              hint={t(signingSecretAgain ? "signingSecretAgain" : "signingSecretHint")}
             >
-              <PasswordInput {...form.field("secret")} autoComplete="off" placeholder={secretPlaceholder} />
+              <PasswordInput
+                {...form.field("secret")}
+                autoComplete="off"
+                placeholder={signingSecretAgain ? undefined : secretPlaceholder}
+              />
             </Field>
           </div>
         )}

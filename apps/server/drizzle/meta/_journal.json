@@ -127,6 +127,13 @@
       "when": 1794191996465,
       "tag": "0017_dizzy_blade",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1794482134733,
+      "tag": "0018_invitations",
+      "breakpoints": true
     }
   ]
 }

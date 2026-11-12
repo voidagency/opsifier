@@ -86,7 +86,11 @@ describe("users", () => {
   };
 
   it("shows each account's role and access, and guards the owner", async () => {
-    installFakeServer({ "GET /users": { users: [OWNER, MEMBER_USER] }, "GET /projects": { projects: [] } });
+    installFakeServer({
+      "GET /users": { users: [OWNER, MEMBER_USER] },
+      "GET /projects": { projects: [] },
+      "GET /users/invitations": { invitations: [] },
+    });
     renderApp("/settings/server/users");
     expect(await screen.findByText("admin@example.com")).toBeTruthy();
     expect(screen.getByText("Owner")).toBeTruthy();
@@ -99,6 +103,7 @@ describe("users", () => {
     const server = installFakeServer({
       "GET /users": { users: [OWNER, MEMBER_USER] },
       "GET /projects": { projects: [] },
+      "GET /users/invitations": { invitations: [] },
       "DELETE /users/u2": { ok: true },
     });
     renderApp("/settings/server/users");

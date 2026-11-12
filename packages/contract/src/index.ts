@@ -12,6 +12,7 @@ export * from "./databases";
 export * from "./domains-overview";
 export * from "./env";
 export * from "./github";
+export * from "./invitations";
 export * from "./known-hosts";
 export * from "./monitor";
 export * from "./notifications";

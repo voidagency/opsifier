@@ -63,7 +63,8 @@ const updateChannelRoute = createRoute({
   path: `${channels}/{channel}`,
   tags,
   summary: "Change a notification channel",
-  description: "A secret left empty keeps the stored value.",
+  description:
+    "A secret left empty keeps the stored value while the destination stays the one it was saved for. A new SMTP host, port or username, or a new webhook URL, needs the password or signing secret again: without it the answer is 400 `secret_destination_changed`, and an SMTP channel left with no username drops its password.",
   request: { params: notificationChannelPath, body: jsonBody(saveNotificationChannelRequest) },
   responses: {
     200: jsonResponse(notificationChannel, "The channel."),
@@ -95,7 +96,7 @@ const testRoute = createRoute({
   tags,
   summary: "Send a test notification",
   description:
-    "Uses the values in the form, saved or not. With an `id`, stored secrets fill in any left empty.",
+    "Uses the values in the form, saved or not. With an `id`, stored secrets fill in any left empty, but only for the destination they were saved for: a new SMTP host, port or username, or a new webhook URL, without its secret is 400 `secret_destination_changed` and nothing is sent.",
   request: { body: jsonBody(testNotificationRequest) },
   responses: {
     200: jsonResponse(testNotificationResult, "Whether the destination accepted it."),

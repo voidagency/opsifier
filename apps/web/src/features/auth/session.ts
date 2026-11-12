@@ -1,5 +1,8 @@
 import {
+  type AcceptInvitationRequest,
   type ChangeCredentialsRequest,
+  type CheckInvitationRequest,
+  invitationPreview,
   type LoginRequest,
   type SessionState,
   type SessionUser,
@@ -52,4 +55,8 @@ export const authApi = {
     api.post("/auth/two-factor/enable", { body, schema: twoFactorEnabled }),
   disableTwoFactor: (body: TwoFactorDisable) =>
     api.post("/auth/two-factor/disable", { body, schema: sessionState }),
+  checkInvitation: (body: CheckInvitationRequest) =>
+    api.post("/auth/invitation/check", { body, schema: invitationPreview }),
+  acceptInvitation: (body: AcceptInvitationRequest) =>
+    api.post("/auth/invitation/accept", { body, schema: sessionState }),
 };

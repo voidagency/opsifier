@@ -11,6 +11,7 @@ import {
 } from "@tanstack/react-router";
 import type { ComponentType } from "react";
 import { ActivityPage } from "../features/activity/ActivityPage";
+import { InvitationPage } from "../features/auth/InvitationPage";
 import { LoginPage } from "../features/auth/LoginPage";
 import { SetupPage } from "../features/auth/SetupPage";
 import { sessionQuery } from "../features/auth/session";
@@ -111,6 +112,13 @@ export const loginRoute = createRoute({
     }
   },
   component: LoginPage,
+});
+
+/** Open to anyone holding a link: the page itself checks it. Accepting replaces any session in progress. */
+const invitationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "invitation",
+  component: InvitationPage,
 });
 
 const appRoute = createRoute({
@@ -293,6 +301,7 @@ const serviceTabRoutes = serviceTabs.map((tab) =>
 const routeTree = rootRoute.addChildren([
   setupRoute,
   loginRoute,
+  invitationRoute,
   createIdeRoute(() => rootRoute),
   appRoute.addChildren([
     overviewRoute,

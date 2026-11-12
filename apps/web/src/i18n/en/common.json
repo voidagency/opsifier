@@ -139,6 +139,7 @@
     "name_holds_kept_data": "Volumes kept from an earlier service of this name are still on the server. Delete them under Monitor, Storage, or pick another name.",
     "ssh_host_unknown": "Opsifier does not know this server's identity yet. An administrator can add it under Settings, Known hosts.",
     "ssh_key_bound": "The deploy key is tied to another repository. Delete it and generate a new one to use this one.",
+    "secret_destination_changed": "The stored password or secret belongs to another destination, so it isn't sent to this one. Type it again.",
     "source_not_ssh": "Save an SSH repository address first.",
     "github_token_not_granted": "An administrator has to save this source before the panel's GitHub token can be used for this repository.",
     "webhook_paused": "This webhook is paused. Rotate its secret to resume.",
@@ -173,7 +174,10 @@
     "box_source_managed": "A box builds from its modules. Change them on its Modules tab.",
     "box_deploy_managed": "A box decides how it runs. Its processes and hooks have their own tabs.",
     "box_workspace_mount": "A box's workspace can't be moved or removed.",
-    "box_not_running": "This box has no running task to do that in."
+    "box_not_running": "This box has no running task to do that in.",
+    "invitation_invalid": "This invitation link no longer works. Ask an administrator for a new one.",
+    "too_many_invitations": "This panel already keeps as many invitations as it can. Revoke some first.",
+    "panel_address_unknown": "This panel has no domain of its own to put in an email. Set one in Settings → General, or show the links instead."
   },
   "retention": {
     "removed": "Removed",

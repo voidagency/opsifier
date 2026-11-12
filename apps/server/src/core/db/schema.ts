@@ -1,4 +1,4 @@
-import type { DeploymentRecord } from "@opsifier/contract";
+import type { DeploymentRecord, ProjectGrant } from "@opsifier/contract";
 import { sql } from "drizzle-orm";
 import {
   check,
@@ -139,6 +139,42 @@ export const projectMembers = sqliteTable(
     primaryKey({ columns: [table.userId, table.projectName] }),
     index("project_members_project_idx").on(table.projectName),
     check("project_members_role_check", sql`${table.role} IN ('viewer', 'operator')`),
+  ],
+);
+
+/**
+ * An account someone was asked to create, with a link that works once. Only the link's hash is kept,
+ * and the invitation goes with the administrator who sent it.
+ */
+export const invitations = sqliteTable(
+  "invitations",
+  {
+    id: text("id").primaryKey(),
+    /** Trimmed and in lower case, as it will sign in. One invitation per address. */
+    email: text("email").notNull(),
+    role: text("role", { enum: ["admin", "member"] }).notNull(),
+    /** What a member will reach, checked again against the projects that exist when it is accepted. */
+    projects: text("projects", { mode: "json" }).$type<ProjectGrant[]>().notNull(),
+    /** SHA-256 of the current link's token. Sending the invitation again replaces it. */
+    tokenHash: text("token_hash").notNull().unique(),
+    invitedBy: text("invited_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** How the current link reaches the person: handed to an administrator, or e-mailed. */
+    delivery: text("delivery", { enum: ["link", "sending", "sent", "failed"] }).notNull(),
+    /** The SMTP channel of the latest e-mail, by name, so the record survives the channel. */
+    channelName: text("channel_name"),
+    sentAt: millis("sent_at"),
+    /** Why the latest e-mail was not sent, with any secret removed. */
+    deliveryError: text("delivery_error"),
+    createdAt: millis("created_at").notNull(),
+    expiresAt: millis("expires_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("invitations_email_unique").on(table.email),
+    index("invitations_invited_by_idx").on(table.invitedBy),
+    check("invitations_role_check", sql`${table.role} IN ('admin', 'member')`),
+    check("invitations_delivery_check", sql`${table.delivery} IN ('link', 'sending', 'sent', 'failed')`),
   ],
 );
 

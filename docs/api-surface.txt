@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 23
+# documented-changes: 25
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -101,6 +101,31 @@ GET /api/v1/auth/identity
   200 user!.id!: string
   200 user!.role!: enum(admin|member)
   401
+POST /api/v1/auth/invitation/accept
+  201 status!: enum(needs-setup)
+  201 status!: enum(signed-in)
+  201 status!: enum(signed-out)
+  201 user!.email!: string
+  201 user!.hostAdmin: boolean
+  201 user!.id!: string
+  201 user!.role!: enum(admin|member)
+  201 user!.twoFactorEnabled!: boolean
+  400
+  404
+  409
+  429
+  body name!: string
+  body password!: string
+  body token!: string
+POST /api/v1/auth/invitation/check
+  200 email!: string
+  200 expiresAt!: string
+  200 invitedBy!: string
+  200 role!: enum(admin|member)
+  400
+  404
+  429
+  body token!: string
 POST /api/v1/auth/login
   200 status!: enum(needs-setup)
   200 status!: enum(signed-in)
@@ -5237,6 +5262,109 @@ POST /api/v1/users
   body projects[].project!: string
   body projects[].role!: enum(operator|viewer)
   body role: enum(admin|member)
+GET /api/v1/users/invitations
+  200 invitations![].channelName!: null|string
+  200 invitations![].createdAt!: string
+  200 invitations![].delivery!: enum(failed|link|sending|sent)
+  200 invitations![].email!: string
+  200 invitations![].error!: null|string
+  200 invitations![].expired!: boolean
+  200 invitations![].expiresAt!: string
+  200 invitations![].id!: string
+  200 invitations![].invitedBy!: string
+  200 invitations![].projects![].project!: string
+  200 invitations![].projects![].role!: enum(operator|viewer)
+  200 invitations![].role!: enum(admin|member)
+  200 invitations![].sentAt!: null|string
+  401
+  403
+POST /api/v1/users/invitations
+  201 action!.actorEmail!: null|string
+  201 action!.createdAt!: string
+  201 action!.error!: null|string
+  201 action!.finishedAt!: null|string
+  201 action!.hasLog!: boolean
+  201 action!.id!: string
+  201 action!.origin: enum(api_key|session|system|trigger|webhook)
+  201 action!.originDetail: null|string
+  201 action!.phase: null|string
+  201 action!.projectName!: null|string
+  201 action!.serviceName!: null|string
+  201 action!.startedAt!: null|string
+  201 action!.status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  201 action!.title!: string
+  201 action!.type!: string
+  201 results![].email!: string
+  201 results![].invitation!.channelName!: null|string
+  201 results![].invitation!.createdAt!: string
+  201 results![].invitation!.delivery!: enum(failed|link|sending|sent)
+  201 results![].invitation!.email!: string
+  201 results![].invitation!.error!: null|string
+  201 results![].invitation!.expired!: boolean
+  201 results![].invitation!.expiresAt!: string
+  201 results![].invitation!.id!: string
+  201 results![].invitation!.invitedBy!: string
+  201 results![].invitation!.projects![].project!: string
+  201 results![].invitation!.projects![].role!: enum(operator|viewer)
+  201 results![].invitation!.role!: enum(admin|member)
+  201 results![].invitation!.sentAt!: null|string
+  201 results![].link!: null|string
+  201 results![].outcome!: enum(account_exists|already_invited|duplicate|invited)
+  400
+  401
+  403
+  409
+  body channel: null|string
+  body emails![]: string
+  body language: enum(en|fr)
+  body projects[].project!: string
+  body projects[].role!: enum(operator|viewer)
+  body role: enum(admin|member)
+DELETE /api/v1/users/invitations/{invitation}
+  200 ok!: enum(true)
+  400
+  401
+  403
+  404
+  path invitation!: string
+POST /api/v1/users/invitations/{invitation}/resend
+  200 action!.actorEmail!: null|string
+  200 action!.createdAt!: string
+  200 action!.error!: null|string
+  200 action!.finishedAt!: null|string
+  200 action!.hasLog!: boolean
+  200 action!.id!: string
+  200 action!.origin: enum(api_key|session|system|trigger|webhook)
+  200 action!.originDetail: null|string
+  200 action!.phase: null|string
+  200 action!.projectName!: null|string
+  200 action!.serviceName!: null|string
+  200 action!.startedAt!: null|string
+  200 action!.status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  200 action!.title!: string
+  200 action!.type!: string
+  200 invitation!.channelName!: null|string
+  200 invitation!.createdAt!: string
+  200 invitation!.delivery!: enum(failed|link|sending|sent)
+  200 invitation!.email!: string
+  200 invitation!.error!: null|string
+  200 invitation!.expired!: boolean
+  200 invitation!.expiresAt!: string
+  200 invitation!.id!: string
+  200 invitation!.invitedBy!: string
+  200 invitation!.projects![].project!: string
+  200 invitation!.projects![].role!: enum(operator|viewer)
+  200 invitation!.role!: enum(admin|member)
+  200 invitation!.sentAt!: null|string
+  200 link!: null|string
+  400
+  401
+  403
+  404
+  409
+  body channel: null|string
+  body language: enum(en|fr)
+  path invitation!: string
 DELETE /api/v1/users/{user}
   200 ok!: enum(true)
   400

@@ -10,6 +10,7 @@ export { feature as compose } from "./compose/routes";
 export { feature as databases } from "./databases/routes";
 export { feature as domains } from "./domains/routes";
 export { feature as github } from "./github/routes";
+export { feature as invitations } from "./invitations/routes";
 export { feature as knownHosts } from "./known-hosts/routes";
 export { feature as monitor } from "./monitor/routes";
 export { feature as notifications } from "./notifications/routes";
