@@ -1,0 +1,207 @@
+# Checks every change, then builds the panel's image for linux/amd64 and linux/arm64 and publishes it
+# on ghcr.io/voidagency/opsifier.
+#
+#   push to main      the `main` tag, and `sha-<commit>`
+#   tag v1.2.3        `1.2.3`, `1.2` and `latest`, then the GitHub release whose release.json the
+#                     panel reads to offer an update. The tag has to match package.json, and its
+#                     message becomes the release notes.
+#
+# Pull requests are only checked. Nothing is published from them.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  # A release is never cancelled halfway. A newer commit on main or on a pull request replaces an older one.
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  IMAGE: ghcr.io/voidagency/opsifier
+
+jobs:
+  check:
+    name: Lint, types and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run typecheck
+      - name: Tests
+        run: |
+          # Some tests make commits in throwaway repositories.
+          git config --global user.name "Opsifier CI"
+          git config --global user.email "ci@opsifier.invalid"
+          bun run test
+
+  plan:
+    name: Version
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: version
+        name: Work out the version
+        run: |
+          declared="$(node -p "require('./package.json').version")"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            if [ "$version" != "$declared" ]; then
+              echo "::error::The tag $GITHUB_REF_NAME does not match the version $declared in package.json."
+              exit 1
+            fi
+            tag="$version"
+          else
+            # Ahead of the last release, so a panel built from main never offers to go back to it.
+            base="$declared"
+            if git rev-parse -q --verify "refs/tags/v$base" >/dev/null; then
+              IFS=. read -r major minor patch <<<"$base"
+              base="$major.$minor.$((patch + 1))"
+            fi
+            version="$base-main.$GITHUB_RUN_NUMBER"
+            tag="main"
+          fi
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+          echo "Version $version, tagged $tag" >>"$GITHUB_STEP_SUMMARY"
+
+  image:
+    name: Image ${{ matrix.platform }}
+    needs: [check, plan]
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # Each platform builds on a machine of its own kind, so nothing runs under emulation.
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            OPSIFIER_VERSION=${{ needs.plan.outputs.version }}
+            OPSIFIER_IMAGE=${{ env.IMAGE }}:${{ needs.plan.outputs.tag }}
+          # Pushed by digest only. The tags go on the multi-platform image the next job puts together.
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+      - name: Keep the digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish
+    needs: [plan, image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        env:
+          # On the multi-platform index too, which is what links the package to this repository.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: index
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=sha-,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+      - name: Put the platforms together under their tags
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          args=()
+          while IFS= read -r tag; do args+=(--tag "$tag"); done < <(jq -r '.tags[]' <<<"$DOCKER_METADATA_OUTPUT_JSON")
+          while IFS= read -r note; do args+=(--annotation "$note"); done < <(jq -r '.annotations[]' <<<"$DOCKER_METADATA_OUTPUT_JSON")
+          sources=()
+          for digest in *; do sources+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create "${args[@]}" "${sources[@]}"
+      - name: Check what was published
+        run: docker buildx imagetools inspect "$IMAGE:${{ needs.plan.outputs.tag }}"
+      - name: Create the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          # The checkout can leave a lightweight copy of the tag. Its message is on the annotated one.
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          notes="$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME")"
+          [ -n "$notes" ] || notes="Opsifier $VERSION."
+          digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)"
+          jq -n \
+            --arg version "$VERSION" \
+            --arg image "$IMAGE:$VERSION@$digest" \
+            --arg notes "$notes" \
+            --arg publishedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{version: $version, image: $image, notes: $notes, migrations: [], publishedAt: $publishedAt}' >release.json
+          gh release create "$GITHUB_REF_NAME" release.json --verify-tag --title "Opsifier $VERSION" --notes "$notes"
