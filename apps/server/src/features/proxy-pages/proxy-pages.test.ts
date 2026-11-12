@@ -152,7 +152,10 @@ describe("rendering a maintenance page", () => {
 
   it("draws exactly the panel's mark, as the favicon does, and nothing else", () => {
     const favicon = readFileSync(join(import.meta.dirname, "../../../../web/public/favicon.svg"), "utf8");
-    const shapes = (svg: string) => [...svg.matchAll(/<(circle|path)\b[^>]*>/g)].map(([tag]) => tag.match(/ (cx|cy|r|d)="[^"]*"/g)?.join(""));
+    const shapes = (svg: string) =>
+      [...svg.matchAll(/<(circle|path)\b[^>]*>/g)].map(([tag]) =>
+        tag.match(/ (cx|cy|r|d)="[^"]*"/g)?.join(""),
+      );
     const mark = /<svg class="logo"[\s\S]*?<\/svg>/.exec(renderProxyPage("not-found", "en").html)?.[0] ?? "";
 
     expect(shapes(mark)).toEqual(shapes(favicon));
