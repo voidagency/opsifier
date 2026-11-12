@@ -507,7 +507,8 @@ class SftpStub {
 
 const dummyAttrs = () => ({ mode: 0, uid: 0, gid: 0, size: 0, atime: 0, mtime: 0 });
 
-describe("the SFTP backend, against a real SSH server", () => {
+// Every check is a full SSH handshake, which a small CI machine can take seconds over.
+describe("the SFTP backend, against a real SSH server", { timeout: 30_000 }, () => {
   let server: SftpStub;
   let known: string | null = null;
   const backend = (overrides: Partial<ConstructorParameters<typeof SftpBackend>[0]> = {}) =>

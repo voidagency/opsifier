@@ -57,7 +57,8 @@ async function deploy(): Promise<ActionEntry & { log: string }> {
 
 describe("the storage tab", () => {
   it("adds, edits and removes the three kinds of mount", async () => {
-    await api(MOUNTS, "POST", { type: "bind", hostPath: "/tmp", mountPath: "/mnt/bind" });
+    // Not /tmp: on Linux the test's own data directory is under it, which makes the mount a risk.
+    await api(MOUNTS, "POST", { type: "bind", hostPath: "/srv/shared", mountPath: "/mnt/bind" });
     await api(MOUNTS, "POST", { type: "volume", name: "probe-vol", mountPath: "/data/vol" });
     const added = await api<StorageDocument>(MOUNTS, "POST", {
       type: "file",
@@ -67,7 +68,7 @@ describe("the storage tab", () => {
 
     expect(added.status).toBe(201);
     expect(added.body.mounts).toEqual([
-      { type: "bind", hostPath: "/tmp", mountPath: "/mnt/bind", acknowledgeRisk: false, risk: null },
+      { type: "bind", hostPath: "/srv/shared", mountPath: "/mnt/bind", acknowledgeRisk: false, risk: null },
       { type: "volume", name: "probe-vol", mountPath: "/data/vol" },
       { type: "file", mountPath: "/etc/probe/config.txt", content: "hello\n" },
     ]);
@@ -307,7 +308,7 @@ describe("bind mounts that expose the server", () => {
 
 describe("deploying mounts", () => {
   it("writes files, creates volumes and leaves the running service alone until then", async () => {
-    await api(MOUNTS, "POST", { type: "bind", hostPath: "/tmp", mountPath: "/mnt/bind" });
+    await api(MOUNTS, "POST", { type: "bind", hostPath: "/srv/shared", mountPath: "/mnt/bind" });
     await api(MOUNTS, "POST", { type: "volume", name: "probe-vol", mountPath: "/data/vol" });
     await api(MOUNTS, "POST", { type: "file", mountPath: "/etc/probe/config.txt", content: "hello\n" });
 
@@ -319,7 +320,7 @@ describe("deploying mounts", () => {
 
     const inspected = await context.docker.inspectService("shop_web");
     expect(inspected?.spec.TaskTemplate.ContainerSpec.Mounts).toEqual([
-      { Type: "bind", Source: "/tmp", Target: "/mnt/bind" },
+      { Type: "bind", Source: "/srv/shared", Target: "/mnt/bind" },
       { Type: "volume", Source: "shop_web_probe-vol", Target: "/data/vol" },
       {
         Type: "bind",
