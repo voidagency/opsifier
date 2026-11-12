@@ -7,7 +7,7 @@
 
 Opsifier is an open-source control panel for your own server. It deploys apps and databases from a web interface that shows the state of everything at a glance. Every feature is included, and there are no paid tiers.
 
-> **Status: early development.** Opsifier is not ready for production yet, and the one-line installer is not published. Expect breaking changes.
+> **Status: early development.** Releases are published, but Opsifier is not ready for production yet. Expect breaking changes.
 
 <p align="center">
   <picture>
@@ -27,9 +27,13 @@ Opsifier is an open-source control panel for your own server. It deploys apps an
 - Environment variables sealed at rest, with build inputs kept apart from runtime secrets, plus volumes, published ports, resource limits and replicas.
 - Live logs with search, an in-browser console, per-service metrics and scheduled scripts with a run history.
 - Postgres, MySQL, MariaDB, MongoDB and Redis, with managed credentials, optional public ports, backups you can download and restore, and networks kept apart between projects.
+- Scheduled backups of databases and volumes to local disk, SFTP, FTP, S3-compatible storage, Dropbox or Google Drive, with retention, and restores that take a safety copy first.
 - Compose stacks, ready-made templates, and a modular runtime with a browser IDE.
 - A command-line client and an MCP server, held to the same rights as the API.
 - Sign-in with two-factor authentication and recovery codes, project roles and API keys.
+- Invitations, one or a hundred at a time. Each person gets a link that works once and expires after seven days, sent by e-mail or shown for you to pass on.
+- Notifications by e-mail, Slack, Discord, Telegram or webhook, for deployments, backups, cleanups, disk usage and new releases.
+- Updates from the panel itself, from the published releases, with a way back to the previous version.
 - English and French, with light and dark themes.
 
 WordPress sites, moving a project between servers, multi-node clusters and tunnels are still to come.
@@ -70,6 +74,16 @@ Taken on a demo server with sample data.
   &nbsp;&nbsp;
   <img src="docs/screenshots/phone-service.png" alt="A service on a phone" width="260" />
 </p>
+
+## Install on a server
+
+On an Ubuntu or Debian server, x86_64 or arm64, with at least 2 GB of memory and ports 80, 443 and 3000 free:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/voidagency/opsifier/main/scripts/install.sh | sudo bash
+```
+
+The installer adds Docker when it is missing, sets up Swarm, Traefik and the panel, then prints a one-time link to create the first account. Running it again changes nothing that is already right. Each release is a multi-arch image at `ghcr.io/voidagency/opsifier`, and the panel offers new versions itself.
 
 ## Run it locally
 
