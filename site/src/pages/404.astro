@@ -6,7 +6,7 @@ import Base from "../layouts/Base.astro";
 const t = content.en;
 ---
 
-<Base locale="en" title={`${t.notFound.title} | Opsifier`} description={t.notFound.description} path="/404/" otherPath={null}>
+<Base locale="en" title={`${t.notFound.title} | Opsifier`} description={t.notFound.description} path="/404/" otherPath={null} indexable={false}>
   <Sprite />
   <section class="missing wrap">
     <svg class="lamp missing__lamp" data-state="unknown" aria-hidden="true"><use href="#l-unknown"></use></svg>

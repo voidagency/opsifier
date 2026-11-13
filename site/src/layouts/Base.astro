@@ -7,6 +7,8 @@ import "@fontsource/ibm-plex-mono/latin-500.css";
 import "../styles/site.css";
 import poppins400 from "@fontsource/poppins/files/poppins-latin-400-normal.woff2?url";
 import poppins500 from "@fontsource/poppins/files/poppins-latin-500-normal.woff2?url";
+// The version the repository is at when the site is built, so the structured data never goes stale.
+import project from "../../../package.json";
 import { content, type Locale, REPORT_VULNERABILITY, REPOSITORY } from "../content";
 
 interface Props {
@@ -16,25 +18,74 @@ interface Props {
   /** This page's path, and the same page in the other language. Null on a page that has only one. */
   path: string;
   otherPath: string | null;
+  /** Only the home pages describe the software itself to search engines. */
+  describesSoftware?: boolean;
+  /** False on the not-found page, which has no address of its own to be indexed under. */
+  indexable?: boolean;
 }
 
-const { locale, title, description, path, otherPath } = Astro.props;
+const { locale, title, description, path, otherPath, describesSoftware = false, indexable = true } = Astro.props;
 const t = content[locale];
 const home = locale === "en" ? "/" : "/fr/";
 const canonical = new URL(path, Astro.site).href;
 const other = otherPath === null ? null : new URL(otherPath, Astro.site).href;
 const image = new URL("/og.png", Astro.site).href;
 const abuse = locale === "en" ? "/abuse/" : "/fr/abuse/";
+const site = new URL("/", Astro.site).href;
+const LICENSE = "https://www.apache.org/licenses/LICENSE-2.0";
 const structured = {
   "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  name: "Opsifier",
-  applicationCategory: "DeveloperApplication",
-  operatingSystem: "Linux",
-  license: "https://www.apache.org/licenses/LICENSE-2.0",
-  url: "https://opsifier.com/",
-  codeRepository: REPOSITORY,
-  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": `${site}#website`,
+      url: site,
+      name: "Opsifier",
+      inLanguage: ["en", "fr"],
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": `${site}#software`,
+      name: "Opsifier",
+      description: t.meta.definition,
+      url: site,
+      sameAs: [REPOSITORY],
+      applicationCategory: "DeveloperApplication",
+      applicationSubCategory: "Server control panel",
+      operatingSystem: "Linux",
+      softwareVersion: project.version,
+      softwareRequirements: "Docker 26 or later, on a Linux server with 2 GB of memory",
+      license: LICENSE,
+      isAccessibleForFree: true,
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      image,
+      screenshot: `${REPOSITORY}/raw/main/docs/screenshots/overview.png`,
+      featureList: [
+        "Deployments from a Docker image, a Git repository, a Dockerfile or an uploaded archive",
+        "Going back to an earlier release in one action",
+        "Domains with HTTPS through Traefik",
+        "Managed Postgres, MySQL, MariaDB, MongoDB and Redis databases",
+        "Scheduled backups to local disk, SFTP, FTP, S3-compatible storage or a cloud drive",
+        "Compose stacks and ready-made templates",
+        "Live logs, an in-browser console and metrics",
+        "Two-factor sign-in, project roles and API keys",
+        "A command-line client and an MCP server",
+      ],
+      installUrl: `${REPOSITORY}/blob/main/docs/INSTALL.md`,
+      downloadUrl: `${REPOSITORY}/pkgs/container/opsifier`,
+      releaseNotes: `${REPOSITORY}/releases`,
+    },
+    {
+      "@type": "SoftwareSourceCode",
+      "@id": `${site}#source`,
+      name: "Opsifier",
+      codeRepository: REPOSITORY,
+      programmingLanguage: "TypeScript",
+      runtimePlatform: ["Node.js", "Docker"],
+      license: LICENSE,
+      targetProduct: { "@id": `${site}#software` },
+    },
+  ],
 };
 ---
 
@@ -45,7 +96,7 @@ const structured = {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
-    <link rel="canonical" href={canonical} />
+    {indexable ? <link rel="canonical" href={canonical} /> : <meta name="robots" content="noindex" />}
     {
       other !== null && (
         <>
@@ -63,12 +114,22 @@ const structured = {
     <meta name="theme-color" content="#16264A" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Opsifier" />
+    <meta property="og:locale" content={t.meta.locale} />
+    {other !== null && <meta property="og:locale:alternate" content={content[t.nav.switchLang as Locale].meta.locale} />}
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={image} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="640" />
+    <meta property="og:image:alt" content={t.meta.imageAlt} />
     <meta name="twitter:card" content="summary_large_image" />
-    <script is:inline type="application/ld+json" set:html={JSON.stringify(structured)} />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={image} />
+    <meta name="twitter:image:alt" content={t.meta.imageAlt} />
+    {describesSoftware && <script is:inline type="application/ld+json" set:html={JSON.stringify(structured)} />}
   </head>
   <body>
     <a class="skip" href="#main">{t.nav.skip}</a>

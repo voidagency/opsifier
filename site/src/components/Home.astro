@@ -75,6 +75,8 @@ const commands = [
   "opsifier deploy shop/web",
   "opsifier deployments shop/web",
 ];
+// Two lines, so that the copy button never sits on the end of a wrapped one.
+const install = "curl -fsSL https://raw.githubusercontent.com/voidagency/opsifier/main/scripts/install.sh \\\n  | sudo bash";
 const start = "git clone https://github.com/voidagency/opsifier\ncd opsifier\nbun install\nbun run dev";
 ---
 
@@ -339,6 +341,13 @@ const start = "git clone https://github.com/voidagency/opsifier\ncd opsifier\nbu
         </a>
       </div>
       <div class="start__run">
+        <h3 class="start__label">{t.start.serverTitle}</h3>
+        <div class="code" data-code>
+          <pre><code data-source>{install}</code></pre>
+          <button class="copy" type="button" data-copy data-done={t.start.copied}>{t.start.copy}</button>
+        </div>
+        <p class="muted-navy">{t.start.serverNeeds}</p>
+        <h3 class="start__label">{t.start.localTitle}</h3>
         <div class="code" data-code>
           <pre><code data-source>{start}</code></pre>
           <button class="copy" type="button" data-copy data-done={t.start.copied}>{t.start.copy}</button>

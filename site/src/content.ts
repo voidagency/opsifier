@@ -10,7 +10,12 @@ const en = {
   meta: {
     title: "Opsifier: an open-source control panel for your own server",
     description:
-      "Deploy apps and databases on your own server, and see at a glance that they are running. Open source, Apache 2.0, in early development.",
+      "Self-hosted, open-source control panel that deploys apps and databases on your own server, with Docker Swarm and Traefik. Apache 2.0, early development.",
+    /** The structured data's description, worded as the README's first sentence and llms.txt. */
+    definition:
+      "Opsifier is an open-source, self-hosted control panel that deploys apps and databases on your own server from a web interface, using Docker Swarm and Traefik.",
+    imageAlt: "Opsifier: deploy apps and databases on your own server.",
+    locale: "en_US",
   },
   nav: {
     skip: "Skip to content",
@@ -109,15 +114,26 @@ const en = {
     title: "Where it stands.",
     body: "Opsifier is in early development. Expect breaking changes, and don't put anything on it yet that you can't afford to lose.",
     worksTitle: "Works today",
-    works: ["Deployments and going back", "Domains and HTTPS", "Databases and backups", "Logs, console and metrics", "Two-factor sign-in and project roles"],
+    works: [
+      "A one-line installer",
+      "Deployments and going back",
+      "Domains and HTTPS",
+      "Databases and backups",
+      "Logs, console and metrics",
+      "Two-factor sign-in and project roles",
+    ],
     notYetTitle: "Not yet",
-    notYet: ["A one-line installer", "WordPress sites", "Moving a project between servers", "Multi-node clusters and tunnels"],
+    notYet: ["WordPress sites", "Moving a project between servers", "Multi-node clusters and tunnels"],
   },
   start: {
     title: "Read it, run it, change it.",
     body: "Apache 2.0, with every feature included and no paid tiers. Development mode uses a simulated Docker, so it changes nothing on your machine.",
     copy: "Copy",
     copied: "Copied",
+    serverTitle: "On a server",
+    serverNeeds:
+      "Ubuntu or Debian, x86_64 or arm64, 2 GB of memory, and ports 80, 443 and 3000 free. It ends with a one-time link to create the first account.",
+    localTitle: "On your machine, in development mode",
     needs: "You need Bun and Node.js 22.13 or later.",
     cta: "Open the repository",
   },
@@ -154,7 +170,11 @@ const fr: Content = {
   meta: {
     title: "Opsifier : un panneau de contrôle open source pour votre serveur",
     description:
-      "Déployez applications et bases de données sur votre propre serveur, et voyez d'un coup d'œil que tout tourne. Open source, Apache 2.0, en développement précoce.",
+      "Panneau de contrôle open source et auto-hébergé : déployez applications et bases de données sur votre serveur, avec Docker Swarm et Traefik. Apache 2.0.",
+    definition:
+      "Opsifier est un panneau de contrôle open source et auto-hébergé qui déploie applications et bases de données sur votre propre serveur depuis une interface web, avec Docker Swarm et Traefik.",
+    imageAlt: "Le logo Opsifier et la phrase « Deploy apps and databases on your own server. »",
+    locale: "fr_FR",
   },
   nav: {
     skip: "Aller au contenu",
@@ -253,15 +273,26 @@ const fr: Content = {
     title: "Où il en est.",
     body: "Opsifier est en développement précoce. Attendez-vous à des changements incompatibles, et n'y mettez encore rien que vous ne puissiez vous permettre de perdre.",
     worksTitle: "Fonctionne aujourd'hui",
-    works: ["Les déploiements et le retour en arrière", "Les domaines et HTTPS", "Les bases de données et les sauvegardes", "Les journaux, la console et les métriques", "La connexion à deux facteurs et les rôles par projet"],
+    works: [
+      "L'installation en une ligne",
+      "Les déploiements et le retour en arrière",
+      "Les domaines et HTTPS",
+      "Les bases de données et les sauvegardes",
+      "Les journaux, la console et les métriques",
+      "La connexion à deux facteurs et les rôles par projet",
+    ],
     notYetTitle: "Pas encore",
-    notYet: ["Une installation en une ligne", "Les sites WordPress", "Le déplacement d'un projet entre serveurs", "Les clusters multi-nœuds et les tunnels"],
+    notYet: ["Les sites WordPress", "Le déplacement d'un projet entre serveurs", "Les clusters multi-nœuds et les tunnels"],
   },
   start: {
     title: "Lisez-le, lancez-le, modifiez-le.",
     body: "Apache 2.0, toutes les fonctionnalités incluses et aucune offre payante. Le mode développement utilise un Docker simulé : rien ne change sur votre machine.",
     copy: "Copier",
     copied: "Copié",
+    serverTitle: "Sur un serveur",
+    serverNeeds:
+      "Ubuntu ou Debian, x86_64 ou arm64, 2 Go de mémoire, et les ports 80, 443 et 3000 libres. Il se termine par un lien à usage unique pour créer le premier compte.",
+    localTitle: "Sur votre machine, en mode développement",
     needs: "Il vous faut Bun et Node.js 22.13 ou plus récent.",
     cta: "Ouvrir le dépôt",
   },

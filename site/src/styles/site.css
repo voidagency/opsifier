@@ -933,6 +933,20 @@ code {
   font-size: 0.9em;
 }
 
+.start__label {
+  color: var(--white);
+  font-size: 0.9em;
+  font-weight: 500;
+}
+
+.start__label ~ .start__label {
+  margin-top: 40px;
+}
+
+.start__run .start__label + .code {
+  margin-top: 12px;
+}
+
 .foot {
   padding-block: 48px;
   background: var(--navy-deep);

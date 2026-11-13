@@ -1,0 +1,48 @@
+# Opsifier
+
+> Opsifier is an open-source, self-hosted control panel that deploys apps and databases on your own server from a web interface, using Docker Swarm and Traefik. It is licensed under Apache 2.0, every feature is included and there are no paid tiers. Status: early development. Releases are published, but it is not ready for production yet, and breaking changes are expected.
+
+Opsifier installs on one Linux server with a single command: Ubuntu or Debian, x86_64 or arm64, at least 2 GB of memory, and ports 80, 443 and 3000 free. The installer adds Docker when it is missing, sets up Swarm, Traefik and the panel, then prints a one-time link to create the first account. Docker Swarm runs the workloads, Traefik routes the traffic, and the panel keeps its state in one SQLite file. Each release is a multi-arch image at `ghcr.io/voidagency/opsifier`, and the panel offers new versions itself.
+
+What works today:
+
+- Deployments from a Docker image, a Git repository, an inline Dockerfile or an uploaded archive, with signed push webhooks and deployment tokens. Source code is built on the server with a Dockerfile, Nixpacks, Railpack or Cloud Native Buildpacks.
+- Every deployment records its exact image, and a service goes back to an earlier release in one action.
+- Domains with HTTPS through Traefik, redirects, basic authentication and maintenance mode.
+- Managed Postgres, MySQL, MariaDB, MongoDB and Redis, with generated credentials, optional public ports, and backups you can download and restore.
+- Scheduled backups of databases and volumes to local disk, SFTP, FTP, S3-compatible storage or a cloud drive, with retention, and restores that take a safety copy first.
+- Compose stacks, ready-made templates, and a runtime with a browser editor.
+- Live logs with search, an in-browser console, per-service metrics, and scheduled scripts with a run history.
+- Development, staging and production server roles: until a server is in production, every site asks for a password and stays out of search engines.
+- Two-factor sign-in, project roles, invitations and API keys, plus a command-line client and an MCP server held to the same rights as the API.
+- Notifications by e-mail, Slack, Discord, Telegram or webhook, and updates of the panel from the panel itself.
+- An optional free `<id>.opsifier.dev` address, issued on request once a person approves it. A server can always use its own domain instead.
+- An interface in English and French, with light and dark themes.
+
+Not yet: WordPress sites, moving a project between servers, multi-node clusters and tunnels.
+
+A server only calls home if it asks for an `opsifier.dev` address: the request, then a daily heartbeat. There is no telemetry.
+
+## Docs
+
+- [README](https://raw.githubusercontent.com/voidagency/opsifier/main/README.md): what works today, how to install it, and a short FAQ
+- [Install on a server](https://raw.githubusercontent.com/voidagency/opsifier/main/docs/INSTALL.md): requirements, the one-line installer, its options, and what to do after it
+- [Deploy your first app](https://raw.githubusercontent.com/voidagency/opsifier/main/docs/FIRST-APP.md): a project, an app from an image or a repository, its domain, and going back to an earlier version
+- [Back up databases to S3-compatible storage](https://raw.githubusercontent.com/voidagency/opsifier/main/docs/BACKUPS.md): destinations, schedules, retention, downloads and restores
+- [Builders](https://raw.githubusercontent.com/voidagency/opsifier/main/docs/BUILDERS.md): how source code becomes an image, builder by builder
+- [Command line](https://raw.githubusercontent.com/voidagency/opsifier/main/docs/CLI.md): the `opsifier` command, its output for scripts and its exit codes
+- [MCP server](https://raw.githubusercontent.com/voidagency/opsifier/main/docs/MCP.md): connecting an AI agent to a panel, its tools and its confirmations
+- [API](https://raw.githubusercontent.com/voidagency/opsifier/main/docs/API.md): API keys, roles, errors and the OpenAPI document
+- [Architecture](https://raw.githubusercontent.com/voidagency/opsifier/main/docs/ARCHITECTURE.md): how the panel is built, decision by decision
+
+## Project
+
+- [Source code on GitHub](https://github.com/voidagency/opsifier): Apache 2.0
+- [Releases](https://github.com/voidagency/opsifier/releases): version history and release notes
+- [Container image](https://github.com/voidagency/opsifier/pkgs/container/opsifier): `ghcr.io/voidagency/opsifier`, amd64 and arm64
+- [Report a vulnerability](https://github.com/voidagency/opsifier/security/advisories/new): private reporting through GitHub security advisories
+
+## Optional
+
+- [Opsifier in French](https://opsifier.com/fr/): the same home page in French
+- [Report abuse of an opsifier.dev address](https://opsifier.com/abuse/): phishing, malware or other abuse on an address

@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-Opsifier is an open-source control panel for your own server. It deploys apps and databases from a web interface that shows the state of everything at a glance. Every feature is included, and there are no paid tiers.
+Opsifier is an open-source, self-hosted control panel that deploys apps and databases on your own server from a web interface, using Docker Swarm and Traefik. The interface shows the state of everything at a glance. Every feature is included, and there are no paid tiers.
 
 > **Status: early development.** Releases are published, but Opsifier is not ready for production yet. Expect breaking changes.
 
@@ -83,7 +83,7 @@ On an Ubuntu or Debian server, x86_64 or arm64, with at least 2 GB of memory and
 curl -fsSL https://raw.githubusercontent.com/voidagency/opsifier/main/scripts/install.sh | sudo bash
 ```
 
-The installer adds Docker when it is missing, sets up Swarm, Traefik and the panel, then prints a one-time link to create the first account. Running it again changes nothing that is already right. Each release is a multi-arch image at `ghcr.io/voidagency/opsifier`, and the panel offers new versions itself.
+The installer adds Docker when it is missing, sets up Swarm, Traefik and the panel, then prints a one-time link to create the first account. Running it again changes nothing that is already right. Each release is a multi-arch image at `ghcr.io/voidagency/opsifier`, and the panel offers new versions itself. [docs/INSTALL.md](docs/INSTALL.md) lists the installer's options, and [docs/FIRST-APP.md](docs/FIRST-APP.md) takes you from there to a running app.
 
 ## Run it locally
 
@@ -101,6 +101,38 @@ Open <http://127.0.0.1:5173>. The first-run page asks for a one-time setup code,
 Docker Swarm runs the workloads and Traefik routes the traffic. Desired state lives in SQLite, and every deployment compiles it into a Swarm service and a Traefik route. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
 A server only calls home if you ask for an address. That is the request, then a daily heartbeat, and nothing else. It is documented in the architecture notes.
+
+## Documentation
+
+- [Install on a server](docs/INSTALL.md): requirements, the installer and its options, and the first steps after it.
+- [Deploy your first app](docs/FIRST-APP.md): a project, an app from an image or a repository, its domain, and going back to an earlier version.
+- [Back up databases to S3-compatible storage](docs/BACKUPS.md): destinations, schedules, retention, downloads and restores.
+- [Builders](docs/BUILDERS.md): how source code becomes an image.
+- [Command line](docs/CLI.md) and [MCP server](docs/MCP.md): the panel from a terminal, a script or an AI agent.
+- [API](docs/API.md): keys, roles, errors and the OpenAPI document.
+- [Architecture](docs/ARCHITECTURE.md): how the panel is built, decision by decision.
+
+## FAQ
+
+### What is Opsifier?
+
+An open-source control panel that you install on your own Linux server. From a web interface, it deploys apps from a Docker image, a Git repository, a Dockerfile or an uploaded archive, runs managed Postgres, MySQL, MariaDB, MongoDB and Redis databases and Compose stacks, and takes care of domains and HTTPS, backups, logs and metrics. A command line and an MCP server reach the same API, with the same rights.
+
+### Is it free?
+
+Yes. Opsifier is licensed under Apache 2.0, every feature is included, and there are no paid tiers or license keys. The optional `<id>.opsifier.dev` address is free as well, and issued on request.
+
+### What does it run on?
+
+One Linux server, x86_64 or arm64, with at least 2 GB of memory and ports 80, 443 and 3000 free. The installer is written for Ubuntu and Debian, and adds Docker 26 or later when it is missing. Docker Swarm runs the workloads, Traefik routes the traffic, and the panel keeps its state in a single SQLite file. Multi-node clusters are still to come.
+
+### Is it ready for production?
+
+Not yet. Opsifier is in early development: releases are published, but expect breaking changes, and don't put anything on it yet that you can't afford to lose.
+
+### Does it send data anywhere?
+
+There is no telemetry. A server only calls home if you ask for an `opsifier.dev` address: the request, then a daily heartbeat. The release feed and the Docker version check only read public documents, and say nothing about the server.
 
 ## Security
 
