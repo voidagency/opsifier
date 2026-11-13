@@ -30,8 +30,10 @@ import {
   serviceDomainSettings,
   type TestNotificationRequest,
   type TrustedProxiesSettings,
+  type TwoFactorPolicy,
   testNotificationResult,
   trustedProxiesSettings,
+  twoFactorPolicyState,
   type UpdateUserRequest,
   userList,
 } from "@opsifier/contract";
@@ -136,6 +138,12 @@ export const usersQuery = queryOptions({
   queryFn: ({ signal }) => api.get("/users", { schema: userList, signal }),
 });
 
+/** Under "users", so refreshing the accounts also refreshes how many still lack two-factor sign-in. */
+export const twoFactorPolicyQuery = queryOptions({
+  queryKey: ["users", "two-factor-policy"] as const,
+  queryFn: ({ signal }) => api.get("/settings/two-factor", { schema: twoFactorPolicyState, signal }),
+});
+
 export const myKeysQuery = queryOptions({
   queryKey: ["api-keys", "me"] as const,
   queryFn: ({ signal }) => api.get("/me/api-keys", { schema: apiKeyList, signal }),
@@ -156,6 +164,8 @@ export const accessApi = {
   createKey: (body: CreateApiKeyRequest) => api.post("/me/api-keys", { body, schema: createdApiKey }),
   revokeMyKey: (id: string) => api.delete(`/me/api-keys/${id}`),
   revokeUserKey: (user: string, id: string) => api.delete(`/users/${user}/api-keys/${id}`),
+  saveTwoFactorPolicy: (body: TwoFactorPolicy) =>
+    api.put("/settings/two-factor", { body, schema: twoFactorPolicyState }),
 };
 
 export const channelsQuery = queryOptions({

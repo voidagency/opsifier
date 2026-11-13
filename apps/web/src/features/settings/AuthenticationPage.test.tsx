@@ -28,7 +28,7 @@ function bodyOf(call: number): Record<string, unknown> {
   return JSON.parse(fetchMock.mock.calls[call]?.[1].body as string) as Record<string, unknown>;
 }
 
-function renderPage(session: SessionState = { status: "signed-in", user }) {
+function renderPage(session: SessionState = { status: "signed-in", user, twoFactorSetupRequired: false }) {
   const client = new QueryClient();
   client.setQueryData(sessionQuery.queryKey, session);
   render(
@@ -148,7 +148,11 @@ describe("setting up two-factor sign-in", () => {
 });
 
 describe("turning two-factor sign-in off", () => {
-  const enabled: SessionState = { status: "signed-in", user: { ...user, twoFactorEnabled: true } };
+  const enabled: SessionState = {
+    status: "signed-in",
+    user: { ...user, twoFactorEnabled: true },
+    twoFactorSetupRequired: false,
+  };
 
   async function openDialog() {
     renderPage(enabled);

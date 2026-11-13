@@ -1,8 +1,11 @@
-import { Outlet, useRouterState } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { Outlet, useRouter, useRouterState } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { sessionQuery } from "../../features/auth/session";
 import { useLiveServiceData } from "../../features/services/api";
 import { usePlatformCommands } from "../../features/settings/usePlatformCommands";
+import { setTwoFactorRequiredHandler } from "../../lib/api";
 import { realtime } from "../../lib/realtime";
 import { ActivityTape } from "./ActivityTape";
 import { CommandPalette } from "./CommandPalette";
@@ -24,6 +27,17 @@ export function AppShell() {
   useLayoutEffect(() => {
     main.current?.scrollTo(0, 0);
   }, [pathname]);
+
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  // The owner can require two-factor sign-in while this account is in the panel without it. The
+  // session then says so, and the routes send the account to turning it on.
+  useEffect(() => {
+    setTwoFactorRequiredHandler(() => {
+      void queryClient.invalidateQueries({ queryKey: sessionQuery.queryKey }).then(() => router.invalidate());
+    });
+    return () => setTwoFactorRequiredHandler(undefined);
+  }, [queryClient, router]);
 
   useEffect(() => {
     // Deferred so that a mount immediately undone, as in Strict Mode, never opens a socket.

@@ -162,5 +162,23 @@
       "invalid": "Not an email address: {{list}}",
       "tooMany": "At most {{max}} addresses at a time."
     }
+  },
+  "twoFactorPolicy": {
+    "require": "Require two-factor sign-in for every account",
+    "hint_one": "An account without it can then only turn it on, and its API keys stop working until it does. {{count}} account doesn't use it yet.",
+    "hint_other": "An account without it can then only turn it on, and its API keys stop working until it does. {{count}} accounts don't use it yet.",
+    "hint_zero": "An account without it can then only turn it on, and its API keys stop working until it does. Every active account already uses it.",
+    "requiredHint_one": "Required. {{count}} account still has to turn it on.",
+    "requiredHint_other": "Required. {{count}} accounts still have to turn it on.",
+    "requiredHint_zero": "Required. Every active account uses it.",
+    "ownerOnly": "Only the owner can change this.",
+    "ownFirst": "Turn on two-factor sign-in on your own account first, on your Authentication page.",
+    "confirmTitle": "Require two-factor sign-in?",
+    "confirmDescription_one": "{{count}} account doesn't use it yet: until it turns it on, that is all it will be able to do.",
+    "confirmDescription_other": "{{count}} accounts don't use it yet: until they turn it on, that is all they will be able to do.",
+    "confirmDescription_zero": "Every active account already uses it. A new account will have to turn it on before it can do anything else.",
+    "confirm": "Require it",
+    "requiredDone": "Two-factor sign-in is now required",
+    "notRequiredDone": "Two-factor sign-in is no longer required"
   }
 }

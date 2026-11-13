@@ -38,6 +38,7 @@ import type { DbHandle } from "../../core/db";
 import { apiTokens } from "../../core/db/schema";
 import { AppError, badRequest, conflict, forbidden, unauthorized } from "../../core/errors";
 import { revokeTriggersOfAccount } from "../service-tabs/deployments/trigger";
+import { needsTwoFactorSetup, twoFactorRequired } from "../two-factor-policy/service";
 import * as repo from "./repo";
 
 export interface SignedIn {
@@ -136,7 +137,11 @@ export function createAuthService(deps: AppDeps) {
       }
       return principal === null
         ? { status: "signed-out" }
-        : { status: "signed-in", user: toSessionUser(principal.user) };
+        : {
+            status: "signed-in",
+            user: toSessionUser(principal.user),
+            twoFactorSetupRequired: needsTwoFactorSetup(db, principal.user),
+          };
     },
 
     async setup(input: SetupRequest, meta: RequestMeta): Promise<SignedIn> {
@@ -193,7 +198,8 @@ export function createAuthService(deps: AppDeps) {
       return {
         token: signedIn.token,
         persistent: false,
-        state: { status: "signed-in", user: toSessionUser(signedIn.user) },
+        // No rule can exist before the panel has its first account.
+        state: { status: "signed-in", user: toSessionUser(signedIn.user), twoFactorSetupRequired: false },
       };
     },
 
@@ -249,7 +255,11 @@ export function createAuthService(deps: AppDeps) {
       return {
         token,
         persistent: input.rememberMe,
-        state: { status: "signed-in", user: toSessionUser(user) },
+        state: {
+          status: "signed-in",
+          user: toSessionUser(user),
+          twoFactorSetupRequired: needsTwoFactorSetup(db, user),
+        },
       };
     },
 
@@ -397,6 +407,12 @@ export function createAuthService(deps: AppDeps) {
       const attempt = reserveSensitive(principal.user.id);
       if (principal.user.totpSecret === null) {
         throw conflict("two_factor_not_enabled", "Two-factor authentication is not on.");
+      }
+      if (twoFactorRequired(db)) {
+        throw conflict(
+          "two_factor_required_by_policy",
+          "This panel requires two-factor sign-in, so it can't be turned off.",
+        );
       }
       // Before any code is checked, so that a wrong password cannot use one up.
       await assertCurrentPassword(principal.user, input.currentPassword);

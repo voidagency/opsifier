@@ -122,7 +122,8 @@ function RecoveryCodes({ codes }: { codes: readonly string[] }) {
   );
 }
 
-function TwoFactorSetupDialog({
+/** Turns on two-factor sign-in for the signed-in account: password, then the app, then the recovery codes. */
+export function TwoFactorSetupDialog({
   open,
   onOpenChange,
 }: {
@@ -194,7 +195,8 @@ function TwoFactorSetupDialog({
     setBanner(null);
     try {
       const { recoveryCodes: issued, ...session } = await authApi.enableTwoFactor({ code: value });
-      applySession(queryClient, session);
+      // Turned on, it is no longer something the panel waits for.
+      applySession(queryClient, { ...session, twoFactorSetupRequired: false });
       setRecoveryCodes(issued);
       toast.success(t("twoFactor.enabled"));
     } catch (error) {

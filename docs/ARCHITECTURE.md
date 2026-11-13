@@ -350,6 +350,7 @@ A saved script belongs to a service, in its spec, with a maximum duration (one h
 - A panel with no user can only be claimed with the one-time token at `<data>/setup-token`, mode 0600, printed in the log at boot as `/setup?token=...` and deleted by a successful setup.
 - Sessions opened over plain HTTP last at most 12 hours, whatever the user asked for.
 - Starting two-factor enrolment and turning it off take the current password. Enabling it issues ten single-use recovery codes, shown once and stored hashed.
+- The owner can require two-factor sign-in of every account, once their own uses it. An account without it can then only turn it on: every other request it makes, with its session or one of its keys, is refused, it listens to nothing over the WebSocket, and nobody can turn their own off while the rule stands.
 - Secrets are sealed with AES-256-GCM using a 32-byte key at `<data>/secret.key`, mode 0600. If the key is missing once users exist, the panel refuses to boot.
 - Names and paths are validated before they reach Docker or the file system. Nothing is interpolated into a shell.
 - Validate strictly, even where another product might not: hostnames, paths, port ranges, replica counts, negative resources and empty credentials are all rejected.

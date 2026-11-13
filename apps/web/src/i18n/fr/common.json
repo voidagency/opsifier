@@ -177,7 +177,10 @@
     "box_not_running": "Cette box n'a pas de tâche en marche pour faire cela.",
     "invitation_invalid": "Ce lien d'invitation ne fonctionne plus. Demandez-en un nouveau à un administrateur.",
     "too_many_invitations": "Ce panneau garde déjà autant d'invitations qu'il le peut. Révoquez-en d'abord.",
-    "panel_address_unknown": "Ce panneau n'a pas de domaine à lui à mettre dans un e-mail. Indiquez-en un dans Réglages → Général, ou affichez plutôt les liens."
+    "panel_address_unknown": "Ce panneau n'a pas de domaine à lui à mettre dans un e-mail. Indiquez-en un dans Réglages → Général, ou affichez plutôt les liens.",
+    "two_factor_setup_required": "Ce panneau exige la double authentification : activez-la d'abord sur ce compte.",
+    "two_factor_required_by_policy": "Ce panneau exige la double authentification : elle ne peut pas être désactivée.",
+    "two_factor_first": "Activez d'abord la double authentification sur votre propre compte."
   },
   "retention": {
     "removed": "Supprimé",

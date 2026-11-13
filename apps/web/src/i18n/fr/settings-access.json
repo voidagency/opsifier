@@ -162,5 +162,23 @@
       "invalid": "Pas une adresse e-mail : {{list}}",
       "tooMany": "{{max}} adresses au maximum à la fois."
     }
+  },
+  "twoFactorPolicy": {
+    "require": "Imposer la double authentification à tous les comptes",
+    "hint_one": "Un compte qui ne l'a pas ne pourra plus que l'activer, et ses clés API ne fonctionneront plus d'ici là. {{count}} compte ne l'utilise pas encore.",
+    "hint_other": "Un compte qui ne l'a pas ne pourra plus que l'activer, et ses clés API ne fonctionneront plus d'ici là. {{count}} comptes ne l'utilisent pas encore.",
+    "hint_zero": "Un compte qui ne l'a pas ne pourra plus que l'activer, et ses clés API ne fonctionneront plus d'ici là. Tous les comptes actifs l'utilisent déjà.",
+    "requiredHint_one": "Imposée. {{count}} compte doit encore l'activer.",
+    "requiredHint_other": "Imposée. {{count}} comptes doivent encore l'activer.",
+    "requiredHint_zero": "Imposée. Tous les comptes actifs l'utilisent.",
+    "ownerOnly": "Seul le propriétaire peut modifier ceci.",
+    "ownFirst": "Activez d'abord la double authentification sur votre propre compte, dans votre page Authentification.",
+    "confirmTitle": "Imposer la double authentification ?",
+    "confirmDescription_one": "{{count}} compte ne l'utilise pas encore : tant qu'il ne l'aura pas activée, il ne pourra rien faire d'autre.",
+    "confirmDescription_other": "{{count}} comptes ne l'utilisent pas encore : tant qu'ils ne l'auront pas activée, ils ne pourront rien faire d'autre.",
+    "confirmDescription_zero": "Tous les comptes actifs l'utilisent déjà. Un nouveau compte devra l'activer avant de pouvoir faire quoi que ce soit d'autre.",
+    "confirm": "L'imposer",
+    "requiredDone": "La double authentification est désormais imposée",
+    "notRequiredDone": "La double authentification n'est plus imposée"
   }
 }

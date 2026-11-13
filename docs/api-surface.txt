@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 25
+# documented-changes: 26
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -74,6 +74,7 @@ POST /api/v1/auth/credentials
   200 status!: enum(needs-setup)
   200 status!: enum(signed-in)
   200 status!: enum(signed-out)
+  200 twoFactorSetupRequired: boolean
   200 user!.email!: string
   200 user!.hostAdmin: boolean
   200 user!.id!: string
@@ -105,6 +106,7 @@ POST /api/v1/auth/invitation/accept
   201 status!: enum(needs-setup)
   201 status!: enum(signed-in)
   201 status!: enum(signed-out)
+  201 twoFactorSetupRequired: boolean
   201 user!.email!: string
   201 user!.hostAdmin: boolean
   201 user!.id!: string
@@ -130,6 +132,7 @@ POST /api/v1/auth/login
   200 status!: enum(needs-setup)
   200 status!: enum(signed-in)
   200 status!: enum(signed-out)
+  200 twoFactorSetupRequired: boolean
   200 user!.email!: string
   200 user!.hostAdmin: boolean
   200 user!.id!: string
@@ -147,6 +150,7 @@ POST /api/v1/auth/logout
   200 status!: enum(needs-setup)
   200 status!: enum(signed-in)
   200 status!: enum(signed-out)
+  200 twoFactorSetupRequired: boolean
   200 user!.email!: string
   200 user!.hostAdmin: boolean
   200 user!.id!: string
@@ -156,6 +160,7 @@ GET /api/v1/auth/session
   200 status!: enum(needs-setup)
   200 status!: enum(signed-in)
   200 status!: enum(signed-out)
+  200 twoFactorSetupRequired: boolean
   200 user!.email!: string
   200 user!.hostAdmin: boolean
   200 user!.id!: string
@@ -165,6 +170,7 @@ POST /api/v1/auth/setup
   201 status!: enum(needs-setup)
   201 status!: enum(signed-in)
   201 status!: enum(signed-out)
+  201 twoFactorSetupRequired: boolean
   201 user!.email!: string
   201 user!.hostAdmin: boolean
   201 user!.id!: string
@@ -190,6 +196,7 @@ POST /api/v1/auth/two-factor/disable
   200 status!: enum(needs-setup)
   200 status!: enum(signed-in)
   200 status!: enum(signed-out)
+  200 twoFactorSetupRequired: boolean
   200 user!.email!: string
   200 user!.hostAdmin: boolean
   200 user!.id!: string
@@ -4692,6 +4699,21 @@ PUT /api/v1/settings/monitoring
   body metrics!.scrapeSeconds!: enum(300)
   body metrics!.scrapeSeconds!: enum(5)
   body metrics!.scrapeSeconds!: enum(60)
+GET /api/v1/settings/two-factor
+  200 accountsWithout!: integer
+  200 canChange!: boolean
+  200 required!: boolean
+  401
+  403
+PUT /api/v1/settings/two-factor
+  200 accountsWithout!: integer
+  200 canChange!: boolean
+  200 required!: boolean
+  400
+  401
+  403
+  409
+  body required!: boolean
 GET /api/v1/storage-providers
   200 oauthRedirectUrl!: string
   200 providers![].builtIn!: boolean

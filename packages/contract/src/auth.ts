@@ -17,7 +17,15 @@ export type SessionUser = z.infer<typeof sessionUser>;
 export const sessionState = z.discriminatedUnion("status", [
   z.object({ status: z.literal("needs-setup") }),
   z.object({ status: z.literal("signed-out") }),
-  z.object({ status: z.literal("signed-in"), user: sessionUser }),
+  z.object({
+    status: z.literal("signed-in"),
+    user: sessionUser,
+    /**
+     * True while this panel requires two-factor sign-in and this account hasn't turned it on: until it
+     * does, turning it on is all it can do.
+     */
+    twoFactorSetupRequired: z.boolean().default(false),
+  }),
 ]);
 export type SessionState = z.infer<typeof sessionState>;
 
@@ -117,3 +125,20 @@ export const twoFactorDisable = z
     message: "Enter the 6-digit code or a recovery code",
   });
 export type TwoFactorDisable = z.infer<typeof twoFactorDisable>;
+
+/** PUT /api/v1/settings/two-factor. Only the owner changes it, once their own account has it. */
+export const twoFactorPolicy = z.strictObject({
+  /** Every account must turn on two-factor sign-in, and can do nothing else until it has. */
+  required: z.boolean(),
+});
+export type TwoFactorPolicy = z.infer<typeof twoFactorPolicy>;
+
+/** GET /api/v1/settings/two-factor */
+export const twoFactorPolicyState = z.object({
+  required: z.boolean(),
+  /** Accounts without two-factor sign-in: while it is required, they can only turn it on. */
+  accountsWithout: z.number().int().min(0),
+  /** Whether the person asking may change it: only the owner can. */
+  canChange: z.boolean(),
+});
+export type TwoFactorPolicyState = z.infer<typeof twoFactorPolicyState>;

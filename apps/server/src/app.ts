@@ -10,6 +10,7 @@ import { PROXY_PAGES_PREFIX } from "./core/proxy";
 import * as featureModules from "./features";
 import { authorizeRequests, guardPanelHost } from "./features/access/guard";
 import { noindexPanelResponses } from "./features/server-purpose/routes";
+import { requireTwoFactorSetup } from "./features/two-factor-policy/service";
 
 const API_PREFIX = "/api/v1";
 const OPENAPI_PATH = `${API_PREFIX}/openapi.json`;
@@ -132,12 +133,10 @@ export function createApp(deps: AppDeps, featureList: Feature[] = features): Api
     authenticate(deps, (path) => featureList.some((feature) => feature.readsOwnBearer?.(path))),
   );
   app.use(`${API_PREFIX}/*`, originGuard(deps.config));
-  app.use(
-    `${API_PREFIX}/*`,
-    requireAuthentication(
-      (path) => publicPaths.has(path) || featureList.some((feature) => feature.isPublicPath?.(path)),
-    ),
-  );
+  const isPublic = (path: string) =>
+    publicPaths.has(path) || featureList.some((feature) => feature.isPublicPath?.(path));
+  app.use(`${API_PREFIX}/*`, requireAuthentication(isPublic));
+  app.use(`${API_PREFIX}/*`, requireTwoFactorSetup(deps, isPublic));
 
   app.use(`${API_PREFIX}/*`, authorizeRequests(deps));
   app.use(`${API_PREFIX}/*`, refuseChangesWhileStorageFails(deps));

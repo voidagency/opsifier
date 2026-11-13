@@ -15,6 +15,7 @@ import { InvitationPage } from "../features/auth/InvitationPage";
 import { LoginPage } from "../features/auth/LoginPage";
 import { SetupPage } from "../features/auth/SetupPage";
 import { sessionQuery } from "../features/auth/session";
+import { TwoFactorRequiredPage } from "../features/auth/TwoFactorRequiredPage";
 import { createBoxRoutes, createIdeRoute } from "../features/box/routes";
 import { createComposeRoutes } from "../features/compose/routes";
 import { servicePageLink } from "../features/databases/links";
@@ -121,6 +122,22 @@ const invitationRoute = createRoute({
   component: InvitationPage,
 });
 
+/** Where an account goes while the panel requires two-factor sign-in and it hasn't turned it on. */
+const twoFactorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "two-factor",
+  beforeLoad: async ({ context }) => {
+    const session = await getSession(context.queryClient);
+    if (session.status !== "signed-in") {
+      throw redirect({ to: "/login", replace: true });
+    }
+    if (!session.twoFactorSetupRequired) {
+      throw redirect({ to: "/", replace: true });
+    }
+  },
+  component: TwoFactorRequiredPage,
+});
+
 const appRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "app",
@@ -135,6 +152,9 @@ const appRoute = createRoute({
         search: location.href === "/" ? {} : { redirect: location.href },
         replace: true,
       });
+    }
+    if (session.twoFactorSetupRequired) {
+      throw redirect({ to: "/two-factor", replace: true });
     }
   },
   component: AppShell,
@@ -302,6 +322,7 @@ const routeTree = rootRoute.addChildren([
   setupRoute,
   loginRoute,
   invitationRoute,
+  twoFactorRoute,
   createIdeRoute(() => rootRoute),
   appRoute.addChildren([
     overviewRoute,

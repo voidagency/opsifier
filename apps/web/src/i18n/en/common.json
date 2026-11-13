@@ -177,7 +177,10 @@
     "box_not_running": "This box has no running task to do that in.",
     "invitation_invalid": "This invitation link no longer works. Ask an administrator for a new one.",
     "too_many_invitations": "This panel already keeps as many invitations as it can. Revoke some first.",
-    "panel_address_unknown": "This panel has no domain of its own to put in an email. Set one in Settings → General, or show the links instead."
+    "panel_address_unknown": "This panel has no domain of its own to put in an email. Set one in Settings → General, or show the links instead.",
+    "two_factor_setup_required": "This panel requires two-factor sign-in: turn it on for this account first.",
+    "two_factor_required_by_policy": "This panel requires two-factor sign-in, so it can't be turned off.",
+    "two_factor_first": "Turn on two-factor sign-in on your own account first."
   },
   "retention": {
     "removed": "Removed",

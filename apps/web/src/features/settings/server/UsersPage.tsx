@@ -31,6 +31,7 @@ import { accessApi, userKeysQuery, usersQuery } from "./api";
 import { GrantsEditor } from "./GrantsEditor";
 import { InviteDialog } from "./invitations/InviteDialog";
 import { PendingInvitations } from "./invitations/PendingInvitations";
+import { TwoFactorPolicySection } from "./TwoFactorPolicySection";
 
 function UserDialog({
   open,
@@ -360,6 +361,7 @@ export function UsersPage() {
           </Button>
         </div>
       </div>
+      <TwoFactorPolicySection />
       {isPending ? (
         <Skeleton className="h-24" />
       ) : isError ? (

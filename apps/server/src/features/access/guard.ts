@@ -8,6 +8,7 @@ import { PROXY_PAGES_PREFIX } from "../../core/proxy";
 import type { TopicGuard } from "../../core/realtime";
 import { findAction } from "../actions/repo";
 import { isPanelHostAllowed } from "../server/panel-host";
+import { needsTwoFactorSetup } from "../two-factor-policy/service";
 import { type ProjectLevel, type Requirement, requirementFor } from "./policy";
 import {
   type Access,
@@ -181,7 +182,8 @@ export function createTopicGuard(deps: Pick<AppDeps, "db">): TopicGuard {
   return {
     allow(userId, topic) {
       const user = findUser(deps.db, userId);
-      if (user === undefined) {
+      // An account kept to turning on two-factor sign-in listens to nothing, as it reads nothing.
+      if (user === undefined || needsTwoFactorSetup(deps.db, user)) {
         return false;
       }
       if (user.role === "admin" || topic === actionsTopic) {
@@ -207,12 +209,12 @@ export function createTopicGuard(deps: Pick<AppDeps, "db">): TopicGuard {
     },
 
     deliver(userId, topic, payload) {
+      const user = findUser(deps.db, userId);
+      if (user === undefined || needsTwoFactorSetup(deps.db, user)) {
+        return false;
+      }
       if (topic !== actionsTopic) {
         return true;
-      }
-      const user = findUser(deps.db, userId);
-      if (user === undefined) {
-        return false;
       }
       if (user.role === "admin") {
         return true;

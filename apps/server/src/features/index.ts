@@ -49,3 +49,4 @@ export { feature as services } from "./services/routes";
 export { feature as storageProviders } from "./storage-providers/routes";
 export { feature as system } from "./system/routes";
 export { feature as templates } from "./templates/routes";
+export { feature as twoFactorPolicy } from "./two-factor-policy/routes";

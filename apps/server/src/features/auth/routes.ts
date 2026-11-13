@@ -165,7 +165,8 @@ export const feature: Feature = {
 
     app.openapi(credentialsRoute, async (c) => {
       const user = await service.changeCredentials(requireSessionPrincipal(c), c.req.valid("json"));
-      return c.json({ status: "signed-in" as const, user }, 200);
+      // Kept to turning on two-factor sign-in, an account never gets this far.
+      return c.json({ status: "signed-in" as const, user, twoFactorSetupRequired: false }, 200);
     });
 
     app.openapi(beginTwoFactorRoute, async (c) => {
@@ -183,7 +184,8 @@ export const feature: Feature = {
 
     app.openapi(disableTwoFactorRoute, async (c) => {
       const user = await service.disableTwoFactor(requireSessionPrincipal(c), c.req.valid("json"));
-      return c.json({ status: "signed-in" as const, user }, 200);
+      // Turning it off is refused while it is required, so nothing is required of this account now.
+      return c.json({ status: "signed-in" as const, user, twoFactorSetupRequired: false }, 200);
     });
   },
 };

@@ -54,6 +54,7 @@ type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 const basePath = "/api/v1";
 
 let onUnauthorized: (() => void) | undefined;
+let onTwoFactorRequired: (() => void) | undefined;
 
 /**
  * Registers what happens when a request made with a session comes back 401: the session has ended
@@ -61,6 +62,14 @@ let onUnauthorized: (() => void) | undefined;
  */
 export function setUnauthorizedHandler(handler: (() => void) | undefined): void {
   onUnauthorized = handler;
+}
+
+/**
+ * Registers what happens when the panel answers that this account must turn on two-factor sign-in
+ * before anything else: the owner may have required it while the app was open.
+ */
+export function setTwoFactorRequiredHandler(handler: (() => void) | undefined): void {
+  onTwoFactorRequired = handler;
 }
 
 function buildUrl(path: string, query: RequestOptions<unknown>["query"]): string {
@@ -129,7 +138,11 @@ async function request<T>(method: Method, path: string, options: RequestOptions<
     if (response.status === 401 && path !== "/auth/login") {
       onUnauthorized?.();
     }
-    throw await toApiError(response);
+    const error = await toApiError(response);
+    if (error.code === "two_factor_setup_required") {
+      onTwoFactorRequired?.();
+    }
+    throw error;
   }
 
   let data: unknown;

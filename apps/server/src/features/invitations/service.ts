@@ -36,6 +36,7 @@ import type { SignedIn } from "../auth/service";
 import { findSmtpChannel, sendMailThrough } from "../notifications/service";
 import { getPanelDomainSettings } from "../server/settings";
 import { getSystemInfo } from "../system/service";
+import { needsTwoFactorSetup } from "../two-factor-policy/service";
 import { invitationMail } from "./mail";
 import * as repo from "./repo";
 
@@ -562,7 +563,15 @@ export async function acceptInvitation(
     title: `Accepted the invitation from ${found.inviter.email}`,
     actorEmail: user.email,
   });
-  return { token, persistent: false, state: { status: "signed-in", user: toSessionUser(user) } };
+  return {
+    token,
+    persistent: false,
+    state: {
+      status: "signed-in",
+      user: toSessionUser(user),
+      twoFactorSetupRequired: needsTwoFactorSetup(deps.db, user),
+    },
+  };
 }
 
 /** E-mails that were waiting when the panel stopped can't go out any more: their links were in memory. */
