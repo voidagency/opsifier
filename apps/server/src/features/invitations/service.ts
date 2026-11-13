@@ -74,6 +74,7 @@ function toInvitation(row: repo.InvitationRow, inviterEmail: string, now: number
     email: row.email,
     role: userRole.parse(row.role),
     projects: row.projects,
+    allProjects: row.role === "admin" ? null : row.allProjectsRole,
     invitedBy: inviterEmail,
     createdAt: row.createdAt.toISOString(),
     expiresAt: row.expiresAt.toISOString(),
@@ -283,6 +284,7 @@ export function createInvitations(
   requestOrigin: string,
 ): CreatedInvitations {
   const grants = request.role === "admin" ? [] : [...request.projects];
+  const allProjectsRole = request.role === "admin" ? null : request.allProjects;
   assertProjectsExist(deps, grants);
   const channel = resolveChannel(deps, request.channel);
   const base = channel === null ? panelBase(deps, requestOrigin) : mailBase(deps, requestOrigin);
@@ -318,6 +320,7 @@ export function createInvitations(
           email,
           role: request.role,
           projects: grants,
+          allProjectsRole,
           tokenHash,
           invitedBy: actor.user.id,
           delivery: channel === null ? "link" : "sending",
@@ -539,6 +542,8 @@ export async function acceptInvitation(
         name: input.name,
         passwordHash,
         role: invitation.role,
+        // It reaches whatever projects exist once the account does, those created since included.
+        allProjectsRole: invitation.role === "admin" ? null : invitation.allProjectsRole,
         createdAt: timestamp,
         updatedAt: timestamp,
       });

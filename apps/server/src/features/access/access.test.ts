@@ -7,6 +7,7 @@ import type {
   DomainsOverview,
   PanelUser,
   ProjectList,
+  ProjectMemberList,
   ServiceDetail,
   SessionState,
   UserList,
@@ -687,6 +688,221 @@ describe("per-project access", () => {
   });
 });
 
+describe("a role in every project", () => {
+  type Grants = Array<{ project: string; role: "viewer" | "operator" }>;
+
+  async function everywhere(
+    email: string,
+    allProjects: "viewer" | "operator",
+    projects: Grants = [],
+  ): Promise<{ user: PanelUser; cookie: string }> {
+    const created = await api<PanelUser>("POST", "/api/v1/users", admin, {
+      email,
+      password: TEST_PASSWORD,
+      role: "member",
+      projects,
+      allProjects,
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.allProjects).toBe(allProjects);
+    const login = await authPost(context.app, "login", { email, password: TEST_PASSWORD });
+    expect(login.status).toBe(200);
+    return { user: created.body, cookie: login.cookie as string };
+  }
+
+  async function addProject(name: string): Promise<void> {
+    expect((await api("POST", "/api/v1/projects", admin, { name })).status).toBe(201);
+    expect((await api("POST", `/api/v1/projects/${name}/services`, admin, { name: "web" })).status).toBe(201);
+  }
+
+  const edit = (user: PanelUser, changes: Record<string, unknown>) =>
+    api<PanelUser>("PUT", `/api/v1/users/${user.id}`, admin, {
+      email: user.email,
+      role: "member",
+      projects: user.projects,
+      ...changes,
+    });
+
+  const environment = (project: string, cookie: string) =>
+    api("GET", `/api/v1/projects/${project}/services/web/environment`, cookie);
+
+  it("reaches every project as that role, a project created later included", async () => {
+    const { cookie } = await everywhere("v@example.com", "viewer");
+    await addProject("later");
+
+    const projects = await api<ProjectList>("GET", "/api/v1/projects", cookie);
+    expect(projects.body.projects.map((project) => project.name).sort()).toEqual(["later", "secret", "shop"]);
+    expect((await api("GET", "/api/v1/projects/later/services/web", cookie)).status).toBe(200);
+    // Still a viewer: the inventory, not the variables, and nothing that changes anything.
+    expect((await environment("later", cookie)).status).toBe(403);
+    expect(
+      (await api("PUT", "/api/v1/projects/later/services/web/notes", cookie, { notes: "x" })).status,
+    ).toBe(403);
+    expect((await api("GET", "/api/v1/projects/does-not-exist", cookie)).status).toBe(404);
+  });
+
+  it("lets an operator in every project work in each one, and nothing beyond", async () => {
+    const { cookie } = await everywhere("o@example.com", "operator");
+    await addProject("later");
+
+    expect((await environment("later", cookie)).status).toBe(200);
+    expect(
+      (await api("PUT", "/api/v1/projects/later/services/web/notes", cookie, { notes: "x" })).status,
+    ).toBe(200);
+    // Deleting a project, creating one and administering the server stay with administrators.
+    expect((await api("DELETE", "/api/v1/projects/later", cookie, { confirm: "later" })).status).toBe(403);
+    expect((await api("POST", "/api/v1/projects", cookie, { name: "mine" })).status).toBe(403);
+    expect((await api("GET", "/api/v1/users", cookie)).status).toBe(403);
+    expect((await api("GET", "/api/v1/server/overview", cookie)).status).toBe(403);
+
+    const domains = await api<DomainsOverview>("GET", "/api/v1/domains", cookie);
+    expect(domains.body.managedProjects).toEqual(["later", "secret", "shop"]);
+  });
+
+  it("shows the activity of every project, but not what other accounts did on the server", async () => {
+    const { user, cookie } = await everywhere("a@example.com", "viewer");
+    await api("POST", "/api/v1/projects/secret/services/web/deploy", admin, {});
+
+    const actions = await api<ActionPage>("GET", "/api/v1/actions?limit=100", cookie);
+    expect(actions.status).toBe(200);
+    expect(actions.body.items.some((item) => item.projectName === "secret")).toBe(true);
+    expect(
+      actions.body.items.every((item) => item.projectName !== null || item.actorEmail === user.email),
+    ).toBe(true);
+  });
+
+  it("gives each project the stronger of the two roles", async () => {
+    const raised = await everywhere("r@example.com", "viewer", [{ project: "shop", role: "operator" }]);
+    expect((await environment("shop", raised.cookie)).status).toBe(200);
+    expect((await environment("secret", raised.cookie)).status).toBe(403);
+
+    const covered = await everywhere("c@example.com", "operator", [{ project: "shop", role: "viewer" }]);
+    expect((await environment("shop", covered.cookie)).status).toBe(200);
+    expect((await environment("secret", covered.cookie)).status).toBe(200);
+  });
+
+  it("is kept by an edit that leaves it out, and taken away with null", async () => {
+    const { user } = await everywhere("k@example.com", "operator");
+
+    const kept = await api<PanelUser>("PUT", `/api/v1/users/${user.id}`, admin, {
+      email: user.email,
+      role: "member",
+      projects: [],
+    });
+    expect(kept.status).toBe(200);
+    expect(kept.body.allProjects).toBe("operator");
+
+    expect((await edit(user, { allProjects: null })).body.allProjects).toBeNull();
+    const listed = await api<UserList>("GET", "/api/v1/users", admin);
+    expect(listed.body.users.find((candidate) => candidate.id === user.id)?.allProjects).toBeNull();
+  });
+
+  it("takes rights away at once when lowered, and ends the sessions and keys that held them", async () => {
+    const { user, cookie } = await everywhere("l@example.com", "operator");
+    const key = await api<CreatedApiKey>("POST", "/api/v1/me/api-keys", cookie, {
+      name: "ci",
+      level: "write",
+    });
+    expect(
+      (await withKey("GET", "/api/v1/projects/secret/services/web/environment", key.body.token)).status,
+    ).toBe(200);
+
+    expect((await edit(user, { allProjects: "viewer" })).status).toBe(200);
+
+    expect((await api("GET", "/api/v1/projects/shop", cookie)).status).toBe(401);
+    expect((await withKey("GET", "/api/v1/projects/shop", key.body.token)).status).toBe(401);
+  });
+
+  it("counts the projects to come: taking it away ends sessions even when each project is granted too", async () => {
+    const { user, cookie } = await everywhere("f@example.com", "viewer", [
+      { project: "shop", role: "viewer" },
+      { project: "secret", role: "viewer" },
+    ]);
+
+    expect((await edit(user, { allProjects: null })).status).toBe(200);
+
+    expect((await api("GET", "/api/v1/projects/shop", cookie)).status).toBe(401);
+  });
+
+  it("keeps sessions when it is only raised", async () => {
+    const { user, cookie } = await createMember("g@example.com", [{ project: "shop", role: "viewer" }]);
+    expect((await api("GET", "/api/v1/projects/secret", cookie)).status).toBe(404);
+
+    expect((await edit(user, { allProjects: "viewer" })).status).toBe(200);
+    expect((await api("GET", "/api/v1/projects/secret", cookie)).status).toBe(200);
+
+    expect((await edit(user, { allProjects: "operator" })).status).toBe(200);
+    expect((await environment("secret", cookie)).status).toBe(200);
+  });
+
+  it("is a member's: an administrator holds none, and it is one of the two project roles", async () => {
+    const created = await api<PanelUser>("POST", "/api/v1/users", admin, {
+      email: "root@example.com",
+      password: TEST_PASSWORD,
+      role: "admin",
+      allProjects: "operator",
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.allProjects).toBeNull();
+
+    const invalid = await api("POST", "/api/v1/users", admin, {
+      email: "b@example.com",
+      password: TEST_PASSWORD,
+      allProjects: "admin",
+    });
+    expect(invalid.status).toBe(400);
+    expect(apiErrorOf(invalid).fields).toHaveProperty("allProjects");
+
+    // A promotion ends it, and coming back to member does not bring it back.
+    const { user } = await everywhere("p@example.com", "viewer");
+    const promoted = await api<PanelUser>("PUT", `/api/v1/users/${user.id}`, admin, {
+      email: user.email,
+      role: "admin",
+      projects: [],
+    });
+    expect(promoted.body.allProjects).toBeNull();
+    const demoted = await api<PanelUser>("PUT", `/api/v1/users/${user.id}`, admin, {
+      email: user.email,
+      role: "member",
+      projects: [],
+    });
+    expect(demoted.body.allProjects).toBeNull();
+  });
+
+  it("holds a key narrowed to some projects to those, a project created later among them", async () => {
+    const { cookie } = await everywhere("n@example.com", "operator");
+    await addProject("later");
+
+    const key = await api<CreatedApiKey>("POST", "/api/v1/me/api-keys", cookie, {
+      name: "later-only",
+      level: "write",
+      projects: ["later"],
+    });
+    expect(key.status).toBe(201);
+    expect((await withKey("GET", "/api/v1/projects/later", key.body.token)).status).toBe(200);
+    expect((await withKey("GET", "/api/v1/projects/shop", key.body.token)).status).toBe(404);
+  });
+
+  it("follows the same rules on realtime topics", async () => {
+    const viewer = await everywhere("tv@example.com", "viewer");
+    const operator = await everywhere("to@example.com", "operator");
+    await addProject("later");
+    const guard = createTopicGuard(context.deps);
+
+    expect(guard.allow(viewer.user.id, serviceMetricsTopic("later", "web"))).toBe(true);
+    expect(guard.allow(viewer.user.id, serviceLogsTopic("later", "web"))).toBe(false);
+    expect(guard.allow(viewer.user.id, servicesMetricsTopic)).toBe(false);
+    expect(guard.allow(operator.user.id, serviceLogsTopic("later", "web"))).toBe(true);
+    expect(guard.allow(operator.user.id, serviceLogsTopic("does-not-exist", "web"))).toBe(false);
+    expect(guard.deliver?.(viewer.user.id, actionsTopic, { projectName: "later", actorEmail: null })).toBe(
+      true,
+    );
+    expect(
+      guard.deliver?.(viewer.user.id, actionsTopic, { projectName: null, actorEmail: "admin@example.com" }),
+    ).toBe(false);
+  });
+});
+
 describe("moving a service between projects", () => {
   const moveWeb = (cookie: string | undefined, projectName: string, name = "web") =>
     api("POST", "/api/v1/projects/shop/services/web/rename", cookie, { projectName, name });
@@ -968,6 +1184,162 @@ describe("realtime topics", () => {
   });
 });
 
+describe("who reaches a project", () => {
+  const membersOf = (project: string, cookie: string | undefined = admin) =>
+    api<ProjectMemberList>("GET", `/api/v1/projects/${project}/members`, cookie);
+  const setMember = (
+    project: string,
+    user: string,
+    role: "viewer" | "operator" | null,
+    cookie: string | undefined = admin,
+  ) => api<ProjectMemberList>("PUT", `/api/v1/projects/${project}/members/${user}`, cookie, { role });
+
+  async function everywhere(
+    email: string,
+    allProjects: "viewer" | "operator",
+    projects: Array<{ project: string; role: "viewer" | "operator" }> = [],
+  ): Promise<{ user: PanelUser; cookie: string }> {
+    const created = await api<PanelUser>("POST", "/api/v1/users", admin, {
+      email,
+      password: TEST_PASSWORD,
+      projects,
+      allProjects,
+    });
+    expect(created.status).toBe(201);
+    const login = await authPost(context.app, "login", { email, password: TEST_PASSWORD });
+    return { user: created.body, cookie: login.cookie as string };
+  }
+
+  it("lists the administrators, the members with a role in every project and the project's own, nobody else", async () => {
+    await createMember("own@example.com", [{ project: "shop", role: "operator" }]);
+    await createMember("elsewhere@example.com", [{ project: "secret", role: "operator" }]);
+    await everywhere("all@example.com", "viewer");
+    await everywhere("raised@example.com", "viewer", [{ project: "shop", role: "operator" }]);
+    await createMember("root@example.com", [], "admin");
+
+    const listed = await membersOf("shop");
+    expect(listed.status).toBe(200);
+    expect(
+      listed.body.members.map((member) => [
+        member.email,
+        member.role,
+        member.grant,
+        member.allProjects,
+        member.administrator,
+      ]),
+    ).toEqual([
+      ["admin@example.com", "admin", null, null, true],
+      ["root@example.com", "admin", null, null, true],
+      ["all@example.com", "viewer", null, "viewer", false],
+      ["own@example.com", "operator", "operator", null, false],
+      ["raised@example.com", "operator", "operator", "viewer", false],
+    ]);
+    expect(listed.body.members[0]).toMatchObject({ owner: true, active: true });
+  });
+
+  it("is an administrator's at a browser: out of reach looks missing, and no key gets in", async () => {
+    const operator = await createMember("op@example.com", [{ project: "shop", role: "operator" }]);
+    expect((await membersOf("shop", operator.cookie)).status).toBe(403);
+    expect((await setMember("shop", operator.user.id, "operator", operator.cookie)).status).toBe(403);
+
+    const outside = await membersOf("secret", operator.cookie);
+    const missing = await membersOf("does-not-exist", operator.cookie);
+    expect(outside.status).toBe(404);
+    expect(outside.body).toEqual(missing.body);
+
+    const key = await api<CreatedApiKey>("POST", "/api/v1/me/api-keys", admin, {
+      name: "ci",
+      level: "write",
+    });
+    expect((await withKey("GET", "/api/v1/projects/shop/members", key.body.token)).status).toBe(403);
+    expect((await membersOf("does-not-exist")).status).toBe(404);
+  });
+
+  it("gives, raises, lowers and takes away a project's own role, ending sessions only when it lowers", async () => {
+    const { user, cookie } = await createMember("m@example.com", [{ project: "secret", role: "viewer" }]);
+    expect((await api("GET", "/api/v1/projects/shop", cookie)).status).toBe(404);
+
+    const given = await setMember("shop", user.id, "viewer");
+    expect(given.status).toBe(200);
+    expect(given.body.members.find((member) => member.id === user.id)).toMatchObject({
+      role: "viewer",
+      grant: "viewer",
+    });
+    expect((await api("GET", "/api/v1/projects/shop", cookie)).status).toBe(200);
+
+    expect((await setMember("shop", user.id, "operator")).status).toBe(200);
+    expect((await api("GET", "/api/v1/projects/shop/services/web/environment", cookie)).status).toBe(200);
+    // The other projects' roles are left as they were.
+    const accounts = await api<UserList>("GET", "/api/v1/users", admin);
+    expect(accounts.body.users.find((account) => account.id === user.id)?.projects).toEqual(
+      expect.arrayContaining([
+        { project: "secret", role: "viewer" },
+        { project: "shop", role: "operator" },
+      ]),
+    );
+
+    expect((await setMember("shop", user.id, "viewer")).status).toBe(200);
+    expect((await api("GET", "/api/v1/projects/shop", cookie)).status).toBe(401);
+
+    const again = await authPost(context.app, "login", { email: "m@example.com", password: TEST_PASSWORD });
+    const removed = await setMember("shop", user.id, null);
+    expect(removed.body.members.some((member) => member.id === user.id)).toBe(false);
+    expect((await api("GET", "/api/v1/projects/secret", again.cookie)).status).toBe(401);
+  });
+
+  it("changes nothing, and ends nothing, when the role is already the one asked for", async () => {
+    const { user, cookie } = await createMember("same@example.com", [{ project: "shop", role: "operator" }]);
+    expect((await setMember("shop", user.id, "operator")).status).toBe(200);
+    expect((await api("GET", "/api/v1/projects/shop", cookie)).status).toBe(200);
+  });
+
+  it("raises a member above its role in every project here, and lowers it back", async () => {
+    const { user, cookie } = await everywhere("all@example.com", "viewer");
+
+    const raised = await setMember("shop", user.id, "operator");
+    expect(raised.body.members.find((member) => member.id === user.id)).toMatchObject({
+      role: "operator",
+      grant: "operator",
+      allProjects: "viewer",
+    });
+    expect((await api("GET", "/api/v1/projects/shop/services/web/environment", cookie)).status).toBe(200);
+
+    const back = await setMember("shop", user.id, null);
+    expect(back.body.members.find((member) => member.id === user.id)).toMatchObject({
+      role: "viewer",
+      grant: null,
+    });
+    expect((await api("GET", "/api/v1/projects/shop", cookie)).status).toBe(401);
+  });
+
+  it("says in the activity log which project and which role changed", async () => {
+    const { user } = await createMember("log@example.com");
+    await setMember("shop", user.id, "operator");
+    await setMember("shop", user.id, null);
+
+    const titles = (await api<ActionPage>("GET", "/api/v1/actions?limit=20", admin)).body.items.map(
+      (item) => item.title,
+    );
+    expect(titles).toContain("Make log@example.com operator in shop");
+    expect(titles).toContain("Take away the own role of log@example.com in shop");
+  });
+
+  it("refuses an administrator, an account that doesn't exist and a role no project gives", async () => {
+    const root = await createMember("root@example.com", [], "admin");
+    const refused = await setMember("shop", root.user.id, "viewer");
+    expect(refused.status).toBe(409);
+    expect(apiErrorOf(refused).code).toBe("administrator_reaches_all");
+
+    expect((await setMember("shop", "nobody", "viewer")).status).toBe(404);
+    expect((await setMember("does-not-exist", root.user.id, "viewer")).status).toBe(404);
+
+    const { user } = await createMember("m@example.com");
+    const invalid = await api("PUT", `/api/v1/projects/shop/members/${user.id}`, admin, { role: "admin" });
+    expect(invalid.status).toBe(400);
+    expect(apiErrorOf(invalid).fields).toHaveProperty("role");
+  });
+});
+
 describe("the policy table", () => {
   it("denies by default", () => {
     expect(requirementFor("GET", "/api/v1/some-future-feature")).toEqual({ kind: "admin", session: false });
@@ -985,5 +1357,18 @@ describe("the policy table", () => {
       level: "operator",
     });
     expect(requirementFor("POST", "/api/v1/projects/shop/services/web")).toMatchObject({ level: "operator" });
+  });
+
+  it("leaves who reaches a project to an administrator at a browser", () => {
+    expect(requirementFor("GET", "/api/v1/projects/shop/members")).toEqual({
+      kind: "project",
+      project: "shop",
+      level: "admin",
+      session: true,
+    });
+    expect(requirementFor("PUT", "/api/v1/projects/shop/members/u1")).toMatchObject({
+      level: "admin",
+      session: true,
+    });
   });
 });

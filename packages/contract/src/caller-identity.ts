@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiKeyLevel } from "./access";
+import { allProjectsRole, apiKeyLevel } from "./access";
 import { userRole } from "./auth";
 
 /** What the caller holds in one project. An administrator holds `admin` in whichever projects it reaches. */
@@ -35,6 +35,11 @@ export const callerIdentity = z.object({
   ]),
   /** Each project in reach and the role held in it. Null means every project, as an administrator. */
   projects: z.array(z.object({ name: z.string(), role: callerProjectRole })).nullable(),
+  /**
+   * A member's role in every project, which also reaches the projects created later. `projects` already
+   * counts it. Null without one, for an administrator, and for a key narrowed to a list of projects.
+   */
+  allProjects: allProjectsRole,
   /** Every API operation this caller would be allowed to call. */
   operations: z.array(callerOperation),
 });

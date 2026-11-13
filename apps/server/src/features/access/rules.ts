@@ -1,8 +1,8 @@
-import type { ActionEntry, ProjectRole } from "@opsifier/contract";
-import { eq } from "drizzle-orm";
+import { type ActionEntry, effectiveProjectRole, type ProjectRole } from "@opsifier/contract";
+import { asc, eq } from "drizzle-orm";
 import type { Principal } from "../../core/auth";
 import type { DbHandle } from "../../core/db";
-import { projectMembers, users } from "../../core/db/schema";
+import { projectMembers, projects, users } from "../../core/db/schema";
 import type { ProjectLevel } from "./policy";
 
 export type ProjectAccessRole = ProjectRole | "admin";
@@ -22,9 +22,25 @@ export interface Access {
   canWrite: boolean;
 }
 
-export function membershipsOf(db: DbHandle, userId: string): Map<string, ProjectRole> {
-  const rows = db.select().from(projectMembers).where(eq(projectMembers.userId, userId)).all();
-  return new Map(rows.map((row) => [row.projectName, row.role as ProjectRole]));
+/**
+ * The projects a member reaches, and as what: each project's own grant, raised to the account's role in
+ * every project. That role is read against the projects there are at the time of asking, so a project
+ * created later is in reach from its first request, and one deleted is gone with it.
+ */
+export function membershipsOf(
+  db: DbHandle,
+  user: Pick<typeof users.$inferSelect, "id" | "allProjectsRole">,
+): Map<string, ProjectRole> {
+  const rows = db.select().from(projectMembers).where(eq(projectMembers.userId, user.id)).all();
+  const own = new Map(rows.map((row) => [row.projectName, row.role as ProjectRole]));
+  const everywhere = user.allProjectsRole;
+  if (everywhere === null) {
+    return own;
+  }
+  const existing = db.select({ name: projects.name }).from(projects).orderBy(asc(projects.name)).all();
+  return new Map(
+    existing.map(({ name }) => [name, effectiveProjectRole(everywhere, own.get(name)) ?? everywhere]),
+  );
 }
 
 export function accessOf(db: DbHandle, principal: Principal): Access {
@@ -38,7 +54,7 @@ export function accessOf(db: DbHandle, principal: Principal): Access {
 
   let granted: Map<string, ProjectAccessRole> = admin
     ? new Map((keyProjects as string[]).map((project) => [project, "admin"]))
-    : membershipsOf(db, principal.user.id);
+    : membershipsOf(db, principal.user);
   if (!admin && keyProjects !== null) {
     granted = new Map([...granted].filter(([project]) => keyProjects.includes(project)));
   }

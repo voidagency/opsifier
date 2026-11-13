@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 27
+# documented-changes: 29
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -88,6 +88,7 @@ POST /api/v1/auth/credentials
   body email!: string
   body newPassword!: string
 GET /api/v1/auth/identity
+  200 allProjects!: enum(null|operator|viewer)
   200 credential!.expiresAt!: null|string
   200 credential!.kind!: enum(api_key)
   200 credential!.kind!: enum(session)
@@ -1063,6 +1064,39 @@ POST /api/v1/projects/{project}/env/reveal
   401
   404
   path project!: string
+GET /api/v1/projects/{project}/members
+  200 members![].active!: boolean
+  200 members![].administrator!: boolean
+  200 members![].allProjects!: enum(null|operator|viewer)
+  200 members![].email!: string
+  200 members![].grant!: enum(null|operator|viewer)
+  200 members![].id!: string
+  200 members![].name!: string
+  200 members![].owner!: boolean
+  200 members![].role!: enum(admin|operator|viewer)
+  400
+  401
+  403
+  404
+  path project!: string
+PUT /api/v1/projects/{project}/members/{user}
+  200 members![].active!: boolean
+  200 members![].administrator!: boolean
+  200 members![].allProjects!: enum(null|operator|viewer)
+  200 members![].email!: string
+  200 members![].grant!: enum(null|operator|viewer)
+  200 members![].id!: string
+  200 members![].name!: string
+  200 members![].owner!: boolean
+  200 members![].role!: enum(admin|operator|viewer)
+  400
+  401
+  403
+  404
+  409
+  body role!: enum(null|operator|viewer)
+  path project!: string
+  path user!: string
 GET /api/v1/projects/{project}/schema
   200 services![].data!.deploy!.command!: null|string
   200 services![].data!.deploy!.replicas!: integer
@@ -5249,6 +5283,7 @@ POST /api/v1/templates/preview
   body schema!: string
 GET /api/v1/users
   200 users![].active!: boolean
+  200 users![].allProjects: enum(null|operator|viewer)
   200 users![].apiKeyCount!: integer
   200 users![].createdAt!: string
   200 users![].email!: string
@@ -5264,6 +5299,7 @@ GET /api/v1/users
   403
 POST /api/v1/users
   201 active!: boolean
+  201 allProjects: enum(null|operator|viewer)
   201 apiKeyCount!: integer
   201 createdAt!: string
   201 email!: string
@@ -5279,12 +5315,14 @@ POST /api/v1/users
   401
   403
   409
+  body allProjects: enum(null|operator|viewer)
   body email!: string
   body password!: string
   body projects[].project!: string
   body projects[].role!: enum(operator|viewer)
   body role: enum(admin|member)
 GET /api/v1/users/invitations
+  200 invitations![].allProjects: enum(null|operator|viewer)
   200 invitations![].channelName!: null|string
   200 invitations![].createdAt!: string
   200 invitations![].delivery!: enum(failed|link|sending|sent)
@@ -5317,6 +5355,7 @@ POST /api/v1/users/invitations
   201 action!.title!: string
   201 action!.type!: string
   201 results![].email!: string
+  201 results![].invitation!.allProjects: enum(null|operator|viewer)
   201 results![].invitation!.channelName!: null|string
   201 results![].invitation!.createdAt!: string
   201 results![].invitation!.delivery!: enum(failed|link|sending|sent)
@@ -5336,6 +5375,7 @@ POST /api/v1/users/invitations
   401
   403
   409
+  body allProjects: enum(null|operator|viewer)
   body channel: null|string
   body emails![]: string
   body language: enum(en|fr)
@@ -5365,6 +5405,7 @@ POST /api/v1/users/invitations/{invitation}/resend
   200 action!.status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
   200 action!.title!: string
   200 action!.type!: string
+  200 invitation!.allProjects: enum(null|operator|viewer)
   200 invitation!.channelName!: null|string
   200 invitation!.createdAt!: string
   200 invitation!.delivery!: enum(failed|link|sending|sent)
@@ -5398,6 +5439,7 @@ DELETE /api/v1/users/{user}
   path user!: string
 PUT /api/v1/users/{user}
   200 active!: boolean
+  200 allProjects: enum(null|operator|viewer)
   200 apiKeyCount!: integer
   200 createdAt!: string
   200 email!: string
@@ -5414,6 +5456,7 @@ PUT /api/v1/users/{user}
   403
   404
   409
+  body allProjects: enum(null|operator|viewer)
   body email!: string
   body hostAdmin: boolean
   body password: string
@@ -5423,6 +5466,7 @@ PUT /api/v1/users/{user}
   path user!: string
 POST /api/v1/users/{user}/active
   200 active!: boolean
+  200 allProjects: enum(null|operator|viewer)
   200 apiKeyCount!: integer
   200 createdAt!: string
   200 email!: string

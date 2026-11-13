@@ -19,8 +19,10 @@ import {
   toast,
   useDocumentTitle,
 } from "../../ui";
+import { useCurrentUser } from "../auth/session";
 import { VariablesEditor } from "../services/tabs/environment/VariablesEditor";
 import { projectEnvQuery, projectQuery, projectSchemaQuery, projectsApi, projectsKey } from "./api";
+import { ProjectAccess } from "./ProjectAccess";
 
 const route = getRouteApi("/app/projects/$project/settings");
 
@@ -173,6 +175,8 @@ function DangerSection({ project }: { project: string }) {
 export function ProjectSettingsPage() {
   const { t } = useTranslation("projects");
   const { project } = route.useParams();
+  // Who reaches a project is account administration, which only administrators can see or change.
+  const administrator = useCurrentUser()?.role === "admin";
   useDocumentTitle(t("settings.pageTitle", { name: project }));
 
   return (
@@ -184,6 +188,15 @@ export function ProjectSettingsPage() {
       />
       <EnvironmentSection project={project} />
       <SchemaSection project={project} />
+      {administrator && (
+        <Section
+          pictogram="access"
+          title={t("settings.access.title")}
+          description={t("settings.access.description")}
+        >
+          <ProjectAccess project={project} />
+        </Section>
+      )}
       <DangerSection project={project} />
     </>
   );

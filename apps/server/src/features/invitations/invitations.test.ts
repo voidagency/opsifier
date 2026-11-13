@@ -170,10 +170,35 @@ describe("inviting", () => {
     const token = await inviteOne("root@example.com", {
       role: "admin",
       projects: [{ project: "shop", role: "viewer" }],
+      allProjects: "operator",
     });
-    expect((await listInvitations()).body.invitations[0]).toMatchObject({ role: "admin", projects: [] });
+    expect((await listInvitations()).body.invitations[0]).toMatchObject({
+      role: "admin",
+      projects: [],
+      allProjects: null,
+    });
 
     expect((await accept(token)).body).toMatchObject({ status: "signed-in", user: { role: "admin" } });
+  });
+
+  it("invites everyone in the list with the same role in every project", async () => {
+    const created = await invite({
+      emails: ["ann@example.com", "bob@example.com"],
+      allProjects: "operator",
+      projects: [{ project: "shop", role: "viewer" }],
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.results.map((result) => result.invitation?.allProjects)).toEqual([
+      "operator",
+      "operator",
+    ]);
+    expect((await listInvitations()).body.invitations.map((entry) => entry.allProjects)).toEqual([
+      "operator",
+      "operator",
+    ]);
+    expect(
+      apiErrorOf(await invite({ emails: ["x@example.com"], allProjects: "admin" })).fields,
+    ).toHaveProperty("allProjects");
   });
 
   it("refuses what it can't act on, and invites nobody then", async () => {
@@ -243,6 +268,23 @@ describe("accepting", () => {
     expect(
       (await authPost(context.app, "login", { email: "ann@example.com", password: PASSWORD })).status,
     ).toBe(200);
+  });
+
+  it("gives the account its role in every project, a project created since included", async () => {
+    const token = await inviteOne("ann@example.com", { allProjects: "operator" });
+    expect((await api("POST", "/api/v1/projects", admin, { name: "later" })).status).toBe(201);
+
+    const accepted = await accept(token);
+    expect(accepted.status).toBe(201);
+    const everyone = await api<UserList>("GET", "/api/v1/users", admin);
+    expect(everyone.body.users.find((user) => user.email === "ann@example.com")).toMatchObject({
+      role: "member",
+      projects: [],
+      allProjects: "operator",
+    });
+    // An operator's route, in a project nobody had when the invitation was sent.
+    const later = await call(context.app, "/api/v1/projects/later/env", { cookie: accepted.cookie });
+    expect(later.status).toBe(200);
   });
 
   it("leaves out a project deleted since, and refuses a weak password", async () => {

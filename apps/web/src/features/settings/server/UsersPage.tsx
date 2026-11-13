@@ -1,4 +1,11 @@
-import type { ApiKey, CreatedApiKey, PanelUser, ProjectGrant, UserRole } from "@opsifier/contract";
+import type {
+  ApiKey,
+  CreatedApiKey,
+  PanelUser,
+  ProjectGrant,
+  ProjectRole,
+  UserRole,
+} from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, MailPlus, Pencil, Plus, ShieldCheck, Trash2, UserCheck, UserX } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -28,7 +35,7 @@ import {
 import { useCurrentUser } from "../../auth/session";
 import { CreateKeyDialog, KeySecretDialog, KeysTable } from "../user/ApiKeysPage";
 import { accessApi, userKeysQuery, usersQuery } from "./api";
-import { GrantsEditor } from "./GrantsEditor";
+import { GrantsEditor, reachSummary } from "./GrantsEditor";
 import { InviteDialog } from "./invitations/InviteDialog";
 import { PendingInvitations } from "./invitations/PendingInvitations";
 import { TwoFactorPolicySection } from "./TwoFactorPolicySection";
@@ -50,6 +57,7 @@ function UserDialog({
   const canGrantHost = everyone?.users.find((candidate) => candidate.id === currentUser?.id)?.owner === true;
   const [role, setRole] = useState<UserRole>("member");
   const [grants, setGrants] = useState<ProjectGrant[]>([]);
+  const [allProjects, setAllProjects] = useState<ProjectRole | null>(null);
   const [hostAdmin, setHostAdmin] = useState(false);
   const form = useForm({
     t,
@@ -65,19 +73,27 @@ function UserDialog({
       return errors;
     },
     onSubmit: async ({ email, password }) => {
+      const member = role === "member";
       if (user === null) {
-        await accessApi.createUser({ email, password, role, projects: role === "admin" ? [] : grants });
+        await accessApi.createUser({
+          email,
+          password,
+          role,
+          projects: member ? grants : [],
+          allProjects: member ? allProjects : null,
+        });
       } else {
         await accessApi.updateUser(user.id, {
           email,
           role,
-          projects: role === "admin" ? [] : grants,
+          projects: member ? grants : [],
+          allProjects: member ? allProjects : null,
           ...(password === "" ? {} : { password }),
           ...(canGrantHost && !user.owner ? { hostAdmin } : {}),
         });
       }
       await queryClient.invalidateQueries({ queryKey: ["users"] });
-      toast.success(t(user === null ? "users.created" : "users.updated"));
+      toast.success(t(user === null ? "users.createdDone" : "users.updated"));
       onOpenChange(false);
     },
   });
@@ -88,6 +104,7 @@ function UserDialog({
       reset({ email: user?.email ?? "", password: "" });
       setRole(user?.role ?? "member");
       setGrants(user?.projects ?? []);
+      setAllProjects(user?.allProjects ?? null);
       setHostAdmin(user?.hostAdmin ?? false);
     }
   }, [open, user, reset]);
@@ -143,7 +160,14 @@ function UserDialog({
             ]}
           />
         </Field>
-        {role === "member" && <GrantsEditor grants={grants} onChange={setGrants} />}
+        {role === "member" && (
+          <GrantsEditor
+            grants={grants}
+            onChange={setGrants}
+            allProjects={allProjects}
+            onAllProjectsChange={setAllProjects}
+          />
+        )}
         {role === "admin" && user !== null && (
           <Switch
             label={t("users.hostAdmin")}
@@ -254,9 +278,7 @@ function UserRow({
           )}
         </p>
         <p className="mt-0.5 text-xs text-muted">
-          {user.role === "admin"
-            ? t("users.everyProject")
-            : t("users.projectCount", { count: user.projects.length })}
+          {reachSummary(user, t)}
           {" · "}
           {t("users.created", { when: formatRelativeTime(user.createdAt, i18n.language) })}
         </p>

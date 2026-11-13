@@ -108,6 +108,7 @@ describe("inviting people", () => {
       emails: ["ann@example.com", "bob@example.com", "ann@example.com"],
       role: "member",
       projects: [],
+      allProjects: null,
       channel: null,
       language: "en",
     });

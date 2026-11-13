@@ -75,6 +75,8 @@ export function describeCaller(
             expiresAt: expiresAt?.toISOString() ?? null,
           },
     projects: access.projects === null ? null : [...access.projects].map(([name, role]) => ({ name, role })),
+    // Only what reaches the projects to come: a key narrowed to a list never does.
+    allProjects: access.admin || access.scoped ? null : principal.user.allProjectsRole,
     operations: permittedOperations(access, routes),
   };
 }

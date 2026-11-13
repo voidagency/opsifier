@@ -60,6 +60,31 @@ const deploys = (token: string) =>
 const changeRights = (user: PanelUser, projects: Array<{ project: string; role: string }>) =>
   api(`/users/${user.id}`, "PUT", { email: user.email, role: "member", projects }, admin);
 
+/** A member with a role in every project, and possibly a project of its own on top. */
+async function everywhere(
+  email: string,
+  allProjects: "viewer" | "operator",
+  projects: Array<{ project: string; role: "viewer" | "operator" }> = [],
+): Promise<{ user: PanelUser; cookie: string }> {
+  const created = await api<PanelUser>(
+    "/users",
+    "POST",
+    { email, password: TEST_PASSWORD, role: "member", projects, allProjects },
+    admin,
+  );
+  expect(created.status).toBe(201);
+  const login = await authPost(context.app, "login", { email, password: TEST_PASSWORD });
+  return { user: created.body, cookie: login.cookie as string };
+}
+
+const changeAllProjects = (user: PanelUser, allProjects: "viewer" | "operator" | null) =>
+  api(
+    `/users/${user.id}`,
+    "PUT",
+    { email: user.email, role: "member", projects: user.projects, allProjects },
+    admin,
+  );
+
 describe("when a service moves to another project", () => {
   const move = (projectName: string, name = "web") =>
     api("/projects/shop/services/web/rename", "POST", { projectName, name }, admin);
@@ -113,6 +138,16 @@ describe("when an account changes", () => {
     await changeRights(user, []);
 
     expect((await deploys(token)).status).toBe(202);
+  });
+
+  it("revokes the tokens it issued as an operator in every project once that role is lowered", async () => {
+    const { user, cookie } = await everywhere("all@example.com", "operator");
+    const token = await issueToken(cookie);
+    expect((await deploys(token)).status).toBe(202);
+
+    await changeAllProjects(user, "viewer");
+
+    expect((await deploys(token)).status).toBe(401);
   });
 
   it("revokes them when its email or password changes", async () => {
@@ -234,6 +269,32 @@ describe("when an account changes", () => {
       const { user } = await member("op@example.com");
 
       await changeRights(user, [{ project: "shop", role: "viewer" }]);
+
+      expect((await urlDeploys()).status).toBe(404);
+    });
+
+    it("revokes it when an operator in every project becomes a viewer in them", async () => {
+      const { user } = await everywhere("all@example.com", "operator");
+
+      await changeAllProjects(user, "viewer");
+
+      expect((await urlDeploys()).status).toBe(404);
+    });
+
+    it("keeps it when the project's own operator role still covers it", async () => {
+      const { user } = await everywhere("all@example.com", "operator", [
+        { project: "shop", role: "operator" },
+      ]);
+
+      await changeAllProjects(user, null);
+
+      expect((await urlDeploys()).status).toBe(202);
+    });
+
+    it("revokes it when an operator in every project is deleted", async () => {
+      const { user } = await everywhere("all@example.com", "operator");
+
+      await api(`/users/${user.id}`, "DELETE", { confirm: user.email }, admin);
 
       expect((await urlDeploys()).status).toBe(404);
     });

@@ -9,6 +9,27 @@ export type ProjectRole = z.infer<typeof projectRole>;
 export const projectGrant = z.strictObject({ project: projectName, role: projectRole });
 export type ProjectGrant = z.infer<typeof projectGrant>;
 
+/**
+ * A member's role in every project, those created later included. Null when the account has none, and
+ * always for an administrator, who reaches everything anyway.
+ */
+export const allProjectsRole = projectRole.nullable();
+export type AllProjectsRole = z.infer<typeof allProjectsRole>;
+
+/**
+ * The role a member holds in one project: the stronger of their role in every project and the
+ * project's own grant. Null when neither gives them the project.
+ */
+export function effectiveProjectRole(
+  allProjects: ProjectRole | null,
+  own: ProjectRole | null | undefined,
+): ProjectRole | null {
+  if (allProjects === "operator" || own === "operator") {
+    return "operator";
+  }
+  return allProjects ?? own ?? null;
+}
+
 /** An account's sign-in address. */
 export const accountEmail = z.email("Enter a valid email address").max(254, "Must be at most 254 characters");
 
@@ -44,6 +65,8 @@ export const panelUser = z.object({
   active: z.boolean(),
   createdAt: z.iso.datetime(),
   projects: z.array(projectGrant),
+  /** Its role in every project, those created later included. Each project gets the stronger role. */
+  allProjects: allProjectsRole.default(null),
   apiKeyCount: z.number().int().min(0),
 });
 export type PanelUser = z.infer<typeof panelUser>;
@@ -60,19 +83,61 @@ export const createUserRequest = z.strictObject({
   password: accountPassword,
   role: userRole.default("member"),
   projects: projectGrants.default([]),
+  /** A role in every project, those created later included. An administrator holds none. */
+  allProjects: allProjectsRole.default(null),
 });
 export type CreateUserRequest = z.infer<typeof createUserRequest>;
 
-/** PUT /api/v1/users/{user}. Every field is the new value, except a password left out stays as it is. */
+/**
+ * PUT /api/v1/users/{user}. Every field is the new value, except that a password, a role in every
+ * project and server access left out stay as they are.
+ */
 export const updateUserRequest = z.strictObject({
   email: accountEmail,
   role: userRole,
   projects: projectGrants,
+  /** A role in every project, those created later included, or null for none. */
+  allProjects: allProjectsRole.optional(),
   password: accountPassword.optional(),
   /** Administering the server itself, which only the owner can hand out. Left out, it stays as it is. */
   hostAdmin: z.boolean().optional(),
 });
 export type UpdateUserRequest = z.infer<typeof updateUserRequest>;
+
+/** What an account can do in one project: a member's role there, or `admin` for an administrator. */
+export const projectMemberRole = z.enum(["viewer", "operator", "admin"]);
+export type ProjectMemberRole = z.infer<typeof projectMemberRole>;
+
+/** One account that reaches a project, as an administrator sees it from that project. */
+export const projectMember = z.object({
+  id: z.string(),
+  email: z.string(),
+  /** Empty for an account that was never asked for one. */
+  name: z.string(),
+  owner: z.boolean(),
+  /** An administrator reaches every project as one, and nothing set on a project changes that. */
+  administrator: z.boolean(),
+  /** False while the account is deactivated: it keeps its rights for when it comes back. */
+  active: z.boolean(),
+  /** What it can do here: the stronger of its two roles, or `admin`. */
+  role: projectMemberRole,
+  /** The role this project gives it of its own. Null for none. */
+  grant: projectRole.nullable(),
+  /** Its role in every project, which only the account's own page changes. */
+  allProjects: allProjectsRole,
+});
+export type ProjectMember = z.infer<typeof projectMember>;
+
+/** GET /api/v1/projects/{project}/members: the accounts that reach the project, and only those. */
+export const projectMemberList = z.object({ members: z.array(projectMember) });
+export type ProjectMemberList = z.infer<typeof projectMemberList>;
+
+export const projectMembersPath = z.object({ project: projectName });
+export const projectMemberPath = projectMembersPath.extend(userPath.shape);
+
+/** PUT /api/v1/projects/{project}/members/{user}: the project's own role for a member, null for none. */
+export const setProjectMemberRequest = z.strictObject({ role: projectRole.nullable() });
+export type SetProjectMemberRequest = z.infer<typeof setProjectMemberRequest>;
 
 /** DELETE /api/v1/users/{user}: the account's exact email, typed again. */
 export const deleteUserRequest = z.strictObject({ confirm: z.string().min(1, "Required") });

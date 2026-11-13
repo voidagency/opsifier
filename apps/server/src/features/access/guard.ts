@@ -178,7 +178,9 @@ const prefixed = (topic: string, prefix: string): string[] | null =>
 
 /** What a WebSocket may listen to. The rules follow those of the routes the same data comes from. */
 export function createTopicGuard(deps: Pick<AppDeps, "db">): TopicGuard {
-  const roleFor = (userId: string, project: string) => membershipsOf(deps.db, userId).get(project) ?? null;
+  // The same reach the routes compute, a role in every project included.
+  const roleFor = (user: Parameters<typeof membershipsOf>[1], project: string) =>
+    membershipsOf(deps.db, user).get(project) ?? null;
 
   return {
     allow(userId, topic) {
@@ -192,18 +194,18 @@ export function createTopicGuard(deps: Pick<AppDeps, "db">): TopicGuard {
       }
       const metrics = prefixed(topic, serviceMetricsTopic("", "").replace("/", ""));
       if (metrics !== null) {
-        return metrics[0] !== undefined && roleFor(userId, metrics[0]) !== null;
+        return metrics[0] !== undefined && roleFor(user, metrics[0]) !== null;
       }
       const logs = prefixed(topic, serviceLogsTopic("", "").replace("/", ""));
       if (logs !== null) {
-        return logs[0] !== undefined && roleFor(userId, logs[0]) === "operator";
+        return logs[0] !== undefined && roleFor(user, logs[0]) === "operator";
       }
       if (topic.startsWith("action:")) {
         const action = findAction(deps.db, topic.slice("action:".length));
         return (
           action !== undefined &&
           action.projectName !== null &&
-          roleFor(userId, action.projectName) === "operator" &&
+          roleFor(user, action.projectName) === "operator" &&
           belongsToCurrent(deps.db, action)
         );
       }
@@ -224,7 +226,7 @@ export function createTopicGuard(deps: Pick<AppDeps, "db">): TopicGuard {
       const entry = payload as Pick<ActionShape, "projectName" | "actorEmail">;
       return entry.projectName === null
         ? entry.actorEmail === user.email
-        : roleFor(userId, entry.projectName) !== null;
+        : roleFor(user, entry.projectName) !== null;
     },
   };
 }

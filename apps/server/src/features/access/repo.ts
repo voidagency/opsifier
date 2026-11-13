@@ -38,6 +38,10 @@ export function allMemberships(db: DbHandle): MembershipRow[] {
   return db.select().from(projectMembers).orderBy(asc(projectMembers.projectName)).all();
 }
 
+export function membershipsOfProject(db: DbHandle, project: string): MembershipRow[] {
+  return db.select().from(projectMembers).where(eq(projectMembers.projectName, project)).all();
+}
+
 export function replaceMemberships(
   db: DbHandle,
   userId: string,

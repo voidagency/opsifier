@@ -119,6 +119,23 @@ describe("users", () => {
       }),
     );
   });
+
+  it("says the new account was created", async () => {
+    installFakeServer({
+      "GET /users": { users: [OWNER] },
+      "GET /projects": { projects: [] },
+      "GET /users/invitations": { invitations: [] },
+      "POST /users": MEMBER_USER,
+    });
+    renderApp("/settings/server/users");
+    fireEvent.click(await screen.findByRole("button", { name: "New user" }));
+    fireEvent.change(await screen.findByLabelText("Email"), { target: { value: "sam@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "a long enough password" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(await screen.findByText("User created")).toBeTruthy();
+    expect(screen.queryByText(/\{\{/)).toBeNull();
+  });
 });
 
 describe("general settings", () => {

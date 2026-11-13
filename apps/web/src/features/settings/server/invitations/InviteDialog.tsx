@@ -4,6 +4,7 @@ import {
   type InvitationOutcome,
   MAX_INVITATIONS_PER_REQUEST,
   type ProjectGrant,
+  type ProjectRole,
   type UserRole,
 } from "@opsifier/contract";
 import { useQueryClient } from "@tanstack/react-query";
@@ -109,6 +110,7 @@ export function InviteDialog({
   const channels = useMailChannels(open);
   const [role, setRole] = useState<UserRole>("member");
   const [grants, setGrants] = useState<ProjectGrant[]>([]);
+  const [allProjects, setAllProjects] = useState<ProjectRole | null>(null);
   const [picked, setPicked] = useState<string | null | undefined>(undefined);
   const [result, setResult] = useState<CreatedInvitations | null>(null);
   const channel = chosenChannel(picked, channels);
@@ -134,6 +136,7 @@ export function InviteDialog({
         emails: parseAddresses(emails).emails,
         role,
         projects: role === "admin" ? [] : grants,
+        allProjects: role === "admin" ? null : allProjects,
         channel,
         language: mailLanguage(i18n.language),
       });
@@ -148,6 +151,7 @@ export function InviteDialog({
       reset({ emails: "" });
       setRole("member");
       setGrants([]);
+      setAllProjects(null);
       setPicked(undefined);
       setResult(null);
     }
@@ -232,7 +236,14 @@ export function InviteDialog({
               ]}
             />
           </Field>
-          {role === "member" && <GrantsEditor grants={grants} onChange={setGrants} />}
+          {role === "member" && (
+            <GrantsEditor
+              grants={grants}
+              onChange={setGrants}
+              allProjects={allProjects}
+              onAllProjectsChange={setAllProjects}
+            />
+          )}
           <DeliveryField value={channel} onChange={setPicked} channels={channels} />
         </div>
       )}

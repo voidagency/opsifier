@@ -73,6 +73,10 @@ function projectRequirement(method: string, project: string, rest: readonly stri
   if (rest.length === 0 && method === "DELETE") {
     return { kind: "project", project, level: "admin", session: false };
   }
+  if (rest[0] === "members") {
+    // Who reaches a project is account administration: an administrator at a browser, never a key.
+    return { kind: "project", project, level: "admin", session: true };
+  }
   if (rest[2] === "console") {
     return { kind: "project", project, level: "admin", session: false };
   }

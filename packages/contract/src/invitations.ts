@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { accountEmail, accountPassword, projectGrant, projectGrants } from "./access";
+import { accountEmail, accountPassword, allProjectsRole, projectGrant, projectGrants } from "./access";
 import { actionEntry } from "./actions";
 import { personName, userRole } from "./auth";
 
@@ -27,6 +27,8 @@ export const invitation = z.object({
   email: z.string(),
   role: userRole,
   projects: z.array(projectGrant),
+  /** The role the account will hold in every project, those created later included. */
+  allProjects: allProjectsRole.default(null),
   /** The administrator who sent it. It ends when they stop being one. */
   invitedBy: z.string(),
   createdAt: z.iso.datetime(),
@@ -66,6 +68,8 @@ export const createInvitationsRequest = z.strictObject({
     .max(MAX_INVITATIONS_PER_REQUEST, `At most ${MAX_INVITATIONS_PER_REQUEST} addresses at a time`),
   role: userRole.default("member"),
   projects: projectGrants.default([]),
+  /** A role in every project, those created later included. An administrator holds none. */
+  allProjects: allProjectsRole.default(null),
   channel: deliveryChannel,
   /** The language of the e-mails. */
   language: invitationLanguage.default("en"),

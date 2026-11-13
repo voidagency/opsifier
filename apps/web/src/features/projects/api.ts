@@ -3,7 +3,9 @@ import {
   type CreateProjectRequest,
   envDocument,
   envSummary,
+  type ProjectRole,
   projectList,
+  projectMemberList,
   projectSchemaDocument,
   projectSummary,
 } from "@opsifier/contract";
@@ -37,8 +39,17 @@ export const projectSchemaQuery = (name: string) =>
     staleTime: 0,
   });
 
+/** Who reaches a project and as what. Only administrators can ask. */
+export const projectMembersQuery = (name: string) =>
+  queryOptions({
+    queryKey: ["projects", name, "members"] as const,
+    queryFn: ({ signal }) => api.get(`/projects/${name}/members`, { schema: projectMemberList, signal }),
+  });
+
 export const projectsApi = {
   create: (body: CreateProjectRequest) => api.post("/projects", { body, schema: projectSummary }),
+  setMember: (name: string, user: string, role: ProjectRole | null) =>
+    api.put(`/projects/${name}/members/${user}`, { body: { role }, schema: projectMemberList }),
   saveEnv: (name: string, env: string) =>
     api.put(`/projects/${name}/env`, { body: { env }, schema: envSummary }),
   revealEnv: (name: string) => api.post(`/projects/${name}/env/reveal`, { schema: envDocument }),

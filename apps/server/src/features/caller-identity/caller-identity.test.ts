@@ -33,12 +33,17 @@ function session<T = unknown>(method: string, path: string, cookie: string, body
   return call<T>(context.app, path, { method, cookie, body, origin: TEST_ORIGIN });
 }
 
-async function member(email: string, grants: Array<{ project: string; role: "viewer" | "operator" }>) {
+async function member(
+  email: string,
+  grants: Array<{ project: string; role: "viewer" | "operator" }>,
+  allProjects: "viewer" | "operator" | null = null,
+) {
   const created = await session<PanelUser>("POST", "/api/v1/users", admin, {
     email,
     password: TEST_PASSWORD,
     role: "member",
     projects: grants,
+    allProjects,
   });
   expect(created.status).toBe(201);
   const login = await authPost(context.app, "login", { email, password: TEST_PASSWORD });
@@ -126,6 +131,35 @@ describe("GET /api/v1/auth/identity", () => {
     expect(inProjects("POST", `${SERVICE}/deploy`)).toEqual(["shop"]);
     expect(inProjects("GET", `${SERVICE}/logs/search`)).toEqual(["shop"]);
     expect(inProjects("DELETE", "/api/v1/projects/{project}")).toBeUndefined();
+    expect(body.allProjects).toBeNull();
+  });
+
+  it("counts a member's role in every project, and says it reaches the projects to come", async () => {
+    const cookie = await member("e@example.com", [{ project: "shop", role: "operator" }], "viewer");
+    expect(
+      (await session("POST", "/api/v1/projects", admin, { name: "later" })).status,
+      "a project created after the account",
+    ).toBe(201);
+    const { body } = await identityOf(await keyOf(cookie, { level: "write" }));
+
+    expect(body.allProjects).toBe("viewer");
+    expect(body.projects).toEqual([
+      { name: "later", role: "viewer" },
+      { name: "secret", role: "viewer" },
+      { name: "shop", role: "operator" },
+    ]);
+    const inProjects = (method: string, path: string) =>
+      body.operations.find((operation) => operation.method === method && operation.path === path)?.projects;
+    expect(inProjects("GET", SERVICE)).toEqual(["later", "secret", "shop"]);
+    expect(inProjects("POST", `${SERVICE}/deploy`)).toEqual(["shop"]);
+
+    // A key narrowed to a list reaches no project to come.
+    const narrowed = await identityOf(await keyOf(cookie, { level: "write", projects: ["secret"] }));
+    expect(narrowed.body.allProjects).toBeNull();
+    expect(narrowed.body.projects).toEqual([{ name: "secret", role: "viewer" }]);
+
+    // An administrator reaches everything as one, which no project role adds to.
+    expect((await identityOf(await keyOf(admin, { level: "write" }))).body.allProjects).toBeNull();
   });
 
   it("agrees with what the routes then do", async () => {

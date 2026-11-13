@@ -51,6 +51,11 @@ export const users = sqliteTable(
     isOwner: integer("is_owner", { mode: "boolean" }).notNull().default(false),
     /** May open a shell on the server, list its disk and reboot it. The owner always may. */
     hostAdmin: integer("host_admin", { mode: "boolean" }).notNull().default(false),
+    /**
+     * A member's role in every project, those created later included. Each project gets the stronger
+     * of this and its own row in `project_members`. Null for none, and always for an administrator.
+     */
+    allProjectsRole: text("all_projects_role", { enum: ["viewer", "operator"] }),
     /** Set while the account may not sign in. Its rights are kept, ready for when it comes back. */
     deactivatedAt: millis("deactivated_at"),
     createdAt: millis("created_at").notNull(),
@@ -155,6 +160,8 @@ export const invitations = sqliteTable(
     role: text("role", { enum: ["admin", "member"] }).notNull(),
     /** What a member will reach, checked again against the projects that exist when it is accepted. */
     projects: text("projects", { mode: "json" }).$type<ProjectGrant[]>().notNull(),
+    /** The role a member will hold in every project, those created later included. */
+    allProjectsRole: text("all_projects_role", { enum: ["viewer", "operator"] }),
     /** SHA-256 of the current link's token. Sending the invitation again replaces it. */
     tokenHash: text("token_hash").notNull().unique(),
     invitedBy: text("invited_by")

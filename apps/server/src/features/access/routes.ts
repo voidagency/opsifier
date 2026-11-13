@@ -7,6 +7,10 @@ import {
   createUserRequest,
   deleteUserRequest,
   panelUser,
+  projectMemberList,
+  projectMemberPath,
+  projectMembersPath,
+  setProjectMemberRequest,
   setUserActiveRequest,
   updateUserRequest,
   userApiKeyPath,
@@ -25,8 +29,10 @@ import {
   deletePanelUser,
   listApiKeys,
   listPanelUsers,
+  listProjectMembers,
   revokeApiKey,
   setPanelUserActive,
+  setProjectMember,
   updatePanelUser,
 } from "./service";
 
@@ -36,7 +42,45 @@ const invalid = errorResponse("The request failed validation.");
 const denied = errorResponse("Not signed in.");
 const refused = errorResponse("The caller is not allowed to do this.");
 const missing = errorResponse("No such account or key.");
+const missingMember = errorResponse("No such project or account, or the project is out of reach.");
 const clash = errorResponse("The request conflicts with the current state.");
+
+const projectMembersRoute = "/api/v1/projects/{project}/members";
+
+const listProjectMembersRoute = createRoute({
+  method: "get",
+  path: projectMembersRoute,
+  tags,
+  summary: "List who reaches a project",
+  description:
+    "Administrators, members with a role in every project, and members the project gives a role of its own, each with what it can do there. For an administrator at a browser.",
+  request: { params: projectMembersPath },
+  responses: {
+    200: jsonResponse(projectMemberList, "Every account that reaches the project."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    404: missingMember,
+  },
+});
+
+const setProjectMemberRoute = createRoute({
+  method: "put",
+  path: `${projectMembersRoute}/{user}`,
+  tags,
+  summary: "Set a member's own role in a project",
+  description:
+    "Null takes the project's own role away. It is the same change as on the account, so a lower role ends its sessions and revokes its API keys. An administrator reaches every project and is refused with 409.",
+  request: { params: projectMemberPath, body: jsonBody(setProjectMemberRequest) },
+  responses: {
+    200: jsonResponse(projectMemberList, "Who reaches the project now."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    404: missingMember,
+    409: clash,
+  },
+});
 
 const empty = z.object({ ok: z.literal(true) });
 
@@ -73,7 +117,7 @@ const updateUserRoute = createRoute({
   tags,
   summary: "Change an account",
   description:
-    "Taking rights away, or changing the email or password, ends its sessions and revokes its API keys.",
+    "Taking rights away, a lower role in every project included, or changing the email or password, ends its sessions and revokes its API keys.",
   request: { params: userPath, body: jsonBody(updateUserRequest) },
   responses: {
     200: jsonResponse(panelUser, "The account."),
@@ -234,6 +278,22 @@ export const feature: Feature = {
         200,
       ),
     );
+
+    app.openapi(listProjectMembersRoute, (c) =>
+      c.json({ members: listProjectMembers(deps, c.req.valid("param").project) }, 200),
+    );
+
+    app.openapi(setProjectMemberRoute, async (c) => {
+      const { project, user } = c.req.valid("param");
+      const members = await setProjectMember(
+        deps,
+        requireSessionPrincipal(c),
+        project,
+        user,
+        c.req.valid("json").role,
+      );
+      return c.json({ members }, 200);
+    });
 
     app.openapi(listUserKeysRoute, (c) => {
       const { user } = c.req.valid("param");

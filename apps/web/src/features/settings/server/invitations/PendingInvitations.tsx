@@ -19,6 +19,7 @@ import {
   toast,
   type VisualState,
 } from "../../../../ui";
+import { reachSummary } from "../GrantsEditor";
 import { invitationsApi, invitationsQuery, mailLanguage } from "./api";
 import { chosenChannel, DeliveryField, useMailChannels } from "./delivery";
 import { LinkField } from "./InviteDialog";
@@ -146,9 +147,7 @@ function InvitationRow({
           <span className="text-sm text-muted">{status}</span>
         </p>
         <p className="mt-0.5 text-xs text-muted">
-          {invitation.role === "admin"
-            ? t("users.everyProject")
-            : t("users.projectCount", { count: invitation.projects.length })}
+          {reachSummary(invitation, t)}
           {" · "}
           {t("invitations.invitedBy", { email: invitation.invitedBy })}
           {" · "}

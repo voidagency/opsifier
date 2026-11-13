@@ -134,6 +134,13 @@
       "when": 1794482134733,
       "tag": "0018_invitations",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1794588184773,
+      "tag": "0019_all_projects_role",
+      "breakpoints": true
     }
   ]
 }
