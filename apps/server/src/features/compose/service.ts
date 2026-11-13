@@ -30,13 +30,7 @@ import {
 import { composeChildAddress } from "../services/compile";
 import { serviceRedactor } from "../services/masking";
 import { ownerLabels } from "../services/ownership";
-import {
-  findService,
-  insertService,
-  listServiceRecords,
-  type ServiceRecord,
-  saveServiceSpec,
-} from "../services/repo";
+import { findService, insertService, type ServiceRecord, saveServiceSpec } from "../services/repo";
 import {
   assertAddressFree,
   assertNameFits,
@@ -59,6 +53,7 @@ import {
 } from "./deploy";
 import { type ComposeInspection, hasHostAccess, inspectComposeFile } from "./inspect";
 import { composeCodeDir, composeProject } from "./names";
+import { takenPorts } from "./ports";
 import { accessFingerprint } from "./resolved";
 import type { StoredCompose } from "./spec";
 import { toComposeChildren } from "./status";
@@ -70,31 +65,6 @@ export function requireCompose(record: ServiceRecord): StoredCompose {
     throw notFound("This service is not a Compose stack.");
   }
   return record.spec.compose;
-}
-
-const RESERVED_PORTS = [
-  [80, "the proxy"],
-  [443, "the proxy"],
-  [3000, "the panel"],
-] as const;
-
-/** Every host port something else already holds, so a collision can be reported before it happens. */
-export function takenPorts(deps: Pick<AppDeps, "db">, target: ServiceTarget): Map<number, string> {
-  const taken = new Map<number, string>(RESERVED_PORTS);
-  for (const record of listServiceRecords(deps.db)) {
-    if (record.projectName === target.projectName && record.name === target.serviceName) {
-      continue;
-    }
-    // A service of another project stays anonymous: a conflict must not say what that project holds.
-    const owner = record.projectName === target.projectName ? `${record.projectName}/${record.name}` : "";
-    for (const port of record.spec.ports) {
-      taken.set(port.published, owner);
-    }
-    if (record.spec.database !== null && record.spec.database.exposedPort > 0) {
-      taken.set(record.spec.database.exposedPort, owner);
-    }
-  }
-  return taken;
 }
 
 export function inspectStackFile(

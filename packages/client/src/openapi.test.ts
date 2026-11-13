@@ -74,6 +74,26 @@ describe("what an operation is called", () => {
     expect(classifyOperation("GET", "/api/v1/projects")).toEqual({ kind: "read", risk: "low" });
     expect(classifyOperation("POST", `${service}/deploy`)).toEqual({ kind: "change", risk: "medium" });
   });
+
+  it("is destructive for a secret revealed, which can't be taken back", () => {
+    const service = "/api/v1/projects/shop/services/web";
+    for (const path of [`${service}/environment/reveal`, `${service}/credentials/reveal`]) {
+      expect(classifyOperation("POST", path), path).toEqual({ kind: "destructive", risk: "high" });
+    }
+  });
+
+  it("is judged on the path the panel routes, however it is spelled", () => {
+    const service = "/api/v1/projects/shop/services/web";
+    for (const path of [
+      `${service}/st%6Fp`,
+      `${service}/%73top`,
+      `${service}/STOP`,
+      `${service}/environment/rev%65al`,
+      "/api/v1/projects/shop/services/web/backups/abc/r%65store",
+    ]) {
+      expect(classifyOperation("POST", path).kind, path).toBe("destructive");
+    }
+  });
 });
 
 describe("describing an operation", () => {

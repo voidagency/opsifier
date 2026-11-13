@@ -6,12 +6,36 @@ import type { PanelClient } from "./http";
 export type OperationKind = "read" | "change" | "destructive";
 export type OperationRisk = "low" | "medium" | "high";
 
-/** Requests that cannot be taken back, or that take something offline. */
+/**
+ * Requests that cannot be taken back, or that take something offline. A secret revealed counts: once
+ * read, it can't be unread.
+ */
 const DESTRUCTIVE_ENDING =
-  /\/(?:stop|restore|discard-earlier-copy|resolve|rollback|reboot|disconnect|rotate)$|\/docker\/cleanup\/[^/]+$|\/(?:panel|proxy)\/restart$|\/system\/update$/;
+  /\/(?:stop|restore|discard-earlier-copy|resolve|rollback|reboot|disconnect|rotate|reveal)$|\/docker\/cleanup\/[^/]+$|\/(?:panel|proxy)\/restart$|\/system\/update$/;
 
 /** Reads that can return a secret: an environment, a credential. */
 const SENSITIVE_READ = /\/(?:env|environment|env-file|credentials|basic-auth)$/;
+
+/**
+ * The path as the panel routes it: without a query, each segment decoded, in one case, with no slash
+ * at the end. Spelling an ending another way changes nothing about what it does, so it changes
+ * nothing about what it is called either.
+ */
+function routedPath(path: string): string {
+  const decode = (segment: string) => {
+    try {
+      return decodeURIComponent(segment);
+    } catch {
+      return segment;
+    }
+  };
+  return (path.split(/[?#]/, 1)[0] ?? path)
+    .split("/")
+    .map(decode)
+    .join("/")
+    .toLowerCase()
+    .replace(/\/+$/, "");
+}
 
 /** Works on a template or a filled-in path: a placeholder is never one of these endings. */
 export function classifyOperation(
@@ -19,13 +43,14 @@ export function classifyOperation(
   path: string,
 ): { kind: OperationKind; risk: OperationRisk } {
   const verb = method.toUpperCase();
+  const routed = routedPath(path);
   if (verb === "GET" || verb === "HEAD") {
-    return { kind: "read", risk: SENSITIVE_READ.test(path) ? "medium" : "low" };
+    return { kind: "read", risk: SENSITIVE_READ.test(routed) ? "medium" : "low" };
   }
-  if (verb === "DELETE" || DESTRUCTIVE_ENDING.test(path)) {
+  if (verb === "DELETE" || DESTRUCTIVE_ENDING.test(routed)) {
     return { kind: "destructive", risk: "high" };
   }
-  return { kind: "change", risk: path.endsWith("/reveal") ? "high" : "medium" };
+  return { kind: "change", risk: "medium" };
 }
 
 type Schema = Record<string, unknown>;

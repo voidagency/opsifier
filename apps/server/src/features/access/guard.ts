@@ -1,14 +1,14 @@
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { actionsTopic, projectName, serviceLogsTopic, serviceMetricsTopic } from "@opsifier/contract";
 import type { Context, MiddlewareHandler } from "hono";
-import { HOST_ADMIN_ONLY, holdsHostAdmin } from "../../core/auth";
+import { HOST_ADMIN_ONLY, holdsHostAdmin, requestScheme } from "../../core/auth";
 import type { AppDeps, AppEnv } from "../../core/context";
 import { AppError, forbidden, notFound } from "../../core/errors";
 import { PROXY_PAGES_PREFIX } from "../../core/proxy";
 import type { TopicGuard } from "../../core/realtime";
 import { findAction } from "../actions/repo";
 import { belongsToCurrent } from "../projects/generation";
-import { isPanelHostAllowed } from "../server/panel-host";
+import { isPanelHostAllowed, isPanelOwnName } from "../server/panel-host";
 import { needsTwoFactorSetup } from "../two-factor-policy/service";
 import { type ProjectLevel, type Requirement, requirementFor } from "./policy";
 import {
@@ -160,6 +160,29 @@ function peerOf(c: Context<AppEnv>): string | undefined {
  * With "serve on IP" off, the panel refuses requests that name anything but its own domains. The
  * server itself always gets through, so a wrong domain can never lock anyone out for good.
  */
+/** A year: what a browser keeps to once it has seen the panel over HTTPS. */
+const STRICT_TRANSPORT = "max-age=31536000";
+
+/**
+ * Tells a browser that reached the panel over HTTPS, under one of its own names, to keep to HTTPS
+ * for that name, so that nothing on the way can strip TLS from a later sign-in. Plain HTTP and bare
+ * addresses get nothing, as browsers ignore it there, and neither do the pages the panel serves for
+ * the proxy under the names of services, whose policy is theirs.
+ */
+export function strictTransport(deps: AppDeps): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    await next();
+    if (
+      !c.req.path.startsWith(PROXY_PAGES_PREFIX) &&
+      requestScheme(c, deps.config) === "https" &&
+      // A server's request carries Host, from which its URL is built: the URL says it either way.
+      isPanelOwnName(deps, c.req.header("host") ?? new URL(c.req.url).host)
+    ) {
+      c.header("Strict-Transport-Security", STRICT_TRANSPORT);
+    }
+  };
+}
+
 export function guardPanelHost(deps: AppDeps): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     if (
@@ -182,43 +205,47 @@ export function createTopicGuard(deps: Pick<AppDeps, "db">): TopicGuard {
   const roleFor = (user: Parameters<typeof membershipsOf>[1], project: string) =>
     membershipsOf(deps.db, user).get(project) ?? null;
 
-  return {
-    allow(userId, topic) {
-      const user = findUser(deps.db, userId);
-      // An account kept to turning on two-factor sign-in listens to nothing, as it reads nothing.
-      if (user === undefined || needsTwoFactorSetup(deps.db, user)) {
-        return false;
-      }
-      if (user.role === "admin" || topic === actionsTopic) {
-        return true;
-      }
-      const metrics = prefixed(topic, serviceMetricsTopic("", "").replace("/", ""));
-      if (metrics !== null) {
-        return metrics[0] !== undefined && roleFor(user, metrics[0]) !== null;
-      }
-      const logs = prefixed(topic, serviceLogsTopic("", "").replace("/", ""));
-      if (logs !== null) {
-        return logs[0] !== undefined && roleFor(user, logs[0]) === "operator";
-      }
-      if (topic.startsWith("action:")) {
-        const action = findAction(deps.db, topic.slice("action:".length));
-        return (
-          action !== undefined &&
-          action.projectName !== null &&
-          roleFor(user, action.projectName) === "operator" &&
-          belongsToCurrent(deps.db, action)
-        );
-      }
+  const allow: TopicGuard["allow"] = (userId, topic) => {
+    const user = findUser(deps.db, userId);
+    // An account kept to turning on two-factor sign-in listens to nothing, as it reads nothing.
+    if (user === undefined || needsTwoFactorSetup(deps.db, user)) {
       return false;
-    },
+    }
+    if (user.role === "admin" || topic === actionsTopic) {
+      return true;
+    }
+    const metrics = prefixed(topic, serviceMetricsTopic("", "").replace("/", ""));
+    if (metrics !== null) {
+      return metrics[0] !== undefined && roleFor(user, metrics[0]) !== null;
+    }
+    const logs = prefixed(topic, serviceLogsTopic("", "").replace("/", ""));
+    if (logs !== null) {
+      return logs[0] !== undefined && roleFor(user, logs[0]) === "operator";
+    }
+    if (topic.startsWith("action:")) {
+      const action = findAction(deps.db, topic.slice("action:".length));
+      return (
+        action !== undefined &&
+        action.projectName !== null &&
+        roleFor(user, action.projectName) === "operator" &&
+        belongsToCurrent(deps.db, action)
+      );
+    }
+    return false;
+  };
+
+  return {
+    allow,
 
     deliver(userId, topic, payload) {
       const user = findUser(deps.db, userId);
       if (user === undefined || needsTwoFactorSetup(deps.db, user)) {
         return false;
       }
+      // Rights can go while a socket stays open, as when a project is destroyed and its members with
+      // it: every frame is held to the rights as they are now, not as they were at subscribing.
       if (topic !== actionsTopic) {
-        return true;
+        return allow(userId, topic);
       }
       if (user.role === "admin") {
         return true;

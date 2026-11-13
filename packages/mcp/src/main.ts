@@ -19,4 +19,12 @@ function connect(): PanelClient {
   }
 }
 
-await serveStdio(new McpServer(connect(), pkg.version), process.stdin, process.stdout);
+/**
+ * Whether the person who configured this server lets it stop, remove, restore or reveal anything.
+ * Off unless they say so: the model writes every call, its confirmations included, but not this.
+ */
+const allowDestructive = ["1", "true", "yes"].includes(
+  (process.env.OPSIFIER_MCP_ALLOW_DESTRUCTIVE ?? "").trim().toLowerCase(),
+);
+
+await serveStdio(new McpServer(connect(), pkg.version, { allowDestructive }), process.stdin, process.stdout);

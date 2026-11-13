@@ -202,6 +202,42 @@ describe("responses", () => {
     // Anything stricter would turn the Origin of the panel's own requests into "null".
     expect(result.headers.get("referrer-policy")).toBe("same-origin");
   });
+
+  describe("over HTTPS", () => {
+    const sts = async (url: string) =>
+      (await context.app.request(url)).headers.get("strict-transport-security");
+
+    beforeEach(async () => {
+      const saved = await call(context.app, "/api/v1/server/panel-domain", {
+        method: "PUT",
+        cookie,
+        origin: TEST_ORIGIN,
+        body: { customDomain: "panel.example.com", serveOnIp: true },
+      });
+      expect(saved.status).toBe(200);
+    });
+
+    it("tell a browser to keep to HTTPS on the panel's own names", async () => {
+      expect(await sts("https://panel.example.com/api/v1/health")).toBe("max-age=31536000");
+      const names = await call<{ defaultDomain: string | null }>(context.app, "/api/v1/server/panel-domain", {
+        cookie,
+      });
+      if (names.body.defaultDomain !== null) {
+        expect(await sts(`https://${names.body.defaultDomain}/api/v1/health`)).toBe("max-age=31536000");
+      }
+    });
+
+    it("say nothing over plain HTTP, on a bare address or on another name", async () => {
+      expect(await sts("http://panel.example.com/api/v1/health")).toBeNull();
+      expect(await sts("https://203.0.113.10/api/v1/health")).toBeNull();
+      // Served on the IP, the panel can be reached under a name that is not its own.
+      expect(await sts("https://shop.example.com/api/v1/health")).toBeNull();
+    });
+
+    it("leave the names of services alone, whose pages the panel serves for the proxy", async () => {
+      expect(await sts("https://shop.example.com/api/proxy-pages/not-found")).toBeNull();
+    });
+  });
 });
 
 describe("the OpenAPI document", () => {

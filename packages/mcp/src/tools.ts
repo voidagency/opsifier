@@ -28,6 +28,11 @@ export interface JsonSchema {
 export interface ToolContext {
   api: PanelApi;
   client: PanelClient;
+  /**
+   * Whether the person who configured this server lets it stop, remove, restore or reveal anything.
+   * A model writes the arguments of every call, confirmations included, but not this.
+   */
+  allowDestructive: boolean;
   /** The panel's own description of itself, fetched the first time something needs it. */
   document(): Promise<OpenApiDocument>;
 }
@@ -432,7 +437,7 @@ const GENERIC_TOOLS: readonly Tool[] = [
 export const ALL_TOOLS: readonly Tool[] = [...TOOLS, ...GENERIC_TOOLS];
 
 /** Discovery shows only what will work: the panel says what this caller may call, the tools follow. */
-export function toolsFor(identity: CallerIdentity): Tool[] {
+export function toolsFor(identity: CallerIdentity, allowDestructive = true): Tool[] {
   const permitted = (route: RouteRef) =>
     identity.operations.some(({ method, path }) => method === route.method && path === route.path);
   // Something that changes a project or the server, rather than a route any key may call.
@@ -440,6 +445,10 @@ export function toolsFor(identity: CallerIdentity): Tool[] {
     ({ method, projects }) => method !== "GET" && (projects !== null || identity.projects === null),
   );
   return ALL_TOOLS.filter((tool) => {
+    // The generic tool stays: it still changes what can be taken back, and refuses the rest.
+    if (!allowDestructive && tool.kind === "destructive" && tool.name !== "api_change") {
+      return false;
+    }
     if (tool.operation !== undefined) {
       return permitted(tool.operation);
     }
@@ -507,17 +516,31 @@ export function checkedArguments(tool: Tool, input: unknown): Arguments {
   return args;
 }
 
-export function checkConfirmation(tool: Tool, args: Arguments): void {
+/**
+ * What stands between a model and a change that can't be taken back. The confirmation is a brake
+ * against a wrong call, which the model itself fills in, so the answer never repeats what it has to
+ * be. Whether such a change is possible at all is the person's to say, in this server's configuration.
+ */
+export function checkConfirmation(tool: Tool, args: Arguments, allowDestructive: boolean): void {
   const expected = tool.confirmation?.(args);
-  if (expected === undefined || expected === "" || args.confirm === expected) {
+  if (expected === undefined || expected === "") {
+    return;
+  }
+  if (!allowDestructive) {
+    throw new ClientError(
+      "destructive_not_allowed",
+      "This MCP server does not stop, remove, restore or reveal anything: the person who set it up has not allowed it. They can do it on the panel or with the opsifier command line, or allow it with OPSIFIER_MCP_ALLOW_DESTRUCTIVE in this server's configuration.",
+    );
+  }
+  if (args.confirm === expected) {
     return;
   }
   throw new ClientError(
     "confirmation_required",
     args.confirm === undefined
-      ? `${tool.name} needs confirm set to "${expected}". Only do that if the user asked for this.`
-      : `confirm must be exactly "${expected}".`,
+      ? `${tool.name} needs confirm, as its description says. Only set it when the user asked for this change.`
+      : "confirm does not match what this change needs. Only set it when the user asked for this change.",
     undefined,
-    { confirm: `Must be exactly "${expected}"` },
+    { confirm: "Does not match what this change needs" },
   );
 }

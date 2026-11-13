@@ -29,6 +29,7 @@ import { gitRemoteOf } from "../service-tabs/source/build/pipeline";
 import { claimDeployKey } from "../service-tabs/source/key-binding";
 import { resolveEnvPairs } from "../services/compile/env";
 import { openEnv } from "../services/env-store";
+import type { HostPort } from "../services/host-ports";
 import { serviceRedactor } from "../services/masking";
 import { type ServiceRecord, saveServiceSpec } from "../services/repo";
 import { requireProject, requireService, type ServiceTarget, serviceDir } from "../services/service";
@@ -42,6 +43,7 @@ import {
   composeProject,
 } from "./names";
 import { overrideChildren, renderComposeOverride } from "./override";
+import { assertStackPortsFree, resolvedHostPorts } from "./ports";
 import { accessFacts, accessFingerprint, inspectResolved, type LocalPath } from "./resolved";
 import { assertComposeSucceeded, type ComposeFiles, runCompose } from "./run";
 import type { StoredCompose, StoredComposeGitSource } from "./spec";
@@ -441,6 +443,8 @@ export interface StackAccess {
   refusal: Error | null;
   /** Every way the stack reaches the server, as Compose resolved it. */
   access: ComposeIssue[];
+  /** The host ports it publishes, as Compose resolved them. */
+  published: HostPort[];
 }
 
 function fileRefusal(issue: ComposeIssue): Error {
@@ -544,13 +548,13 @@ export async function readStackAccess(
   });
   const blocking = tree.find((issue) => issue.severity === "error");
   if (blocking !== undefined) {
-    return { refusal: fileRefusal(blocking), access: [] };
+    return { refusal: fileRefusal(blocking), access: [], published: [] };
   }
 
   const resolved = await resolveWithCompose(deps, target, files, variables, redact, signal);
   const foreign = foreignNetworks(resolved, scope);
   if (foreign[0] !== undefined) {
-    return { refusal: foreignNetworkRefusal(foreign[0].detail), access: [] };
+    return { refusal: foreignNetworkRefusal(foreign[0].detail), access: [], published: [] };
   }
   const { issues, insidePaths } = inspectResolved(resolved, {
     project: target.projectName,
@@ -560,12 +564,12 @@ export async function readStackAccess(
   });
   const refused = issues.find((issue) => issue.severity === "error");
   if (refused !== undefined) {
-    return { refusal: fileRefusal(refused), access: [] };
+    return { refusal: fileRefusal(refused), access: [], published: [] };
   }
   const access = [...tree, ...issues, ...(await linksOut(insidePaths, files.projectDirectory))].filter(
     (issue) => issue.severity === "host",
   );
-  return { refusal: null, access };
+  return { refusal: null, access, published: resolvedHostPorts(resolved) };
 }
 
 /** Puts what nobody confirmed in front of an administrator, on the Source tab. */
@@ -633,11 +637,19 @@ export async function deployStack(
   await writeStackOverride(deps, target, record, prepared.content);
 
   ctx.log("Checking the Compose file with Compose");
-  const { refusal, access } = await readStackAccess(deps, target, files, variables, redact, ctx.signal);
+  const { refusal, access, published } = await readStackAccess(
+    deps,
+    target,
+    files,
+    variables,
+    redact,
+    ctx.signal,
+  );
   if (refusal !== null) {
     throw refusal;
   }
   assertAccessConfirmed(deps, target, compose, access);
+  await assertStackPortsFree(deps, target, published);
 
   await prepareStackNetwork(deps, target, ctx);
 

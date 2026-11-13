@@ -1,6 +1,16 @@
 import { createHash } from "node:crypto";
-import { constants, type Stats } from "node:fs";
-import { chmod, chown, lstat, mkdir, open, opendir, utimes } from "node:fs/promises";
+import { constants, existsSync, type Stats } from "node:fs";
+import {
+  chmod,
+  chown,
+  type FileHandle,
+  lstat,
+  mkdir,
+  open,
+  opendir,
+  readdir,
+  utimes,
+} from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 import { Readable, Transform, Writable } from "node:stream";
 
@@ -163,14 +173,108 @@ export interface ArchiveProgress {
   onChanged?: (path: string) => void;
 }
 
-/** Everything under `root`, parents first, in a stable order. */
-async function* walk(
-  root: string,
+/** One entry of a volume, and how to open it as it was found. */
+interface WalkedEntry {
+  relative: string;
+  stats: Stats;
+  /** Opens the file found, and nothing else. Null for a folder. */
+  open: (() => Promise<FileHandle>) | null;
+}
+
+/** What one name in a folder is, or why it can't be part of a backup. Null when it is left out. */
+function sortOut(child: string, stats: Stats, progress: ArchiveProgress): "directory" | "file" | null {
+  if (stats.isSocket()) {
+    progress.onSkip?.(child, "socket");
+    return null;
+  }
+  if (stats.isFIFO() || stats.isBlockDevice() || stats.isCharacterDevice()) {
+    throw new ArchiveRefused(`${child} is a device or a named pipe, which can't be part of a backup.`);
+  }
+  if (stats.isSymbolicLink()) {
+    throw new ArchiveRefused(
+      `${child} is a symbolic link, which can't be part of a backup. Replace it with what it points to.`,
+    );
+  }
+  return stats.isDirectory() ? "directory" : "file";
+}
+
+const sameEntry = (a: Stats, b: Stats): boolean => a.dev === b.dev && a.ino === b.ino;
+
+const changedUnderneath = (child: string) =>
+  new ArchiveRefused(`${child || "The volume"} was replaced while the backup read it. Run the backup again.`);
+
+/** Opens a file without following a link, and only if it is still the file that was listed. */
+async function openListed(path: string, stats: Stats, child: string): Promise<FileHandle> {
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  if (!sameEntry(await handle.stat(), stats)) {
+    await handle.close();
+    throw changedUnderneath(child);
+  }
+  return handle;
+}
+
+/**
+ * Where the kernel can open a name inside a folder that is already open, through the folder's own
+ * descriptor, rather than by a path it would read again from the top. Linux, where the panel runs.
+ */
+const OPEN_FOLDERS = "/proc/self/fd";
+const canPinFolders = existsSync(OPEN_FOLDERS);
+
+/**
+ * Walks a folder held open. The application whose volume this is keeps running and can rename a
+ * folder, or put a link in its place, at any moment: every name is opened through the descriptor of
+ * the folder it was listed in, so nothing can turn the walk towards another place.
+ */
+async function* walkPinned(
+  folder: FileHandle,
   relative: string,
   progress: ArchiveProgress,
   signal?: AbortSignal,
-): AsyncGenerator<{ relative: string; stats: Stats; absolute: string }> {
+): AsyncGenerator<WalkedEntry> {
+  const here = `${OPEN_FOLDERS}/${folder.fd}`;
+  const names = (await readdir(here)).sort();
+  for (const name of names) {
+    signal?.throwIfAborted();
+    const child = relative === "" ? name : `${relative}/${name}`;
+    const path = `${here}/${name}`;
+    const stats = await lstat(path);
+    const kind = sortOut(child, stats, progress);
+    if (kind === "directory") {
+      const inner = await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+      try {
+        if (!sameEntry(await inner.stat(), stats)) {
+          throw changedUnderneath(child);
+        }
+        yield { relative: child, stats, open: null };
+        yield* walkPinned(inner, child, progress, signal);
+      } finally {
+        await inner.close();
+      }
+    } else if (kind === "file") {
+      yield { relative: child, stats, open: () => openListed(path, stats, child) };
+    }
+  }
+}
+
+/**
+ * The same walk where folders can't be held open, such as a developer's machine: every step checks
+ * that each folder on the way is still the one that was listed, and refuses to go on if not.
+ */
+async function* walkChecked(
+  root: string,
+  relative: string,
+  expected: Stats,
+  progress: ArchiveProgress,
+  signal?: AbortSignal,
+): AsyncGenerator<WalkedEntry> {
   const directory = relative === "" ? root : join(root, relative);
+  const stillHere = async () => {
+    const now = await lstat(directory).catch(() => null);
+    if (now === null || !now.isDirectory() || !sameEntry(now, expected)) {
+      throw changedUnderneath(relative);
+    }
+  };
+  await stillHere();
   const names: string[] = [];
   for await (const entry of await opendir(directory)) {
     names.push(entry.name);
@@ -179,33 +283,52 @@ async function* walk(
   for (const name of names) {
     signal?.throwIfAborted();
     const child = relative === "" ? name : `${relative}/${name}`;
-    const absolute = join(root, child);
-    const stats = await lstat(absolute);
-    if (stats.isSocket()) {
-      progress.onSkip?.(child, "socket");
-    } else if (stats.isFIFO() || stats.isBlockDevice() || stats.isCharacterDevice()) {
-      throw new ArchiveRefused(`${child} is a device or a named pipe, which can't be part of a backup.`);
-    } else if (stats.isSymbolicLink()) {
-      throw new ArchiveRefused(
-        `${child} is a symbolic link, which can't be part of a backup. Replace it with what it points to.`,
-      );
-    } else if (stats.isDirectory()) {
-      yield { relative: child, stats, absolute };
-      yield* walk(root, child, progress, signal);
-    } else {
-      yield { relative: child, stats, absolute };
+    const path = join(directory, name);
+    await stillHere();
+    const stats = await lstat(path);
+    const kind = sortOut(child, stats, progress);
+    if (kind === "directory") {
+      yield { relative: child, stats, open: null };
+      yield* walkChecked(root, child, stats, progress, signal);
+    } else if (kind === "file") {
+      yield {
+        relative: child,
+        stats,
+        open: async () => {
+          await stillHere();
+          return openListed(path, stats, child);
+        },
+      };
     }
+  }
+}
+
+/** Everything under `root`, parents first, in a stable order. */
+async function* walk(
+  root: string,
+  progress: ArchiveProgress,
+  signal?: AbortSignal,
+): AsyncGenerator<WalkedEntry> {
+  if (!canPinFolders) {
+    yield* walkChecked(root, "", await lstat(root), progress, signal);
+    return;
+  }
+  const folder = await open(root, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  try {
+    yield* walkPinned(folder, "", progress, signal);
+  } finally {
+    await folder.close();
   }
 }
 
 /** Reads one file, tolerating a live application shrinking it underneath the backup. */
 async function* fileChunks(
-  absolute: string,
+  opened: Promise<FileHandle>,
   size: number,
   relative: string,
   progress: ArchiveProgress,
 ): AsyncGenerator<Buffer> {
-  const handle = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const handle = await opened;
   try {
     let remaining = size;
     while (remaining > 0) {
@@ -233,7 +356,7 @@ export async function* archiveBlocks(
   signal?: AbortSignal,
 ): AsyncGenerator<Buffer> {
   const counter = { value: 0 };
-  for await (const { relative, stats, absolute } of walk(root, "", progress, signal)) {
+  for await (const { relative, stats, open: openFile } of walk(root, progress, signal)) {
     const base = {
       path: relative,
       mode: statMode(stats),
@@ -241,12 +364,16 @@ export async function* archiveBlocks(
       gid: stats.gid,
       mtime: stats.mtimeMs / 1000,
     };
-    if (stats.isDirectory()) {
+    if (openFile === null) {
       yield* headersFor({ ...base, type: "directory", size: 0 }, `${relative}/`, counter);
     } else {
+      // Opened before its header goes out, so a file that changed is refused before it is half written.
+      const opened = openFile();
+      opened.catch(() => undefined);
+      await opened;
       yield* headersFor({ ...base, type: "file", size: stats.size }, relative, counter);
       let written = 0;
-      for await (const chunk of fileChunks(absolute, stats.size, relative, progress)) {
+      for await (const chunk of fileChunks(opened, stats.size, relative, progress)) {
         written += chunk.length;
         yield chunk;
       }

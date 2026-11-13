@@ -67,7 +67,9 @@ Anything slow returns the Action doing the work at once. Read it with `get_actio
 
 ## Confirmations
 
-Tools that remove something or take something offline do nothing without a `confirm` argument: the exact name of what goes, or for `api_change`, the exact method and path (`DELETE /api/v1/projects/shop/services/web/domains/abc`). An agent should pass it only when the person asked for that change. It is a brake against a wrong call, not a security boundary; the key's rights are that.
+Removing something, taking something offline, restoring, rolling back or revealing a secret can't be taken back, and a model writes every argument of a call. So the server does none of it unless the person who configured it says so, with `OPSIFIER_MCP_ALLOW_DESTRUCTIVE=1` in its environment, next to the key: a model can't change that. Without it, `stop_service`, `destroy_service` and `delete_project` are not listed, and `api_change` refuses such an operation with `destructive_not_allowed`, while it goes on making changes that can be taken back. What an operation is comes from the path the panel routes, however it is spelled.
+
+When it is allowed, each of those does nothing without a `confirm` argument: the exact name of what goes, or for `api_change`, the exact method and path (`DELETE /api/v1/projects/shop/services/web/domains/abc`). An agent should pass it only when the person asked for that change, and a refusal does not repeat what it has to be. It is a brake against a wrong call, not a security boundary; the key's rights are that, and a read-only key is the safest for an agent that reads what others wrote.
 
 ## Errors
 

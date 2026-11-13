@@ -58,7 +58,7 @@ const SEVERITY: Record<ComposeIssueCode, ComposeIssue["severity"]> = {
   security_options: "host",
   container_name: "warning",
   published_port: "warning",
-  port_taken: "warning",
+  port_taken: "error",
   no_restart_policy: "warning",
   external_resource: "host",
   profiles: "warning",

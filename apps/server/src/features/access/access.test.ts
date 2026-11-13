@@ -21,7 +21,7 @@ import {
 } from "@opsifier/contract";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { actions, apiTokens, users } from "../../core/db/schema";
+import { actions, apiTokens, projectMembers, users } from "../../core/db/schema";
 import {
   apiErrorOf,
   authPost,
@@ -1181,6 +1181,24 @@ describe("realtime topics", () => {
 
     expect(guard.allow(user.id, serviceLogsTopic("shop", "web"))).toBe(true);
     expect(guard.allow(user.id, serviceLogsTopic("secret", "web"))).toBe(false);
+  });
+
+  it("stops streaming to someone who no longer reaches the project, on a socket already open", async () => {
+    const { user } = await createMember("o@example.com", [{ project: "shop", role: "operator" }]);
+    const guard = createTopicGuard(context.deps);
+    const logs = serviceLogsTopic("shop", "web");
+    const metrics = serviceMetricsTopic("shop", "web");
+    expect(guard.allow(user.id, logs)).toBe(true);
+    expect(guard.deliver?.(user.id, logs, { line: "before" })).toBe(true);
+    expect(guard.deliver?.(user.id, metrics, { cpu: 1 })).toBe(true);
+
+    // What destroying the project does to its members, without anyone's session ending.
+    context.deps.db.delete(projectMembers).where(eq(projectMembers.userId, user.id)).run();
+
+    expect(
+      guard.deliver?.(user.id, logs, { line: "a secret printed by the next service of that name" }),
+    ).toBe(false);
+    expect(guard.deliver?.(user.id, metrics, { cpu: 1 })).toBe(false);
   });
 });
 

@@ -20,7 +20,8 @@ let viewer: McpServer;
 let viewerKey: string;
 
 const clientFor = (key: string) => new PanelClient({ url: new URL(panel.url), apiKey: key });
-const serverFor = (key: string) => new McpServer(clientFor(key), "test");
+const serverFor = (key: string, options?: { allowDestructive?: boolean }) =>
+  new McpServer(clientFor(key), "test", options);
 
 beforeAll(async () => {
   panel = await startLivePanel();
@@ -29,7 +30,7 @@ beforeAll(async () => {
   scopedKey = (await panel.createKey({ name: "shop-only", level: "write", projects: ["shop"] })).token;
   const member = await panel.createMember("viewer@example.com", [{ project: "shop", role: "viewer" }]);
   viewerKey = (await panel.createKey({ name: "viewer", level: "write" }, member)).token;
-  full = serverFor(fullKey);
+  full = serverFor(fullKey, { allowDestructive: true });
   reader = serverFor(readerKey);
   scoped = serverFor(scopedKey);
   viewer = serverFor(viewerKey);
@@ -409,14 +410,15 @@ describe("destructive tools", () => {
     await panel.deploy("secret", "web");
   });
 
-  it("refuse without a confirmation, and say what it has to be", async () => {
+  it("refuse without a confirmation, and don't hand the model what it has to be", async () => {
     const before = (await actionsNow()).length;
 
     const answer = await callTool(full, "stop_service", { project: "secret", service: "web" });
 
     expect(answer.isError).toBe(true);
     expect(errorIn(answer).code).toBe("confirmation_required");
-    expect(errorIn(answer).message).toContain('"web"');
+    expect(errorIn(answer).message).not.toContain("web");
+    expect(JSON.stringify(errorIn(answer).fields ?? {})).not.toContain("web");
     expect((await actionsNow()).length).toBe(before);
   });
 
@@ -455,7 +457,19 @@ describe("destructive tools", () => {
 
     const refused = await callTool(full, "api_change", { method: "DELETE", path });
     expect(errorIn(refused).code).toBe("confirmation_required");
-    expect(errorIn(refused).message).toContain(`"DELETE ${path}"`);
+    expect(JSON.stringify(refused.document)).not.toContain(path);
+
+    // Spelled another way, an ending is still what the panel routes it to.
+    const spelled = await callTool(full, "api_change", {
+      method: "POST",
+      path: `${API}/secret/services/web/st%6Fp`,
+    });
+    expect(errorIn(spelled).code).toBe("confirmation_required");
+    const revealed = await callTool(full, "api_change", {
+      method: "POST",
+      path: `${WEB}/environment/reveal`,
+    });
+    expect(errorIn(revealed).code).toBe("confirmation_required");
 
     const confirmed = await callTool(full, "api_change", {
       method: "DELETE",
@@ -464,6 +478,51 @@ describe("destructive tools", () => {
     });
     // Confirmed locally, then refused or not by the panel alone: this one has no such route.
     expect(confirmed.document).not.toHaveProperty("error.code", "confirmation_required");
+  });
+});
+
+describe("a server whose person has not allowed anything destructive", () => {
+  let cautious: McpServer;
+  const actionsNow = async () =>
+    (await panel.direct<ActionPage>(fullKey, "GET", "/api/v1/actions?limit=100")).body.items;
+
+  beforeAll(() => {
+    // The default: a model can't change the configuration its server was started with.
+    cautious = serverFor(fullKey);
+  });
+
+  it("lists no tool that stops, removes or deletes", async () => {
+    const names = await namesOf(cautious);
+
+    for (const name of ["stop_service", "destroy_service", "delete_project"]) {
+      expect(names).not.toContain(name);
+    }
+    expect(names).toEqual(expect.arrayContaining(["deploy_service", "api_change"]));
+  });
+
+  it.each([
+    ["stop_service", { project: "shop", service: "web", confirm: "web" }],
+    ["api_change", { method: "POST", path: `${WEB}/stop`, confirm: `POST ${WEB}/stop` }],
+    ["api_change", { method: "POST", path: `${WEB}/st%6Fp` }],
+    ["api_change", { method: "POST", path: `${WEB}/environment/reveal` }],
+  ])("refuses %s %j, confirmed or not", async (name, args) => {
+    const before = (await actionsNow()).length;
+
+    const answer = await callTool(cautious, name, args);
+
+    expect(answer.isError).toBe(true);
+    expect(errorIn(answer).code).toBe("destructive_not_allowed");
+    expect((await actionsNow()).length).toBe(before);
+  });
+
+  it("still makes changes that can be taken back", async () => {
+    const answer = await callTool(cautious, "api_change", {
+      method: "PUT",
+      path: `${WEB}/notes`,
+      body: { notes: "from a careful agent" },
+    });
+
+    expect(answer.isError).toBe(false);
   });
 });
 

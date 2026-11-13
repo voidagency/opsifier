@@ -8,7 +8,7 @@ import type { ApiApp, AppDeps, AppEnv, Feature } from "./core/context";
 import { createErrorHandler, errorBody, notFoundHandler, validationHook } from "./core/errors";
 import { PROXY_PAGES_PREFIX } from "./core/proxy";
 import * as featureModules from "./features";
-import { authorizeRequests, guardPanelHost } from "./features/access/guard";
+import { authorizeRequests, guardPanelHost, strictTransport } from "./features/access/guard";
 import { noindexPanelResponses } from "./features/server-purpose/routes";
 import { requireTwoFactorSetup } from "./features/two-factor-policy/service";
 
@@ -97,7 +97,7 @@ export function createApp(deps: AppDeps, featureList: Feature[] = features): Api
     secureHeaders({
       // "no-referrer" would make browsers send `Origin: null` with our own mutations.
       referrerPolicy: "same-origin",
-      // A panel on a bare IP cannot use HSTS, and a domain's policy belongs to its proxy.
+      // Set by `strictTransport`, only over HTTPS and under the panel's own names.
       strictTransportSecurity: false,
       xFrameOptions: "DENY",
       contentSecurityPolicy: {
@@ -116,6 +116,7 @@ export function createApp(deps: AppDeps, featureList: Feature[] = features): Api
     }),
   );
 
+  app.use("*", strictTransport(deps));
   app.use("*", noindexPanelResponses(deps));
   app.use("*", guardPanelHost(deps));
   app.use(`${API_PREFIX}/*`, forbidCaching());

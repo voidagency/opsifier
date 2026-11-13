@@ -114,7 +114,7 @@ opsifier api PUT /projects/shop/services/web/resources -d @resources.json
 opsifier api DELETE /projects/shop/services/web/domains/abc --yes
 ```
 
-Paths work as they are written in the reference (`/api/v1/...`) or without the prefix. `-d` takes JSON, or `@file`, or `@-` for standard input, and `-q name=value` adds a query parameter. Anything destructive needs `--yes`. Everything is JSON except uploading source code, which takes a raw file: use `curl` for that one.
+Paths work as they are written in the reference (`/api/v1/...`) or without the prefix. `-d` takes JSON, or `@file`, or `@-` for standard input, and `-q name=value` adds a query parameter. Anything destructive needs `--yes`, a secret revealed included, judged on the path the panel routes however it is spelled. Everything is JSON except uploading source code, which takes a raw file: use `curl` for that one.
 
 ## What it will never do
 

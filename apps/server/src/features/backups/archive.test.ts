@@ -1,5 +1,5 @@
 import { chownSync, createWriteStream, readFileSync, statSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rename, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -169,6 +169,47 @@ describe("volume archives", () => {
     expect(statSync(join(target, "top.txt")).mode & 0o777).toBe(0o755);
     expect(Math.floor(statSync(join(target, "top.txt")).mtimeMs / 1000)).toBe(1_700_000_000);
     expect(statSync(join(target, "empty-dir")).mode & 0o777).toBe(0o750);
+  });
+
+  it.each([
+    ["the folder it is reading", ["outer", "sub"]],
+    ["a folder above it", ["outer"]],
+  ])("follows no link swapped in for %s while it runs", async (_label, swapped) => {
+    await mkdir(join(source, "outer", "sub"), { recursive: true });
+    // Read first and slowly, which leaves time to swap a folder before the next name is reached.
+    await writeFile(join(source, "outer", "sub", "a-big"), Buffer.alloc(3 * 1024 * 1024, 1));
+    await writeFile(join(source, "outer", "sub", "marker.txt"), "the stack's own\n");
+    // Another project's volume, which holds the same names.
+    const other = join(root, "other");
+    await mkdir(join(other, "sub"), { recursive: true });
+    await writeFile(join(other, "sub", "marker.txt"), "ANOTHER PROJECT'S SECRET\n");
+
+    const chunks: Buffer[] = [];
+    let readingBigFile = false;
+    let swappedYet = false;
+    let refused: unknown = null;
+    try {
+      for await (const chunk of archiveBlocks(source)) {
+        chunks.push(chunk);
+        if (chunk.includes(Buffer.from("outer/sub/a-big"))) {
+          readingBigFile = true;
+        } else if (readingBigFile && !swappedYet) {
+          // Halfway through the big file, the stack puts a link where a folder was.
+          const path = join(source, ...swapped);
+          await rename(path, `${path}-moved`);
+          await symlink(swapped.length === 2 ? join(other, "sub") : other, path);
+          swappedYet = true;
+        }
+      }
+    } catch (error) {
+      refused = error;
+    }
+
+    expect(swappedYet).toBe(true);
+    expect(Buffer.concat(chunks).includes(Buffer.from("ANOTHER PROJECT'S SECRET"))).toBe(false);
+    if (refused !== null) {
+      expect(refused).toBeInstanceOf(ArchiveRefused);
+    }
   });
 
   it("makes a valid empty archive of an empty volume", async () => {

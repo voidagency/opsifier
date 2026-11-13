@@ -25,6 +25,7 @@ import {
 import { createComposeLogsProvider } from "./feeds";
 import { foreignNetworks, hasHostAccess, inspectComposeFile } from "./inspect";
 import { renderComposeOverride } from "./override";
+import { platformPorts } from "./ports";
 import { composeStatus } from "./status";
 
 const DATA_DIR = "/var/lib/opsifier";
@@ -339,6 +340,20 @@ describe("reading a compose file", () => {
     expect(issues.find((issue) => issue.code === "runs_program")?.severity).toBe("error");
   });
 
+  it.each([
+    ["2377:2377", "Swarm's cluster management"],
+    ["7946:7946/udp", "Swarm's node discovery"],
+    ["2375:2375", "Docker's API"],
+  ])("refuses a port the platform itself needs: %s", (port, holder) => {
+    const { issues } = inspectComposeFile(
+      `services:\n  web:\n    image: nginx\n    restart: always\n    ports: ['${port}']\n`,
+      { ...SCOPE, dataDir: DATA_DIR, takenPorts: platformPorts(3000) },
+    );
+    expect(issues).toEqual([
+      { severity: "error", code: "port_taken", service: "web", detail: `${port} (${holder})` },
+    ]);
+  });
+
   it("names the holder of a host port that is already in use", () => {
     const { issues } = inspectComposeFile(
       "services:\n  web:\n    image: nginx\n    restart: always\n    ports: ['443:443']\n",
@@ -349,7 +364,7 @@ describe("reading a compose file", () => {
       },
     );
     expect(issues).toEqual([
-      { severity: "warning", code: "port_taken", service: "web", detail: "443:443 (the proxy)" },
+      { severity: "error", code: "port_taken", service: "web", detail: "443:443 (the proxy)" },
     ]);
   });
 });
@@ -1028,6 +1043,56 @@ describe("the Compose API", () => {
 
       expect((await deploy()).status).toBe("succeeded");
       expect(upRan()).toBe(true);
+    });
+
+    it("refuses a host port another project holds, published through an included file", async () => {
+      await api("/projects", "POST", { name: "beta" });
+      await api("/projects/beta/services", "POST", { name: "web" });
+      await api("/projects/beta/services/web/advanced/ports", "POST", { published: 30081, target: 80 });
+      writeFileSync(
+        join(code(), "more.yml"),
+        "services:\n  tool:\n    image: alpine:3\n    restart: always\n    ports: ['30081:80']\n",
+      );
+      await api(`${STACK}/compose/source`, "PUT", { type: "inline", content: INCLUDES });
+      fake().calls.length = 0;
+
+      const refused = await deploy();
+
+      expect(refused.status).toBe("failed");
+      expect(refused.error).toMatch(/30081 is already used on this server/);
+      expect(refused.error).not.toMatch(/beta/);
+      expect(upRan()).toBe(false);
+    });
+
+    it("refuses a host port a container outside the stack holds, and not one the stack holds itself", async () => {
+      const file = "services:\n  web:\n    image: nginx\n    restart: always\n    ports: ['30090:80']\n";
+      await api(`${STACK}/compose/source`, "PUT", { type: "inline", content: file });
+      context.docker.containers.push({
+        id: "other",
+        name: "someone-else",
+        image: "nginx",
+        imageId: "sha256:x",
+        state: "running",
+        labels: {},
+        sizeBytes: null,
+        ports: [{ protocol: "tcp", port: 30090 }],
+      });
+
+      const refused = await deploy();
+      expect(refused.status).toBe("failed");
+      expect(refused.error).toMatch(/30090 is already used on this server/);
+
+      context.docker.containers.splice(0, context.docker.containers.length, {
+        id: "own",
+        name: "shop_stack-web-1",
+        image: "nginx",
+        imageId: "sha256:x",
+        state: "running",
+        labels: { "com.docker.compose.project": "shop_stack" },
+        sizeBytes: null,
+        ports: [{ protocol: "tcp", port: 30090 }],
+      });
+      expect((await deploy()).status).toBe("succeeded");
     });
 
     it("refuses a remote include on the page before anything is queued", async () => {

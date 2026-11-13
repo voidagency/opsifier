@@ -64,6 +64,22 @@ export function isPanelHostAllowed(
   );
 }
 
+/**
+ * Whether a request reached the panel under one of its own names: not under an address, nor under a
+ * name that only reaches it because it is served on its IP.
+ */
+export function isPanelOwnName(
+  deps: Pick<AppDeps, "db" | "config">,
+  hostHeader: string | undefined,
+): boolean {
+  const host = stripPort(hostHeader?.trim().toLowerCase() ?? "");
+  if (host === "") {
+    return false;
+  }
+  const names = [readPanelDomain(deps.db).customDomain, defaultPanelDomain(deps), sslipPanelDomain(deps)];
+  return names.some((name) => name !== null && name !== "" && name === host);
+}
+
 /** The panel's own names, and any wildcard that would cover them, can't be given to a service. */
 export function assertHostAvailableForPanel(
   deps: Pick<AppDeps, "db" | "config">,

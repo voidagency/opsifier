@@ -63,11 +63,13 @@ export class McpServer {
   constructor(
     client: PanelClient,
     private readonly version: string,
+    options: { allowDestructive?: boolean } = {},
   ) {
     let document: Promise<OpenApiDocument> | undefined;
     this.context = {
       api: panelApi(client),
       client,
+      allowDestructive: options.allowDestructive === true,
       document: () => {
         document ??= fetchOpenApiDocument(client).catch((error: unknown) => {
           document = undefined;
@@ -161,7 +163,7 @@ export class McpServer {
   /** Asked afresh every time: what a key may do is whatever the panel says right now. */
   private async listTools() {
     const identity = await this.context.api.identity();
-    return { tools: toolsFor(identity).map(describeTool) };
+    return { tools: toolsFor(identity, this.context.allowDestructive).map(describeTool) };
   }
 
   private async callTool(params: Record<string, unknown> | undefined) {
@@ -172,7 +174,7 @@ export class McpServer {
     }
     try {
       const args = checkedArguments(tool, params?.arguments);
-      checkConfirmation(tool, args);
+      checkConfirmation(tool, args, this.context.allowDestructive);
       const value = await tool.run(args, this.context);
       return {
         content: [{ type: "text", text: JSON.stringify(value ?? null, null, 2) }],

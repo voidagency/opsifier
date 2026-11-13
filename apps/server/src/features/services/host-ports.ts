@@ -73,6 +73,42 @@ async function hostListeners(deps: Pick<AppDeps, "config" | "docker">): Promise<
 }
 
 /**
+ * The first of these host ports already held by something other than a Compose stack's own
+ * containers: a Swarm service, any other container, or a process on the host. A stack's containers
+ * hold their ports between two deploys, so those are its own.
+ */
+export async function firstPortInUseByStack(
+  deps: Pick<AppDeps, "config" | "docker">,
+  composeProject: string,
+  wanted: readonly HostPort[],
+): Promise<HostPort | null> {
+  if (wanted.length === 0) {
+    return null;
+  }
+  const [services, containers] = await Promise.all([
+    deps.docker.listServices(),
+    deps.docker.listContainers({ size: false }),
+  ]);
+  const own = (container: (typeof containers)[number]) =>
+    container.labels["com.docker.compose.project"] === composeProject;
+  const mine = new Set(
+    containers
+      .filter(own)
+      .flatMap((container) => container.ports ?? [])
+      .map(key),
+  );
+  const held = new Set([
+    ...services.flatMap(publishedBy).map(key),
+    ...containers
+      .filter((container) => !own(container))
+      .flatMap((container) => container.ports ?? [])
+      .map(key),
+    ...((await hostListeners(deps).catch(() => null)) ?? []).map(key),
+  ]);
+  return wanted.find((port) => held.has(key(port)) && !mine.has(key(port))) ?? null;
+}
+
+/**
  * The first of these host ports already held by something other than this service: another Swarm
  * service, a container Docker alone runs, or a process on the host. Whichever of them Docker would
  * only have discovered by failing to bind, with the service already stopped.
