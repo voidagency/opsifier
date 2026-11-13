@@ -376,6 +376,26 @@ describe("the IDE as a security boundary", () => {
     });
   });
 
+  describe("a box that moves", () => {
+    it("takes no token along to another project, whose people did not issue it", async () => {
+      const token = await issue();
+      await api("/projects", "POST", { name: "secret" });
+
+      expect((await api(`${BOX}/rename`, "POST", { projectName: "secret", name: "dev" })).status).toBe(200);
+
+      expectRefused(await withToken(token, "/ide/secret/dev/tree"));
+      expectRefused(await withToken(token, "/ide/secret/dev/file?path=notes.txt"));
+    });
+
+    it("keeps its token through a rename inside its project", async () => {
+      const token = await issue();
+
+      expect((await api(`${BOX}/rename`, "POST", { projectName: "shop", name: "renamed" })).status).toBe(200);
+
+      expect((await withToken(token, "/ide/shop/renamed/tree")).status).toBe(200);
+    });
+  });
+
   describe("the token's life", () => {
     it("works until it expires, and then says that and nothing more", async () => {
       const token = await issue(1);

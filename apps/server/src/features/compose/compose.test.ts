@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
   ComposeDetail,
@@ -103,6 +103,8 @@ describe("reading a compose file", () => {
 
   const stack = (lines: string, top = "") =>
     inspect(`services:\n  web:\n    image: nginx\n    restart: always\n${lines}${top}`).issues;
+  /** A service the stack builds, which takes the stack's own image name rather than `nginx`. */
+  const built = (lines: string) => inspect(`services:\n  web:\n    restart: always\n${lines}`).issues;
 
   it.each([
     ["an external network", "    networks: [n]\n", "networks:\n  n:\n    external: true\n", "n"],
@@ -192,9 +194,9 @@ describe("reading a compose file", () => {
   });
 
   it("leaves a build alone on its own network, and flags one on the host's", () => {
-    expect(stack("    build: { context: ., network: default }\n")).toEqual([]);
-    expect(stack("    build: { context: ., network: none }\n")).toEqual([]);
-    expect(stack("    build: { context: ., network: host }\n")).toEqual([
+    expect(built("    build: { context: ., network: default }\n")).toEqual([]);
+    expect(built("    build: { context: ., network: none }\n")).toEqual([]);
+    expect(built("    build: { context: ., network: host }\n")).toEqual([
       { severity: "host", code: "host_namespace", service: "web", detail: "build.network: host" },
     ]);
   });
@@ -216,6 +218,125 @@ describe("reading a compose file", () => {
       "services:\n  web:\n    image: nginx\n    restart: always\n    volumes: ['./data:/data', 'cache:/cache']\nvolumes:\n  cache: {}\n",
     );
     expect(issues).toEqual([]);
+  });
+
+  it.each([
+    ["a mount through a folder whose name starts with a dot", "volumes: ['.x/../../../../../..:/host']"],
+    [
+      "a mount by its long form, without a dot",
+      "volumes: [{ type: bind, source: 'x/../../..', target: /h }]",
+    ],
+    ["a build context without a dot", "build: 'sub/../../../..'"],
+    ["a Dockerfile beside the context", "build: { context: ./sub, dockerfile: '../../../Dockerfile' }"],
+    ["an env file without a dot", "env_file: ['sub/../../../../other/web/code/.env']"],
+    ["an env file in its long form", "env_file: [{ path: 'x/../../..', required: false }]"],
+    ["a label file", "label_file: 'x/../../../labels'"],
+    ["an extended file", "extends: { file: 'x/../../../base.yml', service: web }"],
+    [
+      "a build context added beside the main one",
+      "build: { context: ., additional_contexts: { up: 'a/../..' } }",
+    ],
+    ["a local cache", "build: { context: ., cache_from: ['type=local,src=x/../../..'] }"],
+  ])("refuses %s that leaves the stack", (_label, line) => {
+    const { issues } = inspect(`services:\n  web:\n    image: nginx\n    restart: always\n    ${line}\n`);
+    expect(issues.find((issue) => issue.code === "escapes_stack")?.severity).toBe("error");
+  });
+
+  it("still accepts paths that go up and come back inside the stack", () => {
+    const { issues } = inspect(
+      "services:\n  web:\n    restart: always\n    build: { context: ./sub, dockerfile: ../Dockerfile }\n    env_file: [sub/../.env]\n    volumes: ['.data/../data:/data']\n",
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it.each([
+    ["use_api_socket: true", "docker_socket"],
+    ["device_cgroup_rules: ['c 1:3 mr']", "devices"],
+    ["gpus: all", "devices"],
+    ["deploy: { resources: { reservations: { devices: [{ capabilities: [gpu] }] } } }", "devices"],
+    ["cgroup_parent: /system.slice", "host_namespace"],
+    ["runtime: runc", "security_options"],
+    ["security_opt: ['seccomp=./permissive.json']", "security_options"],
+    ["security_opt: ['label=type:spc_t']", "security_options"],
+    ["post_start: [{ command: [sh, -c, id], privileged: true }]", "privileged"],
+    ["pre_stop: [{ command: [sh, -c, id], privileged: true }]", "privileged"],
+    ["build: { context: ., privileged: true }", "privileged"],
+    ["build: { context: ., entitlements: [network.host] }", "privileged"],
+    ["build: { context: ., additional_contexts: { panel: /var/lib/opsifier } }", "data_directory"],
+    ["build: { context: ., additional_contexts: { etc: /etc } }", "host_path"],
+    ["build: { context: ., ssh: ['key=/root/.ssh/id_ed25519'] }", "host_path"],
+    ["build: { context: ., cache_to: ['type=local,dest=/var/lib/opsifier/cache'] }", "data_directory"],
+    ["label_file: /etc/labels", "host_path"],
+    ["credential_spec: { file: /etc/spec.json }", "host_path"],
+  ])("counts %s as reaching the host", (line, code) => {
+    const { issues } = inspect(`services:\n  web:\n    image: nginx\n    restart: always\n    ${line}\n`);
+    expect(issues.find((issue) => issue.code === code)?.severity).toBe("host");
+  });
+
+  it("keeps the options that only tighten a container to themselves", () => {
+    expect(stack("    security_opt: ['no-new-privileges:true']\n")).toEqual([]);
+    expect(
+      built("    build: { context: ., additional_contexts: { base: 'docker-image://alpine:3' } }\n"),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ["the panel's own image", "    build: .\n    image: ghcr.io/voidagency/opsifier:0.2.2\n"],
+    ["the proxy's image", "    build: .\n    image: traefik:3.6\n"],
+    [
+      "a builder another project uses",
+      "    build: .\n    image: paketobuildpacks/builder-jammy-base:0.4.469\n",
+    ],
+    ["what another project built", "    build: .\n    image: opsifier/beta/web:latest\n"],
+    ["a name added as a tag", "    build: { context: ., tags: ['postgres:16.4'] }\n"],
+  ])("refuses a build that would name its image after %s", (_label, lines) => {
+    const { issues } = inspect(`services:\n  web:\n    restart: always\n${lines}`);
+    expect(issues.find((issue) => issue.code === "foreign_image")?.severity).toBe("error");
+  });
+
+  it.each([
+    ["an image another project built", "    image: opsifier/beta/web:latest\n"],
+    ["a release another service kept", "    image: opsifier/releases/0a1b2c:3\n"],
+    [
+      "another project's image as a mount",
+      "    image: nginx\n    volumes: [{ type: image, source: 'opsifier/beta/web:latest', target: /x }]\n",
+    ],
+    [
+      "another project's image as a build context",
+      "    build: { context: ., additional_contexts: { app: 'docker-image://opsifier/beta/web:latest' } }\n",
+    ],
+  ])("refuses %s, which only lives on this server", (_label, lines) => {
+    const { issues } = inspect(`services:\n  web:\n    restart: always\n${lines}`);
+    expect(issues.find((issue) => issue.code === "foreign_image")?.severity).toBe("error");
+  });
+
+  it("lets a build name its image after the stack, and use what its own project built", () => {
+    expect(built("    build: .\n    image: shop_stack-web:1\n")).toEqual([]);
+    expect(built("    build: { context: ., tags: ['shop_stack/web:edge'] }\n")).toEqual([]);
+    expect(built("    build: .\n")).toEqual([]);
+    expect(
+      inspect("services:\n  web:\n    image: opsifier/shop/api:latest\n    restart: always\n").issues,
+    ).toEqual([]);
+  });
+
+  it.each([
+    ["a remote include", "include:\n  - https://example.test/owner/repo.git#main:compose.yaml\n"],
+    ["an include over SSH", "include:\n  - git@example.test:owner/repo.git\n"],
+    ["an include from a registry", "include:\n  - oci://registry.example.test/stack:1\n"],
+    ["an include that leaves the stack", "include:\n  - path: x/../../../other/compose.yml\n"],
+    ["the env file of an include", "include:\n  - path: ./a.yml\n    env_file: x/../../../other/.env\n"],
+    ["the folder of an include", "include:\n  - path: ./a.yml\n    project_directory: x/../../..\n"],
+  ])("refuses %s, which Compose would fetch or read before anything checks it", (_label, top) => {
+    const { issues } = inspect(`${top}services:\n  web:\n    image: nginx\n    restart: always\n`);
+    expect(issues.find((issue) => issue.code === "escapes_stack")?.severity).toBe("error");
+  });
+
+  it.each([
+    ["a provider", "    provider:\n      type: /var/lib/opsifier/projects/shop/stack/code/tool\n", ""],
+    ["a model", "    models: [llm]\n", "models:\n  llm:\n    model: ai/smollm2\n"],
+  ])("refuses a service that hands work to %s, a program run beside the panel", (_label, lines, top) => {
+    const { issues } = inspect(`services:\n  web:\n    image: nginx\n    restart: always\n${lines}${top}`);
+    expect(issues.find((issue) => issue.code === "runs_program")?.severity).toBe("error");
   });
 
   it("names the holder of a host port that is already in use", () => {
@@ -647,6 +768,29 @@ describe("the Compose API", () => {
     });
   });
 
+  it("keeps what the loader, Git and SSH read out of the Compose CLI it runs", async () => {
+    const steering = ["LD_PRELOAD", "LD_LIBRARY_PATH", "GLIBC_TUNABLES", "GIT_SSH_COMMAND", "SSH_AUTH_SOCK"];
+    await api(`${STACK}/environment`, "PUT", {
+      env: `IMAGE_TAG=v1\n${steering.map((name) => `${name}=/var/lib/opsifier/projects/shop/stack/code/x\n`).join("")}`,
+    });
+    await api(`${STACK}/compose/source`, "PUT", { type: "inline", content: FILE });
+
+    const action = await api<{ id: string }>(`${STACK}/deploy`, "POST", {});
+    const finished = await waitFor(action.body.id);
+
+    expect(finished.status).toBe("succeeded");
+    const compose = (context.deps.tools as FakeTools).calls.filter(
+      (request) => request.args[0] === "compose",
+    );
+    expect(compose.find((request) => request.args.includes("up"))?.env.IMAGE_TAG).toBe("v1");
+    for (const request of compose) {
+      for (const name of steering) {
+        expect(request.env[name]).toBeUndefined();
+      }
+    }
+    expect(finished.log).toContain("Not passing these variables, they steer Compose itself");
+  });
+
   it("does not deploy without a file", async () => {
     const deploy = await api(`${STACK}/deploy`, "POST", {});
     expect(deploy.status).toBe(409);
@@ -739,6 +883,165 @@ describe("the Compose API", () => {
       content: `${dangerous}# changed\n`,
     });
     expect(edited.body.acknowledged).toBe(false);
+  });
+
+  describe("what Compose brings in beyond the file on the page", () => {
+    const code = () => join(context.dataDir, "projects", "shop", "stack", "code");
+    const fake = () => context.deps.tools as FakeTools;
+    const composeRan = () => fake().calls.some((request) => request.args[0] === "compose");
+    const upRan = () => fake().calls.some((request) => request.args.includes("up"));
+    const INCLUDES = "include:\n  - ./more.yml\nservices:\n  web:\n    image: nginx\n    restart: always\n";
+    const PRIVILEGED_TOOL =
+      "services:\n  tool:\n    image: alpine:3\n    restart: always\n    privileged: true\n";
+
+    async function deploy(as = cookie) {
+      const accepted = await call<{ id: string }>(context.app, `/api/v1${STACK}/deploy`, {
+        method: "POST",
+        body: {},
+        cookie: as,
+        origin: TEST_ORIGIN,
+      });
+      expect(accepted.status).toBe(202);
+      return waitFor(accepted.body.id);
+    }
+
+    it("asks an administrator about what an included file reaches, and again once that changes", async () => {
+      writeFileSync(join(code(), "more.yml"), PRIVILEGED_TOOL);
+      const saved = await api<ComposeDetail>(`${STACK}/compose/source`, "PUT", {
+        type: "inline",
+        content: INCLUDES,
+      });
+      // The page alone can't show it: the file it reads is somewhere else.
+      expect(saved.body.acknowledgementRequired).toBe(false);
+
+      const refused = await deploy();
+      expect(refused.status).toBe("failed");
+      expect(refused.error).toMatch(/nobody has confirmed \(privileged tool\)/);
+      expect(upRan()).toBe(false);
+      const shown = await api<ComposeDetail>(`${STACK}/compose`);
+      expect(shown.body).toMatchObject({ acknowledgementRequired: true, acknowledged: false });
+      expect(shown.body.issues).toEqual(
+        expect.arrayContaining([{ severity: "host", code: "privileged", service: "tool", detail: null }]),
+      );
+
+      expect((await api(`${STACK}/compose/acknowledge`, "POST", { content: INCLUDES })).status).toBe(200);
+      expect((await api<ComposeDetail>(`${STACK}/compose`)).body.acknowledged).toBe(true);
+      expect((await deploy()).status).toBe("succeeded");
+
+      // The file on the page stays the same. What it includes does not.
+      writeFileSync(join(code(), "more.yml"), `${PRIVILEGED_TOOL}    volumes: ['/:/host']\n`);
+      const again = await deploy();
+      expect(again.status).toBe("failed");
+      expect(again.error).toMatch(/nobody has confirmed/);
+      expect((await api<ComposeDetail>(`${STACK}/compose`)).body.issues).toEqual(
+        expect.arrayContaining([{ severity: "host", code: "docker_socket", service: "tool", detail: "/" }]),
+      );
+    });
+
+    it("asks again when a variable moves a confirmed mount somewhere else on the server", async () => {
+      const mounts = `services:\n  web:\n    image: nginx\n    restart: always\n    volumes: ['\${DATA}:/data:ro']\n`;
+      await api(`${STACK}/environment`, "PUT", { env: "DATA=/srv/shared\n" });
+      await api(`${STACK}/compose/source`, "PUT", { type: "inline", content: mounts });
+      expect((await api(`${STACK}/compose/acknowledge`, "POST", { content: mounts })).status).toBe(200);
+      expect((await deploy()).status).toBe("succeeded");
+
+      const operator = await signInMember(context.app, cookie, "op@example.com", [
+        { project: "shop", role: "operator" },
+      ]);
+      const changed = await call(context.app, `/api/v1${STACK}/environment`, {
+        method: "PUT",
+        body: { env: "DATA=/etc\n" },
+        cookie: operator,
+        origin: TEST_ORIGIN,
+      });
+      expect(changed.status).toBe(200);
+      fake().calls.length = 0;
+
+      const refused = await deploy(operator);
+      expect(refused.status).toBe("failed");
+      expect(refused.error).toMatch(/host_path web \/etc/);
+      expect(upRan()).toBe(false);
+      const confirm = await call(context.app, `/api/v1${STACK}/compose/acknowledge`, {
+        method: "POST",
+        body: { content: mounts },
+        cookie: operator,
+        origin: TEST_ORIGIN,
+      });
+      expect(confirm.status).toBe(403);
+      expect((await api<ComposeDetail>(`${STACK}/compose`)).body.acknowledgementRequired).toBe(true);
+    });
+
+    it("counts a mount inside the stack for where a link the stack wrote there leads", async () => {
+      const mounts =
+        "services:\n  web:\n    image: nginx\n    restart: always\n    volumes: ['./data:/data']\n";
+      symlinkSync("/", join(code(), "data"));
+      await api(`${STACK}/compose/source`, "PUT", { type: "inline", content: mounts });
+
+      const refused = await deploy();
+
+      expect(refused.status).toBe("failed");
+      expect(refused.error).toMatch(/nobody has confirmed \(host_path web .*data -> \/\)/);
+      expect(upRan()).toBe(false);
+    });
+
+    it.each([
+      ["an env file outside the stack", "    env_file: [x/../../../../other/web/code/.env]\n"],
+      ["a remote include of its own", "include:\n  - git@example.test:owner/repo.git\n"],
+      ["a provider", "    provider:\n      type: /var/lib/opsifier/projects/shop/stack/code/tool\n"],
+    ])("refuses an included file with %s before Compose reads anything", async (_label, lines) => {
+      const nested = lines.startsWith("include")
+        ? `${lines}services:\n  tool:\n    image: alpine:3\n    restart: always\n`
+        : `services:\n  tool:\n    image: alpine:3\n    restart: always\n${lines}`;
+      writeFileSync(join(code(), "more.yml"), nested);
+      await api(`${STACK}/compose/source`, "PUT", { type: "inline", content: INCLUDES });
+      fake().calls.length = 0;
+
+      const refused = await deploy();
+
+      expect(refused.status).toBe("failed");
+      expect(refused.error).toMatch(/can't run: (escapes_stack|runs_program)/);
+      expect(composeRan()).toBe(false);
+    });
+
+    it("refuses a build in an included file that would take another image's name", async () => {
+      writeFileSync(
+        join(code(), "more.yml"),
+        "services:\n  tool:\n    build: .\n    image: ghcr.io/voidagency/opsifier:0.2.2\n    restart: always\n",
+      );
+      await api(`${STACK}/compose/source`, "PUT", { type: "inline", content: INCLUDES });
+      fake().calls.length = 0;
+
+      const refused = await deploy();
+
+      expect(refused.status).toBe("failed");
+      expect(refused.error).toMatch(/can't run: foreign_image \(ghcr.io\/voidagency\/opsifier:0.2.2\)/);
+      expect(upRan()).toBe(false);
+    });
+
+    it("still reads a stack with a Compose that doesn't know how to keep env files as paths", async () => {
+      const simulate = fake().handler;
+      fake().handler = async (request) =>
+        request.args.includes("--no-env-resolution")
+          ? { exitCode: 1, tail: ["unknown flag: --no-env-resolution"] }
+          : simulate?.(request);
+      await api(`${STACK}/compose/source`, "PUT", { type: "inline", content: FILE });
+
+      expect((await deploy()).status).toBe("succeeded");
+      expect(upRan()).toBe(true);
+    });
+
+    it("refuses a remote include on the page before anything is queued", async () => {
+      const remote =
+        "include:\n  - https://example.test/owner/repo.git#main:compose.yaml\nservices:\n  web:\n    image: nginx\n    restart: always\n";
+      await api(`${STACK}/compose/source`, "PUT", { type: "inline", content: remote });
+      fake().calls.length = 0;
+
+      const refused = await api(`${STACK}/deploy`, "POST", {});
+
+      expect(refused.status).toBe(409);
+      expect(apiErrorOf(refused).code).toBe("compose_invalid");
+      expect(composeRan()).toBe(false);
+    });
   });
 
   describe("from a Git source", () => {

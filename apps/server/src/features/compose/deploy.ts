@@ -1,10 +1,23 @@
 import { createHash, randomBytes } from "node:crypto";
-import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import {
+  cp,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import type { ComposeIssue } from "@opsifier/contract";
 import { parse } from "yaml";
 import type { ActionContext } from "../../core/actions";
 import type { AppDeps } from "../../core/context";
+import { conflict } from "../../core/errors";
 import type { Redactor } from "../../core/tools";
 import { foreignNetworkRefusal, prepareRoutedNetworks } from "../projects/network";
 import { listDomainRows } from "../service-tabs/domains/service";
@@ -17,8 +30,8 @@ import { claimDeployKey } from "../service-tabs/source/key-binding";
 import { resolveEnvPairs } from "../services/compile/env";
 import { openEnv } from "../services/env-store";
 import { serviceRedactor } from "../services/masking";
-import type { ServiceRecord } from "../services/repo";
-import { requireProject, type ServiceTarget, serviceDir } from "../services/service";
+import { type ServiceRecord, saveServiceSpec } from "../services/repo";
+import { requireProject, requireService, type ServiceTarget, serviceDir } from "../services/service";
 import { resolveReferences } from "../templates/references";
 import { foreignNetworks } from "./inspect";
 import {
@@ -29,9 +42,11 @@ import {
   composeProject,
 } from "./names";
 import { overrideChildren, renderComposeOverride } from "./override";
+import { accessFacts, accessFingerprint, inspectResolved, type LocalPath } from "./resolved";
 import { assertComposeSucceeded, type ComposeFiles, runCompose } from "./run";
 import type { StoredCompose, StoredComposeGitSource } from "./spec";
 import { containerState } from "./status";
+import { inspectStackFiles } from "./tree";
 
 export interface PreparedStack {
   files: ComposeFiles;
@@ -200,7 +215,7 @@ export function stackEnvPairs(
 }
 
 /** The variables Compose interpolates, resolved at deploy like a container's. */
-function stackVariables(
+export function stackVariables(
   deps: AppDeps,
   target: ServiceTarget,
   record: ServiceRecord,
@@ -265,8 +280,8 @@ export interface StackDeployOptions {
   commit?: string;
 }
 
-function assertRunnable(prepared: PreparedStack): { services: Record<string, unknown> } {
-  const parsed: unknown = parse(prepared.content, { merge: true });
+function assertRunnable(content: string): { services: Record<string, unknown> } {
+  const parsed: unknown = parse(content, { merge: true });
   const services = (parsed as { services?: unknown } | null)?.services;
   if (typeof services !== "object" || services === null) {
     throw new Error("This Compose file defines no services.");
@@ -373,59 +388,231 @@ export async function watchStack(
 const PULL_PROGRESS =
   /^\s*[0-9a-f]{12} (?:Pulling fs layer|Waiting|Downloading|Verifying Checksum|Download complete|Extracting|Pull complete|Already exists)/;
 
-/** Compose's own reading of the file, before anything is started. */
-async function validateWithCompose(
-  deps: AppDeps,
+/** The files of the stack as the last save or checkout left them, without fetching anything. */
+export async function stackFilesOnDisk(
+  deps: Pick<AppDeps, "config">,
   target: ServiceTarget,
-  files: ComposeFiles,
-  variables: Readonly<Record<string, string>>,
-  redact: Redactor,
-  ctx: ActionContext,
-): Promise<void> {
-  ctx.log("Checking the Compose file with Compose");
-  const result = await runCompose(deps, target, ["config", "--quiet"], {
-    files,
-    variables,
-    redact,
-    signal: ctx.signal,
-    timeoutMs: 60_000,
-    onLine: ctx.log,
-  });
-  assertComposeSucceeded("Checking the Compose file", result);
+  compose: StoredCompose,
+): Promise<ComposeFiles> {
+  const { source } = compose;
+  if (source === null) {
+    throw conflict("service_has_no_source", "Save a Compose file first.");
+  }
+  const code = composeCodeDir(deps, target);
+  const overrideFile = composeOverrideFile(deps, target);
+  if (source.type === "inline") {
+    return {
+      projectDirectory: await realpath(code),
+      composeFile: await resolveInside(code, COMPOSE_INLINE_FILE, "The Compose file"),
+      overrideFile,
+    };
+  }
+  const projectDirectory = await resolveInside(code, source.path.replace(/^\/+/, ""), "The build path");
+  return {
+    projectDirectory,
+    composeFile: await resolveInside(projectDirectory, source.file, "The Compose file"),
+    overrideFile,
+  };
 }
 
+/** Marks every child as the panel's and puts it on the project's networks. Written before Compose reads the stack. */
+export async function writeStackOverride(
+  deps: Pick<AppDeps, "config">,
+  target: ServiceTarget,
+  record: ServiceRecord,
+  content: string,
+): Promise<void> {
+  await writeFileAtomic(
+    composeOverrideFile(deps, target),
+    renderComposeOverride({
+      project: target.projectName,
+      service: target.serviceName,
+      id: record.id,
+      qualified: composeProject(target),
+      children: overrideChildren(assertRunnable(content)),
+    }),
+    0o600,
+  );
+}
+
+/** What a stack reaches on the server, and what stops it outright, read through Compose with nothing started. */
+export interface StackAccess {
+  /** What no confirmation allows: another project's network, a program Compose would run, a file outside the stack. */
+  refusal: Error | null;
+  /** Every way the stack reaches the server, as Compose resolved it. */
+  access: ComposeIssue[];
+}
+
+function fileRefusal(issue: ComposeIssue): Error {
+  if (issue.code === "foreign_network") {
+    return foreignNetworkRefusal(issue.detail ?? "another network");
+  }
+  return conflict(
+    "compose_invalid",
+    `This Compose file can't run: ${issue.code}${issue.detail === null ? "" : ` (${issue.detail})`}. See the Source tab.`,
+  );
+}
+
+const isInside = (root: string, path: string): boolean => path === root || path.startsWith(`${root}${sep}`);
+
 /**
- * A file can get a network from places the inspection doesn't read: an `include`, an `extends`, a
- * variable. So what Compose itself resolved is held to the same rule, right before anything starts.
+ * Docker follows links when it mounts a path and Compose when it reads one, so a path inside the stack
+ * counts for where it really leads. A link the stack wrote in its own folder can lead anywhere.
  */
-async function assertStaysInProject(
+async function linksOut(paths: readonly LocalPath[], projectDirectory: string): Promise<ComposeIssue[]> {
+  const root = await realpath(projectDirectory);
+  const found: ComposeIssue[] = [];
+  for (const { service, path } of paths) {
+    let existing = path;
+    let rest: string[] = [];
+    for (;;) {
+      const exists = await lstat(existing).then(
+        () => true,
+        () => false,
+      );
+      const parent = dirname(existing);
+      if (exists || parent === existing) {
+        break;
+      }
+      rest = [basename(existing), ...rest];
+      existing = parent;
+    }
+    const real = join(await realpath(existing).catch(() => existing), ...rest);
+    if (!isInside(root, real)) {
+      found.push({ severity: "host", code: "host_path", service, detail: `${path} -> ${real}` });
+    }
+  }
+  return found;
+}
+
+/** What Compose itself makes of the stack: every file merged in, every variable and path filled in. */
+async function resolveWithCompose(
   deps: AppDeps,
   target: ServiceTarget,
   files: ComposeFiles,
   variables: Readonly<Record<string, string>>,
   redact: Redactor,
-  ctx: ActionContext,
-): Promise<void> {
+  signal: AbortSignal | undefined,
+): Promise<Record<string, unknown>> {
   const output = `${files.overrideFile}.${randomBytes(6).toString("hex")}.resolved`;
-  try {
-    assertComposeSucceeded(
-      "Reading the resolved Compose file",
-      await runCompose(deps, target, ["config", "--format", "json", "--output", output], {
-        files,
-        variables,
-        redact,
-        signal: ctx.signal,
-        timeoutMs: 60_000,
-      }),
+  const read = (keepEnvFiles: boolean) =>
+    runCompose(
+      deps,
+      target,
+      [
+        "config",
+        "--format",
+        "json",
+        // Env files are kept as paths, so that where they are read from can be judged too.
+        ...(keepEnvFiles ? ["--no-env-resolution"] : []),
+        "--output",
+        output,
+      ],
+      { files, variables, redact, signal, timeoutMs: 60_000 },
     );
-    const resolved = JSON.parse(await readFile(output, "utf8")) as Record<string, unknown>;
-    const foreign = foreignNetworks(resolved, { project: target.projectName, stack: composeProject(target) });
-    if (foreign[0] !== undefined) {
-      throw foreignNetworkRefusal(foreign[0].detail);
+  try {
+    let result = await read(true);
+    // A Compose older than that option still reads the stack. The files it brings in were checked
+    // before, env files among them.
+    if (result.exitCode !== 0 && result.tail.some((line) => line.includes("no-env-resolution"))) {
+      result = await read(false);
     }
+    assertComposeSucceeded("Reading the Compose file", result);
+    return JSON.parse(await readFile(output, "utf8")) as Record<string, unknown>;
   } finally {
     await rm(output, { force: true });
   }
+}
+
+/**
+ * Reads a stack the way a deploy is about to run it. The files it brings in are checked first, since
+ * Compose reads or fetches what they name as it loads them. Then what Compose resolved is held to the
+ * same rules as the file on the page: an `include`, an `extends` or a variable can bring in anything.
+ */
+export async function readStackAccess(
+  deps: AppDeps,
+  target: ServiceTarget,
+  files: ComposeFiles,
+  variables: Readonly<Record<string, string>>,
+  redact: Redactor,
+  signal?: AbortSignal,
+): Promise<StackAccess> {
+  const scope = { project: target.projectName, stack: composeProject(target) };
+  const tree = await inspectStackFiles(files.projectDirectory, files.composeFile, {
+    ...scope,
+    dataDir: deps.config.dataDir,
+  });
+  const blocking = tree.find((issue) => issue.severity === "error");
+  if (blocking !== undefined) {
+    return { refusal: fileRefusal(blocking), access: [] };
+  }
+
+  const resolved = await resolveWithCompose(deps, target, files, variables, redact, signal);
+  const foreign = foreignNetworks(resolved, scope);
+  if (foreign[0] !== undefined) {
+    return { refusal: foreignNetworkRefusal(foreign[0].detail), access: [] };
+  }
+  const { issues, insidePaths } = inspectResolved(resolved, {
+    project: target.projectName,
+    stack: scope.stack,
+    dataDir: deps.config.dataDir,
+    projectDirectory: files.projectDirectory,
+  });
+  const refused = issues.find((issue) => issue.severity === "error");
+  if (refused !== undefined) {
+    return { refusal: fileRefusal(refused), access: [] };
+  }
+  const access = [...tree, ...issues, ...(await linksOut(insidePaths, files.projectDirectory))].filter(
+    (issue) => issue.severity === "host",
+  );
+  return { refusal: null, access };
+}
+
+/** Puts what nobody confirmed in front of an administrator, on the Source tab. */
+function recordPendingAccess(
+  deps: Pick<AppDeps, "db" | "now">,
+  target: ServiceTarget,
+  access: readonly ComposeIssue[],
+): void {
+  const record = requireService(deps, target);
+  const compose = record.spec.compose;
+  if (compose === null) {
+    return;
+  }
+  const pending = [
+    ...new Map(access.map((issue) => [`${issue.code}|${issue.service}|${issue.detail}`, issue])).values(),
+  ];
+  saveServiceSpec(
+    deps.db,
+    target.projectName,
+    target.serviceName,
+    { ...record.spec, compose: { ...compose, pendingAccess: pending } },
+    new Date(deps.now()),
+  );
+}
+
+/**
+ * An administrator confirms everything the stack reaches on the server, as it was when they did. A
+ * variable, an included file or a new commit that changes any of it asks them again.
+ */
+function assertAccessConfirmed(
+  deps: Pick<AppDeps, "db" | "now">,
+  target: ServiceTarget,
+  compose: StoredCompose,
+  access: readonly ComposeIssue[],
+): void {
+  if (access.length === 0 || accessFingerprint(access) === compose.acknowledgedAccess) {
+    return;
+  }
+  recordPendingAccess(deps, target, access);
+  const shown = accessFacts(access)
+    .slice(0, 3)
+    .map((fact) => fact.split("|").filter(Boolean).join(" "))
+    .join("; ");
+  throw conflict(
+    "compose_needs_confirmation",
+    `This stack reaches the server in ways nobody has confirmed (${shown}). An administrator has to confirm them on the Source tab before it deploys.`,
+  );
 }
 
 /** Pulls and builds, starts the containers, and only reports success once they have stayed up. */
@@ -443,21 +630,16 @@ export async function deployStack(
   const redact = serviceRedactor(deps, target);
 
   await applyEnvFile(files.projectDirectory, compose.envFile, variables);
-  await writeFileAtomic(
-    files.overrideFile,
-    renderComposeOverride({
-      project: target.projectName,
-      service: target.serviceName,
-      id: record.id,
-      qualified: composeProject(target),
-      children: overrideChildren(assertRunnable(prepared)),
-    }),
-    0o600,
-  );
+  await writeStackOverride(deps, target, record, prepared.content);
+
+  ctx.log("Checking the Compose file with Compose");
+  const { refusal, access } = await readStackAccess(deps, target, files, variables, redact, ctx.signal);
+  if (refusal !== null) {
+    throw refusal;
+  }
+  assertAccessConfirmed(deps, target, compose, access);
 
   await prepareStackNetwork(deps, target, ctx);
-  await validateWithCompose(deps, target, files, variables, redact, ctx);
-  await assertStaysInProject(deps, target, files, variables, redact, ctx);
 
   const shared = {
     files,

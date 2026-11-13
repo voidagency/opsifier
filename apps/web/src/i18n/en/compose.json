@@ -76,6 +76,8 @@
       "unknown_dependency": "depends on a service that isn't in this file.",
       "escapes_stack": "points outside the stack's folder.",
       "foreign_network": "joins a network this project doesn't own. Projects are kept apart, so remove it. To use a database from another project, publish its port on its Expose tab and connect through the server's address.",
+      "foreign_image": "names an image something else on this server may run, or runs one only another project has. A built image takes the stack's own name: leave image out, or start it with the stack's name.",
+      "runs_program": "hands work to a program Compose would run on the server itself, outside any container. Opsifier does not run those.",
       "privileged": "runs in privileged mode, with full control of the server.",
       "docker_socket": "mounts the Docker socket, which gives it control of the server.",
       "data_directory": "mounts the panel's own data, including its secrets.",

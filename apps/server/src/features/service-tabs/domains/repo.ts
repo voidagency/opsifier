@@ -1,6 +1,6 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { DbHandle } from "../../../core/db";
-import { customDomains, domains } from "../../../core/db/schema";
+import { customDomains, domains, services } from "../../../core/db/schema";
 
 export type DomainRow = typeof domains.$inferSelect;
 
@@ -36,6 +36,40 @@ export const routesOverlap = (a: RouteClaim, b: RouteClaim): boolean =>
 export const sameRoute = (a: RouteClaim, b: RouteClaim): boolean =>
   a.host === b.host && a.path === b.path && a.wildcard === b.wildcard;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * The addresses the panel gives a database's web tools. They live with the database rather than among
+ * domains, and are routes all the same: a claim over one would take the tool's traffic, and its
+ * login with it.
+ */
+function toolRoutes(db: DbHandle): HeldRoute[] {
+  const rows = db
+    .select({ project: services.projectName, service: services.name, spec: services.spec })
+    .from(services)
+    .where(sql`json_extract(${services.spec}, '$.database.companions') IS NOT NULL`)
+    .all();
+  return rows.flatMap(({ project, service, spec }) => {
+    const database = isRecord(spec) && isRecord(spec.database) ? spec.database : {};
+    const companions = isRecord(database.companions) ? database.companions : {};
+    return Object.entries(companions).flatMap(([tool, stored]) =>
+      isRecord(stored) && typeof stored.host === "string"
+        ? [
+            {
+              id: `tool:${project}/${service}/${tool}`,
+              host: stored.host,
+              path: "/",
+              wildcard: false,
+              project,
+              service,
+            },
+          ]
+        : [],
+    );
+  });
+}
+
 function heldRoutes(db: DbHandle): HeldRoute[] {
   const claim = { host: domains.host, path: domains.path, wildcard: domains.wildcard };
   const held = db
@@ -52,7 +86,7 @@ function heldRoutes(db: DbHandle): HeldRoute[] {
     .from(customDomains)
     .all()
     .map((row) => ({ ...row, project: null, service: null }));
-  return [...held, ...custom];
+  return [...held, ...custom, ...toolRoutes(db)];
 }
 
 /** Every route some request could share with this claim, whoever holds it. */

@@ -42,7 +42,61 @@ export function dockerCliEnv(deps: Pick<AppDeps, "config">): Record<string, stri
   };
 }
 
-/** Variables that steer the build tools themselves, so a service's own must not replace them. */
-const RESERVED_NAME = /^(?:PATH|HOME|TMPDIR|DOCKER_.*|BUILDKIT_.*|BUILDX_.*|COMPOSE_.*)$/;
+/**
+ * Names that act on the programs the panel runs for a build or a stack, rather than on what they build.
+ * Those programs run as root next to the Docker socket and read their whole environment, which is
+ * where a service's own values reach them, so none of these may come from a service:
+ *
+ * - what steers the tools themselves: Docker, BuildKit, Buildx, Compose and pack;
+ * - what the dynamic loader and the C library read in any process: preloaded libraries, library and
+ *   module paths, tunables, allocator hooks, resolver files;
+ * - what Go's runtime, Git, SSH, OpenSSL and shells read from the environment, since Compose fetches
+ *   remote files with Git and BuildKit forwards an SSH agent;
+ * - where a program finds its configuration and trusted certificates.
+ *
+ * `GIT_SHA` is the panel's own, set for every build from a repository.
+ */
+const RESERVED_NAME = new RegExp(
+  `^(?:${[
+    "PATH",
+    "HOME",
+    "TMPDIR",
+    "SHELL",
+    "ENV",
+    "BASH_ENV",
+    "BASH_FUNC_.*",
+    "SHELLOPTS",
+    "PS4",
+    "IFS",
+    "DOCKER_.*",
+    "BUILDKIT_.*",
+    "BUILDX_.*",
+    "COMPOSE_.*",
+    "PACK_.*",
+    "XDG_.*",
+    "LD_.*",
+    "GLIBC_.*",
+    "GCONV_PATH",
+    "GETCONF_DIR",
+    "HOSTALIASES",
+    "LOCALDOMAIN",
+    "LOCPATH",
+    "MALLOC_.*",
+    "NIS_PATH",
+    "NLSPATH",
+    "NSS_.*",
+    "RESOLV_.*",
+    "RES_OPTIONS",
+    "TZDIR",
+    "GODEBUG",
+    "GOTRACEBACK",
+    "GIT_(?!SHA$).*",
+    "SSH_.*",
+    "SSL_CERT_.*",
+    "SSLKEYLOGFILE",
+    "OPENSSL_.*",
+    "CURL_.*",
+  ].join("|")})$`,
+);
 
 export const isReservedBuildVariable = (name: string): boolean => RESERVED_NAME.test(name);

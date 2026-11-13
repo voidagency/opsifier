@@ -981,6 +981,40 @@ describe("what a build is given", () => {
       expect(lastBuild().env.DOCKER_HOST).not.toBe("tcp://evil");
     });
 
+    it("keeps what the loader, the C library, Git and SSH read out of every program the build runs", async () => {
+      await api(`${SOURCE}/build`, "PUT", { build: { type: "nixpacks" } });
+      const steering = {
+        LD_PRELOAD: "/var/lib/opsifier/projects/shop/web/code/x.so",
+        LD_LIBRARY_PATH: "/var/lib/opsifier/projects/shop/web/code",
+        GCONV_PATH: "/var/lib/opsifier/projects/shop/web/code",
+        GLIBC_TUNABLES: "glibc.malloc.check=3",
+        MALLOC_TRACE: "/etc/passwd",
+        PACK_HOME: "/var/lib/opsifier/projects/shop/web/code",
+        GIT_SSH_COMMAND: "sh -c id",
+        SSH_AUTH_SOCK: "/var/run/docker.sock",
+        BASH_ENV: "/var/lib/opsifier/projects/shop/web/code/x.sh",
+        OPENSSL_CONF: "/var/lib/opsifier/projects/shop/web/code/x.cnf",
+      };
+      upgradedFromBeforeScopes(
+        `APP_NAME=shop\n${Object.entries(steering)
+          .map(([key, value]) => `${key}=${value}\n`)
+          .join("")}`,
+      );
+
+      const deployed = await deploy();
+
+      expect(deployed.status).toBe("succeeded");
+      expect((nixpacks().at(-1) as ToolRequest).env.APP_NAME).toBe("shop");
+      // The panel sets some of these names itself for its own Git, never to the service's values.
+      for (const request of tools().calls) {
+        for (const [name, value] of Object.entries(steering)) {
+          expect(request.env[name]).not.toBe(value);
+          expect(request.args).not.toContain(name);
+        }
+      }
+      expect(deployed.log).toContain("Not passing to the build, these names steer the build tools");
+    });
+
     it("stops the moment someone says so", async () => {
       upgradedFromBeforeScopes("DECLARED=service-value\n");
       dockerfileDeclares("DECLARED");

@@ -1,5 +1,6 @@
 import type { Dirent } from "node:fs";
 import { readdir, stat, statfs } from "node:fs/promises";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import type { AppDeps } from "../../core/context";
 
@@ -55,13 +56,40 @@ export async function directorySize(path: string, limit = { entries: 500_000 }):
   return total;
 }
 
-/** The image to run host operations from: a configured one, or the panel's own. */
+const PINNED = /@sha256:[0-9a-f]{64}$/;
+
+/**
+ * The image the panel's own running container was started from, by its ID. Of several tasks, as
+ * during an update, the one this process runs in, whose ID its hostname begins with.
+ */
+async function runningPanelImage(deps: Pick<AppDeps, "docker">): Promise<string | null> {
+  const running = (await deps.docker.listContainers()).filter(
+    (container) =>
+      container.state === "running" &&
+      container.labels["com.docker.swarm.service.name"] === PANEL_SERVICE &&
+      container.imageId !== "",
+  );
+  const own = running.find((container) => container.id.startsWith(hostname()));
+  return (own ?? (running.length === 1 ? running[0] : undefined))?.imageId ?? null;
+}
+
+/**
+ * The image to run host operations from: a configured one, or exactly what the panel runs. A helper
+ * runs as root with the server's files, its network or its processes, so it never goes by a tag, which
+ * anything that builds an image on this server could move: it takes the image ID of the panel's own
+ * container, or else a digest the service names. Without either, there is none.
+ */
 export async function helperImage(deps: Pick<AppDeps, "config" | "docker">): Promise<string | null> {
   if (deps.config.helperImage !== undefined) {
     return deps.config.helperImage;
   }
+  const running = await runningPanelImage(deps).catch(() => null);
+  if (running !== null) {
+    return running;
+  }
   const panel = await deps.docker.inspectService(PANEL_SERVICE).catch(() => null);
-  return panel?.spec.TaskTemplate.ContainerSpec.Image ?? null;
+  const image = panel?.spec.TaskTemplate.ContainerSpec.Image ?? null;
+  return image !== null && PINNED.test(image) ? image : null;
 }
 
 /** The disk the panel's data directory is on. */

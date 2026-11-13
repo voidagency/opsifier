@@ -20,7 +20,7 @@ import {
 } from "@opsifier/contract";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { apiTokens, users } from "../../core/db/schema";
+import { actions, apiTokens, users } from "../../core/db/schema";
 import {
   apiErrorOf,
   authPost,
@@ -219,6 +219,72 @@ describe("administering the server itself", () => {
     expect(await ownerId()).toBe(ownerUser.id);
   });
 
+  describe("an account that holds it", () => {
+    const owner = async () =>
+      (await api<UserList>("GET", "/api/v1/users", admin)).body.users.find((user) => user.owner) as PanelUser;
+    const edit = (as: string, user: PanelUser, change: Record<string, unknown>) =>
+      api<PanelUser>("PUT", `/api/v1/users/${user.id}`, as, {
+        email: user.email,
+        role: user.role,
+        projects: [],
+        ...change,
+      });
+
+    it.each([
+      ["password", { password: "a-password-someone-else-picked" }],
+      ["email", { email: "taken-over@example.com" }],
+    ])("keeps its %s the owner's to change, since it opens the server", async (_field, change) => {
+      const { user: sysadmin, cookie: sysadminSession } = await createMember(
+        "sysadmin@example.com",
+        [],
+        "admin",
+      );
+      await setHostAdmin(admin, sysadmin, true);
+      const other = await createMember("other@example.com", [], "admin");
+
+      for (const target of [{ ...sysadmin, hostAdmin: true }, await owner()]) {
+        const refused = await edit(other.cookie, target, change);
+        expect(refused.status).toBe(403);
+        expect(apiErrorOf(refused).code).toBe("owner_required");
+      }
+      // Nothing changed: the holder is still signed in, and the password someone picked opens nothing.
+      expect((await api("GET", "/api/v1/server/disk", sysadminSession)).status).not.toBe(401);
+      const login = await authPost(context.app, "login", {
+        email: "sysadmin@example.com",
+        password: "a-password-someone-else-picked",
+      });
+      expect(login.status).toBe(401);
+
+      expect((await edit(admin, { ...sysadmin, hostAdmin: true }, change)).status).toBe(200);
+    });
+
+    it("can't lose it to another administrator's demotion, nor its account", async () => {
+      const { user: sysadmin } = await createMember("sysadmin@example.com", [], "admin");
+      await setHostAdmin(admin, sysadmin, true);
+      const other = await createMember("other@example.com", [], "admin");
+
+      const demoted = await edit(other.cookie, sysadmin, { role: "member" });
+      expect(demoted.status).toBe(403);
+      expect(apiErrorOf(demoted).code).toBe("owner_required");
+      const deactivated = await api("POST", `/api/v1/users/${sysadmin.id}/active`, other.cookie, {
+        active: false,
+      });
+      expect(deactivated.status).toBe(403);
+      const deleted = await api("DELETE", `/api/v1/users/${sysadmin.id}`, other.cookie, {
+        confirm: sysadmin.email,
+      });
+      expect(deleted.status).toBe(403);
+    });
+
+    it("leaves ordinary administrators to each other", async () => {
+      const { user } = await createMember("plain@example.com", [], "admin");
+      const other = await createMember("other@example.com", [], "admin");
+
+      expect((await edit(other.cookie, user, { password: "a-new-password-for-plain" })).status).toBe(200);
+      expect((await edit(other.cookie, user, { role: "member" })).status).toBe(200);
+    });
+  });
+
   it("gives an API key no way in, however its owner stands", async () => {
     const key = await api<CreatedApiKey>("POST", "/api/v1/me/api-keys", admin, { name: "automation" });
     const refused = await withKey("GET", "/api/v1/server/disk", key.body.token);
@@ -392,7 +458,10 @@ describe("per-project access", () => {
     const contents = Buffer.from("not really a dump, but exactly these bytes\n");
 
     /** A finished backup of `project`/web, as a run would have left it in Local Disk. */
-    function storedBackup(project: string): { id: string; path: string } {
+    function storedBackup(
+      project: string,
+      createdAt = new Date(context.deps.now()),
+    ): { id: string; path: string } {
       const id = `backup-of-${project}`;
       const path = `${project}/web/2026-01-01T00:00:00.000Z.tar.gz`;
       const file = join(context.dataDir, "backups", path);
@@ -413,10 +482,104 @@ describe("per-project access", () => {
         path,
         sizeBytes: contents.length,
         sha256: createHash("sha256").update(contents).digest("hex"),
-        createdAt: new Date(context.deps.now()),
+        createdAt,
       });
       return { id, path };
     }
+
+    describe("left by an earlier project of the same name", () => {
+      // Older than the project and service that have these names now: what a destroyed one left.
+      const EARLIER = new Date(Date.UTC(2020, 0, 1));
+      async function waitForAction(id: string): Promise<{ status: string; error: string | null }> {
+        for (let attempt = 0; attempt < 1000; attempt += 1) {
+          const { body } = await api<{ status: string; error: string | null }>(
+            "GET",
+            `/api/v1/actions/${id}`,
+            admin,
+          );
+          if (body.status !== "queued" && body.status !== "running") {
+            return body;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        throw new Error("The action did not finish");
+      }
+      const restoreBody = (path: string) => ({
+        storageProviderId: BUILT_IN_PROVIDER_ID,
+        path,
+        databaseName: "data",
+        confirm: "data",
+      });
+
+      it("is not that project's, for its people, by id or by path", async () => {
+        const { id, path } = storedBackup("secret", EARLIER);
+        const { cookie } = await createMember("o@example.com", [{ project: "secret", role: "operator" }]);
+
+        expect((await api("GET", urlOf("secret", id), cookie)).status).toBe(404);
+        expect(
+          (
+            await api("POST", `/api/v1/projects/secret/services/web/backups/${id}/restore`, cookie, {
+              confirm: "web",
+            })
+          ).status,
+        ).toBe(404);
+        expect(
+          (await api("DELETE", `/api/v1/projects/secret/services/web/backups/${id}`, cookie)).status,
+        ).toBe(404);
+
+        expect(
+          (
+            await api("POST", "/api/v1/projects/secret/services/web/storage/mounts", admin, {
+              type: "volume",
+              name: "data",
+              mountPath: "/data",
+            })
+          ).status,
+        ).toBe(201);
+        await api("PUT", "/api/v1/projects/secret/services/web/source", admin, { image: "nginx:1.28" });
+        const deployed = await api<{ id: string }>(
+          "POST",
+          "/api/v1/projects/secret/services/web/deploy",
+          admin,
+          {},
+        );
+        expect((await waitForAction(deployed.body.id)).status).toBe("succeeded");
+        const byPath = await api<{ id: string }>(
+          "POST",
+          "/api/v1/projects/secret/services/web/backups/restore",
+          cookie,
+          restoreBody(path),
+        );
+        expect(byPath.status).toBe(202);
+        const finished = await waitForAction(byPath.body.id);
+        expect(finished.status).toBe("failed");
+        // Someone else's file answers exactly as an absent one does.
+        expect(finished.error).toMatch(/no longer exists/);
+      });
+
+      it("keeps its history to itself", async () => {
+        context.deps.db
+          .insert(actions)
+          .values({
+            id: "earlier-secret-backup",
+            type: "backup.run",
+            title: "Back up secret/web",
+            status: "succeeded",
+            hasLog: false,
+            projectName: "secret",
+            serviceName: "web",
+            createdAt: EARLIER,
+          })
+          .run();
+        const { cookie } = await createMember("o@example.com", [{ project: "secret", role: "operator" }]);
+
+        const listed = await api<ActionPage>("GET", "/api/v1/actions?limit=100", cookie);
+        expect(listed.body.items.some((item) => item.id === "earlier-secret-backup")).toBe(false);
+        expect((await api("GET", "/api/v1/actions/earlier-secret-backup", cookie)).status).toBe(404);
+        const all = await api<ActionPage>("GET", "/api/v1/actions?limit=100", admin);
+        expect(all.body.items.some((item) => item.id === "earlier-secret-backup")).toBe(true);
+      });
+    });
 
     const urlOf = (project: string, id: string) =>
       `/api/v1/projects/${project}/services/web/backups/${id}/download`;

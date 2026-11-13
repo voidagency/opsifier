@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 26
+# documented-changes: 27
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -2191,7 +2191,7 @@ GET /api/v1/projects/{project}/services/{service}/compose
   200 acknowledgementRequired!: boolean
   200 content!: null|string
   200 envFile!: boolean
-  200 issues![].code!: enum(capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_network|host_namespace|host_path|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|security_options|unknown_dependency|unroutable_name)
+  200 issues![].code!: enum(capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_image|foreign_network|host_namespace|host_path|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|runs_program|security_options|unknown_dependency|unroutable_name)
   200 issues![].detail!: null|string
   200 issues![].service!: null|string
   200 issues![].severity!: enum(error|host|warning)
@@ -2216,7 +2216,7 @@ POST /api/v1/projects/{project}/services/{service}/compose/acknowledge
   200 acknowledgementRequired!: boolean
   200 content!: null|string
   200 envFile!: boolean
-  200 issues![].code!: enum(capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_network|host_namespace|host_path|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|security_options|unknown_dependency|unroutable_name)
+  200 issues![].code!: enum(capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_image|foreign_network|host_namespace|host_path|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|runs_program|security_options|unknown_dependency|unroutable_name)
   200 issues![].detail!: null|string
   200 issues![].service!: null|string
   200 issues![].severity!: enum(error|host|warning)
@@ -2260,7 +2260,7 @@ PUT /api/v1/projects/{project}/services/{service}/compose/env-file
   200 acknowledgementRequired!: boolean
   200 content!: null|string
   200 envFile!: boolean
-  200 issues![].code!: enum(capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_network|host_namespace|host_path|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|security_options|unknown_dependency|unroutable_name)
+  200 issues![].code!: enum(capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_image|foreign_network|host_namespace|host_path|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|runs_program|security_options|unknown_dependency|unroutable_name)
   200 issues![].detail!: null|string
   200 issues![].service!: null|string
   200 issues![].severity!: enum(error|host|warning)
@@ -2286,7 +2286,7 @@ PUT /api/v1/projects/{project}/services/{service}/compose/source
   200 acknowledgementRequired!: boolean
   200 content!: null|string
   200 envFile!: boolean
-  200 issues![].code!: enum(capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_network|host_namespace|host_path|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|security_options|unknown_dependency|unroutable_name)
+  200 issues![].code!: enum(capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_image|foreign_network|host_namespace|host_path|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|runs_program|security_options|unknown_dependency|unroutable_name)
   200 issues![].detail!: null|string
   200 issues![].service!: null|string
   200 issues![].severity!: enum(error|host|warning)

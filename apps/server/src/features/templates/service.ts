@@ -29,7 +29,7 @@ import { actions, templateInstalls } from "../../core/db/schema";
 import { AppError, badRequest, conflict, notFound } from "../../core/errors";
 import { hashCompose, writeInlineCompose } from "../compose/deploy";
 import { hasBlockingError, hasHostAccess } from "../compose/inspect";
-import { assertComposeNameFree, inspectStackFile } from "../compose/service";
+import { assertComposeNameFree, bindConfirmedAccess, inspectStackFile } from "../compose/service";
 import { prepareDatabaseSpec } from "../databases/service";
 import { assignDefaultDomain, defaultBaseDomain, primaryUrl } from "../service-tabs/domains/service";
 import { sealEnv } from "../services/env-store";
@@ -701,6 +701,12 @@ export async function installTemplate(
 
   // The rows exist, so what follows can only leave out parts of the configuration on disk.
   await materialize(deps, project, createdTargets, specsForProxy);
+  // The person confirmed what the file reaches as it is now, with the values the form gave it.
+  for (const target of createdTargets) {
+    if (specsForProxy.get(target.serviceName)?.compose?.acknowledgedHash) {
+      await bindConfirmedAccess(deps, target);
+    }
+  }
 
   deps.actions.record({
     type: templateActionTypes.install,

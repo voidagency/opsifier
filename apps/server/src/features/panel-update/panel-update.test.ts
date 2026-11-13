@@ -129,7 +129,9 @@ async function handedOverUpdate(): Promise<string> {
   await until(async () =>
     (ctx.docker as FakeDriver)
       .inspectService("opsifier")
-      .then((panel) => panel?.spec.TaskTemplate.ContainerSpec.Image === NEW_IMAGE),
+      .then(
+        (panel) => panel?.spec.TaskTemplate.ContainerSpec.Image.startsWith(`${NEW_IMAGE}@sha256:`) === true,
+      ),
   );
   await until(() => ctx.deps.actions.isIdle());
   return started.body.id;
@@ -309,7 +311,10 @@ describe("applying an update", () => {
     expect(readFileSync(join(snapshot, "secret.key"))).toEqual(readFileSync(join(dataDir, "secret.key")));
 
     const panel = await docker.inspectService("opsifier");
-    expect(panel?.spec.TaskTemplate.ContainerSpec.Image).toBe(NEW_IMAGE);
+    // Held to what was pulled: a tag moved on this server afterwards changes nothing that runs.
+    const pulled = (await docker.inspectImage(NEW_IMAGE))?.digests[0]?.split("@")[1];
+    expect(pulled).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(panel?.spec.TaskTemplate.ContainerSpec.Image).toBe(`${NEW_IMAGE}@${pulled}`);
     expect(panel?.spec.UpdateConfig).toMatchObject({ FailureAction: "rollback", Order: "stop-first" });
   });
 

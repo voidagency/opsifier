@@ -218,6 +218,42 @@ describe("build variables and build secrets", () => {
     expect(apiErrorOf(secret).fields?.name).toContain("BUILDKIT_HOST");
   });
 
+  it.each([
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "LD_AUDIT",
+    "GCONV_PATH",
+    "GLIBC_TUNABLES",
+    "MALLOC_TRACE",
+    "LOCPATH",
+    "HOSTALIASES",
+    "GODEBUG",
+    "PACK_HOME",
+    "XDG_CONFIG_HOME",
+    "GIT_SSH_COMMAND",
+    "GIT_CONFIG_COUNT",
+    "SSH_AUTH_SOCK",
+    "SSH_ASKPASS",
+    "BASH_ENV",
+    "OPENSSL_CONF",
+    "SSL_CERT_FILE",
+  ])("refuses %s, which the programs a build runs would act on themselves", async (name) => {
+    const variable = await api(BUILD, "PUT", { env: `${name}=value\n` });
+    expect(variable.status).toBe(400);
+    expect(apiErrorOf(variable).fields?.env).toContain(name);
+
+    const secret = await api(`${BUILD}/secrets/${name}`, "PUT", { value: "value" });
+    expect(secret.status).toBe(400);
+    expect(apiErrorOf(secret).fields?.name).toContain(name);
+  });
+
+  it("still takes ordinary names that only look close", async () => {
+    const saved = await api(BUILD, "PUT", {
+      env: "GITHUB_TOKEN_NAME=ci\nLDAP_URL=ldap://directory\nPACKAGE_NAME=shop\nNODE_ENV=production\nGOPROXY=https://proxy.golang.org\nLANG=C.UTF-8\n",
+    });
+    expect(saved.status).toBe(200);
+  });
+
   it("won't hold the same name as both a variable and a secret", async () => {
     await api(BUILD, "PUT", { env: "SHARED=value\n" });
     const asSecret = await api(`${BUILD}/secrets/SHARED`, "PUT", { value: "secret-value" });

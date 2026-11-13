@@ -1,3 +1,4 @@
+import { composeIssue } from "@opsifier/contract";
 import { z } from "zod";
 
 const storedInlineSource = z.object({ type: z.literal("inline"), content: z.string() });
@@ -23,6 +24,13 @@ export const storedCompose = z.object({
   source: storedComposeSource.nullable().default(null),
   /** SHA-256 of the file someone confirmed may reach the host, so an edited file needs asking again. */
   acknowledgedHash: z.string().nullable().default(null),
+  /**
+   * SHA-256 of everything the stack reached on the server when someone confirmed it, as Compose
+   * resolved it: included files, variables and all. A deploy that would reach anything else asks again.
+   */
+  acknowledgedAccess: z.string().nullable().default(null),
+  /** What a deploy found the stack reaching that nobody has confirmed, shown on the Source tab until someone does. */
+  pendingAccess: z.array(composeIssue).default([]),
   /** Writes the environment into `.env` next to the Compose file before each deploy. */
   envFile: z.boolean().default(false),
   /** Children that finished cleanly during the last deploy, and are not expected to keep running. */

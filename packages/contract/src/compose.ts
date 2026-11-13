@@ -70,6 +70,8 @@ export const composeIssueCodes = [
   "unknown_dependency",
   "escapes_stack",
   "foreign_network",
+  "runs_program",
+  "foreign_image",
   // Host access: each one reaches past the container boundary.
   "privileged",
   "docker_socket",
@@ -114,9 +116,12 @@ export const composeDetail = z.object({
   parseError: z.string().nullable(),
   /** The services the file defines, in file order. */
   services: z.array(z.string()),
-  /** True when the file reaches the host and nobody has confirmed this version of it yet. */
+  /**
+   * True when the file reaches the host, or a deploy found the stack reaching it through what Compose
+   * resolved, and nobody has confirmed that yet. What the deploy found is among the issues.
+   */
   acknowledgementRequired: z.boolean(),
-  /** Whether the current version of the file has been confirmed. */
+  /** Whether the current version of the file, and what it reached when last deployed, have been confirmed. */
   acknowledged: z.boolean(),
   /** Written next to the Compose file before each deploy, when set. */
   envFile: z.boolean(),

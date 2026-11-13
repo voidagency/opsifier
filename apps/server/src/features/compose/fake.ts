@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, normalize } from "node:path";
 import { parse } from "yaml";
 import type { AppDeps } from "../../core/context";
 import { type ComposeContainerInfo, FakeDriver } from "../../core/docker";
@@ -38,24 +39,170 @@ async function overrideLabels(args: readonly string[], child: string): Promise<R
 type ComposeFile = {
   services?: Record<string, { networks?: unknown; network_mode?: unknown; [key: string]: unknown }>;
   networks?: Record<string, { name?: string; external?: unknown } | null>;
+  volumes?: Record<string, unknown>;
 };
-
-async function filesOf(args: readonly string[]): Promise<ComposeFile[]> {
-  const paths = args.filter((_, index) => args[index - 1] === "--file");
-  return Promise.all(
-    paths.map(async (path) => parse(await readFile(path, "utf8"), { merge: true }) as ComposeFile),
-  );
-}
 
 /** The docker name of a top-level network, as Compose would resolve it. */
 const resolvedName = (project: string, key: string, network: { name?: string; external?: unknown } | null) =>
   network?.name ?? (network?.external === true ? key : `${project}_${key}`);
 
-/** What `docker compose config --format json` makes of the stack's files, for the parts the panel reads. */
-async function resolveConfig(args: readonly string[], project: string): Promise<ComposeFile> {
-  const merged: ComposeFile = { services: {}, networks: {} };
-  for (const file of await filesOf(args)) {
+type Values = Readonly<Record<string, string | undefined>>;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const asList = (value: unknown): unknown[] => (Array.isArray(value) ? value : value == null ? [] : [value]);
+
+/** `${NAME}`, `${NAME:-default}`, `${NAME-default}` and `$NAME`, filled in the way Compose does. */
+function interpolate(value: unknown, values: Values): unknown {
+  if (typeof value === "string") {
+    return value.replace(
+      /\$\{([A-Za-z_][A-Za-z0-9_]*)(?:(:?-)([^}]*))?\}|\$([A-Za-z_][A-Za-z0-9_]*)/g,
+      (
+        _match,
+        braced: string | undefined,
+        operator: string | undefined,
+        fallback: string | undefined,
+        bare: string | undefined,
+      ) => {
+        const given = values[braced ?? bare ?? ""];
+        if (operator === ":-" && (given === undefined || given === "")) {
+          return fallback ?? "";
+        }
+        if (operator === "-" && given === undefined) {
+          return fallback ?? "";
+        }
+        return given ?? "";
+      },
+    );
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => interpolate(item, values));
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, interpolate(item, values)]));
+  }
+  return value;
+}
+
+/** Compose makes every path absolute, from the folder the file's paths start from. */
+const absolute = (path: string, from: string) => normalize(isAbsolute(path) ? path : join(from, path));
+
+/** One service with its paths made absolute and its mounts in the long form, as Compose prints them. */
+function normalizeService(child: Record<string, unknown>, from: string): Record<string, unknown> {
+  const service: Record<string, unknown> = { ...child };
+  if (child.volumes !== undefined) {
+    service.volumes = asList(child.volumes).map((entry) => {
+      if (isRecord(entry)) {
+        return entry.type === "bind" && typeof entry.source === "string"
+          ? { ...entry, source: absolute(entry.source, from) }
+          : entry;
+      }
+      const [source = "", target = "", mode] = String(entry).split(":");
+      const bind = source.startsWith("/") || source.startsWith(".") || source.startsWith("~");
+      return bind
+        ? {
+            type: "bind",
+            source: absolute(source, from),
+            target,
+            ...(mode === "ro" ? { read_only: true } : {}),
+          }
+        : { type: "volume", source, target };
+    });
+  }
+  const build = child.build;
+  if (typeof build === "string") {
+    service.build = { context: absolute(build, from), dockerfile: "Dockerfile" };
+  } else if (isRecord(build)) {
+    const context = typeof build.context === "string" ? build.context : ".";
+    service.build = { ...build, context: /:\/\//.test(context) ? context : absolute(context, from) };
+  }
+  if (child.env_file !== undefined) {
+    service.env_file = asList(child.env_file).map((entry) => {
+      const path = isRecord(entry) ? String(entry.path) : String(entry);
+      return { ...(isRecord(entry) ? entry : {}), path: absolute(path, from) };
+    });
+  }
+  delete service.extends;
+  return service;
+}
+
+/** The services, networks and volumes of one file and everything it includes or extends. */
+async function loadModel(file: string, from: string, values: Values, depth = 0): Promise<ComposeFile> {
+  const raw = interpolate(parse(await readFile(file, "utf8"), { merge: true }) ?? {}, values) as Record<
+    string,
+    unknown
+  >;
+  const model: ComposeFile = { services: {}, networks: {}, volumes: {} };
+  if (depth < 8) {
+    for (const entry of asList(raw.include)) {
+      const record = isRecord(entry) ? entry : { path: entry };
+      for (const path of asList(record.path).map(String)) {
+        const included = absolute(path, dirname(file));
+        const directory =
+          typeof record.project_directory === "string"
+            ? absolute(record.project_directory, dirname(file))
+            : dirname(included);
+        const loaded = await loadModel(included, directory, values, depth + 1);
+        Object.assign(model.services ?? {}, loaded.services);
+        Object.assign(model.networks ?? {}, loaded.networks);
+      }
+    }
+  }
+  for (const [name, child] of Object.entries(isRecord(raw.services) ? raw.services : {})) {
+    if (!isRecord(child)) {
+      continue;
+    }
+    let service = normalizeService(child, from);
+    if (isRecord(child.extends) && depth < 8) {
+      const baseFile =
+        typeof child.extends.file === "string" ? absolute(child.extends.file, dirname(file)) : file;
+      const base = await loadModel(baseFile, dirname(baseFile), values, depth + 1);
+      service = { ...base.services?.[String(child.extends.service)], ...service };
+    }
+    model.services = { ...model.services, [name]: service };
+  }
+  Object.assign(model.networks ?? {}, isRecord(raw.networks) ? raw.networks : {});
+  Object.assign(model.volumes ?? {}, isRecord(raw.volumes) ? raw.volumes : {});
+  return model;
+}
+
+/** `.env` beside the stack, which Compose reads for what the process environment doesn't say. */
+async function dotEnv(directory: string | undefined): Promise<Record<string, string>> {
+  if (directory === undefined) {
+    return {};
+  }
+  const text = await readFile(join(directory, ".env"), "utf8").catch(() => "");
+  return Object.fromEntries(
+    text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith("#") && line.includes("="))
+      .map((line) => {
+        const [key = "", ...rest] = line.split("=");
+        return [key, rest.join("=").replace(/^"(.*)"$/, "$1")];
+      }),
+  );
+}
+
+/**
+ * What `docker compose config --format json` makes of the stack's files, for the parts the panel
+ * reads: files merged in order, includes and extends brought in, variables filled in and paths made
+ * absolute from the project's folder.
+ */
+async function resolveConfig(
+  args: readonly string[],
+  project: string,
+  env: Values = {},
+): Promise<ComposeFile> {
+  const directory = argument(args, "--project-directory");
+  const values = { ...(await dotEnv(directory)), ...env };
+  const merged: ComposeFile = { services: {}, networks: {}, volumes: {} };
+  const paths = args.filter((_, index) => args[index - 1] === "--file");
+  for (const path of paths) {
+    const file = await loadModel(path, directory ?? dirname(path), values);
     Object.assign(merged.networks ?? {}, file.networks ?? {});
+    Object.assign(merged.volumes ?? {}, file.volumes ?? {});
     for (const [name, child] of Object.entries(file.services ?? {})) {
       merged.services = { ...merged.services, [name]: { ...merged.services?.[name], ...child } };
     }
@@ -68,6 +215,7 @@ async function resolveConfig(args: readonly string[], project: string): Promise<
         { ...network, name: resolvedName(project, key, network ?? null) },
       ]),
     ),
+    ...(Object.keys(merged.volumes ?? {}).length > 0 ? { volumes: merged.volumes } : {}),
   };
 }
 
@@ -186,7 +334,7 @@ export function installComposeSimulation(deps: AppDeps): void {
       case "config": {
         const output = argument(args, "--output");
         if (output !== undefined) {
-          await writeFile(output, JSON.stringify(await resolveConfig(args, project)));
+          await writeFile(output, JSON.stringify(await resolveConfig(args, project, request.env)));
         }
         return ok();
       }

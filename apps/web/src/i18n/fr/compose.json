@@ -76,6 +76,8 @@
       "unknown_dependency": "dépend d'un service absent de ce fichier.",
       "escapes_stack": "pointe hors du dossier de la pile.",
       "foreign_network": "rejoint un réseau qui n'appartient pas à ce projet. Les projets sont isolés : retirez-le. Pour utiliser une base d'un autre projet, publiez son port dans son onglet Exposition et connectez-vous par l'adresse du serveur.",
+      "foreign_image": "donne à son image un nom que d'autres services du serveur peuvent utiliser, ou lance une image qui n'appartient qu'à un autre projet. Une image construite prend le nom de la pile : retirez image, ou faites-le commencer par le nom de la pile.",
+      "runs_program": "confie un travail à un programme que Compose lancerait sur le serveur lui-même, hors de tout conteneur. Opsifier ne les lance pas.",
       "privileged": "tourne en mode privilégié, avec le contrôle total du serveur.",
       "docker_socket": "monte le socket Docker, ce qui lui donne le contrôle du serveur.",
       "data_directory": "monte les données du panneau, secrets compris.",

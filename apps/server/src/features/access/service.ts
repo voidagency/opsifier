@@ -220,6 +220,9 @@ export async function updatePanelUser(
   }
 
   const email = normalizeEmail(request.email);
+  if (email !== current.email || request.password !== undefined || request.role !== current.role) {
+    assertMayChangeAccount(actor, current);
+  }
   const grants = grantsFor(request.role, request.projects);
   assertProjectsExist(
     deps,
@@ -279,6 +282,17 @@ export async function updatePanelUser(
   return findPanelUser(deps, id);
 }
 
+/**
+ * An account that holds the server itself opens it: a shell on the host, its disk, a reboot. Who signs
+ * in to it, and whether it stays, is the owner's call, as giving it was. Otherwise another
+ * administrator could pick its password and sign in as it.
+ */
+function assertMayChangeAccount(actor: SessionPrincipal, target: repo.UserRow): void {
+  if (holdsHostAdmin(target)) {
+    assertOwner(actor);
+  }
+}
+
 /** Only the owner hands out the server itself, and only an administrator can hold it. */
 function hostAdminAfter(actor: SessionPrincipal, current: repo.UserRow, request: UpdateUserRequest): boolean {
   if (request.hostAdmin !== undefined && request.hostAdmin !== holdsHostAdmin(current)) {
@@ -299,6 +313,7 @@ export function deletePanelUser(deps: AppDeps, actor: SessionPrincipal, id: stri
   if (id === actor.user.id) {
     throw conflict("change_own_account", "You can't delete your own account.");
   }
+  assertMayChangeAccount(actor, current);
   if (confirm !== current.email) {
     throw conflict("confirmation_mismatch", "Type the account's exact email to confirm.", {
       confirm: "Does not match the account's email",
@@ -348,6 +363,9 @@ export function setPanelUserActive(
   }
   if (!active && id === actor.user.id) {
     throw conflict("change_own_account", "You can't deactivate your own account.");
+  }
+  if (active !== (current.deactivatedAt === null)) {
+    assertMayChangeAccount(actor, current);
   }
 
   const now = new Date(deps.now());

@@ -155,6 +155,26 @@ export interface ServiceKey {
 }
 
 /** A primary key cannot simply change while domains point at it, so the row moves in three steps. */
+/**
+ * What a project's people were handed for a service, which works without signing in: its deployment
+ * token, a webhook secret one of them made, and its IDE token. They keep those when the service moves
+ * to another project, whose people did not hand them out, so none of it works there.
+ */
+function withoutHandedOutAccess(spec: AppServiceSpec): AppServiceSpec {
+  const { build } = spec;
+  // A secret the panel gave straight to GitHub was never in anyone's hands.
+  const managed = spec.source?.type === "github" && spec.source.webhookId !== null;
+  return {
+    ...spec,
+    build: {
+      ...build,
+      deployToken: null,
+      webhook: build.webhook === null || managed ? build.webhook : { ...build.webhook, paused: true },
+    },
+    box: spec.box === null ? null : { ...spec.box, ide: { ...spec.box.ide, token: null } },
+  };
+}
+
 export function moveServiceRow(db: Db, from: ServiceKey, to: ServiceKey, now: Date): void {
   db.transaction((tx) => {
     const row = tx
@@ -165,6 +185,8 @@ export function moveServiceRow(db: Db, from: ServiceKey, to: ServiceKey, now: Da
     if (row === undefined) {
       return;
     }
+    const spec =
+      from.project === to.project ? row.spec : withoutHandedOutAccess(appServiceSpec.parse(row.spec));
     // What was deployed under the old name is gone, so nothing has been applied under the new one.
     tx.insert(services)
       .values({
@@ -172,6 +194,7 @@ export function moveServiceRow(db: Db, from: ServiceKey, to: ServiceKey, now: Da
         id: null,
         projectName: to.project,
         name: to.name,
+        spec,
         updatedAt: now,
         applied: null,
         deployed: null,

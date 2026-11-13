@@ -1,7 +1,9 @@
+import { posix } from "node:path";
 import { type ComposeIssue, type ComposeIssueCode, isRoutableComposeChild } from "@opsifier/contract";
 import { parseDocument } from "yaml";
 import { projectNetworkName, projectProxyNetworkName } from "../services/compile";
 import { bindMountRisk } from "../services/compile/mounts";
+import { contextImage, isAnotherProjectsImage, isStackImageName } from "./images";
 
 export interface ComposeInspection {
   /** The services the file defines, in file order. */
@@ -23,6 +25,11 @@ export interface InspectOptions extends NetworkScope {
   dataDir: string;
   /** Host ports other services and the panel already hold, and by whom. Empty when that can't be said. */
   takenPorts?: ReadonlyMap<number, string>;
+  /**
+   * Where this file sits in the stack's folder, for a file another one includes or extends. Its
+   * relative paths start from there, and still have to stay inside the stack.
+   */
+  base?: string;
 }
 
 type YamlRecord = Record<string, unknown>;
@@ -39,6 +46,8 @@ const SEVERITY: Record<ComposeIssueCode, ComposeIssue["severity"]> = {
   unknown_dependency: "error",
   escapes_stack: "error",
   foreign_network: "error",
+  runs_program: "error",
+  foreign_image: "error",
   privileged: "host",
   docker_socket: "host",
   data_directory: "host",
@@ -66,7 +75,12 @@ class IssueList {
 }
 
 const HOST_NAMESPACE_KEYS = ["pid", "ipc", "uts", "userns_mode", "cgroup"] as const;
-const RELATIVE_PATH = /^\.\.?(?:\/|$)/;
+
+/** An address Compose or BuildKit would fetch from elsewhere: a URL, or Git's `user@host:path`. */
+const REMOTE = /^(?:[a-z][a-z0-9+.-]*:\/\/|[^\s/:@]+@[^\s/:]+:)/i;
+
+/** The one security option that only ever tightens a container. */
+const TIGHTENING_OPTION = /^no-new-privileges(?:[:=](?:true|false))?$/;
 
 /** Filled in by Compose from the stack's variables, which whoever edits the stack can set to anything. */
 const isInterpolated = (value: unknown): boolean => typeof value === "string" && value.includes("$");
@@ -128,31 +142,37 @@ export function foreignNetworks(
   return found;
 }
 
-/** Whether a relative path stays inside the stack once `..` has been followed. */
-function staysInside(path: string): boolean {
-  let depth = 0;
-  for (const part of path.split("/")) {
-    if (part === "..") {
-      depth -= 1;
-      if (depth < 0) {
-        return false;
-      }
-    } else if (part !== "." && part !== "") {
-      depth += 1;
-    }
-  }
-  return true;
+/**
+ * Whether a relative path stays inside the stack once `..` has been followed, read from the folder of
+ * the file that names it. Compose takes any path that doesn't start with `/` or `~` from there, so
+ * `x/../..` and `.x/../..` count as much as `../..`.
+ */
+function staysInside(path: string, base = "."): boolean {
+  const normal = posix.normalize(posix.join(base, path));
+  return normal !== ".." && !normal.startsWith("../");
 }
 
+/**
+ * What a path is for. A build context may be a repository or an image, which BuildKit fetches for
+ * itself. Any other file Compose would fetch onto the panel's disk before anything here could read it.
+ */
+type PathUse = "file" | "context";
+
 /** Sorts one path a stack points at: fine, off limits, or on the host. */
-function checkPath(path: string, list: IssueList, service: string | null, options: InspectOptions): void {
+function checkPath(
+  path: string,
+  list: IssueList,
+  service: string | null,
+  options: InspectOptions,
+  use: PathUse = "file",
+): void {
   // Interpolated by Compose at deploy time: it could say anything, so it counts as the host.
   if (path.includes("$")) {
     list.add("host_path", service, path);
     return;
   }
-  if (RELATIVE_PATH.test(path)) {
-    if (!staysInside(path)) {
+  if (REMOTE.test(path)) {
+    if (use === "file") {
       list.add("escapes_stack", service, path);
     }
     return;
@@ -168,6 +188,10 @@ function checkPath(path: string, list: IssueList, service: string | null, option
   }
   if (path.startsWith("~")) {
     list.add("host_path", service, path);
+    return;
+  }
+  if (!staysInside(path, options.base)) {
+    list.add("escapes_stack", service, path);
   }
 }
 
@@ -212,25 +236,43 @@ function publishedPort(entry: unknown): { port: number | null; shown: string } {
   return { port: Number.isInteger(port) && port > 0 ? port : null, shown: text };
 }
 
+/** A path, a list of them, or entries that carry one under `key`, as Compose lets most fields say. */
 function checkFileReference(
   value: unknown,
   list: IssueList,
   service: string | null,
   options: InspectOptions,
+  key = "path",
 ): void {
-  if (typeof value === "string") {
-    checkPath(value, list, service, options);
+  for (const entry of asList(value)) {
+    const path = isRecord(entry) ? entry[key] : entry;
+    if (typeof path === "string") {
+      checkPath(path, list, service, options);
+    }
   }
 }
 
+const isSet = (value: unknown): boolean => value !== undefined && value !== null && value !== false;
+
 function checkHostAccess(name: string, child: YamlRecord, list: IssueList, options: InspectOptions): void {
-  if (child.privileged !== undefined && child.privileged !== false) {
+  if (isSet(child.privileged)) {
     list.add("privileged", name);
+  }
+  for (const hook of ["post_start", "pre_stop"] as const) {
+    if (asList(child[hook]).some((entry) => isRecord(entry) && isSet(entry.privileged))) {
+      list.add("privileged", name, hook);
+    }
   }
   for (const key of HOST_NAMESPACE_KEYS) {
     if (leavesContainer(child[key])) {
       list.add("host_namespace", name, `${key}: ${String(child[key])}`);
     }
+  }
+  if (isSet(child.cgroup_parent)) {
+    list.add("host_namespace", name, `cgroup_parent: ${String(child.cgroup_parent)}`);
+  }
+  if (isSet(child.use_api_socket)) {
+    list.add("docker_socket", name, "use_api_socket");
   }
   const capabilities = asList(child.cap_add).map(String);
   if (capabilities.length > 0) {
@@ -242,14 +284,30 @@ function checkHostAccess(name: string, child: YamlRecord, list: IssueList, optio
   if (devices.length > 0) {
     list.add("devices", name, devices.join(", "));
   }
+  const cgroupRules = asList(child.device_cgroup_rules).map(String);
+  if (cgroupRules.length > 0) {
+    list.add("devices", name, `device_cgroup_rules: ${cgroupRules.join(", ")}`);
+  }
+  if (isSet(child.gpus)) {
+    list.add("devices", name, "gpus");
+  }
+  const resources = isRecord(child.deploy) && isRecord(child.deploy.resources) ? child.deploy.resources : {};
+  const reservations = isRecord(resources.reservations) ? resources.reservations : {};
+  if (asList(reservations.devices).length > 0) {
+    list.add("devices", name, "deploy.resources.reservations.devices");
+  }
+  // Anything but the one option that tightens: a profile or a label can loosen as much as `unconfined`.
   const relaxed = asList(child.security_opt)
     .map(String)
-    .filter(
-      (option) => option.includes("unconfined") || option.includes("label=disable") || option.includes("$"),
-    );
+    .filter((option) => !TIGHTENING_OPTION.test(option.trim()));
   if (relaxed.length > 0) {
     list.add("security_options", name, relaxed.join(", "));
   }
+  if (isSet(child.runtime)) {
+    list.add("security_options", name, `runtime: ${String(child.runtime)}`);
+  }
+  checkFileReference(child.label_file, list, name, options);
+  checkFileReference(child.credential_spec, list, name, options, "file");
   for (const entry of asList(child.volumes)) {
     const source = bindSource(entry);
     if (source !== null) {
@@ -322,17 +380,121 @@ function checkChild(
     }
   }
 
+  checkImages(name, child, list, options);
+
   // Everything else a service can point the Compose CLI at on disk.
-  const build = child.build;
-  checkFileReference(isRecord(build) ? build.context : build, list, name, options);
-  if (isRecord(build)) {
-    checkFileReference(build.dockerfile, list, name, options);
-  }
-  for (const envFile of asList(child.env_file)) {
-    checkFileReference(isRecord(envFile) ? envFile.path : envFile, list, name, options);
-  }
+  checkBuild(name, child.build, list, options);
+  checkFileReference(child.env_file, list, name, options);
   if (isRecord(child.extends)) {
     checkFileReference(child.extends.file, list, name, options);
+  }
+
+  // Compose hands these to a program of its own, run where the panel runs rather than in a container.
+  if (child.provider !== undefined) {
+    const type = isRecord(child.provider) ? child.provider.type : child.provider;
+    list.add("runs_program", name, `provider: ${String(type)}`);
+  }
+  if (child.models !== undefined) {
+    list.add("runs_program", name, "models");
+  }
+}
+
+/**
+ * The names a service builds under, and the images it runs that only exist on this server. A value
+ * Compose fills in from a variable is judged once it has, before the deploy.
+ */
+function checkImages(name: string, child: YamlRecord, list: IssueList, options: InspectOptions): void {
+  const known = (value: unknown): value is string => typeof value === "string" && !value.includes("$");
+  if (child.build !== undefined && child.build !== null) {
+    const names = [child.image, ...(isRecord(child.build) ? asList(child.build.tags) : [])];
+    for (const image of names.filter(known)) {
+      if (!isStackImageName(image, options.stack)) {
+        list.add("foreign_image", name, image);
+      }
+    }
+  } else if (known(child.image) && isAnotherProjectsImage(child.image, options.project)) {
+    list.add("foreign_image", name, child.image);
+  }
+  for (const entry of asList(child.volumes)) {
+    if (isRecord(entry) && entry.type === "image" && known(entry.source)) {
+      if (isAnotherProjectsImage(entry.source, options.project)) {
+        list.add("foreign_image", name, entry.source);
+      }
+    }
+  }
+  for (const value of isRecord(child.build) ? namedValues(child.build.additional_contexts) : []) {
+    const image = known(value) ? contextImage(value) : null;
+    if (image !== null && isAnotherProjectsImage(image, options.project)) {
+      list.add("foreign_image", name, image);
+    }
+  }
+}
+
+/** The values of a build field that is either a mapping or a list of `name=value` entries. */
+function namedValues(value: unknown): unknown[] {
+  if (isRecord(value)) {
+    return Object.values(value);
+  }
+  return asList(value).map((entry) => {
+    const text = String(entry);
+    const separator = text.indexOf("=");
+    return separator === -1 ? text : text.slice(separator + 1);
+  });
+}
+
+/** What a build reads from the panel's side, and what it is allowed to do while it runs. */
+function checkBuild(name: string, build: unknown, list: IssueList, options: InspectOptions): void {
+  const context = isRecord(build) ? build.context : build;
+  if (typeof context === "string") {
+    checkPath(context, list, name, options, "context");
+  }
+  if (!isRecord(build)) {
+    return;
+  }
+  if (typeof build.dockerfile === "string") {
+    const { dockerfile } = build;
+    const fromContext =
+      typeof context !== "string" || (!REMOTE.test(context) && !context.includes("$"))
+        ? posix.join(typeof context === "string" ? context : ".", dockerfile)
+        : null;
+    // Read from inside the context: a context fetched from elsewhere brings its own.
+    if (dockerfile.startsWith("/") || dockerfile.startsWith("~") || dockerfile.includes("$")) {
+      checkPath(dockerfile, list, name, options);
+    } else if (fromContext !== null) {
+      checkPath(fromContext, list, name, options);
+    }
+  }
+  for (const value of namedValues(build.additional_contexts)) {
+    if (typeof value === "string") {
+      checkPath(value, list, name, options, "context");
+    }
+  }
+  // `default` forwards an agent the panel doesn't run. `id=path` reads a key from the panel's disk.
+  for (const entry of asList(build.ssh).map(String)) {
+    const separator = entry.indexOf("=");
+    if (separator !== -1) {
+      for (const path of entry.slice(separator + 1).split(",")) {
+        checkPath(path, list, name, options);
+      }
+    }
+  }
+  // A local cache is read from, or written to, the panel's own disk.
+  for (const entry of [...asList(build.cache_from), ...asList(build.cache_to)].map(String)) {
+    const fields = entry.split(",").map((field) => field.split("="));
+    if (fields.some(([key, value]) => key === "type" && value === "local")) {
+      for (const [key, value] of fields) {
+        if ((key === "src" || key === "dest") && value !== undefined) {
+          checkPath(value, list, name, options);
+        }
+      }
+    }
+  }
+  if (isSet(build.privileged)) {
+    list.add("privileged", name, "build.privileged");
+  }
+  const entitlements = asList(build.entitlements).map(String);
+  if (entitlements.length > 0) {
+    list.add("privileged", name, `build.entitlements: ${entitlements.join(", ")}`);
   }
 }
 
@@ -363,10 +525,19 @@ function checkTopLevel(file: YamlRecord, list: IssueList, options: InspectOption
       }
     }
   }
+  // Read, or fetched, as the file is loaded: before anything else here sees what they bring.
   for (const entry of asList(file.include)) {
-    const path = isRecord(entry) ? entry.path : entry;
-    for (const item of asList(path)) {
-      checkFileReference(item, list, null, options);
+    if (isRecord(entry)) {
+      checkFileReference(entry.path, list, null, options);
+      checkFileReference(entry.env_file, list, null, options);
+      checkFileReference(entry.project_directory, list, null, options);
+    } else {
+      checkFileReference(entry, list, null, options);
+    }
+  }
+  if (isRecord(file.models)) {
+    for (const model of Object.keys(file.models)) {
+      list.add("runs_program", null, `models: ${model}`);
     }
   }
 }

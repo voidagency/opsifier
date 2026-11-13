@@ -280,6 +280,36 @@ describe("create from a schema", () => {
     expect(body.components[0]?.service.name).toBe("web");
   });
 
+  it("keeps a stack confirmed from its form deployable, and binds that to what it reaches now", async () => {
+    const stack = schema({
+      services: [
+        {
+          key: "app",
+          name: "web",
+          kind: "compose",
+          file: `services:\n  logs:\n    image: amir20/dozzle:v8.12.1\n    restart: always\n    volumes: ['\${SOCKET}:/var/run/docker.sock:ro']\n`,
+          env: { SOCKET: "/var/run/docker.sock" },
+        },
+      ],
+    });
+    const created = await api<TemplateInstall>("/projects/shop/templates", "POST", {
+      source: { type: "schema", schema: stack },
+      services: { app: { name: "web" } },
+      acknowledgeHostAccess: true,
+    });
+    expect(created.status).toBe(201);
+
+    const deploy = async () =>
+      waitForAction((await api<{ id: string }>("/projects/shop/services/web/deploy", "POST", {})).body.id);
+    expect(await deploy()).toMatchObject({ status: "succeeded" });
+
+    // What the form confirmed was the socket, not wherever the variable points next.
+    await api("/projects/shop/services/web/environment", "PUT", { env: "SOCKET=/etc\n" });
+    const moved = await deploy();
+    expect(moved.status).toBe("failed");
+    expect(moved.error).toMatch(/nobody has confirmed/);
+  });
+
   it("rejects text that is not JSON with the parser's own words", async () => {
     const { status, body } = await submit("{ not json");
     expect(status).toBe(400);

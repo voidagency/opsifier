@@ -23,6 +23,7 @@ import { type OpsTarget, opsFor } from "../databases/engine-ops";
 import { type ExecPlan, redactSecrets, runInDatabase } from "../databases/exec";
 import { rolloutDatabase } from "../databases/rollout";
 import { compileDatabaseRecord, requireDatabase } from "../databases/service";
+import { belongsToCurrent } from "../projects/generation";
 import { saveRetainedVolume } from "../retained-volumes/repo";
 import { qualifiedName } from "../services/compile";
 import { saveServiceSpec } from "../services/repo";
@@ -97,6 +98,8 @@ export interface RestoreSource {
 /**
  * The project a file named by hand belongs to. The panel's record comes first, since it follows a
  * service that moved, and only a file the panel has no record of is taken at its manifest's word.
+ * A file made before the project or service that has its name now belongs to no one here: an earlier
+ * project of that name may have had other people.
  */
 function ownerOfFile(
   deps: Pick<AppDeps, "db">,
@@ -104,7 +107,17 @@ function ownerOfFile(
   manifest: BackupManifest | null,
 ): string | null {
   const record = findBackupOfFile(deps.db, source.provider.id, source.remotePath);
-  return record?.projectName ?? manifest?.source.project ?? null;
+  const made =
+    record !== undefined
+      ? { projectName: record.projectName, serviceName: record.serviceName, createdAt: record.createdAt }
+      : manifest !== null
+        ? {
+            projectName: manifest.source.project,
+            serviceName: manifest.source.service,
+            createdAt: new Date(manifest.createdAt),
+          }
+        : null;
+  return made !== null && belongsToCurrent(deps.db, made) ? made.projectName : null;
 }
 
 /**

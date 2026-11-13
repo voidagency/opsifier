@@ -7,6 +7,7 @@ import { AppError, forbidden, notFound } from "../../core/errors";
 import { PROXY_PAGES_PREFIX } from "../../core/proxy";
 import type { TopicGuard } from "../../core/realtime";
 import { findAction } from "../actions/repo";
+import { belongsToCurrent } from "../projects/generation";
 import { isPanelHostAllowed } from "../server/panel-host";
 import { needsTwoFactorSetup } from "../two-factor-policy/service";
 import { type ProjectLevel, type Requirement, requirementFor } from "./policy";
@@ -202,7 +203,8 @@ export function createTopicGuard(deps: Pick<AppDeps, "db">): TopicGuard {
         return (
           action !== undefined &&
           action.projectName !== null &&
-          roleFor(userId, action.projectName) === "operator"
+          roleFor(userId, action.projectName) === "operator" &&
+          belongsToCurrent(deps.db, action)
         );
       }
       return false;

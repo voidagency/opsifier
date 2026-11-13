@@ -876,6 +876,76 @@ describe("disk usage", () => {
   });
 });
 
+describe("the image a host operation runs from", () => {
+  const PANEL_IMAGE = "ghcr.io/voidagency/opsifier:0.2.2";
+  const RUNNING = `sha256:${"a".repeat(64)}`;
+  let panel: TestContext;
+  let session: string;
+
+  const listing = () =>
+    call<DiskUsageListing>(panel.app, "/api/v1/server/disk?path=/var", { cookie: session });
+
+  beforeEach(async () => {
+    panel = await createTestContext();
+    session = await setupAdmin(panel.app);
+    panel.docker.helperResult = () => ({ exitCode: 0, stdout: "4096\t/host/var\n", stderr: "" });
+    await panel.docker.createService({
+      Name: "opsifier",
+      TaskTemplate: { ContainerSpec: { Image: PANEL_IMAGE } },
+    });
+    panel.docker.containers.push({
+      id: "c0ffee".padEnd(64, "0"),
+      name: "opsifier.1.x7k2",
+      image: PANEL_IMAGE,
+      imageId: RUNNING,
+      state: "running",
+      labels: { "com.docker.swarm.service.name": "opsifier" },
+      sizeBytes: null,
+    });
+  });
+
+  afterEach(async () => {
+    await panel.close();
+  });
+
+  it("is the image the panel is running, whatever its tag names by then", async () => {
+    // Anything that builds on this server could move a tag. What a container runs does not move.
+    panel.docker.addBuiltImage(PANEL_IMAGE);
+
+    expect((await listing()).body.scope).toBe("host");
+
+    expect(panel.docker.helpers[0]?.image).toBe(RUNNING);
+  });
+
+  it("is the digest the service names, when no running task says more", async () => {
+    panel.docker.containers.length = 0;
+    const pinned = `${PANEL_IMAGE}@sha256:${"b".repeat(64)}`;
+    await panel.docker.updateService("opsifier", {
+      Name: "opsifier",
+      TaskTemplate: { ContainerSpec: { Image: pinned } },
+    });
+
+    await listing();
+
+    expect(panel.docker.helpers[0]?.image).toBe(pinned);
+  });
+
+  it("is never a bare tag: without one that holds, host operations wait", async () => {
+    panel.docker.containers.length = 0;
+
+    const reboot = await call(panel.app, "/api/v1/server/reboot", {
+      method: "POST",
+      cookie: session,
+      body: { confirm: "reboot" },
+      origin: TEST_ORIGIN,
+    });
+
+    expect(reboot.status).toBe(409);
+    expect(apiErrorOf(reboot).code).toBe("host_operations_unavailable");
+    expect(panel.docker.helpers).toEqual([]);
+  });
+});
+
 describe("certificates", () => {
   const CERT_B64 =
     "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURSVENDQWkyZ0F3SUJBZ0lVYm1vV2VEcVN4T3d4WlNVQ0s1c1graG56ZnBNd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0xERVlNQllHQTFVRUF3d1BZWEJ3TG1WNFlXMXdiR1V1WTI5dE1SQXdEZ1lEVlFRS0RBZFRkSFZpSUVOQgpNQjRYRFRJMk1URXdPREl3TkRnek0xb1hEVE0yTVRFd05USXdORGd6TTFvd0xERVlNQllHQTFVRUF3d1BZWEJ3CkxtVjRZVzF3YkdVdVkyOXRNUkF3RGdZRFZRUUtEQWRUZEhWaUlFTkJNSUlCSWpBTkJna3Foa2lHOXcwQkFRRUYKQUFPQ0FROEFNSUlCQ2dLQ0FRRUF0K2lGdkZlaHhlaVNoS0piK0o1cGlwVXVMMkhsWUkyQkxzY1IxUlNLWFR5WQoxaXVKT0hKcm9nL3dvc3cwZnJXQWw3WFVCUmxhQjJidlc1ZkJaT29icm12UGlKdW56TGZtZXJGcE5IQSthR1UyClI5MmY4alNvUlBadXFwNCtmSmp6VGZSY1ZEaTI3VGlMWjJzOEFhRkM1bWc3ekV2S3R3cGV6VzFTSzhPbXFiZlcKMUtCT3BEeTlORU9iQ1RYdXhGUEExVGNQcWtOVUZwV1NMa1k4TlRTWFhqeTBmUVhVQy8rWW1JMU1xbm1aT2I3aQpjNWphZDNNT3M2Skp6NDdWZ1I2eW5CR2cwWk9PWENhM1JHaFcxVkdGTlJNTFpwemZFZzJTVWJ3ZWFZMWxORjdkCjc4STkvY2xOd1U4Nnp6NXdoZXNjeE44MXVoWlQ0UkhET0ExZzNVSzBrUUlEQVFBQm8xOHdYVEFkQmdOVkhRNEUKRmdRVWgyNmJ6cDVpZWx1ZWNLcVdORTBZSTI0VTc2Y3dEd1lEVlIwVEFRSC9CQVV3QXdFQi96QXJCZ05WSFJFRQpKREFpZ2c5aGNIQXVaWGhoYlhCc1pTNWpiMjJDRDNkM2R5NWxlR0Z0Y0d4bExtTnZiVEFOQmdrcWhraUc5dzBCCkFRc0ZBQU9DQVFFQUx2Z1E4UTIrUWxrb25DdnFtb0pGdXVjcUs3ZkxHSFFlVEVMRzZxTlM2ZmpYTTc1cFI2L1AKZGFKaVBJa0c0ZnBFdHNteWNIcWV2L1VDOC8vbklnNlRVZkRtanByLytzZHEvY09qWEN5ZURxZ1huaFpEb1NIRwpxWnFDZXdINDZONWxGUjFEQzZmakVYKzVPSTBFME5ZUGx3SVhHd1hQT3N6M2VMNHBpc2RpZHQwSTFIMnVoejFWCnU1eDVYZjZKeXhuQWpTVldSSXh2WFFXWlhWbkZldUpuSFl4dDF0SkdZNDVCZVJTUjdYcWhEUUg2S1BZRWZtNnAKN3NYTXhKeW9BMCtLTk1IeGNtb3VOb2hEWC9yZzZFNnZMejlrSVlzUjl6b1NXR1RPVTRiWmdONXN0YW1WdkdUUwpZdXVrM01CODVnZTBTeENNYWlCU2FVam1ZSGxLUXBXazZRPT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=";

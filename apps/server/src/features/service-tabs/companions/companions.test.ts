@@ -29,6 +29,30 @@ const path = () => `${suite.service()}/companions`;
 const list = async () => (await suite.api<CompanionList>(path())).body.companions;
 const routeFile = (tool: string) => join(context.deps.config.traefikDynamicDir, `shop__db-${tool}.yaml`);
 
+describe("a tool's own address", () => {
+  const HOST = "shop-db-pgweb.203.0.113.10.sslip.io";
+  const claim = (body: Record<string, unknown>) =>
+    suite.api("/projects/beta/services/web/domains", "POST", { https: false, ...body });
+
+  beforeEach(async () => {
+    await suite.deployed({ engine: "postgres" });
+    expect((await suite.run(`${path()}/pgweb`)).status).toBe("succeeded");
+    await suite.api("/projects", "POST", { name: "beta" });
+    await suite.api("/projects/beta/services", "POST", { name: "web" });
+  });
+
+  it.each([
+    ["the same address", { host: HOST }],
+    ["a path under it, which would win over the tool's route", { host: HOST, path: "/login" }],
+  ])("can't be taken by another project's service with %s", async (_label, body) => {
+    const taken = await claim(body);
+
+    expect(taken.status).toBe(409);
+    expect(apiErrorOf(taken).code).toBe("domain_taken");
+    expect(JSON.stringify(taken.body)).not.toMatch(/shop|pgweb/);
+  });
+});
+
 describe("DAT-13: web admin companions", () => {
   it.each(databaseEngines)("offers %s its two tools, both off", async (engine) => {
     await suite.deployed({ engine });

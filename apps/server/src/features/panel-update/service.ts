@@ -51,6 +51,21 @@ export function repositoryOf(image: string): string {
   return colon > slash ? withoutDigest.slice(0, colon) : withoutDigest;
 }
 
+/**
+ * `repo:tag` held to the content it named when it was pulled. Swarm then runs exactly that, and a tag
+ * moved on this server later, by a build or anything else, changes nothing the panel runs.
+ */
+export function pinnedImage(image: string, digests: readonly string[]): string {
+  if (image.includes("@")) {
+    return image;
+  }
+  const repository = repositoryOf(image);
+  const digest = digests
+    .map((entry) => entry.split("@"))
+    .find(([name, value]) => value !== undefined && repositoryOf(name ?? "") === repository)?.[1];
+  return digest === undefined ? image : `${image}@${digest}`;
+}
+
 function withImage(spec: SwarmServiceSpec, image: string): SwarmServiceSpec {
   return {
     ...spec,
@@ -338,6 +353,7 @@ export class PanelUpdates {
       throw new Error(`${release.image} is not on the server after pulling it.`);
     }
     const digest = delivered.digests[0] ?? delivered.id;
+    const target = pinnedImage(release.image, delivered.digests);
     ctx.log(`Delivered ${digest} (${Math.round(delivered.sizeBytes / 1024 / 1024)} MiB)`);
     ctx.signal.throwIfAborted();
 
@@ -354,7 +370,7 @@ export class PanelUpdates {
       fromVersion: config.version,
       fromImage: image,
       toVersion: release.version,
-      toImage: release.image,
+      toImage: target,
       digest,
       sizeBytes: delivered.sizeBytes,
       snapshotId,
@@ -369,7 +385,7 @@ export class PanelUpdates {
 
     ctx.log(`Replacing the panel with ${release.version}`);
     try {
-      await docker.updateService(PANEL_SWARM_SERVICE, withImage(panel.spec, release.image));
+      await docker.updateService(PANEL_SWARM_SERVICE, withImage(panel.spec, target));
     } catch (error) {
       clearJournal(config);
       rmSync(snapshotDir(config, snapshotId), { recursive: true, force: true });

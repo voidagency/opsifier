@@ -360,25 +360,34 @@ export function deleteConfig(
   });
 }
 
+/**
+ * A record by its id, when it is this service's. Rows outlive their service, and one older than the
+ * service that has its name now was another's, maybe another project's: the listings leave it out,
+ * and so does this.
+ */
+function ownRecord<T extends { projectName: string; serviceName: string; createdAt: Date }>(
+  deps: Pick<AppDeps, "db">,
+  target: ServiceTarget,
+  row: T | undefined,
+): T | undefined {
+  if (row === undefined || row.projectName !== target.projectName || row.serviceName !== target.serviceName) {
+    return undefined;
+  }
+  const service = requireService(deps, target);
+  return row.createdAt.getTime() >= service.createdAt.getTime() ? row : undefined;
+}
+
 function requireBackup(deps: Pick<AppDeps, "db">, target: ServiceTarget, id: string): BackupRow {
-  const backup = findBackup(deps.db, id);
-  if (
-    backup === undefined ||
-    backup.projectName !== target.projectName ||
-    backup.serviceName !== target.serviceName
-  ) {
+  const backup = ownRecord(deps, target, findBackup(deps.db, id));
+  if (backup === undefined) {
     throw notFound("This backup does not exist.");
   }
   return backup;
 }
 
 function requireRestore(deps: Pick<AppDeps, "db">, target: ServiceTarget, id: string): RestoreRow {
-  const restore = findRestore(deps.db, id);
-  if (
-    restore === undefined ||
-    restore.projectName !== target.projectName ||
-    restore.serviceName !== target.serviceName
-  ) {
+  const restore = ownRecord(deps, target, findRestore(deps.db, id));
+  if (restore === undefined) {
     throw notFound("This restore does not exist.");
   }
   return restore;

@@ -13,6 +13,7 @@ import {
   type TestContext,
 } from "../../../testing/harness";
 import { resetPassword } from "../../access/reset-password";
+import { findService } from "../../services/repo";
 import { upgradeDeploymentAuthority } from "./upgrade";
 
 const TRIGGER = "/projects/shop/services/web/deployments/trigger";
@@ -58,6 +59,42 @@ const deploys = (token: string) =>
 
 const changeRights = (user: PanelUser, projects: Array<{ project: string; role: string }>) =>
   api(`/users/${user.id}`, "PUT", { email: user.email, role: "member", projects }, admin);
+
+describe("when a service moves to another project", () => {
+  const move = (projectName: string, name = "web") =>
+    api("/projects/shop/services/web/rename", "POST", { projectName, name }, admin);
+
+  it("revokes its deployment token and pauses its webhook, which people of the old project hold", async () => {
+    const source = { type: "git", url: "https://git.example.com/acme/shop.git", ref: "main", path: "/" };
+    expect((await api("/projects/shop/services/web/source", "PUT", source, admin)).status).toBe(200);
+    const { cookie } = await member("op@example.com");
+    const token = await issueToken(cookie);
+    const webhook = await api<IssuedDeploymentWebhook>(
+      "/projects/shop/services/web/deployments/webhook/rotate",
+      "POST",
+      undefined,
+      cookie,
+    );
+    expect(webhook.status).toBe(200);
+    await api("/projects", "POST", { name: "secret" }, admin);
+
+    expect((await move("secret")).status).toBe(200);
+
+    expect((await deploys(token)).status).toBe(401);
+    const moved = findService(context.deps.db, "secret", "web");
+    expect(moved?.spec.build.deployToken).toBeNull();
+    expect(moved?.spec.build.webhook?.paused).toBe(true);
+  });
+
+  it("leaves them alone through a rename inside the same project", async () => {
+    const { cookie } = await member("op@example.com");
+    const token = await issueToken(cookie);
+
+    expect((await move("shop", "renamed")).status).toBe(200);
+
+    expect((await deploys(token)).status).toBe(202);
+  });
+});
 
 describe("when an account changes", () => {
   it("revokes the tokens it issued once it loses the rights behind them", async () => {

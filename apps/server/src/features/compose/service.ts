@@ -28,6 +28,7 @@ import {
   withKeyBinding,
 } from "../service-tabs/source/service";
 import { composeChildAddress } from "../services/compile";
+import { serviceRedactor } from "../services/masking";
 import { ownerLabels } from "../services/ownership";
 import {
   findService,
@@ -48,9 +49,17 @@ import {
   writeProxyConfig,
 } from "../services/service";
 import { appServiceSpec } from "../services/spec";
-import { hashCompose, writeInlineCompose } from "./deploy";
+import {
+  hashCompose,
+  readStackAccess,
+  stackFilesOnDisk,
+  stackVariables,
+  writeInlineCompose,
+  writeStackOverride,
+} from "./deploy";
 import { type ComposeInspection, hasHostAccess, inspectComposeFile } from "./inspect";
 import { composeCodeDir, composeProject } from "./names";
+import { accessFingerprint } from "./resolved";
 import type { StoredCompose } from "./spec";
 import { toComposeChildren } from "./status";
 
@@ -132,15 +141,23 @@ export async function getComposeDetail(deps: AppDeps, target: ServiceTarget): Pr
     content === null
       ? { services: [], issues: [], parseError: null }
       : inspectStackFile(deps, target, content);
-  const acknowledged = content !== null && compose.acknowledgedHash === hashCompose(content);
+  // What the last deploy found the stack reaching beyond the file on the page, waiting for a person.
+  const shown = new Set(inspection.issues.map((issue) => `${issue.code}|${issue.service}|${issue.detail}`));
+  const pending = compose.pendingAccess.filter(
+    (issue) => !shown.has(`${issue.code}|${issue.service}|${issue.detail}`),
+  );
+  const acknowledged =
+    content !== null &&
+    compose.acknowledgedHash === hashCompose(content) &&
+    compose.pendingAccess.length === 0;
 
   return {
     source: compose.source,
     content,
-    issues: inspection.issues,
+    issues: [...inspection.issues, ...pending],
     parseError: inspection.parseError,
     services: inspection.services,
-    acknowledgementRequired: hasHostAccess(inspection) && !acknowledged,
+    acknowledgementRequired: (hasHostAccess(inspection) || compose.pendingAccess.length > 0) && !acknowledged,
     acknowledged,
     envFile: compose.envFile,
     sshPublicKey: record.spec.build.sshKey?.publicKey ?? null,
@@ -212,7 +229,8 @@ export async function saveComposeSource(
       false,
     );
     withdrawn = settled.withdrawn;
-    return { compose: { ...compose, source }, build: settled.build };
+    // What a deploy found waiting was about the file before this one.
+    return { compose: { ...compose, source, pendingAccess: [] }, build: settled.build };
   });
   if (source.type === "inline") {
     await mkdir(serviceDir(deps, target.projectName, target.serviceName), { recursive: true, mode: 0o700 });
@@ -252,7 +270,60 @@ async function probeSource(
   }
 }
 
-/** Records that someone read this exact file and accepts what it can do to the server. */
+/** What the stack reaches on the server right now, as Compose resolves it, in the form a confirmation keeps. */
+async function resolvedAccessFingerprint(
+  deps: AppDeps,
+  target: ServiceTarget,
+  record: ServiceRecord,
+  compose: StoredCompose,
+  content: string,
+): Promise<string> {
+  const files = await stackFilesOnDisk(deps, target, compose);
+  await writeStackOverride(deps, target, record, content);
+  try {
+    const { access } = await readStackAccess(
+      deps,
+      target,
+      files,
+      stackVariables(deps, target, record, () => undefined),
+      serviceRedactor(deps, target),
+    );
+    return accessFingerprint(access);
+  } catch (error) {
+    throw conflict(
+      "compose_invalid",
+      `Compose could not read this stack, so there is nothing to confirm yet: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+/**
+ * Binds a confirmation given somewhere else, such as a template's form, to what the stack reaches now.
+ * Left unbound when Compose can't read the stack yet: its first deploy then asks for a confirmation.
+ */
+export async function bindConfirmedAccess(deps: AppDeps, target: ServiceTarget): Promise<void> {
+  const record = requireService(deps, target);
+  const compose = requireCompose(record);
+  const content = await currentContent(deps, target, compose);
+  if (content === null || compose.acknowledgedHash !== hashCompose(content)) {
+    return;
+  }
+  const access = await resolvedAccessFingerprint(deps, target, record, compose, content).catch(
+    (error: unknown) => {
+      deps.logger.warn({ err: error, target }, "Could not read what a confirmed stack reaches");
+      return null;
+    },
+  );
+  if (access !== null) {
+    persistCompose(deps, target, (stored) => ({ compose: { ...stored, acknowledgedAccess: access } }));
+  }
+}
+
+/**
+ * Records that someone read this exact file and accepts what it can do to the server: the file, and
+ * everything it reaches once Compose has resolved it with the stack's variables and the files it brings
+ * in, as they are now. A change to any of that asks again.
+ */
 export async function acknowledgeCompose(
   deps: AppDeps,
   target: ServiceTarget,
@@ -265,8 +336,14 @@ export async function acknowledgeCompose(
   if (current === null || current !== content) {
     throw conflict("compose_changed", "This Compose file has changed. Read it again before confirming.");
   }
+  const access = await resolvedAccessFingerprint(deps, target, record, compose, content);
   persistCompose(deps, target, (stored) => ({
-    compose: { ...stored, acknowledgedHash: hashCompose(content) },
+    compose: {
+      ...stored,
+      acknowledgedHash: hashCompose(content),
+      acknowledgedAccess: access,
+      pendingAccess: [],
+    },
   }));
   deps.actions.record({
     type: "service.source",
