@@ -8,6 +8,8 @@ export type QueryValue = string | number | boolean | undefined;
 export interface RequestOptions {
   query?: Record<string, QueryValue>;
   body?: unknown;
+  /** Bytes sent as they are, in place of a JSON body: an archive of source code, for one. */
+  raw?: { body: Uint8Array; contentType: string };
   timeoutMs?: number;
   signal?: AbortSignal;
 }
@@ -71,7 +73,9 @@ export class PanelClient {
       accept: "application/json",
       authorization: `Bearer ${this.connection.apiKey}`,
     };
-    if (options.body !== undefined) {
+    if (options.raw !== undefined) {
+      headers["content-type"] = options.raw.contentType;
+    } else if (options.body !== undefined) {
       headers["content-type"] = "application/json";
     }
 
@@ -81,7 +85,12 @@ export class PanelClient {
       response = await this.send(url, {
         method,
         headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        body:
+          options.raw !== undefined
+            ? options.raw.body
+            : options.body === undefined
+              ? undefined
+              : JSON.stringify(options.body),
         // Our own decision for each response, below: following would resend the key wherever it points.
         redirect: "manual",
         signal: AbortSignal.any([

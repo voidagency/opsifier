@@ -4,6 +4,8 @@ export interface Styles {
   /** Paints a state word. Colour only ever repeats what the word already says. */
   state(state: ServiceStatus, text: string): string;
   dim(text: string): string;
+  /** An address a terminal lets people open with a click. Plain text anywhere else. */
+  link(url: string): string;
 }
 
 const CODES: Record<ServiceStatus, number> = {
@@ -17,7 +19,12 @@ const CODES: Record<ServiceStatus, number> = {
 
 export function createStyles(colors: boolean): Styles {
   const paint = (code: number, text: string) => (colors ? `\u001b[${code}m${text}\u001b[0m` : text);
-  return { state: (state, text) => paint(CODES[state], text), dim: (text) => paint(90, text) };
+  return {
+    state: (state, text) => paint(CODES[state], text),
+    dim: (text) => paint(90, text),
+    // OSC 8: terminals that know it make the text clickable, the others show the text as it is.
+    link: (url) => (colors ? `\u001b]8;;${url}\u001b\\${url}\u001b]8;;\u001b\\` : url),
+  };
 }
 
 /** Column widths come from the plain text; `paint` only decorates the cell once it is padded. */
@@ -75,3 +82,15 @@ export const WAKE_MARK: Record<string, string> = {
   running: ">",
   cancelled: "-",
 };
+
+/** 950 B, 12.3 KB, 4.1 MB, 1.2 GB. */
+export function sizeText(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit += 1;
+  }
+  return unit === 0 ? `${value} B` : `${value.toFixed(1)} ${units[unit]}`;
+}

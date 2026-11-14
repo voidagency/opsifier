@@ -18,7 +18,7 @@
     },
     "apps/server": {
       "name": "@opsifier/server",
-      "version": "0.3.2",
+      "version": "0.4.0",
       "dependencies": {
         "@hono/node-server": "^2.1.6",
         "@hono/zod-openapi": "^1.6.3",
@@ -91,7 +91,7 @@
     },
     "packages/cli": {
       "name": "@opsifier/cli",
-      "version": "0.1.0",
+      "version": "0.4.0",
       "bin": {
         "opsifier": "dist/opsifier.mjs",
       },

@@ -1,120 +1,64 @@
-import { readFile } from "node:fs/promises";
-import type { PanelApi, PanelClient, ServiceRef } from "@opsifier/client";
+import { readFile, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, dirname, parse, resolve, sep } from "node:path";
+import type { ServiceRef } from "@opsifier/client";
 import {
   buildCatalogue,
   ClientError,
   classifyOperation,
+  connectionFromEnv,
   describeOperation,
   fetchOpenApiDocument,
+  isExposedOnTheWire,
   normalizeApiPath,
 } from "@opsifier/client";
 import type {
   ActionEntry,
+  CallerIdentity,
+  CreateDatabaseRequest,
+  EnvSummary,
   LogSearchQuery,
   ProjectSummary,
+  ReleaseEntry,
+  ReleaseList,
+  SaveSourceRequest,
+  ServiceDetail,
   ServiceLogLine,
   ServiceStatus,
   ServiceSummary,
 } from "@opsifier/contract";
-import { bySeverity, formatTime, renderFields, renderTable, type Styles, WAKE_MARK } from "./format";
-import type { MessageKey, Translate } from "./messages";
+import { completionScript, SHELLS, type Shell } from "./completion";
+import { readCredentials, writeCredentials } from "./credentials";
+import { ENV_NAME, readEnv, setEnv, unsetEnv } from "./env";
+import { bySeverity, formatTime, renderFields, renderTable, sizeText, WAKE_MARK } from "./format";
+import { findLink, removeLink, writeLink } from "./link";
+import type { MessageKey } from "./messages";
+import { OPERATE_COMMANDS } from "./operate";
+import { packFolder } from "./pack";
+import {
+  argument,
+  type Command,
+  type CommandContext,
+  type CommandResult,
+  confirmValue,
+  label,
+  namesService,
+  noMoreArguments,
+  type OptionSpec,
+  originOf,
+  parseTarget,
+  queued,
+  requireYes,
+  serviceAt,
+  sourceText,
+  started,
+  targetOf,
+  usage,
+  waitOption,
+} from "./shared";
+import { sleep } from "./wait";
 
-export interface OptionSpec {
-  type: "boolean" | "string";
-  short?: string;
-  multiple?: boolean;
-  description: MessageKey;
-}
-
-export interface CommandContext {
-  api: PanelApi;
-  client: PanelClient;
-  positionals: string[];
-  flags: Record<string, string | boolean | string[] | undefined>;
-  t: Translate;
-  styles: Styles;
-  mode: "json" | "text";
-  env: Record<string, string | undefined>;
-  print(text: string): void;
-  warn(text: string): void;
-  signal: AbortSignal;
-  readStdin(): Promise<string>;
-}
-
-/** `data` is printed in JSON mode, as the API answered it. `text` is for a person. */
-export interface CommandResult {
-  data: unknown;
-  text: () => string;
-}
-
-export interface Command {
-  name: string;
-  group: "everyday" | "other";
-  args: string;
-  /** Other forms of the same command, shown under its usage. */
-  more?: string[];
-  options?: Record<string, OptionSpec>;
-  run(context: CommandContext): Promise<CommandResult | undefined>;
-}
-
-const usage = (message: string) => new ClientError("usage", message);
-
-function targetOf(context: CommandContext): ServiceRef {
-  const value = argument(context, 0, "<project>/<service>");
-  const [project, service, ...rest] = value.split("/");
-  if (project === undefined || project === "" || service === undefined || service === "" || rest.length > 0) {
-    throw usage(context.t("usage.target", { value }));
-  }
-  return { project, service };
-}
-
-function argument(context: CommandContext, index: number, name: string): string {
-  const value = context.positionals[index];
-  if (value === undefined) {
-    throw usage(context.t("usage.missingArgument", { name }));
-  }
-  return value;
-}
-
-function noMoreArguments(context: CommandContext, count: number): void {
-  const extra = context.positionals[count];
-  if (extra !== undefined) {
-    throw usage(context.t("usage.extraArgument", { value: extra }));
-  }
-}
-
-const label = (target: ServiceRef) => `${target.project}/${target.service}`;
-
-function requireYes(context: CommandContext, message: string): void {
-  if (context.flags.yes !== true) {
-    throw new ClientError("confirmation_required", message);
-  }
-}
-
-function confirmValue(context: CommandContext, message: string): string {
-  const value = context.flags.confirm;
-  if (typeof value !== "string" || value === "") {
-    throw new ClientError("confirmation_required", message);
-  }
-  return value;
-}
-
-/** The result of starting something slow: what was queued, and how to look at it next. */
-function queued(
-  context: CommandContext,
-  action: ActionEntry,
-  key: MessageKey,
-  target: string,
-): CommandResult {
-  return {
-    data: action,
-    text: () =>
-      [
-        context.t(key, { target, project: target, action: action.id, status: action.status }),
-        context.styles.dim(context.t("next.check", { action: action.id })),
-      ].join("\n"),
-  };
-}
+export type { Command, CommandContext, CommandResult, OptionSpec } from "./shared";
 
 const stateWord = (context: CommandContext, state: ServiceStatus) =>
   context.t(`state.${state}` as MessageKey);
@@ -172,20 +116,6 @@ function projectsText(context: CommandContext, projects: readonly ProjectSummary
   return servicesTable(context, services, rows);
 }
 
-function sourceText(source: unknown): string {
-  const value = source as {
-    type?: string;
-    image?: string;
-    repository?: string;
-    owner?: string;
-    repo?: string;
-  } | null;
-  if (value === null || value?.type === undefined) {
-    return "-";
-  }
-  return `${value.type} ${value.image ?? value.repository ?? (value.owner ? `${value.owner}/${value.repo}` : "")}`.trim();
-}
-
 /** `45s`, `15m`, `2h`, `1d`, or a plain number of seconds, as the API takes it. */
 function secondsFrom(context: CommandContext, value: string): number {
   const match = /^(\d+)([smhd]?)$/.exec(value.trim());
@@ -215,18 +145,6 @@ const FOLLOW_POLL_MS = 2_000;
 /** Each poll looks a little further back than the last, and what it has already shown is dropped. */
 const FOLLOW_OVERLAP_SECONDS = 3;
 const MAX_LOG_LIMIT = 2_000;
-
-const sleep = (ms: number, signal: AbortSignal) =>
-  new Promise<void>((resolve) => {
-    if (signal.aborted) {
-      return resolve();
-    }
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => {
-      clearTimeout(timer);
-      resolve();
-    });
-  });
 
 /**
  * The API offers searches, not a stream, to anything but a browser session: this keeps asking for the
@@ -371,7 +289,106 @@ async function describeOne(context: CommandContext): Promise<CommandResult> {
   return { data: description, text: () => JSON.stringify(description, null, 2) };
 }
 
+/** The options every command takes, which the command line itself reads: see cli.ts. */
+export const GLOBAL_FLAGS = ["json", "text", "help"] as const;
+
 export const COMMANDS: readonly Command[] = [
+  {
+    name: "link",
+    group: "setup",
+    args: "<project>/<service>",
+    async run(context) {
+      const target = targetOf(context);
+      noMoreArguments(context, 1);
+      // A mistyped name should fail now, not at the first deploy from this folder.
+      await context.api.service(target);
+      const link = { service: label(target), panel: context.client.panelOrigin };
+      const file = await writeLink(context.cwd, link);
+      return {
+        data: { ...link, file },
+        text: () => context.t("link.done", { service: link.service, panel: link.panel, file }),
+      };
+    },
+  },
+  {
+    name: "unlink",
+    group: "setup",
+    args: "",
+    offline: true,
+    async run(context) {
+      noMoreArguments(context, 0);
+      const result = await removeLink(context.cwd);
+      return {
+        data: result,
+        text: () => context.t(result.removed ? "unlink.done" : "unlink.none", { file: result.file }),
+      };
+    },
+  },
+  {
+    name: "login",
+    group: "setup",
+    args: "[<panel address>]",
+    offline: true,
+    run: login,
+  },
+  {
+    name: "logout",
+    group: "setup",
+    args: "[<panel address>]",
+    offline: true,
+    run: logout,
+  },
+  {
+    name: "create",
+    group: "setup",
+    args: "<project>[/<service>]",
+    more: [
+      "create <project>/<service> --image nginx:1.27",
+      "create <project>/<service> --git https://github.com/me/app.git [--ref main] [--path /]",
+      "create <project>/<service> --dockerfile ./Dockerfile",
+      "create <project>/<service> --database postgres",
+    ],
+    options: {
+      image: { type: "string", description: "flag.image" },
+      git: { type: "string", description: "flag.git" },
+      ref: { type: "string", description: "flag.ref" },
+      path: { type: "string", description: "flag.gitPath" },
+      dockerfile: { type: "string", description: "flag.dockerfile" },
+      database: { type: "string", description: "flag.database" },
+      link: { type: "boolean", description: "flag.link" },
+      deploy: { type: "boolean", description: "flag.deployCreated" },
+      ...waitOption,
+    },
+    run: create,
+  },
+  {
+    name: "completion",
+    group: "setup",
+    args: "<bash | zsh | fish>",
+    offline: true,
+    async run(context) {
+      const shell = argument(context, 0, "<bash | zsh | fish>");
+      noMoreArguments(context, 1);
+      if (!(SHELLS as readonly string[]).includes(shell)) {
+        throw usage(context.t("usage.shell", { value: shell }));
+      }
+      context.write(completionScript(shell as Shell, COMMANDS, GLOBAL_FLAGS, context.t));
+      return undefined;
+    },
+  },
+  {
+    name: "__targets",
+    group: "hidden",
+    args: "",
+    async run(context) {
+      noMoreArguments(context, 0);
+      const { projects } = await context.api.projects();
+      for (const service of projects.flatMap((project) => project.services)) {
+        context.print(`${service.projectName}/${service.name}`);
+      }
+      return undefined;
+    },
+  },
   {
     name: "whoami",
     group: "everyday",
@@ -484,11 +501,11 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "logs",
     group: "everyday",
-    args: "<project>/<service>",
+    args: "[<project>/<service>]",
     options: logOptions,
     async run(context) {
-      const target = targetOf(context);
-      noMoreArguments(context, 1);
+      const { target, next } = await serviceAt(context, 0);
+      noMoreArguments(context, next);
       const { flags } = context;
       const query: Partial<LogSearchQuery> = {
         q: flags.grep as string | undefined,
@@ -514,11 +531,11 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "deployments",
     group: "everyday",
-    args: "<project>/<service>",
+    args: "[<project>/<service>]",
     options: { limit: { type: "string", short: "n", description: "flag.limit" } },
     async run(context) {
-      const target = targetOf(context);
-      noMoreArguments(context, 1);
+      const { target, next } = await serviceAt(context, 0);
+      noMoreArguments(context, next);
       const limit =
         context.flags.limit === undefined
           ? undefined
@@ -530,47 +547,140 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "deploy",
     group: "everyday",
-    args: "<project>/<service>",
-    options: { force: { type: "boolean", description: "flag.force" } },
+    args: "[<project>/<service>]",
+    options: { force: { type: "boolean", description: "flag.force" }, ...waitOption },
     async run(context) {
-      const target = targetOf(context);
-      noMoreArguments(context, 1);
+      const { target, next } = await serviceAt(context, 0);
+      noMoreArguments(context, next);
       const action = await context.api.deploy(target, { force: context.flags.force === true });
-      return queued(context, action, "deploy.queued", label(target));
+      return started(context, action, "deploy.queued", label(target));
     },
+  },
+  {
+    name: "push",
+    group: "everyday",
+    args: "[<project>/<service>]",
+    options: {
+      dir: { type: "string", description: "flag.dir" },
+      path: { type: "string", description: "flag.uploadPath" },
+      "upload-only": { type: "boolean", description: "flag.uploadOnly" },
+      "include-secrets": { type: "boolean", description: "flag.includeSecrets" },
+      yes: { type: "boolean", short: "y", description: "flag.yes" },
+      ...waitOption,
+    },
+    run: push,
   },
   {
     name: "restart",
     group: "everyday",
-    args: "<project>/<service>",
+    args: "[<project>/<service>]",
+    options: waitOption,
     async run(context) {
-      const target = targetOf(context);
-      noMoreArguments(context, 1);
-      return queued(context, await context.api.restart(target), "restart.queued", label(target));
+      const { target, next } = await serviceAt(context, 0);
+      noMoreArguments(context, next);
+      return started(context, await context.api.restart(target), "restart.queued", label(target));
     },
   },
   {
     name: "start",
     group: "everyday",
-    args: "<project>/<service>",
+    args: "[<project>/<service>]",
+    options: waitOption,
     async run(context) {
-      const target = targetOf(context);
-      noMoreArguments(context, 1);
-      return queued(context, await context.api.start(target), "start.queued", label(target));
+      const { target, next } = await serviceAt(context, 0);
+      noMoreArguments(context, next);
+      return started(context, await context.api.start(target), "start.queued", label(target));
     },
   },
   {
     name: "stop",
     group: "everyday",
-    args: "<project>/<service>",
-    options: { yes: { type: "boolean", short: "y", description: "flag.yes" } },
+    args: "[<project>/<service>]",
+    options: { yes: { type: "boolean", short: "y", description: "flag.yes" }, ...waitOption },
     async run(context) {
-      const target = targetOf(context);
-      noMoreArguments(context, 1);
+      const { target, next } = await serviceAt(context, 0);
+      noMoreArguments(context, next);
       requireYes(context, context.t("confirm.stop", { target: label(target) }));
-      return queued(context, await context.api.stop(target), "stop.queued", label(target));
+      return started(context, await context.api.stop(target), "stop.queued", label(target));
     },
   },
+  {
+    name: "releases",
+    group: "everyday",
+    args: "[<project>/<service>]",
+    async run(context) {
+      const { target, next } = await serviceAt(context, 0);
+      noMoreArguments(context, next);
+      const list = await context.api.releases(target);
+      return { data: list, text: () => releasesText(context, list) };
+    },
+  },
+  {
+    name: "rollback",
+    group: "everyday",
+    args: "[<project>/<service>] [<version>]",
+    options: { confirm: { type: "string", description: "flag.confirmRollback" }, ...waitOption },
+    async run(context) {
+      const { target, next } = await serviceAt(context, 0);
+      const named = context.positionals[next];
+      noMoreArguments(context, next + 1);
+      const list = await context.api.releases(target);
+      const release =
+        named === undefined ? previousRelease(context, target, list) : releaseNamed(context, list, named);
+      const confirm = confirmValue(
+        context,
+        context.t("confirm.rollback", {
+          target: label(target),
+          version: release.number,
+          image: release.image,
+          name: target.service,
+        }),
+      );
+      const action = await context.api.rollback(target, release.number, confirm);
+      return started(context, action, "rollback.queued", label(target), { version: release.number });
+    },
+  },
+  {
+    name: "config",
+    group: "everyday",
+    verbs: ["get", "set", "unset"],
+    args: "[<project>/<service>]",
+    more: [
+      "config get [<project>/<service>] <NAME>... --yes",
+      "config set [<project>/<service>] <NAME>=<value>... [--deploy [--wait]]",
+      "config unset [<project>/<service>] <NAME>... --yes [--deploy [--wait]]",
+      "config [get | set | unset] --project <project> ...",
+    ],
+    options: {
+      project: { type: "string", description: "flag.envProject" },
+      yes: { type: "boolean", short: "y", description: "flag.yes" },
+      deploy: { type: "boolean", description: "flag.deploy" },
+      ...waitOption,
+    },
+    run(context) {
+      const verb = context.positionals[0];
+      if (verb === "get" || verb === "set" || verb === "unset") {
+        return changeConfig(context, verb);
+      }
+      return listConfig(context);
+    },
+  },
+  {
+    name: "open",
+    group: "everyday",
+    args: "[<project>/<service>]",
+    async run(context) {
+      const { target, next } = await serviceAt(context, 0);
+      noMoreArguments(context, next);
+      const service = await context.api.service(target);
+      const url = service.primaryUrl;
+      if (url === null) {
+        throw new ClientError("no_address", context.t("open.none", { target: label(target) }), 404);
+      }
+      return { data: { url }, text: () => context.styles.link(url) };
+    },
+  },
+  ...OPERATE_COMMANDS,
   {
     name: "destroy",
     group: "everyday",
@@ -675,6 +785,7 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "api",
     group: "other",
+    verbs: ["list", "describe", "GET", "POST", "PUT", "PATCH", "DELETE"],
     args: "<METHOD> <path>",
     more: ["api list [text]", "api describe <METHOD> <path>"],
     options: {
@@ -693,6 +804,589 @@ export const COMMANDS: readonly Command[] = [
     },
   },
 ];
+
+function releaseNote(context: CommandContext, release: ReleaseEntry): string {
+  const notes: string[] = [];
+  if (release.active) {
+    notes.push(context.t("release.running"));
+  }
+  if (release.rollbackOf !== null) {
+    notes.push(context.t("release.rollbackOf", { version: release.rollbackOf }));
+  }
+  if (release.refusal !== null && release.refusal !== "active") {
+    notes.push(context.t(`refusal.${release.refusal}` as MessageKey));
+  }
+  return notes.join(", ");
+}
+
+function releasesText(context: CommandContext, list: ReleaseList): string {
+  if (!list.available) {
+    return context.t("empty.releasesUnavailable");
+  }
+  if (list.items.length === 0) {
+    return context.t("empty.releases");
+  }
+  return renderTable(
+    [
+      context.t("col.version"),
+      context.t("col.image"),
+      context.t("col.commit"),
+      context.t("col.by"),
+      context.t("col.created"),
+      context.t("col.note"),
+    ],
+    list.items.map((release) => [
+      `v${release.number}`,
+      release.image,
+      release.builtCommit?.slice(0, 7) ?? release.requestedRef ?? "-",
+      release.actorEmail ?? "-",
+      formatTime(release.createdAt),
+      releaseNote(context, release),
+    ]),
+  );
+}
+
+/** The newest kept version older than the running one that can still be gone back to. */
+function previousRelease(context: CommandContext, target: ServiceRef, list: ReleaseList): ReleaseEntry {
+  const running = list.items.find((release) => release.active);
+  if (!list.available || running === undefined) {
+    throw usage(context.t("rollback.chooseVersion", { target: label(target) }));
+  }
+  const earlier = list.items
+    .filter((release) => release.number < running.number && release.refusal === null)
+    .sort((a, b) => b.number - a.number)[0];
+  if (earlier === undefined) {
+    throw new ClientError("no_earlier_release", context.t("rollback.none", { target: label(target) }), 409);
+  }
+  return earlier;
+}
+
+/** `5` or `v5`. Whether it can be gone back to is the panel's to say. */
+function releaseNamed(context: CommandContext, list: ReleaseList, value: string): ReleaseEntry {
+  const match = /^v?(\d+)$/i.exec(value);
+  const release = match === null ? undefined : list.items.find((item) => item.number === Number(match[1]));
+  if (match === null) {
+    throw usage(context.t("usage.version", { value }));
+  }
+  if (release === undefined) {
+    throw new ClientError("not_found", context.t("rollback.unknown", { version: match[1] ?? value }), 404);
+  }
+  return release;
+}
+
+/** One service's variables, or with --project those its project shares with all of its services. */
+type EnvScope =
+  | { kind: "service"; target: ServiceRef; label: string }
+  | { kind: "project"; project: string; label: string };
+
+async function envScopeAt(
+  context: CommandContext,
+  index: number,
+): Promise<{ scope: EnvScope; next: number }> {
+  const project = context.flags.project as string | undefined;
+  if (project !== undefined) {
+    if (namesService(context.positionals[index])) {
+      throw usage(context.t("usage.projectAndService"));
+    }
+    return { scope: { kind: "project", project, label: project }, next: index };
+  }
+  const { target, next } = await serviceAt(context, index);
+  return { scope: { kind: "service", target, label: label(target) }, next };
+}
+
+const envNames = (context: CommandContext, scope: EnvScope): Promise<EnvSummary> =>
+  scope.kind === "service" ? context.api.serviceEnv(scope.target) : context.api.projectEnv(scope.project);
+
+/** The values, which the panel records in its activity log as read by this key. */
+const revealEnv = async (context: CommandContext, scope: EnvScope): Promise<string> =>
+  (scope.kind === "service"
+    ? await context.api.revealServiceEnv(scope.target)
+    : await context.api.revealProjectEnv(scope.project)
+  ).env;
+
+const saveEnv = (context: CommandContext, scope: EnvScope, text: string): Promise<EnvSummary> =>
+  scope.kind === "service"
+    ? context.api.saveServiceEnv(scope.target, text)
+    : context.api.saveProjectEnv(scope.project, text);
+
+async function listConfig(context: CommandContext): Promise<CommandResult> {
+  const { scope, next } = await envScopeAt(context, 0);
+  noMoreArguments(context, next);
+  const summary = await envNames(context, scope);
+  return {
+    data: summary,
+    text: () =>
+      summary.names.length === 0
+        ? context.t("empty.config", { target: scope.label })
+        : [...summary.names, context.styles.dim(context.t("config.hidden"))].join("\n"),
+  };
+}
+
+function namesFrom(context: CommandContext, values: string[]): string[] {
+  if (values.length === 0) {
+    throw usage(context.t("usage.missingArgument", { name: "<NAME>" }));
+  }
+  for (const name of values) {
+    if (!ENV_NAME.test(name)) {
+      throw usage(context.t("usage.envName", { value: name }));
+    }
+  }
+  return [...new Set(values)];
+}
+
+/** `NAME=value` pairs, in order. A name given twice keeps its last value. */
+function pairsFrom(context: CommandContext, values: string[]): Map<string, string> {
+  if (values.length === 0) {
+    throw usage(context.t("usage.missingArgument", { name: "<NAME>=<value>" }));
+  }
+  const pairs = new Map<string, string>();
+  for (const pair of values) {
+    const separator = pair.indexOf("=");
+    const name = separator === -1 ? pair : pair.slice(0, separator);
+    if (separator === -1 || !ENV_NAME.test(name)) {
+      throw usage(context.t("usage.envPair", { value: pair }));
+    }
+    const value = pair.slice(separator + 1);
+    // The panel keeps one line per variable: a line break would end the value, and start something else.
+    if (/[\r\n]/.test(value)) {
+      throw usage(context.t("usage.envNewline", { name }));
+    }
+    pairs.delete(name);
+    pairs.set(name, value);
+  }
+  return pairs;
+}
+
+async function changeConfig(context: CommandContext, verb: "get" | "set" | "unset"): Promise<CommandResult> {
+  const { t } = context;
+  const { scope, next } = await envScopeAt(context, 1);
+  const values = context.positionals.slice(next);
+
+  if (verb === "get") {
+    const names = namesFrom(context, values);
+    requireYes(context, t("confirm.reveal", { target: scope.label }));
+    const current = readEnv(await revealEnv(context, scope));
+    const missing = names.filter((name) => !current.has(name));
+    if (missing.length > 0) {
+      throw new ClientError(
+        "not_found",
+        t("config.notFound", { names: missing.join(", "), target: scope.label }),
+        404,
+      );
+    }
+    const found = Object.fromEntries(names.map((name) => [name, current.get(name) ?? ""]));
+    return {
+      data: found,
+      text: () =>
+        names.length === 1
+          ? (found[names[0] as string] ?? "")
+          : names.map((name) => `${name}=${found[name]}`).join("\n"),
+    };
+  }
+
+  const deploy = context.flags.deploy === true;
+  if (deploy && scope.kind === "project") {
+    throw usage(t("usage.deployProject"));
+  }
+  if (context.flags.wait === true && !deploy) {
+    throw usage(t("usage.waitWithoutDeploy"));
+  }
+
+  const changes = verb === "set" ? pairsFrom(context, values) : undefined;
+  const names = verb === "unset" ? namesFrom(context, values) : undefined;
+  if (names !== undefined) {
+    requireYes(context, t("confirm.unset", { names: names.join(", "), target: scope.label }));
+  }
+
+  const before = await revealEnv(context, scope);
+  let after: string;
+  let message: string;
+  if (changes !== undefined) {
+    after = setEnv(before, changes);
+    message = t("config.saved", { names: [...changes.keys()].join(", "), target: scope.label });
+  } else {
+    const unset = unsetEnv(before, new Set(names));
+    const absent = (names ?? []).filter((name) => !unset.removed.has(name));
+    if (absent.length > 0) {
+      context.warn(t("config.wasNotSet", { names: absent.join(", "), target: scope.label }));
+    }
+    after = unset.text;
+    message = t("config.removed", { names: [...unset.removed].join(", "), target: scope.label });
+  }
+
+  // Nothing to save is not a reason to write anything: the panel would record a change that is none.
+  const saved = after === before ? await envNames(context, scope) : await saveEnv(context, scope, after);
+  const outcome = after === before ? t("config.unchanged", { target: scope.label }) : message;
+
+  if (deploy && scope.kind === "service") {
+    if (context.mode === "text") {
+      context.print(outcome);
+    }
+    stillWanted(context);
+    const action = await context.api.deploy(scope.target, { force: false });
+    return started(context, action, "deploy.queued", scope.label);
+  }
+  const hint =
+    after === before
+      ? undefined
+      : scope.kind === "service"
+        ? t("config.applyHint", { target: scope.label })
+        : t("config.applyHintProject", { project: scope.label });
+  return {
+    data: saved,
+    text: () => (hint === undefined ? outcome : [outcome, context.styles.dim(hint)].join("\n")),
+  };
+}
+
+async function login(context: CommandContext): Promise<CommandResult> {
+  const { t } = context;
+  // The address only: a key typed here would show in the process list, and in the error as well.
+  if (context.positionals.length > 1) {
+    throw usage(t("usage.loginExtra"));
+  }
+  const address = context.positionals[0] ?? context.env.OPSIFIER_URL?.trim();
+  if (address === undefined || address === "") {
+    throw usage(t("usage.loginAddress"));
+  }
+  // Checked before a key is asked for, and never repeated back: it could be a key pasted in its place.
+  let panel: string;
+  try {
+    panel = connectionFromEnv({ OPSIFIER_URL: address, OPSIFIER_API_KEY: "-" }).url.origin;
+  } catch {
+    throw usage(t("usage.loginAddressInvalid"));
+  }
+  let warned = false;
+  const check = (apiKey: string) => {
+    const connection = connectionFromEnv({ OPSIFIER_URL: panel, OPSIFIER_API_KEY: apiKey });
+    if (isExposedOnTheWire(connection.url) && !warned) {
+      context.warn(t("warn.plainHttp", { host: connection.url.host }));
+      warned = true;
+    }
+    return context.connect(connection).api.identity();
+  };
+
+  const { credentials } = await readCredentials(context.credentialsFile);
+  const environmentUrl = context.env.OPSIFIER_URL?.trim();
+  const environmentKey = context.env.OPSIFIER_API_KEY?.trim();
+  // OPSIFIER_API_KEY belongs to OPSIFIER_URL's panel, and never goes to any other.
+  const fromEnvironment =
+    environmentKey && environmentUrl && originOf(environmentUrl) === panel ? environmentKey : "";
+  const kept = credentials.panels[panel]?.apiKey;
+
+  let apiKey: string | undefined;
+  let identity: CallerIdentity | undefined;
+  let reused = false;
+  if (fromEnvironment !== "") {
+    apiKey = fromEnvironment;
+    identity = await check(apiKey);
+  } else if (kept !== undefined) {
+    // Logging in again to a panel whose key is kept makes it current, with nothing to paste, as long
+    // as the panel still takes that key.
+    try {
+      identity = await check(kept);
+      apiKey = kept;
+      reused = true;
+    } catch (error) {
+      if (!(error instanceof ClientError && error.status === 401)) {
+        throw error;
+      }
+    }
+  }
+  if (apiKey === undefined || identity === undefined) {
+    apiKey = (await context.readSecret(t("login.prompt", { panel }))).trim();
+    if (apiKey === "") {
+      throw usage(t("usage.loginKey"));
+    }
+    // Nothing is kept until the panel itself has accepted the key.
+    identity = await check(apiKey);
+  }
+  credentials.panels[panel] = { apiKey };
+  credentials.current = panel;
+  await writeCredentials(context.credentialsFile, credentials);
+  const user = identity.user.email;
+  return {
+    data: { panel, user, credential: identity.credential, file: context.credentialsFile, reused },
+    text: () =>
+      [
+        t(reused ? "login.reused" : "login.done", { panel, user }),
+        context.styles.dim(t("login.kept", { file: context.credentialsFile })),
+      ].join("\n"),
+  };
+}
+
+async function logout(context: CommandContext): Promise<CommandResult> {
+  const { t } = context;
+  const named = context.positionals[0];
+  noMoreArguments(context, 1);
+  const { credentials } = await readCredentials(context.credentialsFile);
+  const panel = named === undefined ? credentials.current : originOf(named);
+  if (panel === null || credentials.panels[panel] === undefined) {
+    return {
+      data: { panel, removed: false, current: credentials.current },
+      text: () => (panel === null ? t("logout.nowhere") : t("logout.none", { panel })),
+    };
+  }
+  delete credentials.panels[panel];
+  // Never another panel quietly in its place: the next command would act there.
+  const wasCurrent = credentials.current === panel;
+  if (wasCurrent) {
+    credentials.current = null;
+  }
+  await writeCredentials(context.credentialsFile, credentials);
+  const others = Object.keys(credentials.panels);
+  return {
+    data: { panel, removed: true, current: credentials.current },
+    text: () =>
+      [
+        t("logout.done", { panel }),
+        context.styles.dim(t("logout.revoke")),
+        ...(wasCurrent && others.length > 0 ? [t("logout.choose", { panels: others.join(", ") })] : []),
+      ].join("\n"),
+  };
+}
+
+const DATABASE_ENGINES = ["postgres", "mysql", "mariadb", "mongo", "redis"] as const;
+
+/** Creates the project when it is not there yet. True when it had to. */
+async function ensureProject(context: CommandContext, name: string): Promise<boolean> {
+  try {
+    await context.api.project(name);
+    return false;
+  } catch (error) {
+    if (error instanceof ClientError && error.status === 404) {
+      await context.api.createProject(name);
+      return true;
+    }
+    throw error;
+  }
+}
+
+async function create(context: CommandContext): Promise<CommandResult> {
+  const { t, flags } = context;
+  const value = argument(context, 0, "<project>[/<service>]");
+  noMoreArguments(context, 1);
+  const image = flags.image as string | undefined;
+  const git = flags.git as string | undefined;
+  const dockerfilePath = flags.dockerfile as string | undefined;
+  const engine = flags.database as string | undefined;
+  const sources = [image, git, dockerfilePath, engine].filter((source) => source !== undefined);
+
+  if (!value.includes("/")) {
+    if (sources.length > 0 || flags.link === true || flags.deploy === true) {
+      throw usage(t("usage.projectOnly", { project: value }));
+    }
+    const project = await context.api.createProject(value);
+    return { data: project, text: () => t("create.project", { project: value }) };
+  }
+
+  // Everything that can be wrong with the command line is said before anything is created.
+  const target = parseTarget(context, value);
+  if (sources.length > 1) {
+    throw usage(t("usage.oneSource"));
+  }
+  if ((flags.ref !== undefined || flags.path !== undefined) && git === undefined) {
+    throw usage(t("usage.refWithoutGit"));
+  }
+  if (engine !== undefined && !(DATABASE_ENGINES as readonly string[]).includes(engine)) {
+    throw usage(t("usage.engine", { value: engine, engines: DATABASE_ENGINES.join(", ") }));
+  }
+  if (flags.deploy === true && sources.length === 0) {
+    throw usage(t("usage.deployWithoutSource"));
+  }
+  if (flags.wait === true && flags.deploy !== true) {
+    throw usage(t("usage.waitWithoutDeploy"));
+  }
+  let dockerfile: string | undefined;
+  if (dockerfilePath !== undefined) {
+    try {
+      dockerfile = await readFile(resolve(context.cwd, dockerfilePath), "utf8");
+    } catch (error) {
+      throw usage(t("usage.dataFile", { file: dockerfilePath, reason: (error as Error).message }));
+    }
+  }
+
+  const source: SaveSourceRequest | undefined =
+    image !== undefined
+      ? { type: "image", image }
+      : git !== undefined
+        ? {
+            type: "git",
+            url: git,
+            ref: (flags.ref as string | undefined) ?? "main",
+            path: (flags.path as string | undefined) ?? "/",
+          }
+        : dockerfile !== undefined
+          ? { type: "dockerfile", dockerfile }
+          : undefined;
+
+  const projectCreated = await ensureProject(context, target.project);
+  let service: ServiceDetail;
+  try {
+    service =
+      engine !== undefined
+        ? await context.api.createDatabase(target, engine as CreateDatabaseRequest["engine"])
+        : source !== undefined
+          ? await context.api.defineService(target, source)
+          : await context.api.createService(target);
+  } catch (error) {
+    // The panel leaves nothing behind when it refuses a service, and neither does this command: the
+    // project it made for it goes too.
+    if (projectCreated) {
+      await context.api.deleteProject(target.project, target.project).catch(() => undefined);
+    }
+    throw error;
+  }
+  if (flags.link === true) {
+    await writeLink(context.cwd, { service: label(target), panel: context.client.panelOrigin });
+  }
+
+  const done = [
+    ...(projectCreated ? [t("create.project", { project: target.project })] : []),
+    t(engine === undefined ? "create.service" : "create.database", {
+      target: label(target),
+      engine: engine ?? "",
+    }),
+    ...(flags.link === true ? [t("create.linked", { target: label(target) })] : []),
+  ];
+  if (flags.deploy === true) {
+    if (context.mode === "text") {
+      context.print(done.join("\n"));
+    }
+    stillWanted(context);
+    return started(
+      context,
+      await context.api.deploy(target, { force: false }),
+      "deploy.queued",
+      label(target),
+    );
+  }
+  const next =
+    sources.length === 0
+      ? t("create.nextPush", { target: label(target) })
+      : t("create.nextDeploy", { target: label(target) });
+  return { data: service, text: () => [...done, context.styles.dim(next)].join("\n") };
+}
+
+/** The panel's own limit on an uploaded archive. */
+export const MAX_UPLOAD_BYTES = 1024 ** 3;
+
+/** The archive's name on the panel, from the folder's: something any file system takes. */
+const archiveName = (folder: string) =>
+  `${
+    basename(folder)
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/^[-.]+/, "") || "source"
+  }.tar.gz`;
+
+/** Stops before the next call to the panel once the person has pressed Ctrl-C. */
+function stillWanted(context: CommandContext): void {
+  if (context.signal.aborted) {
+    throw new ClientError("cancelled", context.t("push.interrupted"));
+  }
+}
+
+/** True when `folder` is `inner` itself or holds it. */
+const holds = (folder: string, inner: string) => inner === folder || inner.startsWith(`${folder}${sep}`);
+
+async function push(context: CommandContext): Promise<CommandResult> {
+  const { t, flags } = context;
+  const { target, next } = await serviceAt(context, 0);
+  noMoreArguments(context, next);
+  if (flags.wait === true && flags["upload-only"] === true) {
+    throw usage(t("usage.waitWithUploadOnly"));
+  }
+  // The folder linked to this service as a whole, wherever in it the command runs, the way git pushes
+  // a repository. Without such a link, the folder the command runs in.
+  const found = await findLink(context.cwd);
+  const linked =
+    found !== undefined &&
+    found.link.service === label(target) &&
+    originOf(found.link.panel) === context.client.panelOrigin;
+  const folder = resolve(
+    context.cwd,
+    (flags.dir as string | undefined) ?? (linked ? dirname((found as { file: string }).file) : "."),
+  );
+  const info = await stat(folder).catch(() => undefined);
+  if (info?.isDirectory() !== true) {
+    throw usage(t("usage.notAFolder", { folder }));
+  }
+  // A home folder, the root, or anything above this command line's own keys is never a project.
+  if (
+    folder === homedir() ||
+    folder === parse(folder).root ||
+    holds(folder, dirname(context.credentialsFile))
+  ) {
+    throw usage(t("push.notAProject", { folder }));
+  }
+
+  const { source } = await context.api.source(target);
+  if (source !== null && source.type !== "upload") {
+    requireYes(context, t("confirm.pushReplaces", { target: label(target), source: sourceText(source) }));
+  }
+
+  const packed = await packFolder(folder, {
+    signal: context.signal,
+    exclude: [context.credentialsFile],
+    env: context.env,
+  });
+  if (packed.files === 0) {
+    throw usage(t("push.empty", { folder }));
+  }
+  if (packed.secrets.length > 0) {
+    if (flags["include-secrets"] !== true) {
+      throw new ClientError(
+        "confirmation_required",
+        t("push.secretsRefused", { paths: packed.secrets.join(", ") }),
+      );
+    }
+    context.warn(t("push.secretsIncluded", { paths: packed.secrets.join(", ") }));
+  }
+  if (packed.archive.length > MAX_UPLOAD_BYTES) {
+    throw usage(
+      t("push.tooLarge", { size: sizeText(packed.archive.length), max: sizeText(MAX_UPLOAD_BYTES) }),
+    );
+  }
+  if (packed.skipped.length > 0) {
+    context.warn(t("push.skipped", { paths: packed.skipped.join(", ") }));
+  }
+  if (context.mode === "text") {
+    context.print(
+      t("push.packed", {
+        files: packed.files,
+        size: sizeText(packed.bytes),
+        compressed: sizeText(packed.archive.length),
+        folder,
+      }),
+    );
+  }
+
+  stillWanted(context);
+  const uploaded = await context.api.uploadSource(
+    target,
+    packed.archive,
+    {
+      fileName: archiveName(folder),
+      // A later push builds from the same folder inside what is sent, unless told otherwise.
+      path: (flags.path as string | undefined) ?? (source?.type === "upload" ? source.path : "/"),
+    },
+    context.signal,
+  );
+  if (flags["upload-only"] === true) {
+    return {
+      data: uploaded,
+      text: () =>
+        [
+          t("push.uploaded", { target: label(target) }),
+          context.styles.dim(t("push.nextDeploy", { target: label(target) })),
+        ].join("\n"),
+    };
+  }
+  if (context.mode === "text") {
+    context.print(t("push.uploaded", { target: label(target) }));
+  }
+  stillWanted(context);
+  return started(context, await context.api.deploy(target, { force: false }), "deploy.queued", label(target));
+}
 
 function targetText(action: Pick<ActionEntry, "projectName" | "serviceName">): string {
   if (action.projectName === null) {

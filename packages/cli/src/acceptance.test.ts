@@ -1,4 +1,6 @@
 import { createServer, type Server } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ActionEntry, ActionPage, ProjectList, ServiceDetail } from "@opsifier/contract";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { apiErrorOf, type CallResult } from "../../../apps/server/src/testing/harness";
@@ -46,6 +48,8 @@ async function run(
     },
     isTTY: false,
     signal: new AbortController().signal,
+    // Never the user's own keys: a file that does not exist.
+    credentialsFile: join(tmpdir(), `opsifier-no-credentials-${process.pid}`, "credentials.json"),
     ...overrides,
   });
   return { code, stdout, stderr };

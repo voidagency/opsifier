@@ -2,17 +2,44 @@ import type {
   ActionDetail,
   ActionEntry,
   ActionPage,
+  BackupsDocument,
   CallerIdentity,
+  CreateDatabaseRequest,
+  CreateProjectRequest,
+  CreateServiceRequest,
+  DatabaseCredentials,
+  DatabaseSecretName,
   DeploymentPage,
   DeployRequest,
   DestroyRequest,
+  DomainEntry,
+  DomainList,
+  EnvDocument,
+  EnvSummary,
   ListActionsQuery,
   ListDeploymentsQuery,
   LogSearchQuery,
   LogSearchResult,
+  MaintenanceSettings,
+  MaintenanceSettingsInput,
   ProjectList,
   ProjectSummary,
+  ReleaseList,
+  RevealedSecret,
+  RevealSecretRequest,
+  RollbackRequest,
+  SaveDomainRequest,
+  SaveSourceRequest,
+  ScriptList,
+  ScriptRun,
+  ScriptRunDetail,
+  ServiceDefinitionRequest,
   ServiceDetail,
+  ServiceEnvironment,
+  ServiceMetrics,
+  ServiceSource,
+  SourceSettings,
+  StartScriptRunRequest,
 } from "@opsifier/contract";
 import type { PanelClient } from "./http";
 
@@ -28,7 +55,11 @@ const SERVICE = "/api/v1/projects/{project}/services/{service}";
 export const ROUTES = {
   identity: { method: "GET", path: "/api/v1/auth/identity" },
   projects: { method: "GET", path: "/api/v1/projects" },
+  createProject: { method: "POST", path: "/api/v1/projects" },
   project: { method: "GET", path: "/api/v1/projects/{project}" },
+  createService: { method: "POST", path: "/api/v1/projects/{project}/services" },
+  createDatabase: { method: "POST", path: "/api/v1/projects/{project}/databases" },
+  defineService: { method: "POST", path: "/api/v1/projects/{project}/services/definition" },
   deleteProject: { method: "DELETE", path: "/api/v1/projects/{project}" },
   service: { method: "GET", path: SERVICE },
   destroyService: { method: "DELETE", path: SERVICE },
@@ -38,6 +69,33 @@ export const ROUTES = {
   stop: { method: "POST", path: `${SERVICE}/stop` },
   logs: { method: "GET", path: `${SERVICE}/logs/search` },
   deployments: { method: "GET", path: `${SERVICE}/deployments` },
+  source: { method: "GET", path: `${SERVICE}/source` },
+  saveSource: { method: "PUT", path: `${SERVICE}/source` },
+  uploadSource: { method: "PUT", path: `${SERVICE}/source/upload` },
+  domains: { method: "GET", path: `${SERVICE}/domains` },
+  addDomain: { method: "POST", path: `${SERVICE}/domains` },
+  removeDomain: { method: "DELETE", path: `${SERVICE}/domains/{domain}` },
+  primaryDomain: { method: "POST", path: `${SERVICE}/domains/{domain}/primary` },
+  maintenance: { method: "GET", path: `${SERVICE}/maintenance` },
+  saveMaintenance: { method: "PUT", path: `${SERVICE}/maintenance` },
+  credentials: { method: "GET", path: `${SERVICE}/credentials` },
+  revealCredential: { method: "POST", path: `${SERVICE}/credentials/reveal` },
+  scripts: { method: "GET", path: `${SERVICE}/scripts` },
+  addScript: { method: "POST", path: `${SERVICE}/scripts` },
+  removeScript: { method: "DELETE", path: `${SERVICE}/scripts/{index}` },
+  runScript: { method: "POST", path: `${SERVICE}/script-runs` },
+  scriptRun: { method: "GET", path: `${SERVICE}/script-runs/{id}` },
+  backups: { method: "GET", path: `${SERVICE}/backups` },
+  runBackup: { method: "POST", path: `${SERVICE}/backups/configs/{config}/run` },
+  metrics: { method: "GET", path: `${SERVICE}/metrics` },
+  releases: { method: "GET", path: `${SERVICE}/releases` },
+  rollback: { method: "POST", path: `${SERVICE}/releases/{number}/rollback` },
+  serviceEnv: { method: "GET", path: `${SERVICE}/environment` },
+  saveServiceEnv: { method: "PUT", path: `${SERVICE}/environment` },
+  revealServiceEnv: { method: "POST", path: `${SERVICE}/environment/reveal` },
+  projectEnv: { method: "GET", path: "/api/v1/projects/{project}/env" },
+  saveProjectEnv: { method: "PUT", path: "/api/v1/projects/{project}/env" },
+  revealProjectEnv: { method: "POST", path: "/api/v1/projects/{project}/env/reveal" },
   actions: { method: "GET", path: "/api/v1/actions" },
   action: { method: "GET", path: "/api/v1/actions/{id}" },
   cancelAction: { method: "POST", path: "/api/v1/actions/{id}/cancel" },
@@ -66,7 +124,45 @@ export function panelApi(client: PanelClient) {
   return {
     identity: () => call<CallerIdentity>(ROUTES.identity),
     projects: () => call<ProjectList>(ROUTES.projects),
+    createProject: (name: string) =>
+      call<ProjectSummary>(ROUTES.createProject, {}, { body: { name } satisfies CreateProjectRequest }),
     project: (project: string) => call<ProjectSummary>(ROUTES.project, { project }),
+    createService: (target: ServiceRef) =>
+      call<ServiceDetail>(
+        ROUTES.createService,
+        { project: target.project },
+        { body: { name: target.service, type: "app" } satisfies CreateServiceRequest },
+      ),
+    /** A service with its source in one request: the panel leaves nothing behind when it refuses it. */
+    defineService: (target: ServiceRef, source: SaveSourceRequest) =>
+      call<ServiceDetail>(
+        ROUTES.defineService,
+        { project: target.project },
+        { body: { name: target.service, source } satisfies ServiceDefinitionRequest },
+      ),
+    createDatabase: (target: ServiceRef, engine: CreateDatabaseRequest["engine"]) =>
+      call<ServiceDetail>(
+        ROUTES.createDatabase,
+        { project: target.project },
+        { body: { name: target.service, engine } },
+      ),
+
+    source: (target: ServiceRef) => call<SourceSettings>(ROUTES.source, target),
+    saveSource: (target: ServiceRef, source: SaveSourceRequest) =>
+      call<ServiceSource>(ROUTES.saveSource, target, { body: source }),
+    /** The archive goes as it is. The panel unpacks and builds it at the next deploy. */
+    uploadSource: (
+      target: ServiceRef,
+      archive: Uint8Array,
+      query: { fileName: string; path: string },
+      signal?: AbortSignal,
+    ) =>
+      call<ServiceSource>(ROUTES.uploadSource, target, {
+        query,
+        raw: { body: archive, contentType: "application/octet-stream" },
+        timeoutMs: 15 * 60_000,
+        signal,
+      }),
     deleteProject: (project: string, confirm: string) =>
       call<ActionEntry>(ROUTES.deleteProject, { project }, { body: { confirm } satisfies DestroyRequest }),
 
@@ -83,9 +179,64 @@ export function panelApi(client: PanelClient) {
       call<LogSearchResult>(ROUTES.logs, target, { query, timeoutMs: 120_000, signal }),
     deployments: (target: ServiceRef, query: Partial<ListDeploymentsQuery> = {}) =>
       call<DeploymentPage>(ROUTES.deployments, target, { query }),
+    domains: (target: ServiceRef) => call<DomainList>(ROUTES.domains, target),
+    addDomain: (target: ServiceRef, domain: SaveDomainRequest) =>
+      call<DomainEntry>(ROUTES.addDomain, target, { body: domain }),
+    removeDomain: (target: ServiceRef, domain: string) =>
+      call<{ id: string }>(ROUTES.removeDomain, { ...target, domain }),
+    primaryDomain: (target: ServiceRef, domain: string) =>
+      call<DomainEntry>(ROUTES.primaryDomain, { ...target, domain }),
+    maintenance: (target: ServiceRef) => call<MaintenanceSettings>(ROUTES.maintenance, target),
+    saveMaintenance: (target: ServiceRef, settings: MaintenanceSettingsInput) =>
+      call<MaintenanceSettings>(ROUTES.saveMaintenance, target, { body: settings }),
+    credentials: (target: ServiceRef) => call<DatabaseCredentials>(ROUTES.credentials, target),
+    /** One secret per call, which the panel records in its activity log. */
+    revealCredential: (target: ServiceRef, secret: DatabaseSecretName) =>
+      call<RevealedSecret>(ROUTES.revealCredential, target, {
+        body: { secret } satisfies RevealSecretRequest,
+      }),
+    scripts: (target: ServiceRef) => call<ScriptList>(ROUTES.scripts, target),
+    addScript: (
+      target: ServiceRef,
+      script: {
+        name: string;
+        script: string;
+        runAfterDeploy?: boolean;
+        schedule?: { cron: string; timeZone: string };
+      },
+    ) => call<ScriptList>(ROUTES.addScript, target, { body: script }),
+    removeScript: (target: ServiceRef, index: number) =>
+      call<ScriptList>(ROUTES.removeScript, { ...target, index: String(index) }),
+    runScript: (target: ServiceRef, script: string) =>
+      call<ActionEntry & { run: ScriptRun }>(ROUTES.runScript, target, {
+        body: { script } satisfies StartScriptRunRequest,
+      }),
+    scriptRun: (target: ServiceRef, id: string, signal?: AbortSignal) =>
+      call<ScriptRunDetail>(ROUTES.scriptRun, { ...target, id }, { signal }),
+    backups: (target: ServiceRef) => call<BackupsDocument>(ROUTES.backups, target),
+    runBackup: (target: ServiceRef, config: string) =>
+      call<ActionEntry>(ROUTES.runBackup, { ...target, config }, { body: {} }),
+    metrics: (target: ServiceRef) => call<ServiceMetrics>(ROUTES.metrics, target),
+    releases: (target: ServiceRef) => call<ReleaseList>(ROUTES.releases, target),
+    rollback: (target: ServiceRef, number: number, confirm: string) =>
+      call<ActionEntry>(
+        ROUTES.rollback,
+        { ...target, number: String(number) },
+        { body: { confirm } satisfies RollbackRequest },
+      ),
+
+    /** Names only. The values come from the reveal calls, which the panel records in its activity log. */
+    serviceEnv: (target: ServiceRef) => call<ServiceEnvironment>(ROUTES.serviceEnv, target),
+    saveServiceEnv: (target: ServiceRef, env: string) =>
+      call<ServiceEnvironment>(ROUTES.saveServiceEnv, target, { body: { env } satisfies EnvDocument }),
+    revealServiceEnv: (target: ServiceRef) => call<EnvDocument>(ROUTES.revealServiceEnv, target),
+    projectEnv: (project: string) => call<EnvSummary>(ROUTES.projectEnv, { project }),
+    saveProjectEnv: (project: string, env: string) =>
+      call<EnvSummary>(ROUTES.saveProjectEnv, { project }, { body: { env } satisfies EnvDocument }),
+    revealProjectEnv: (project: string) => call<EnvDocument>(ROUTES.revealProjectEnv, { project }),
 
     actions: (query: Partial<ListActionsQuery> = {}) => call<ActionPage>(ROUTES.actions, {}, { query }),
-    action: (id: string) => call<ActionDetail>(ROUTES.action, { id }),
+    action: (id: string, signal?: AbortSignal) => call<ActionDetail>(ROUTES.action, { id }, { signal }),
     cancelAction: (id: string) => call<ActionEntry>(ROUTES.cancelAction, { id }),
   };
 }
