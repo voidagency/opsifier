@@ -31,6 +31,9 @@ import {
   type LogLine,
   type LogOptions,
   type NetworkInfo,
+  type NodeAvailability,
+  type NodeInfo,
+  type NodeState,
   type PullOptions,
   type RegistryOptions,
   type ServiceInfo,
@@ -113,6 +116,19 @@ interface RawNetwork {
   Attachable?: boolean;
   Labels?: Record<string, string> | null;
   IPAM?: { Config?: Array<{ Subnet?: string }> | null } | null;
+}
+
+export interface RawNode {
+  ID: string;
+  Description?: {
+    Hostname?: string;
+    Platform?: { Architecture?: string; OS?: string };
+    Resources?: { NanoCPUs?: number; MemoryBytes?: number };
+    Engine?: { EngineVersion?: string };
+  };
+  Spec?: { Role?: string; Availability?: string };
+  Status?: { State?: string; Addr?: string };
+  ManagerStatus?: { Leader?: boolean; Addr?: string };
 }
 
 interface RawStats {
@@ -291,6 +307,43 @@ function toNetworkInfo(raw: RawNetwork): NetworkInfo {
   };
 }
 
+const NODE_STATES: readonly NodeState[] = ["ready", "down", "disconnected"];
+const NODE_AVAILABILITIES: readonly NodeAvailability[] = ["active", "pause", "drain"];
+
+/** Docker gives 0.0.0.0 for a node it reaches through its managers: the manager's address says more. */
+function nodeAddress(raw: RawNode): string | null {
+  const own = raw.Status?.Addr;
+  if (own !== undefined && own !== "" && own !== "0.0.0.0") {
+    return own;
+  }
+  const manager = raw.ManagerStatus?.Addr;
+  if (manager === undefined || manager === "") {
+    return null;
+  }
+  return manager.replace(/:\d+$/, "").replace(/^\[(.*)\]$/, "$1");
+}
+
+export function toNodeInfo(raw: RawNode): NodeInfo {
+  const state = raw.Status?.State as NodeState | undefined;
+  const availability = raw.Spec?.Availability as NodeAvailability | undefined;
+  const nanoCpus = raw.Description?.Resources?.NanoCPUs;
+  return {
+    id: raw.ID,
+    hostname: raw.Description?.Hostname ?? raw.ID.slice(0, 12),
+    role: raw.Spec?.Role === "manager" ? "manager" : "worker",
+    leader: raw.ManagerStatus?.Leader === true,
+    state: state !== undefined && NODE_STATES.includes(state) ? state : "unknown",
+    availability:
+      availability !== undefined && NODE_AVAILABILITIES.includes(availability) ? availability : "active",
+    address: nodeAddress(raw),
+    engineVersion: raw.Description?.Engine?.EngineVersion ?? null,
+    os: raw.Description?.Platform?.OS ?? null,
+    architecture: raw.Description?.Platform?.Architecture ?? null,
+    cpus: typeof nanoCpus === "number" ? nanoCpus / 1e9 : null,
+    memoryBytes: raw.Description?.Resources?.MemoryBytes ?? null,
+  };
+}
+
 const COMPOSE_PROJECT_LABEL = "com.docker.compose.project";
 const COMPOSE_SERVICE_LABEL = "com.docker.compose.service";
 const COMPOSE_NUMBER_LABEL = "com.docker.compose.container-number";
@@ -400,6 +453,11 @@ export class DockerodeDriver implements DockerDriver {
       nodeAddr,
       isManager: swarm.ControlAvailable === true,
     };
+  }
+
+  async listNodes(): Promise<NodeInfo[]> {
+    const nodes = await this.call("list nodes", () => this.docker.listNodes());
+    return (nodes as unknown as RawNode[]).map(toNodeInfo);
   }
 
   async swarmInit(options: SwarmInitOptions): Promise<{ nodeId: string }> {

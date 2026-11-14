@@ -23,6 +23,7 @@ import {
   serverConfirmWords,
   serverOverview,
   serviceDomainSettings,
+  swarmNodeList,
   trustedProxiesSettings,
 } from "@opsifier/contract";
 import { toActionEntry } from "../../core/actions";
@@ -44,6 +45,7 @@ import {
   rebootHost,
   refreshServerIp,
 } from "./host";
+import { listSwarmNodes } from "./nodes";
 import {
   closeProxyDashboard,
   enqueueProxyRestart,
@@ -88,6 +90,19 @@ const overviewRoute = route({
   path: `${PREFIX}/overview`,
   summary: "The server's uptime and the state of its parts",
   responses: { 200: jsonResponse(serverOverview, "The server."), 401: denied, 403: refused },
+});
+
+const nodesRoute = route({
+  method: "get",
+  path: `${PREFIX}/nodes`,
+  summary: "List the swarm's nodes",
+  description:
+    "Every server of the Docker Swarm the panel runs, with its role, its state, its resources and how many service containers run on it. Read only for now.",
+  responses: {
+    200: jsonResponse(swarmNodeList, "Managers first, the leader at the top."),
+    401: denied,
+    403: refused,
+  },
 });
 
 const releasesKeptRoute = route({
@@ -338,6 +353,7 @@ export const feature: Feature = {
     const actor = (c: Parameters<typeof requireSessionPrincipal>[0]) => requireSessionPrincipal(c).user.email;
 
     app.openapi(overviewRoute, async (c) => c.json(await getServerOverview(deps), 200));
+    app.openapi(nodesRoute, async (c) => c.json(await listSwarmNodes(deps), 200));
 
     app.openapi(releasesKeptRoute, (c) => {
       const { keep } = c.req.valid("json");

@@ -32,7 +32,8 @@
     "purpose": "Rôle",
     "knownHosts": "Hôtes connus",
     "backup": "Sauvegarde du serveur",
-    "about": "À propos"
+    "about": "À propos",
+    "nodes": "Nœuds"
   },
   "server": {
     "copyIp": "Copier l'IP du serveur",

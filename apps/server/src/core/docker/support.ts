@@ -158,6 +158,7 @@ export async function assertEngineSupported(docker: Pick<DockerDriver, "engineIn
 const CHANGES_SOMETHING: Readonly<Record<Exclude<keyof DockerDriver, "kind">, boolean>> = {
   ping: false,
   swarmInfo: false,
+  listNodes: false,
   swarmInit: true,
   swarmLeave: true,
   swarmContents: false,

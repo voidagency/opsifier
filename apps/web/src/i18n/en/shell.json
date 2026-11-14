@@ -32,7 +32,8 @@
     "purpose": "Purpose",
     "knownHosts": "Known hosts",
     "backup": "Server backup",
-    "about": "About"
+    "about": "About",
+    "nodes": "Nodes"
   },
   "server": {
     "copyIp": "Copy server IP",

@@ -19,6 +19,7 @@ const settingsMenu = [
     adminOnly: true,
     items: [
       { to: "/settings/server/general", key: "general" },
+      { to: "/settings/server/nodes", key: "nodes" },
       { to: "/settings/server/address", key: "address" },
       { to: "/settings/server/purpose", key: "purpose" },
       { to: "/settings/server/github", key: "github" },

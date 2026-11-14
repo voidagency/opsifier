@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 33
+# documented-changes: 34
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -4469,6 +4469,23 @@ PUT /api/v1/server/letsencrypt-email
   401
   403
   body email!: string
+GET /api/v1/server/nodes
+  200 nodes![].address!: null|string
+  200 nodes![].architecture!: null|string
+  200 nodes![].availability!: enum(active|drain|pause)
+  200 nodes![].cpus!: null|number
+  200 nodes![].engineVersion!: null|string
+  200 nodes![].hostname!: string
+  200 nodes![].id!: string
+  200 nodes![].leader!: boolean
+  200 nodes![].memoryBytes!: integer|null
+  200 nodes![].os!: null|string
+  200 nodes![].role!: enum(manager|worker)
+  200 nodes![].runningTasks!: integer
+  200 nodes![].self!: boolean
+  200 nodes![].state!: enum(disconnected|down|ready|unknown)
+  401
+  403
 DELETE /api/v1/server/opsifier-address
   200 available!: boolean
   200 certificate!: enum(expired|expiring|issued|null|pending)

@@ -15,6 +15,7 @@ export * from "./github";
 export * from "./invitations";
 export * from "./known-hosts";
 export * from "./monitor";
+export * from "./nodes";
 export * from "./notifications";
 export * from "./opsifier-address";
 export * from "./panel-update";

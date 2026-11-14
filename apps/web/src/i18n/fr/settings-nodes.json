@@ -1,0 +1,39 @@
+{
+  "title": "Nœuds du cluster",
+  "description": "Les serveurs du cluster Docker Swarm sur lequel tourne ce panneau, et ce qui tourne sur chacun.",
+  "nodes_one": "{{count}} nœud",
+  "nodes_other": "{{count}} nœuds",
+  "managers_one": "{{count}} manager",
+  "managers_other": "{{count}} managers",
+  "workers_one": "{{count}} worker",
+  "workers_other": "{{count}} workers",
+  "columns": {
+    "node": "Nœud",
+    "role": "Rôle",
+    "state": "État",
+    "address": "Adresse",
+    "resources": "Ressources",
+    "docker": "Docker",
+    "tasks": "Conteneurs"
+  },
+  "self": "ce serveur",
+  "leader": "leader",
+  "role": {
+    "manager": "Manager",
+    "worker": "Worker"
+  },
+  "state": {
+    "ready": "Prêt",
+    "down": "Arrêté",
+    "disconnected": "Déconnecté",
+    "unknown": "Inconnu"
+  },
+  "availability": {
+    "active": "Actif",
+    "pause": "En pause",
+    "drain": "Vidé"
+  },
+  "cores_one": "{{count}} cœur",
+  "cores_other": "{{count}} cœurs",
+  "readOnly": "Pour l'instant, cette page montre seulement les nœuds. Ajouter, vider ou retirer un nœud viendra avec le réseau privé entre serveurs."
+}

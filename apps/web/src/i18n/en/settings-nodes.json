@@ -1,0 +1,39 @@
+{
+  "title": "Cluster nodes",
+  "description": "The servers of the Docker Swarm this panel runs on, and what runs on each.",
+  "nodes_one": "{{count}} node",
+  "nodes_other": "{{count}} nodes",
+  "managers_one": "{{count}} manager",
+  "managers_other": "{{count}} managers",
+  "workers_one": "{{count}} worker",
+  "workers_other": "{{count}} workers",
+  "columns": {
+    "node": "Node",
+    "role": "Role",
+    "state": "State",
+    "address": "Address",
+    "resources": "Resources",
+    "docker": "Docker",
+    "tasks": "Containers"
+  },
+  "self": "this server",
+  "leader": "leader",
+  "role": {
+    "manager": "Manager",
+    "worker": "Worker"
+  },
+  "state": {
+    "ready": "Ready",
+    "down": "Down",
+    "disconnected": "Disconnected",
+    "unknown": "Unknown"
+  },
+  "availability": {
+    "active": "Active",
+    "pause": "Paused",
+    "drain": "Drained"
+  },
+  "cores_one": "{{count}} core",
+  "cores_other": "{{count}} cores",
+  "readOnly": "For now this page only shows the nodes. Adding, draining and removing a node come with the private network between servers."
+}

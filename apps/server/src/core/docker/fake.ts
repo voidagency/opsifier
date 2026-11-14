@@ -28,6 +28,7 @@ import {
   type LogLine,
   type LogOptions,
   type NetworkInfo,
+  type NodeInfo,
   type PullOptions,
   type RegistryOptions,
   type ServiceInfo,
@@ -243,6 +244,31 @@ export class FakeDriver implements DockerDriver {
     this.isManager = true;
     this.services.clear();
     this.networks.clear();
+  }
+
+  /** Nodes other than this one, as a test adds them to the swarm. */
+  otherNodes: NodeInfo[] = [];
+
+  async listNodes(): Promise<NodeInfo[]> {
+    this.check("listNodes");
+    if (this.swarmState !== "active") {
+      throw new DockerDriverError("This node is not a swarm manager.", 503);
+    }
+    const self: NodeInfo = {
+      id: this.nodeId,
+      hostname: "fake-node",
+      role: this.isManager ? "manager" : "worker",
+      leader: this.isManager,
+      state: "ready",
+      availability: "active",
+      address: this.nodeAddr,
+      engineVersion: "29.1.0",
+      os: "linux",
+      architecture: "x86_64",
+      cpus: 4,
+      memoryBytes: 8 * 1024 ** 3,
+    };
+    return [self, ...this.otherNodes].map((node) => ({ ...node }));
   }
 
   /** What `swarmContents` answers. Tests change it to simulate a Swarm others have joined or filled. */

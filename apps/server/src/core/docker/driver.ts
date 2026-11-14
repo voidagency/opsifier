@@ -11,6 +11,8 @@ export interface DockerDriver {
   ping(): Promise<void>;
 
   swarmInfo(): Promise<SwarmInfo>;
+  /** Every node of the swarm, as its managers see them. Only a manager can answer. */
+  listNodes(): Promise<NodeInfo[]>;
   swarmInit(options: SwarmInitOptions): Promise<{ nodeId: string }>;
   /** Leaves the swarm this node is in. Refused while it manages services, unless `force` is set. */
   swarmLeave(options?: { force?: boolean }): Promise<void>;
@@ -117,6 +119,28 @@ export interface SwarmInfo {
   /** The address other nodes reach this one on. */
   nodeAddr: string | null;
   isManager: boolean;
+}
+
+export type NodeRole = "manager" | "worker";
+export type NodeState = "ready" | "down" | "disconnected" | "unknown";
+export type NodeAvailability = "active" | "pause" | "drain";
+
+export interface NodeInfo {
+  id: string;
+  hostname: string;
+  role: NodeRole;
+  /** The manager the others follow. */
+  leader: boolean;
+  state: NodeState;
+  availability: NodeAvailability;
+  /** The address the node is reached on. Null when Docker does not say. */
+  address: string | null;
+  engineVersion: string | null;
+  os: string | null;
+  architecture: string | null;
+  /** Its processors, in cores. */
+  cpus: number | null;
+  memoryBytes: number | null;
 }
 
 export interface SwarmContents {

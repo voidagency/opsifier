@@ -5,6 +5,7 @@ import { ApiReferencePage } from "./server/ApiReferencePage";
 import { CertificatesPage } from "./server/CertificatesPage";
 import { GeneralPage } from "./server/GeneralPage";
 import { MonitoringPage } from "./server/MonitoringPage";
+import { NodesPage } from "./server/NodesPage";
 import { NotificationsPage } from "./server/NotificationsPage";
 import { ServerBackupPage } from "./server/ServerBackupPage";
 import { UsersPage } from "./server/UsersPage";
@@ -19,6 +20,7 @@ interface SettingsPage {
 const pages: readonly SettingsPage[] = [
   { path: "user/api-keys", crumb: "settingsNav.apiKeys", component: ApiKeysPage },
   { path: "server/general", crumb: "settingsNav.general", component: GeneralPage },
+  { path: "server/nodes", crumb: "settingsNav.nodes", component: NodesPage },
   { path: "server/address", crumb: "settingsNav.address", component: AddressPage },
   { path: "server/users", crumb: "settingsNav.users", component: UsersPage },
   { path: "server/notifications", crumb: "settingsNav.notifications", component: NotificationsPage },
