@@ -128,7 +128,8 @@ export function createApp(deps: AppDeps, featureList: Feature[] = features): Api
     featureList.some((feature) => feature.readsOwnBody?.(c.req.path)) ? next() : limitBody(c, next),
   );
 
-  const publicPaths = new Set([OPENAPI_PATH, ...featureList.flatMap((feature) => feature.publicPaths ?? [])]);
+  // The API document stays behind a sign-in or a key: it maps every route for whoever asks (#70753).
+  const publicPaths = new Set(featureList.flatMap((feature) => feature.publicPaths ?? []));
   app.use(
     `${API_PREFIX}/*`,
     authenticate(deps, (path) => featureList.some((feature) => feature.readsOwnBearer?.(path))),

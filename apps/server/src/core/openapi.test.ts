@@ -94,7 +94,7 @@ describe("request bodies", () => {
   });
 
   it("are closed on every route the API has", async () => {
-    const { body: document } = await call<OpenApiDocument>(context.app, "/api/v1/openapi.json");
+    const { body: document } = await call<OpenApiDocument>(context.app, "/api/v1/openapi.json", { cookie });
     const open: string[] = [];
     for (const [path, methods] of Object.entries(document.paths)) {
       for (const [method, operation] of Object.entries(methods)) {

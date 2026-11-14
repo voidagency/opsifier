@@ -29,7 +29,7 @@ Opsifier is an open-source, self-hosted control panel that deploys apps and data
 - Postgres, MySQL, MariaDB, MongoDB and Redis, with managed credentials, optional public ports, backups you can download and restore, and networks kept apart between projects.
 - Scheduled backups of databases and volumes to local disk, SFTP, FTP, S3-compatible storage, Dropbox or Google Drive, with retention, and restores that take a safety copy first.
 - Compose stacks, ready-made templates, and a modular runtime with a browser IDE.
-- A command-line client and an MCP server, held to the same rights as the API.
+- A command line that takes a folder to a running app with `opsifier push`, and an MCP server, both held to the same rights as the API.
 - Sign-in with two-factor authentication and recovery codes, project roles and API keys.
 - Invitations, one or a hundred at a time. Each person gets a link that works once and expires after seven days, sent by e-mail or shown for you to pass on.
 - Notifications by e-mail, Slack, Discord, Telegram or webhook, for deployments, backups, cleanups, disk usage and new releases.

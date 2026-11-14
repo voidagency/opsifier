@@ -102,6 +102,15 @@ export function requirementFor(method: string, path: string): Requirement {
     return OPEN;
   }
   const [root, second, ...rest] = path.slice(prefix.length).split("/");
+  // An OAuth provider sends the browser back here, signed in or not: the state it carries is the
+  // check, as for the sign-in callbacks under auth/. Listed as what they are (#70754).
+  const tail = rest.join("/");
+  if (
+    (root === "settings" && second === "github" && tail === "oauth/callback") ||
+    (root === "storage-providers" && second === "oauth" && tail === "callback")
+  ) {
+    return OPEN;
+  }
   switch (root) {
     case "auth":
     case "health":

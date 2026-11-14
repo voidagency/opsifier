@@ -7,6 +7,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -286,6 +287,47 @@ describe.skipIf(!hasBsdtar)("unpackArchive", () => {
     const file = writeArchive("ok.tar", tarArchive([{ name: "a/b/c/d.txt", content: "x" }]));
 
     await expect(unpackArchive(deps, file, destination(), { maxDepth: 4 })).resolves.toBeUndefined();
+  });
+
+  describe("links reached through other links", () => {
+    function folderWith(links: Record<string, string>, files: Record<string, string> = {}): string {
+      const folder = destination();
+      mkdirSync(folder, { recursive: true });
+      for (const [name, content] of Object.entries(files)) {
+        mkdirSync(join(folder, name, ".."), { recursive: true });
+        writeFileSync(join(folder, name), content);
+      }
+      for (const [name, target] of Object.entries(links)) {
+        symlinkSync(target, join(folder, name));
+      }
+      return folder;
+    }
+
+    it("refuses one that leaves the folder through another, though its text stays inside", async () => {
+      const folder = folderWith({ d: ".", x: "d/../outside" });
+
+      await expect(verifyTree(folder)).rejects.toThrow(/link pointing outside/);
+    });
+
+    it("keeps one that reaches a file inside through another", async () => {
+      const folder = folderWith({ d: "sub", x: "d/file.txt" }, { "sub/file.txt": "x" });
+
+      await expect(verifyTree(folder)).resolves.toMatchObject({ bytes: 1 });
+    });
+
+    it("keeps one that points at nothing yet, inside", async () => {
+      await expect(verifyTree(folderWith({ x: "later.txt" }))).resolves.toMatchObject({ bytes: 0 });
+    });
+
+    it("refuses one that climbs after a part that does not exist", async () => {
+      await expect(verifyTree(folderWith({ x: "missing/../file.txt" }))).rejects.toThrow(
+        /link pointing outside/,
+      );
+    });
+
+    it("refuses a loop", async () => {
+      await expect(verifyTree(folderWith({ a: "b", b: "a" }))).rejects.toThrow(/link pointing outside/);
+    });
   });
 
   it("checks the depth again on what was actually unpacked", async () => {

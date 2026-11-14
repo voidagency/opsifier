@@ -241,10 +241,16 @@ describe("responses", () => {
 });
 
 describe("the OpenAPI document", () => {
-  it("is public and lists the routes of every feature", async () => {
+  it("needs a signed-in caller", async () => {
+    const result = await call(context.app, "/api/v1/openapi.json");
+    expect(result.status).toBe(401);
+  });
+
+  it("lists the routes of every feature", async () => {
     const result = await call<{ openapi: string; paths: Record<string, unknown> }>(
       context.app,
       "/api/v1/openapi.json",
+      { cookie },
     );
 
     expect(result.status).toBe(200);

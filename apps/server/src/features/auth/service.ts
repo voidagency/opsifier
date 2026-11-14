@@ -206,11 +206,15 @@ export function createAuthService(deps: AppDeps) {
     async login(input: LoginRequest, meta: RequestMeta): Promise<SignedIn> {
       const email = normalizeEmail(input.email);
       const pairKey = `login:pair:${meta.ip}:${email}`;
+      const emailKey = `login:email:${email}`;
+      const knownAddress = meta.ip !== UNKNOWN_IP && rateLimiter.hasSignedInFrom(email, meta.ip);
       // Counted before the password is checked, so that concurrent guesses cannot race past.
+      // Failures from many addresses lock an account, but not out of an address it already
+      // signed in from: otherwise anyone could keep its owner out (#70753).
       const attempt = rateLimiter.consume([
         { key: pairKey, rule: authLimits.loginPerAddressAndEmail },
         { key: `login:address:${meta.ip}`, rule: authLimits.loginPerAddress },
-        { key: `login:email:${email}`, rule: authLimits.loginPerEmail },
+        ...(knownAddress ? [] : [{ key: emailKey, rule: authLimits.loginPerEmail }]),
       ]);
 
       const candidate = repo.findUserByEmail(db, email);
@@ -243,7 +247,12 @@ export function createAuthService(deps: AppDeps) {
         }
       }
 
-      attempt.forgive(pairKey);
+      // A verified sign-in clears what others failed on this account, not what this address
+      // failed on other accounts.
+      attempt.forgive(pairKey, emailKey);
+      if (meta.ip !== UNKNOWN_IP) {
+        rateLimiter.rememberSignIn(email, meta.ip);
+      }
       purgeExpiredSessions(db, now());
       const token = openSession(db, user, input.rememberMe, meta);
       const signedIn = usedRecoveryCode ? "Signed in with a recovery code" : "Signed in";

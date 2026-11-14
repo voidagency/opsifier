@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type ApiDocument, diffSurfaces, surfaceLines } from "./testing/api-surface";
-import { call, createTestContext, type TestContext } from "./testing/harness";
+import { call, createTestContext, setupAdmin, type TestContext } from "./testing/harness";
 
 /**
  * The contract under /api/v1 is stable: anything a client can rely on stays, and a change that would
@@ -44,7 +44,8 @@ describe("the public API", () => {
 
   beforeAll(async () => {
     context = await createTestContext();
-    const result = await call<ApiDocument>(context.app, "/api/v1/openapi.json");
+    const cookie = await setupAdmin(context.app);
+    const result = await call<ApiDocument>(context.app, "/api/v1/openapi.json", { cookie });
     current = surfaceLines(result.body);
   });
 

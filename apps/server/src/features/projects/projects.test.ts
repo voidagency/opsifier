@@ -381,7 +381,9 @@ describe("destroying a project", () => {
 
 describe("the API document", () => {
   it("describes the new routes", async () => {
-    const document = await call<{ paths: Record<string, unknown> }>(context.app, "/api/v1/openapi.json");
+    const document = await call<{ paths: Record<string, unknown> }>(context.app, "/api/v1/openapi.json", {
+      cookie,
+    });
 
     expect(document.status).toBe(200);
     expect(Object.keys(document.body.paths)).toEqual(

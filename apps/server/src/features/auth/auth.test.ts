@@ -1055,6 +1055,57 @@ describe("login rate limiting", () => {
   });
 });
 
+describe("one account guessed at from many addresses (#70753)", () => {
+  const emailLimit = 4;
+
+  beforeEach(async () => {
+    await context.close();
+    context = await createTestContext({
+      authLimits: { loginPerEmail: { limit: emailLimit, windowMs: FIFTEEN_MINUTES } },
+    });
+    app = context.app;
+    await setupAdmin(app);
+  });
+
+  const loginFrom = (peer: string, password = TEST_PASSWORD) =>
+    call<SessionState>(app, "/api/v1/auth/login", {
+      method: "POST",
+      body: { email: TEST_EMAIL, password },
+      origin: TEST_ORIGIN,
+      peer,
+    });
+
+  async function failFromOthers(times: number, first: number) {
+    for (let attempt = 0; attempt < times; attempt += 1) {
+      expect((await loginFrom(`203.0.113.${first + attempt}`, "not the right password")).status).toBe(401);
+    }
+  }
+
+  it("locks the account for new addresses, not for one its owner signed in from", async () => {
+    expect((await loginFrom("198.51.100.7")).status).toBe(200);
+    await failFromOthers(emailLimit, 1);
+
+    expect((await loginFrom("203.0.113.99")).status).toBe(429);
+    expect((await loginFrom("198.51.100.7")).status).toBe(200);
+  });
+
+  it("forgets what others failed on the account once its owner signs in", async () => {
+    await failFromOthers(emailLimit - 1, 1);
+    expect((await loginFrom("198.51.100.7")).status).toBe(200);
+    await failFromOthers(emailLimit - 1, 20);
+
+    expect((await loginFrom("192.0.2.10")).status).toBe(200);
+  });
+
+  it("still counts a known address's own wrong guesses", async () => {
+    expect((await loginFrom("198.51.100.7")).status).toBe(200);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect((await loginFrom("198.51.100.7", "not the right password")).status).toBe(401);
+    }
+    expect((await loginFrom("198.51.100.7")).status).toBe(429);
+  });
+});
+
 describe("the Origin check", () => {
   let cookie: string;
   const logout = (origin?: string) => call(app, "/api/v1/auth/logout", { method: "POST", cookie, origin });

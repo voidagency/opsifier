@@ -20,12 +20,15 @@ interface Bucket {
 export interface RateLimitReservation {
   /** Gives the attempt back, as if it had never been made. */
   refund(): void;
-  /** Gives the attempt back and forgets earlier failures on the named key. */
-  forgive(key: string): void;
+  /** Gives the attempt back and forgets earlier failures on the named keys. */
+  forgive(...keys: string[]): void;
 }
 
 const SWEEP_INTERVAL_MS = 60_000;
 const MAX_BUCKETS = 50_000;
+/** How long an address an account signed in from stays known to it. */
+const KNOWN_FOR_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_KNOWN = 50_000;
 
 /** Keys are built from what clients send. A fixed-size digest keeps a bucket's memory fixed too. */
 function bucketId(key: string): string {
@@ -39,6 +42,8 @@ function bucketId(key: string): string {
  */
 export class RateLimiter {
   private readonly buckets = new Map<string, Bucket>();
+  /** Account and address pairs that signed in, with when they stop counting as known. */
+  private readonly known = new Map<string, number>();
   private nextSweepAt = 0;
 
   constructor(private readonly now: () => number = Date.now) {}
@@ -85,11 +90,40 @@ export class RateLimiter {
 
     return {
       refund,
-      forgive: (key) => {
+      forgive: (...forgiven) => {
         refund();
-        this.buckets.delete(bucketId(key));
+        for (const key of forgiven) {
+          this.buckets.delete(bucketId(key));
+        }
       },
     };
+  }
+
+  /** Remembers that this account signed in from this address. */
+  rememberSignIn(account: string, address: string): void {
+    const id = bucketId(`${account}\n${address}`);
+    this.known.delete(id);
+    this.known.set(id, this.now() + KNOWN_FOR_MS);
+    for (const key of this.known.keys()) {
+      if (this.known.size <= MAX_KNOWN) {
+        break;
+      }
+      this.known.delete(key);
+    }
+  }
+
+  /** Whether this account signed in from this address within the last 30 days. */
+  hasSignedInFrom(account: string, address: string): boolean {
+    const id = bucketId(`${account}\n${address}`);
+    const until = this.known.get(id);
+    if (until === undefined) {
+      return false;
+    }
+    if (until <= this.now()) {
+      this.known.delete(id);
+      return false;
+    }
+    return true;
   }
 
   private liveBucket(key: string, now: number): Bucket | undefined {

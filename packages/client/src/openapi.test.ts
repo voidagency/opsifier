@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { call, createTestContext, type TestContext } from "../../../apps/server/src/testing/harness";
+import {
+  call,
+  createTestContext,
+  setupAdmin,
+  type TestContext,
+} from "../../../apps/server/src/testing/harness";
 import { ROUTES } from "./api";
 import { classifyOperation, describeOperation, type OpenApiDocument } from "./catalogue";
 
@@ -8,7 +13,8 @@ let document: OpenApiDocument;
 
 beforeAll(async () => {
   context = await createTestContext();
-  document = (await call<OpenApiDocument>(context.app, "/api/v1/openapi.json")).body;
+  const cookie = await setupAdmin(context.app);
+  document = (await call<OpenApiDocument>(context.app, "/api/v1/openapi.json", { cookie })).body;
 });
 
 afterAll(async () => {

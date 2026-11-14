@@ -89,6 +89,64 @@ export async function inspectArchive(
 }
 
 /** Measures what was unpacked, and fails on anything that isn't a plain file, folder or safe link. */
+/** Linux gives up after 40 links in one path: so does the check. */
+const MAX_LINK_HOPS = 40;
+
+function isMissing(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
+/**
+ * Where a link leads, followed part by part as the kernel follows it, links met on the way
+ * included. Its text alone is not enough: `d -> .` then `x -> d/../outside` both read as inside,
+ * yet `x` leaves the folder. Null as soon as the path leaves `realRoot`. A part that does not exist
+ * ends the walk; one followed by `..` is refused, since what appears there later could lead anywhere.
+ */
+async function linkTarget(realRoot: string, link: string): Promise<string | null> {
+  let hops = 0;
+  const follow = async (from: string, text: string): Promise<string | null> => {
+    let current = text.startsWith("/") ? "/" : from;
+    const parts = text.split("/").filter((part) => part !== "" && part !== ".");
+    for (let index = 0; index < parts.length; index += 1) {
+      if (!isInside(realRoot, current)) {
+        return null;
+      }
+      const part = parts[index] as string;
+      if (part === "..") {
+        current = dirname(current);
+        continue;
+      }
+      const next = join(current, part);
+      let info: Awaited<ReturnType<typeof lstat>>;
+      try {
+        info = await lstat(next);
+      } catch (error) {
+        if (!isMissing(error)) {
+          throw error;
+        }
+        const rest = parts.slice(index + 1);
+        return rest.includes("..") ? null : join(next, ...rest);
+      }
+      if (info.isSymbolicLink()) {
+        hops += 1;
+        if (hops > MAX_LINK_HOPS) {
+          return null;
+        }
+        const reached = await follow(dirname(next), await readlink(next));
+        if (reached === null) {
+          return null;
+        }
+        current = reached;
+      } else {
+        current = next;
+      }
+    }
+    return isInside(realRoot, current) ? current : null;
+  };
+  return follow(dirname(link), await readlink(link));
+}
+
 export async function verifyTree(
   root: string,
   maxDepth = MAX_UNPACKED_DEPTH,
@@ -115,7 +173,10 @@ export async function verifyTree(
         bytes += (await lstat(path)).size;
       } else if (entry.isSymbolicLink()) {
         const target = await readlink(path);
-        if (!isInside(realRoot, resolve(dirname(path), target))) {
+        if (
+          !isInside(realRoot, resolve(dirname(path), target)) ||
+          (await linkTarget(realRoot, path)) === null
+        ) {
           throw new UnsafeArchiveError(`This archive has a link pointing outside its folder: ${entry.name}.`);
         }
       } else {
