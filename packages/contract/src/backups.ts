@@ -53,8 +53,12 @@ export type DatabaseBackupScope = z.infer<typeof databaseBackupScope>;
 export const backupActionTypes = {
   database: "backup.database",
   volume: "backup.volume",
+  /** The whole server: panel state, every database, every volume. */
+  server: "backup.server",
   restoreDatabase: "backup.restore-database",
   restoreVolume: "backup.restore-volume",
+  /** A whole server brought back from its backup, after `install.sh --restore`. */
+  restoreServer: "backup.restore-server",
   remove: "backup.delete",
   config: "backup.config",
   download: "backup.download",

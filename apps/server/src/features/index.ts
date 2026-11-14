@@ -21,6 +21,7 @@ export { feature as proxyPages } from "./proxy-pages/routes";
 export { feature as releases } from "./releases/routes";
 export { feature as retainedVolumes } from "./retained-volumes/routes";
 export { feature as server } from "./server/routes";
+export { feature as serverBackup } from "./server-backup/routes";
 export { feature as serverPurpose } from "./server-purpose/routes";
 export { feature as serviceDefinition } from "./service-definition/routes";
 export { feature as serviceRuntime } from "./service-runtime/routes";

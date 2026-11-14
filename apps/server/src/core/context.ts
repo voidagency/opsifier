@@ -54,6 +54,11 @@ export interface Feature {
   readsOwnBody?(path: string): boolean;
   /** Runs once during startup, before the server accepts requests. */
   boot?(deps: AppDeps): void | Promise<void>;
+  /**
+   * Runs once every feature has booted, for work that needs the whole panel in shape, such as
+   * deployments: some features tidy or upgrade what deployments use while they boot.
+   */
+  ready?(deps: AppDeps): void | Promise<void>;
   /** Stops what `boot` started. Runs before Docker and the database are released. */
   shutdown?(deps: AppDeps): void | Promise<void>;
   register(app: ApiApp, deps: AppDeps): void;

@@ -73,7 +73,7 @@ function xmlBlocks(xml: string, tag: string): string[] {
   );
 }
 
-function defaultEndpoint(kind: S3ProviderKind, region: string): string | null {
+export function defaultEndpoint(kind: S3ProviderKind, region: string): string | null {
   switch (kind) {
     case "aws-s3":
       return `https://s3.${region}.amazonaws.com`;

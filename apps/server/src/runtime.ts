@@ -132,6 +132,9 @@ function assembleRuntime(
       for (const feature of features) {
         await feature.boot?.(deps);
       }
+      for (const feature of features) {
+        await feature.ready?.(deps);
+      }
     },
 
     async close() {

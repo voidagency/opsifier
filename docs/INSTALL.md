@@ -57,6 +57,8 @@ curl -fsSL https://raw.githubusercontent.com/voidagency/opsifier/main/scripts/in
 | `--force`               | Replaces what is in the way, such as a service named `opsifier` that the installer did not create. Off by default. |
 | `--clean-up`            | Installs nothing. Shows what an install that stopped partway made, and what stays because it was not its own.      |
 | `--yes`                 | With `--clean-up`, removes what it lists. Docker itself and the panel's image stay.                                |
+| `--restore`             | Puts a server backup back first, then installs: see [Restore a whole server](BACKUPS.md#restore-a-whole-server).   |
+| `--snapshot <id>`       | With `--restore`, which backup. The latest one otherwise.                                                          |
 
 ## If the install stops partway
 

@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 31
+# documented-changes: 32
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -4263,6 +4263,116 @@ PUT /api/v1/server-purpose/users/{id}
   500
   body password: string
   path id!: string
+GET /api/v1/server/backup
+  200 destinations![].id!: string
+  200 destinations![].kind!: string
+  200 destinations![].name!: string
+  200 destinations![].usable!: boolean
+  200 enabled!: boolean
+  200 keepDaily!: integer
+  200 keepMonthly!: integer
+  200 keepWeekly!: integer
+  200 keyCreated!: boolean
+  200 lastRun!.actionId!: string
+  200 lastRun!.addedBytes!: integer|null
+  200 lastRun!.error!: null|string
+  200 lastRun!.finishedAt!: null|string
+  200 lastRun!.processedBytes!: integer|null
+  200 lastRun!.snapshotId!: null|string
+  200 lastRun!.startedAt!: string
+  200 lastRun!.status!: enum(failed|running|succeeded)
+  200 nextRunAt!: null|string
+  200 providerId!: null|string
+  200 repository!: null|string
+  200 restore!.actionId!: null|string
+  200 restore!.finishedAt!: null|string
+  200 restore!.hostname!: string
+  200 restore!.problems![]: string
+  200 restore!.snapshotId!: string
+  200 restore!.snapshotTime!: string
+  200 restore!.startedAt!: string
+  200 restore!.status!: enum(failed|running|succeeded)
+  200 time!: string
+  401
+  403
+PUT /api/v1/server/backup
+  200 destinations![].id!: string
+  200 destinations![].kind!: string
+  200 destinations![].name!: string
+  200 destinations![].usable!: boolean
+  200 enabled!: boolean
+  200 keepDaily!: integer
+  200 keepMonthly!: integer
+  200 keepWeekly!: integer
+  200 keyCreated!: boolean
+  200 lastRun!.actionId!: string
+  200 lastRun!.addedBytes!: integer|null
+  200 lastRun!.error!: null|string
+  200 lastRun!.finishedAt!: null|string
+  200 lastRun!.processedBytes!: integer|null
+  200 lastRun!.snapshotId!: null|string
+  200 lastRun!.startedAt!: string
+  200 lastRun!.status!: enum(failed|running|succeeded)
+  200 nextRunAt!: null|string
+  200 providerId!: null|string
+  200 recoveryKey!: null|string
+  200 repository!: null|string
+  200 restore!.actionId!: null|string
+  200 restore!.finishedAt!: null|string
+  200 restore!.hostname!: string
+  200 restore!.problems![]: string
+  200 restore!.snapshotId!: string
+  200 restore!.snapshotTime!: string
+  200 restore!.startedAt!: string
+  200 restore!.status!: enum(failed|running|succeeded)
+  200 time!: string
+  400
+  401
+  403
+  409
+  body enabled!: boolean
+  body keepDaily!: integer
+  body keepMonthly!: integer
+  body keepWeekly!: integer
+  body providerId!: null|string
+  body time!: string
+POST /api/v1/server/backup/key
+  200 recoveryKey!: string
+  400
+  401
+  403
+  409
+  429
+  body code: string
+  body currentPassword: string
+POST /api/v1/server/backup/run
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  401
+  403
+  409
+GET /api/v1/server/backup/snapshots
+  200 snapshots![].addedBytes!: integer|null
+  200 snapshots![].hostname!: string
+  200 snapshots![].id!: string
+  200 snapshots![].time!: string
+  200 snapshots![].totalBytes!: integer|null
+  401
+  403
+  409
 PUT /api/v1/server/daily-cleanup
   200 enabled!: boolean
   400

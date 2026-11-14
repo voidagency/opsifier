@@ -24,7 +24,9 @@
       "restore-database": "Restauration de base",
       "restore-volume": "Restauration de volume",
       "delete": "Sauvegarde supprimée",
-      "config": "Réglages de sauvegarde modifiés"
+      "config": "Réglages de sauvegarde modifiés",
+      "server": "Sauvegarde du serveur",
+      "restore-server": "Restauration du serveur"
     },
     "storage-provider": {
       "create": "Stockage ajouté",
@@ -124,7 +126,10 @@
     "checking": "Vérification des données",
     "staging": "Dépaquetage de la copie",
     "swapping": "Remplacement des données",
-    "starting": "Démarrage du service"
+    "starting": "Démarrage du service",
+    "retention": "Oubli des anciennes sauvegardes",
+    "databases": "Remise en place des bases",
+    "applications": "Redéploiement des applications"
   },
   "resume": "Déployer à nouveau",
   "resumed": "Déploiement lancé"

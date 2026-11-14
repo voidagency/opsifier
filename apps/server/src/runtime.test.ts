@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
@@ -9,6 +9,8 @@ import { type Config, ConfigError, loadConfig } from "./core/config";
 import { actions, users } from "./core/db/schema";
 import { FakeDriver } from "./core/docker";
 import { SecretsError } from "./core/secrets";
+import { pendingRestoreFile } from "./features/server-backup/pending";
+import { readServerBackup } from "./features/server-backup/service";
 import { createRuntime, type Runtime } from "./runtime";
 
 let dataDir: string;
@@ -76,6 +78,33 @@ describe("the data directory", () => {
 
     expect(() => createRuntime(config, { docker: new FakeDriver() })).toThrow();
     expect(() => createRuntime(config, { docker: new FakeDriver() })).not.toThrow(ConfigError);
+  });
+});
+
+describe("a server backup put back by install.sh --restore", () => {
+  it("is carried on once the panel has booted", async () => {
+    mkdirSync(join(dataDir, "restore"), { recursive: true });
+    writeFileSync(
+      pendingRestoreFile(dataDir),
+      JSON.stringify({
+        snapshotId: "4f1c0b2a",
+        snapshotTime: "2026-11-14T02:30:00Z",
+        hostname: "old-server",
+      }),
+    );
+    const runtime = await boot();
+
+    const restore = readServerBackup(runtime.deps).restore;
+    expect(restore).toMatchObject({ snapshotId: "4f1c0b2a", hostname: "old-server" });
+    for (
+      let attempt = 0;
+      attempt < 2000 && readServerBackup(runtime.deps).restore?.status === "running";
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(readServerBackup(runtime.deps).restore?.status).toBe("succeeded");
+    expect(existsSync(pendingRestoreFile(dataDir))).toBe(false);
   });
 });
 

@@ -31,7 +31,7 @@ import {
 } from "./backends/google-drive";
 import { LocalBackend } from "./backends/local";
 import { OAuthSession, type OAuthTokenStore, type OAuthTokens } from "./backends/oauth";
-import { S3Backend } from "./backends/s3";
+import { defaultEndpoint, S3Backend } from "./backends/s3";
 import { SftpBackend } from "./backends/sftp";
 import { type StorageBackend, StorageError } from "./backends/types";
 import {
@@ -244,6 +244,47 @@ export function backendForProvider(deps: AppDeps, row: ProviderRow): StorageBack
     return new DropboxBackend(oauthSessionFor(deps, row), oauthEndpoints.dropbox.dropbox);
   }
   return new GoogleDriveBackend(oauthSessionFor(deps, row), oauthEndpoints["google-drive"].drive);
+}
+
+/** Where restic keeps a repository on a destination, and what it needs to reach it. */
+export interface ResticTarget {
+  repository: string;
+  env: Record<string, string>;
+  /** Values to keep out of every log. */
+  secrets: string[];
+}
+
+/**
+ * A destination as restic reaches it, for the server's own backup. S3-compatible destinations and
+ * the server's disk for now; null for the others, which restic would reach through rclone.
+ */
+export function resticTargetFor(deps: AppDeps, row: ProviderRow, folder: string): ResticTarget | null {
+  const kind = row.kind as StorageProviderKind;
+  if (kind === "local") {
+    return { repository: join(storedLocal.parse(row.config).path, folder), env: {}, secrets: [] };
+  }
+  if (!isS3Kind(kind)) {
+    return null;
+  }
+  const config = storedS3.parse(row.config);
+  const endpoint = config.endpoint ?? defaultEndpoint(kind, config.region);
+  if (endpoint === null) {
+    return null;
+  }
+  const secret = readSecrets(deps, row).secretAccessKey ?? "";
+  const path = [config.bucket, config.prefix, folder]
+    .map((part) => part.replace(/^\/+|\/+$/g, ""))
+    .filter((part) => part !== "")
+    .join("/");
+  return {
+    repository: `s3:${endpoint.replace(/\/+$/, "")}/${path}`,
+    env: {
+      AWS_ACCESS_KEY_ID: config.accessKeyId,
+      AWS_SECRET_ACCESS_KEY: secret,
+      AWS_DEFAULT_REGION: config.region,
+    },
+    secrets: [secret],
+  };
 }
 
 export function toStorageError(error: unknown): StorageError {

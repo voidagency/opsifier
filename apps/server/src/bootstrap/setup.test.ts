@@ -577,6 +577,19 @@ describe("the installer", () => {
     expect(script).toMatch(/\[ "\$yes" = false \] \|\| args\+=\(--yes\)/);
     expect(script).toContain("--clean-up removes what it made");
   });
+
+  it("puts a server backup back before setup, and hands its keys over by name only", () => {
+    const range = /sed -n '2,(\d+)p'/.exec(script);
+    const help = script.split("\n").slice(1, Number(range?.[1])).join("\n");
+
+    expect(help).toContain("--restore");
+    expect(help).toContain("--snapshot <id>");
+    expect(script).toContain("local args=(restore-backup)");
+    expect(script).toMatch(/\[ "\$restore" = false \] \|\| run_restore\n\s*run_setup/);
+    // `-e NAME` takes the value from the environment, so a key never shows on a command line.
+    expect(script).toContain('env_args+=(-e "$name")');
+    expect(script).not.toMatch(/-e "?RESTIC_PASSWORD=/);
+  });
 });
 
 describe("the service specs", () => {

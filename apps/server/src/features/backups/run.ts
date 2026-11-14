@@ -371,6 +371,58 @@ function scopedExport(
   };
 }
 
+/**
+ * Everything a database server holds, every database and its accounts, written to a plain file in
+ * `directory`: what a backup of the whole server keeps. Left uncompressed where the panel would
+ * compress it, so that restic finds what did not change. Null for an engine with no export.
+ */
+/**
+ * What a server backup calls a database's export: plain, since restic compresses and deduplicates
+ * it, where the panel would otherwise have compressed it as it arrived.
+ */
+export function instanceExportName(serviceName: string, ops: EngineBackupOps): string {
+  const { instance } = ops;
+  return `${serviceName}${instance.gzipInPanel ? instance.extension.replace(/\.gz$/, "") : instance.extension}`;
+}
+
+export async function exportInstanceToFile(
+  deps: AppDeps,
+  target: ServiceTarget,
+  directory: string,
+  ctx: ActionContext,
+): Promise<{ file: string; bytes: number } | null> {
+  const record = requireDatabase(deps, target);
+  const { engine } = record.spec.database;
+  const ops = backupOpsFor(engine);
+  if (ops === null) {
+    return null;
+  }
+  const credentials = credentialsOf(deps, record);
+  const scoped = scopedExport(deps, target, ops, engine, "instance", null, credentials, ctx);
+  const file = join(directory, instanceExportName(target.serviceName, ops));
+  const redactor = redactorFor(credentials);
+  const stderrTail: string[] = [];
+  const dumped = await dumpToFile(
+    deps,
+    serviceNameOf(target),
+    await scoped.plans(credentials),
+    false,
+    file,
+    (line) => {
+      stderrTail.push(redactor.apply(line));
+      if (stderrTail.length > 20) {
+        stderrTail.shift();
+      }
+    },
+    ctx.signal,
+  ).catch((error: unknown) => {
+    const reason = describeFailure(error);
+    const detail = stderrTail.at(-1);
+    throw new Error(detail === undefined ? reason : `${reason} ${detail}`);
+  });
+  return { file, bytes: dumped.sizeBytes };
+}
+
 /** The words for a scope, as an Action's log says it. */
 export function describeScope(scope: DatabaseBackupScope, databaseName: string | null): string {
   if (scope === "database") {

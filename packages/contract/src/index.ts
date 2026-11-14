@@ -22,6 +22,7 @@ export * from "./projects";
 export * from "./realtime";
 export * from "./retained-volumes";
 export * from "./server-admin";
+export * from "./server-backup";
 export * from "./server-purpose";
 export * from "./service-definition";
 export * from "./service-runtime";

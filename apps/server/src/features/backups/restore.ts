@@ -26,6 +26,7 @@ import { compileDatabaseRecord, requireDatabase } from "../databases/service";
 import { belongsToCurrent } from "../projects/generation";
 import { saveRetainedVolume } from "../retained-volumes/repo";
 import { qualifiedName } from "../services/compile";
+import { writeMountFiles } from "../services/lifecycle";
 import { saveServiceSpec } from "../services/repo";
 import { requireService, type ServiceTarget } from "../services/service";
 import type { StorageBackend } from "../storage-providers/backends/types";
@@ -417,7 +418,10 @@ async function importDump(
   );
 }
 
-/** Imports an export of a whole server or of its accounts. The panel's own account stays out of it. */
+/**
+ * Imports an export of a whole server or of its accounts. The panel's own account stays out of it.
+ * `compressed` is false for the plain copies a server backup keeps, which restic compresses itself.
+ */
 async function importServerExport(
   deps: AppDeps,
   service: string,
@@ -426,9 +430,11 @@ async function importServerExport(
   file: string,
   onStderr: (line: string) => void,
   signal: AbortSignal | undefined,
+  compressed = true,
 ): Promise<void> {
   if (exported.restoreFromLines !== undefined) {
-    const lines = (await gunzipped(file)).split("\n").filter((line) => line !== "");
+    const text = compressed ? await gunzipped(file) : await readFile(file, "utf8");
+    const lines = text.split("\n").filter((line) => line !== "");
     const outcome = await runInDatabase(deps, service, exported.restoreFromLines(credentials, lines), {
       signal,
       timeoutMs: DUMP_TIMEOUT_MS,
@@ -438,7 +444,7 @@ async function importServerExport(
     }
     return;
   }
-  const raw = dumpStream(file, exported.gzipInPanel);
+  const raw = dumpStream(file, exported.gzipInPanel && compressed);
   const rewrite = exported.rewriteAccountLine;
   const body =
     rewrite === null
@@ -871,7 +877,7 @@ async function removeRestoredVolume(
   ctx.log(`The volume ${volume} is still in use. It stays under Monitor, Storage until it is deleted.`);
 }
 
-function pointDatabaseAtVolume(deps: AppDeps, target: ServiceTarget, volume: string): void {
+export function pointDatabaseAtVolume(deps: AppDeps, target: ServiceTarget, volume: string): void {
   const { spec } = requireDatabase(deps, target);
   saveServiceSpec(
     deps.db,
@@ -1081,6 +1087,90 @@ export async function performInstanceRestore(
   } finally {
     await rm(temp, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+export interface ExportImportRequest {
+  target: ServiceTarget;
+  /** An export of the whole server, as a server backup keeps it: never compressed by the panel. */
+  file: string;
+  /** Where it goes. A volume that does not exist yet: it is made empty for this import. */
+  volume: string;
+}
+
+/**
+ * Loads an export of a whole database server into a new volume, through a temporary server of its own
+ * with no network, as {@link performInstanceRestore} does. The service itself is left alone: it is
+ * deployed onto that volume afterwards. Used to bring a server back from a server backup.
+ */
+export async function importExportIntoVolume(
+  deps: AppDeps,
+  request: ExportImportRequest,
+  ctx: ActionContext,
+): Promise<void> {
+  const { target, file, volume } = request;
+  const record = requireDatabase(deps, target);
+  const { engine } = record.spec.database;
+  const ops = backupOpsFor(engine);
+  if (ops === null) {
+    throw new Error("This engine has no backups.");
+  }
+  if ((await deps.docker.inspectVolume(volume)) !== null) {
+    throw new Error(`The volume ${volume} already exists, so nothing was imported into it.`);
+  }
+  const credentials = credentialsOf(deps, record);
+  const redactor = redactorFor(credentials);
+  const restoreId = nanoid()
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]/g, "0");
+  const isolated = isolatedServerName(restoreId);
+  const compiled = compileDatabaseRecord(deps, target, record, 0, { stopped: false });
+  if (compiled.swarmSpec === null) {
+    throw new Error("This database could not be compiled.");
+  }
+  await writeMountFiles(compiled.files);
+
+  ctx.log(`Starting an empty server on the volume ${volume}, with no network`);
+  await deps.docker.createService(
+    isolatedServerSpec(compiled.swarmSpec, engine, ops.instance, isolated, volume, restoreId),
+  );
+  try {
+    await waitForRollout({
+      docker: deps.docker,
+      timing: deps.rollout,
+      service: isolated,
+      desired: 1,
+      previousTaskIds: new Set(),
+      signal: ctx.signal,
+      log: ctx.log,
+    });
+    ctx.log("Importing the export");
+    await importServerExport(
+      deps,
+      isolated,
+      ops.instance,
+      credentials,
+      file,
+      (line) => ctx.log(redactor.apply(line)),
+      ctx.signal,
+      false,
+    );
+    const after = ops.instance.afterImport(credentials);
+    if (after !== null) {
+      const outcome = await runInDatabase(deps, isolated, after, { signal: ctx.signal, timeoutMs: 30_000 });
+      if (!outcome.ok) {
+        throw new Error(
+          `The panel's own account could not be set: ${redactSecrets(outcome.output, secretsOf(credentials))}`,
+        );
+      }
+    }
+  } catch (error) {
+    await removeIsolatedServer(deps, isolated, ctx).catch((removeError: unknown) =>
+      ctx.log(`The temporary server could not be removed: ${describeFailure(removeError)}`),
+    );
+    throw error;
+  }
+  await removeIsolatedServer(deps, isolated, ctx);
+  ctx.log("Imported");
 }
 
 export interface VolumeRestoreRequest {

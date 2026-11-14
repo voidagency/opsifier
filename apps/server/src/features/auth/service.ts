@@ -125,6 +125,38 @@ export function createAuthService(deps: AppDeps) {
     }).token;
   }
 
+  /**
+   * The person at the keyboard proves again that they own the account, before something that hands
+   * out its power: with their two-factor code when they have one, else with their password.
+   */
+  async function confirmIdentity(
+    principal: SessionPrincipal,
+    input: { currentPassword?: string; code?: string; recoveryCode?: string },
+  ): Promise<void> {
+    const attempt = reserveSensitive(principal.user.id);
+    const user = repo.findUserById(db, principal.user.id);
+    if (user === undefined) {
+      throw unauthorized("unauthenticated", "Sign in to continue.");
+    }
+    if (user.totpSecret !== null) {
+      if (input.recoveryCode !== undefined) {
+        if (!verifyRecoveryCode(user, input.recoveryCode)) {
+          throw badRequest("invalid_recovery_code", WRONG_CODE, { recoveryCode: WRONG_CODE });
+        }
+      } else if (input.code === undefined || !verifyActiveCode(user, input.code)) {
+        throw badRequest("invalid_two_factor_code", WRONG_CODE, { code: WRONG_CODE });
+      }
+    } else {
+      if (input.currentPassword === undefined) {
+        throw badRequest("current_password_required", "Enter your password.", {
+          currentPassword: "Required",
+        });
+      }
+      await assertCurrentPassword(user, input.currentPassword);
+    }
+    attempt.refund();
+  }
+
   function verifyActiveCode(user: UserRow, code: string): boolean {
     if (user.totpSecret === null) {
       return false;
@@ -551,6 +583,12 @@ export function createAuthService(deps: AppDeps) {
      * Approving hands a session of this account to a terminal: the person proves again who they are,
      * with their code when they have one, else their password.
      */
+    confirmIdentity,
+
+    /**
+     * Approving hands a session of this account to a terminal: the person proves again who they are,
+     * with their code when they have one, else their password.
+     */
     async approveCliLogin(
       principal: SessionPrincipal,
       userCode: string,
@@ -559,34 +597,13 @@ export function createAuthService(deps: AppDeps) {
       if (cliLogins.waiting(userCode) === undefined) {
         throw notFound("This sign-in request has expired, was already answered, or does not exist.");
       }
-      const attempt = reserveSensitive(principal.user.id);
-      const user = repo.findUserById(db, principal.user.id);
-      if (user === undefined) {
-        throw unauthorized("unauthenticated", "Sign in to continue.");
-      }
-      if (user.totpSecret !== null) {
-        if (input.recoveryCode !== undefined) {
-          if (!verifyRecoveryCode(user, input.recoveryCode)) {
-            throw badRequest("invalid_recovery_code", WRONG_CODE, { recoveryCode: WRONG_CODE });
-          }
-        } else if (input.code === undefined || !verifyActiveCode(user, input.code)) {
-          throw badRequest("invalid_two_factor_code", WRONG_CODE, { code: WRONG_CODE });
-        }
-      } else {
-        if (input.currentPassword === undefined) {
-          throw badRequest("current_password_required", "Enter your password.", {
-            currentPassword: "Required",
-          });
-        }
-        await assertCurrentPassword(user, input.currentPassword);
-      }
+      await confirmIdentity(principal, input);
       // Checked again after the slow checks, so two tabs cannot both answer it.
       const entry = cliLogins.waiting(userCode);
       if (entry === undefined) {
         throw notFound("This sign-in request has expired, was already answered, or does not exist.");
       }
-      cliLogins.approve(entry, user.id);
-      attempt.refund();
+      cliLogins.approve(entry, principal.user.id);
     },
 
     denyCliLogin(userCode: string): void {

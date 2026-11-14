@@ -14,6 +14,12 @@
 #                           stays because it was not that install's to remove. Changes nothing.
 #   --yes                   With --clean-up, remove what it lists. Docker itself and the panel's
 #                           image stay, since an interrupted install may not be the only thing using them.
+#   --restore               Put a server backup back first, then install: the panel comes back with
+#                           its accounts, projects and data. Reads RESTIC_REPOSITORY, RESTIC_PASSWORD
+#                           (the recovery key) and, for an S3-compatible destination, AWS_ACCESS_KEY_ID,
+#                           AWS_SECRET_ACCESS_KEY and AWS_DEFAULT_REGION. With --force, a panel already
+#                           here is moved aside for it.
+#   --snapshot <id>         With --restore, which backup. The latest otherwise.
 #
 # Running it again changes nothing that is already right, and never updates Docker or the panel.
 set -euo pipefail
@@ -32,6 +38,9 @@ server_ip=""
 force=false
 clean_up=false
 yes=false
+restore=false
+snapshot=""
+pulled=false
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
@@ -50,13 +59,18 @@ parse_args() {
       --force) force=true; shift ;;
       --clean-up) clean_up=true; shift ;;
       --yes) yes=true; shift ;;
+      --restore) restore=true; shift ;;
+      --snapshot) snapshot="${2:?--snapshot needs a value}"; shift 2 ;;
       -h | --help)
-        sed -n '2,18p' "${BASH_SOURCE[0]:-/dev/null}" | sed 's/^# \{0,1\}//'
+        sed -n '2,24p' "${BASH_SOURCE[0]:-/dev/null}" | sed 's/^# \{0,1\}//'
         exit 0
         ;;
       *) die "Unknown option: $1" ;;
     esac
   done
+  if [ -n "$snapshot" ] && [ "$restore" = false ]; then
+    die "--snapshot goes with --restore."
+  fi
   if [ "$clean_up" = true ] && [ -z "$image" ] && [ "$version" = "latest" ]; then
     # The image the interrupted install ran from, so it is that install's own command that undoes it.
     image="$(sed -n 's/.*"image": *"\([^"]*\)".*/\1/p' "${DATA_DIR}/setup-state.json" 2>/dev/null | head -n 1 || true)"
@@ -191,6 +205,49 @@ detect_advertise_addr() {
   advertise_addr="$( (ip -4 route get 1.1.1.1 2>/dev/null || true) | sed -n 's/.*src \([0-9.]*\).*/\1/p' | head -n 1)"
 }
 
+pull_image() {
+  [ "$pulled" = false ] || return 0
+  say "Downloading ${image}"
+  docker pull "$image"
+  pulled=true
+  mkdir -p "$DATA_DIR"
+  chmod 700 "$DATA_DIR"
+}
+
+# Puts the backup back before setup starts the panel on it. The keys reach the container through its
+# environment, by name, so that they never show on a command line.
+run_restore() {
+  [ -n "${RESTIC_REPOSITORY:-}" ] ||
+    die "Set RESTIC_REPOSITORY to the repository shown under Settings, Server, Server backup."
+  [ -n "${RESTIC_PASSWORD:-}${RESTIC_PASSWORD_FILE:-}" ] ||
+    die "Set RESTIC_PASSWORD to the recovery key the panel showed when the backup was set up."
+  local args=(restore-backup)
+  [ -z "$snapshot" ] || args+=(--snapshot "$snapshot")
+  [ "$force" = false ] || args+=(--force)
+  local env_args=() mounts=() name
+  for name in RESTIC_REPOSITORY RESTIC_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_DEFAULT_REGION; do
+    [ -z "${!name:-}" ] || env_args+=(-e "$name")
+  done
+  if [ -n "${RESTIC_PASSWORD_FILE:-}" ]; then
+    [ -r "$RESTIC_PASSWORD_FILE" ] || die "Cannot read RESTIC_PASSWORD_FILE: ${RESTIC_PASSWORD_FILE}"
+    mounts+=(-v "${RESTIC_PASSWORD_FILE}:/run/opsifier-recovery-key:ro")
+    env_args+=(-e RESTIC_PASSWORD_FILE=/run/opsifier-recovery-key)
+  fi
+  # A repository on this server's own disk, outside the data directory, has to be seen from inside.
+  case "$RESTIC_REPOSITORY" in
+    "$DATA_DIR"/*) ;;
+    /*) mounts+=(-v "${RESTIC_REPOSITORY}:${RESTIC_REPOSITORY}") ;;
+  esac
+
+  pull_image
+  docker run --rm --network host \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "${DATA_DIR}:${DATA_DIR}" \
+    ${mounts[@]+"${mounts[@]}"} \
+    ${env_args[@]+"${env_args[@]}"} \
+    "$image" "${args[@]}" || die "The backup could not be put back, so nothing was installed."
+}
+
 run_setup() {
   local args=(setup --image "$image")
   [ -z "$advertise_addr" ] || args+=(--advertise-addr "$advertise_addr")
@@ -199,10 +256,7 @@ run_setup() {
   local env_args=()
   [ -z "${OPSIFIER_NAMES_URL:-}" ] || env_args+=(-e "OPSIFIER_NAMES_URL=${OPSIFIER_NAMES_URL}")
 
-  say "Downloading ${image}"
-  docker pull "$image"
-  mkdir -p "$DATA_DIR"
-  chmod 700 "$DATA_DIR"
+  pull_image
 
   # Host networking so that setup can see which ports are really free on this server.
   docker run --rm --network host \
@@ -244,6 +298,7 @@ main() {
   check_ports
   ensure_docker
   detect_advertise_addr
+  [ "$restore" = false ] || run_restore
   run_setup
 }
 

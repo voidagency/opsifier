@@ -29,7 +29,8 @@
     "certificates": "Certificats",
     "monitoring": "Supervision",
     "purpose": "Rôle",
-    "knownHosts": "Hôtes connus"
+    "knownHosts": "Hôtes connus",
+    "backup": "Sauvegarde du serveur"
   },
   "server": {
     "copyIp": "Copier l'IP du serveur",

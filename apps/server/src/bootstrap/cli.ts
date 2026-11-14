@@ -5,6 +5,7 @@ import { ResetPasswordError, resetPassword } from "../features/access/reset-pass
 import { dockerCliEnv } from "../features/service-tabs/source/build/environment";
 import { addressRegisteredSince, createSetupAddress, panelHasAccounts } from "./address";
 import { runCleanSetup } from "./clean-setup";
+import { RestoreError, runRestoreBackup } from "./restore-backup";
 import { runRollback } from "./rollback";
 import { runSetup, SetupError } from "./setup";
 
@@ -15,6 +16,7 @@ Commands:
   clean-setup Show what an interrupted setup made, and with --yes remove it. Nothing else is touched.
   rollback    Go back to the version before the last update, from the outside.
   reset-password   Give an account a new password, printed once. Ends its sessions and API keys.
+  restore-backup   Put a server backup back on this server, before setup. install.sh --restore runs it.
 
 Options for reset-password:
   --email <address>        The account. Defaults to the owner.
@@ -30,9 +32,15 @@ Options for setup:
 
 Options for clean-setup:
   --yes                    Remove what is listed. Without it, this only reports.
+
+Options for restore-backup, which reads RESTIC_REPOSITORY, RESTIC_PASSWORD (the recovery key) and,
+for an S3-compatible destination, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_DEFAULT_REGION:
+  --snapshot <id>          Which backup. Defaults to the latest.
+  --force                  Go ahead on a server whose panel already has accounts. Its state is moved
+                           aside, never deleted.
 `;
 
-export const COMMANDS = ["setup", "clean-setup", "rollback", "reset-password"];
+export const COMMANDS = ["setup", "clean-setup", "rollback", "reset-password", "restore-backup"];
 
 interface ParsedArgs {
   force: boolean;
@@ -42,6 +50,7 @@ interface ParsedArgs {
   advertiseAddr?: string;
   serverIp?: string;
   email?: string;
+  snapshot?: string;
 }
 
 const VALUE_FLAGS = new Map<string, keyof ParsedArgs>([
@@ -49,6 +58,7 @@ const VALUE_FLAGS = new Map<string, keyof ParsedArgs>([
   ["--advertise-addr", "advertiseAddr"],
   ["--server-ip", "serverIp"],
   ["--email", "email"],
+  ["--snapshot", "snapshot"],
 ]);
 
 /** `--name value` and `--name=value`. Anything unexpected is an error rather than ignored. */
@@ -168,6 +178,29 @@ async function resetAccountPassword(email: string | undefined): Promise<void> {
   console.log("It is shown once. Every session and API key of this account has ended.");
 }
 
+async function restoreBackup(args: ParsedArgs): Promise<void> {
+  const config = loadConfig();
+  const docker = createDockerDriver(config);
+  try {
+    await runRestoreBackup(
+      { snapshot: args.snapshot ?? "latest", force: args.force },
+      {
+        tools: createTools(config),
+        docker,
+        dataDir: config.dataDir,
+        databaseFile: config.databaseFile,
+        secretKeyFile: config.secretKeyFile,
+        env: process.env,
+        hasAccounts: () => panelHasAccounts(config.databaseFile),
+        log: (line) => console.log(line),
+        now: () => Date.now(),
+      },
+    );
+  } finally {
+    await docker.dispose();
+  }
+}
+
 /** Runs one command of the image and reports the outcome through the exit code. */
 export async function runCommand(command: string, args: readonly string[]): Promise<number> {
   try {
@@ -184,13 +217,15 @@ export async function runCommand(command: string, args: readonly string[]): Prom
       await rollback();
     } else if (command === "reset-password") {
       await resetAccountPassword(parsed.email);
+    } else if (command === "restore-backup") {
+      await restoreBackup(parsed);
     } else {
       console.error(`Unknown command: ${command}\n\n${USAGE}`);
       return 2;
     }
     return 0;
   } catch (error) {
-    if (error instanceof SetupError || error instanceof ResetPasswordError) {
+    if (error instanceof SetupError || error instanceof ResetPasswordError || error instanceof RestoreError) {
       console.error(error.message);
       return 1;
     }

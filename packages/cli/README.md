@@ -5,7 +5,7 @@ The command line for an [Opsifier](https://opsifier.com) panel: an open-source c
 It talks to the panel's API only, with the rights of your API key or of your own session, and nothing more.
 
 ```sh
-npm install -g opsifier          # or: brew install voidagency/tap/opsifier
+npm install -g opsifier          # or: brew install --cask voidagency/tap/opsifier
 
 opsifier login https://panel.example.com        # with an API key
 opsifier login --web https://panel.example.com  # as yourself, approved in a browser

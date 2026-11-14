@@ -29,7 +29,8 @@
     "certificates": "Certificates",
     "monitoring": "Monitoring",
     "purpose": "Purpose",
-    "knownHosts": "Known hosts"
+    "knownHosts": "Known hosts",
+    "backup": "Server backup"
   },
   "server": {
     "copyIp": "Copy server IP",

@@ -75,7 +75,7 @@ In the same project, choose **Add service**, then **Postgres**, **MySQL**, **Mar
 
 Its **Credentials** tab shows how to reach it from the project: the internal host, the port and a connection URL. Revealing a password is written to the activity log. Put the connection details in the app's **Environment** tab, then deploy the app again. A database is not reachable from other projects, or from the internet, unless you publish a port on its **Expose** tab.
 
-To keep copies of it, see [Back up databases to S3-compatible storage](BACKUPS.md).
+To keep copies of it, see [Back up databases and whole servers](BACKUPS.md).
 
 ## From a terminal
 

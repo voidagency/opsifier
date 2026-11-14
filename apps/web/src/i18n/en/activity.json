@@ -24,7 +24,9 @@
       "restore-database": "Database restore",
       "restore-volume": "Volume restore",
       "delete": "Backup deleted",
-      "config": "Backup settings changed"
+      "config": "Backup settings changed",
+      "server": "Server backup",
+      "restore-server": "Server restore"
     },
     "storage-provider": {
       "create": "Storage provider added",
@@ -124,7 +126,10 @@
     "checking": "Checking the data",
     "staging": "Unpacking the copy",
     "swapping": "Swapping the data in",
-    "starting": "Starting the service"
+    "starting": "Starting the service",
+    "retention": "Forgetting old backups",
+    "databases": "Bringing the databases back",
+    "applications": "Redeploying the applications"
   },
   "resume": "Deploy again",
   "resumed": "Deployment started"

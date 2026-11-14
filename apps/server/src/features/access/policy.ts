@@ -129,7 +129,8 @@ export function requirementFor(method: string, path: string): Requirement {
       // The catalogue is public knowledge: installing one is what needs rights, inside a project.
       return OPEN;
     case "server":
-      return second === "reboot" || second === "disk" ? HOST_ADMIN : SERVER_ADMIN;
+      // A backup of the server holds every secret on it: the same people as its shell and disk.
+      return second === "reboot" || second === "disk" || second === "backup" ? HOST_ADMIN : SERVER_ADMIN;
     case "server-purpose":
       return second === undefined && isSafeMethod(method) ? OPEN : SERVER_ADMIN;
     case "system":

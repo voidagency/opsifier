@@ -106,7 +106,7 @@ A server only calls home if you ask for an address. That is the request, then a 
 
 - [Install on a server](docs/INSTALL.md): requirements, the installer and its options, and the first steps after it.
 - [Deploy your first app](docs/FIRST-APP.md): a project, an app from an image or a repository, its domain, and going back to an earlier version.
-- [Back up databases to S3-compatible storage](docs/BACKUPS.md): destinations, schedules, retention, downloads and restores.
+- [Back up databases and whole servers](docs/BACKUPS.md): destinations, schedules, retention, downloads, restores, and rebuilding a server from its backup.
 - [Builders](docs/BUILDERS.md): how source code becomes an image.
 - [Command line](docs/CLI.md) and [MCP server](docs/MCP.md): the panel from a terminal, a script or an AI agent.
 - [API](docs/API.md): keys, roles, errors and the OpenAPI document.

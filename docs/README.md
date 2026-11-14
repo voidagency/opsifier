@@ -6,7 +6,7 @@ Opsifier is an open-source, self-hosted control panel that deploys apps and data
 
 - [Install on a server](INSTALL.md): requirements, the one-line installer, its options, and the first steps after it.
 - [Deploy your first app](FIRST-APP.md): a project, an app from an image or a repository, its domain, a database, and going back to an earlier version.
-- [Back up databases to S3-compatible storage](BACKUPS.md): destinations, schedules, retention, downloads and restores.
+- [Back up databases and whole servers](BACKUPS.md): destinations, schedules, retention, downloads, restores, and rebuilding a server from its backup.
 
 ## Reference
 

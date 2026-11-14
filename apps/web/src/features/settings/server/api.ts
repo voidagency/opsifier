@@ -23,9 +23,15 @@ import {
   proxyDashboardStatus,
   proxyEnvironment,
   proxyEnvironmentSummary,
+  type RevealServerBackupKeyRequest,
   type SaveNotificationChannelRequest,
   type SavePanelDomainRequest,
+  type SaveServerBackupRequest,
   type SaveServiceDomainRequest,
+  serverBackupKey,
+  serverBackupSaved,
+  serverBackupSnapshots,
+  serverBackupState,
   serverOverview,
   serviceDomainSettings,
   type TestNotificationRequest,
@@ -203,3 +209,16 @@ export const certificatesApi = {
 
 export const saveMonitoringSettings = (body: MonitoringSettings) =>
   api.put("/settings/monitoring", { body, schema: monitoringOverview });
+
+export const serverBackupQuery = queryOptions({
+  queryKey: [...serverKey, "backup"] as const,
+  queryFn: () => api.get("/server/backup", { schema: serverBackupState }),
+});
+
+export const serverBackupApi = {
+  save: (body: SaveServerBackupRequest) => api.put("/server/backup", { body, schema: serverBackupSaved }),
+  run: () => api.post("/server/backup/run", { schema: actionEntry }),
+  snapshots: () => api.get("/server/backup/snapshots", { schema: serverBackupSnapshots }),
+  revealKey: (body: RevealServerBackupKeyRequest) =>
+    api.post("/server/backup/key", { body, schema: serverBackupKey }),
+};

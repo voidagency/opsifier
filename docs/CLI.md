@@ -7,7 +7,8 @@
 The command line needs Node 22.13 or later, and is one file with no dependencies. With Homebrew, which brings Node along:
 
 ```sh
-brew install voidagency/tap/opsifier
+brew trust voidagency/tap      # Homebrew 7 and later ask once before using a tap
+brew install --cask voidagency/tap/opsifier
 ```
 
 Or from the release itself, since 0.5.0:

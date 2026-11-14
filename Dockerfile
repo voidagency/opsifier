@@ -50,6 +50,27 @@ RUN set -eu; \
   apt-get update; \
   apt-get install -y --no-install-recommends docker-ce-cli docker-buildx-plugin docker-compose-plugin
 
+# ---- restic, for backups of the whole server: one static binary, checked against its published sum.
+FROM debian:bookworm-slim AS restic
+ARG TARGETARCH
+ARG RESTIC_VERSION=0.19.1
+ARG RESTIC_SHA256_AMD64=f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c
+ARG RESTIC_SHA256_ARM64=a5f64aaab53d51e311fa3829124c5b703f2d14cf187d8640b6be3b2b49376465
+RUN set -eu; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends ca-certificates curl bzip2; \
+  case "$TARGETARCH" in \
+    amd64) sum="$RESTIC_SHA256_AMD64" ;; \
+    arm64) sum="$RESTIC_SHA256_ARM64" ;; \
+    *) echo "No restic for $TARGETARCH" >&2; exit 1 ;; \
+  esac; \
+  file="restic_${RESTIC_VERSION}_linux_${TARGETARCH}.bz2"; \
+  curl -fsSLo "/tmp/$file" "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/$file"; \
+  echo "$sum  /tmp/$file" | sha256sum -c -; \
+  bunzip2 -c "/tmp/$file" > /usr/local/bin/restic; \
+  chmod 0755 /usr/local/bin/restic; \
+  /usr/local/bin/restic version
+
 # ---- Nixpacks and Railpack, one binary per version the panel offers, and the pack CLI.
 FROM ${NODE_IMAGE} AS builders
 ARG TARGETARCH
@@ -72,6 +93,7 @@ COPY --from=docker /usr/bin/docker /usr/local/bin/docker
 COPY --from=docker /usr/libexec/docker/cli-plugins/ /usr/local/libexec/docker/cli-plugins/
 COPY --from=builders /opt/opsifier/builders /opt/opsifier/builders
 COPY --from=builders /opt/opsifier/bin/pack /usr/local/bin/pack
+COPY --from=restic /usr/local/bin/restic /usr/local/bin/restic
 COPY --from=native /native/node_modules /app/node_modules
 COPY --from=build /src/apps/server/dist /app/dist
 COPY --from=build /src/apps/server/drizzle /app/drizzle

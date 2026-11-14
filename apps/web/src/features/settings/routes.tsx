@@ -5,6 +5,7 @@ import { CertificatesPage } from "./server/CertificatesPage";
 import { GeneralPage } from "./server/GeneralPage";
 import { MonitoringPage } from "./server/MonitoringPage";
 import { NotificationsPage } from "./server/NotificationsPage";
+import { ServerBackupPage } from "./server/ServerBackupPage";
 import { UsersPage } from "./server/UsersPage";
 import { ApiKeysPage } from "./user/ApiKeysPage";
 
@@ -22,6 +23,7 @@ const pages: readonly SettingsPage[] = [
   { path: "server/notifications", crumb: "settingsNav.notifications", component: NotificationsPage },
   { path: "server/certificates", crumb: "settingsNav.certificates", component: CertificatesPage },
   { path: "server/monitoring", crumb: "settingsNav.monitoring", component: MonitoringPage },
+  { path: "server/backup", crumb: "settingsNav.backup", component: ServerBackupPage },
   { path: "user/api", crumb: "settingsNav.api", component: ApiReferencePage },
 ];
 
