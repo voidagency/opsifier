@@ -31,6 +31,11 @@ const settingsMenu = [
       { to: "/settings/server/monitoring", key: "monitoring" },
     ],
   },
+  {
+    group: "opsifier",
+    adminOnly: false,
+    items: [{ to: "/settings/about", key: "about" }],
+  },
 ] as const;
 
 export function SettingsLayout() {

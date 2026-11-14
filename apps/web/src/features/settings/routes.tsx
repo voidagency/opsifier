@@ -1,5 +1,6 @@
 import { type AnyRoute, createRoute, type RouteComponent } from "@tanstack/react-router";
 import { AddressPage } from "../opsifier-address/AddressPage";
+import { AboutPage } from "./AboutPage";
 import { ApiReferencePage } from "./server/ApiReferencePage";
 import { CertificatesPage } from "./server/CertificatesPage";
 import { GeneralPage } from "./server/GeneralPage";
@@ -25,6 +26,7 @@ const pages: readonly SettingsPage[] = [
   { path: "server/monitoring", crumb: "settingsNav.monitoring", component: MonitoringPage },
   { path: "server/backup", crumb: "settingsNav.backup", component: ServerBackupPage },
   { path: "user/api", crumb: "settingsNav.api", component: ApiReferencePage },
+  { path: "about", crumb: "settingsNav.about", component: AboutPage },
 ];
 
 /** The settings pages of this feature, for the router to mount under the settings layout. */

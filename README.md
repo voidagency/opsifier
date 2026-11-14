@@ -140,4 +140,4 @@ Whoever controls an Opsifier instance has root-equivalent access to its host thr
 
 ## License
 
-Apache 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Opsifier is an independent project and is not affiliated with or endorsed by any other control panel vendor.
+Apache 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). The panel's image also holds programs and packages from other projects, each under its own license: their texts are in `/usr/share/doc/opsifier/THIRD-PARTY-NOTICES.txt` in the image, and the panel lists them under **Settings, About**. Opsifier is an independent project and is not affiliated with or endorsed by any other control panel vendor.

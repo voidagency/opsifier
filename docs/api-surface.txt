@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 32
+# documented-changes: 33
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -5150,6 +5150,19 @@ POST /api/v1/storage-providers/{id}/disconnect
   403
   404
   path id!: string
+GET /api/v1/system/about
+  200 components![].kind!: enum(package|program)
+  200 components![].license!: string
+  200 components![].name!: string
+  200 components![].url!: null|string
+  200 components![].version!: null|string
+  200 copyright!: string
+  200 license!: string
+  200 licenseUrl!: string
+  200 noticesFile!: null|string
+  200 sourceUrl!: string
+  200 version!: string
+  401
 GET /api/v1/system/info
   200 serverIp!: null
   200 serverIp!: string

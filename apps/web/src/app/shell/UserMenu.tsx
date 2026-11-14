@@ -97,7 +97,14 @@ export function UserMenu() {
           <LogOut aria-hidden="true" className="size-4 text-muted" />
           {t("user.signOut")}
         </DropdownMenuItem>
-        {system && <p className="px-2 pt-1 pb-1.5 font-mono text-micro text-muted">v{system.version}</p>}
+        {system && (
+          <DropdownMenuItem
+            onSelect={() => navigate({ to: "/settings/about" })}
+            className="font-mono text-micro text-muted"
+          >
+            {t("user.about", { version: system.version })}
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

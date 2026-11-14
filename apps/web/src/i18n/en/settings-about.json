@@ -1,0 +1,25 @@
+{
+  "title": "About Opsifier",
+  "version": "Version {{version}}",
+  "license": {
+    "title": "License",
+    "body": "Opsifier is free and open-source software, under the Apache License 2.0: you may use it, change it and share it, on the terms of that license.",
+    "read": "Read the license",
+    "source": "Source code on GitHub",
+    "release": "What this version changed"
+  },
+  "components": {
+    "title": "Third-party software",
+    "intro": "The panel's image also holds programs and packages from other projects, each under its own license.",
+    "file": "Every license text, in the panel's image on the server:",
+    "none": "This panel is not running from its image, so it has no list of what an image would ship.",
+    "programs_one": "{{count}} program",
+    "programs_other": "{{count}} programs",
+    "packages_one": "{{count}} JavaScript package",
+    "packages_other": "{{count}} JavaScript packages",
+    "name": "Name",
+    "version": "Version",
+    "license": "License",
+    "fromRepository": "from its repository"
+  }
+}

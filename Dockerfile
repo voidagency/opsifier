@@ -26,6 +26,10 @@ COPY apps/web apps/web
 COPY packages/contract packages/contract
 COPY templates templates
 RUN bun run build
+# What the image owes the software inside it: each license text, and the list the About page shows.
+COPY LICENSE NOTICE ./
+COPY licenses licenses
+RUN bun apps/server/src/bootstrap/notices.ts /src /src/notices
 
 # ---- SQLite's native binding: the one thing in the panel that depends on the platform.
 FROM ${NODE_IMAGE} AS native
@@ -83,10 +87,13 @@ RUN set -eu; \
 FROM ${NODE_IMAGE}
 ARG OPSIFIER_VERSION=0.1.0
 ARG OPSIFIER_IMAGE=
+# Each Debian package keeps its copyright file: it is the license that comes with the package.
 RUN set -eu; \
   apt-get update; \
   apt-get install -y --no-install-recommends ca-certificates git openssh-client libarchive-tools; \
-  rm -rf /var/lib/apt/lists/* /usr/share/doc/* /usr/share/man/*; \
+  rm -rf /var/lib/apt/lists/* /usr/share/man/*; \
+  find /usr/share/doc -mindepth 1 -type f ! -name copyright -delete; \
+  find /usr/share/doc -mindepth 1 -type d -empty -delete; \
   rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
     /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /opt/yarn-*
 COPY --from=docker /usr/bin/docker /usr/local/bin/docker
@@ -98,6 +105,7 @@ COPY --from=native /native/node_modules /app/node_modules
 COPY --from=build /src/apps/server/dist /app/dist
 COPY --from=build /src/apps/server/drizzle /app/drizzle
 COPY --from=build /src/apps/web/dist /app/web
+COPY --from=build /src/notices /usr/share/doc/opsifier
 ENV NODE_ENV=production \
     OPSIFIER_WEB_DIR=/app/web \
     OPSIFIER_VERSION=$OPSIFIER_VERSION \

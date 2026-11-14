@@ -135,7 +135,9 @@ export function requirementFor(method: string, path: string): Requirement {
       return second === undefined && isSafeMethod(method) ? OPEN : SERVER_ADMIN;
     case "system":
       // Updating or rolling back the panel is server administration, as much as its settings are.
-      return (second === "info" || second === "storage") && isSafeMethod(method) ? OPEN : SERVER_ADMIN;
+      return (second === "info" || second === "storage" || second === "about") && isSafeMethod(method)
+        ? OPEN
+        : SERVER_ADMIN;
     case "domains":
       return second === undefined && isSafeMethod(method) ? OPEN : SERVER_ADMIN;
     case "projects":

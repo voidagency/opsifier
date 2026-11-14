@@ -7,6 +7,8 @@ const PRODUCTION_DATA_DIR = "/var/lib/opsifier";
 const DEVELOPMENT_DATA_DIR = ".data";
 const DEFAULT_BUILD_TIMEOUT_SECONDS = 60 * 60;
 const DEFAULT_BUILDERS_DIR = "/opt/opsifier/builders";
+/** Where the image keeps Opsifier's license and the notices of everything else it holds. */
+const DEFAULT_NOTICES_DIR = "/usr/share/doc/opsifier";
 const DOCKER_RELEASES_URL = "https://api.github.com/repos/moby/moby/releases/latest";
 /** Replaced at release time: the project's own feed, a JSON file described in `core/config`. */
 const PANEL_RELEASES_URL = "https://github.com/voidagency/opsifier/releases/latest/download/release.json";
@@ -45,6 +47,7 @@ const envSchema = z.object({
   OPSIFIER_PANEL_UPSTREAM: optional(z.url().optional()),
   OPSIFIER_BUILD_TIMEOUT_SECONDS: optional(z.coerce.number().int().min(1).optional()),
   OPSIFIER_BUILDERS_DIR: optional(z.string().optional()),
+  OPSIFIER_NOTICES_DIR: optional(z.string().optional()),
   OPSIFIER_VERSION: optional(z.string().optional()),
   /** Where the panel learns about new releases of itself. `off` keeps it from asking at all. */
   OPSIFIER_RELEASES_URL: optional(z.union([z.literal("off"), z.url()]).optional()),
@@ -88,6 +91,8 @@ export interface Config {
   buildTimeoutMs: number;
   /** Where versioned builder tools are installed, as `<dir>/<tool>/<version>/<tool>`. */
   buildersDir: string;
+  /** Where the image keeps the license texts and `components.json`, for the About page. */
+  noticesDir: string;
   /** The image host operations run from. Undefined means the panel's own running image. */
   helperImage: string | undefined;
   /** Where the panel asks what the newest Docker engine is. */
@@ -214,6 +219,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     webDir: values.OPSIFIER_WEB_DIR === undefined ? undefined : resolve(values.OPSIFIER_WEB_DIR),
     buildTimeoutMs: (values.OPSIFIER_BUILD_TIMEOUT_SECONDS ?? DEFAULT_BUILD_TIMEOUT_SECONDS) * 1000,
     buildersDir: resolve(values.OPSIFIER_BUILDERS_DIR ?? DEFAULT_BUILDERS_DIR),
+    noticesDir: resolve(values.OPSIFIER_NOTICES_DIR ?? DEFAULT_NOTICES_DIR),
     helperImage: values.OPSIFIER_HELPER_IMAGE,
     dockerReleasesUrl: values.OPSIFIER_DOCKER_RELEASES_URL ?? DOCKER_RELEASES_URL,
     releasesUrl:

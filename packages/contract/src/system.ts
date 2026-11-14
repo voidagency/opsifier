@@ -10,6 +10,32 @@ export const systemInfo = z.object({
 });
 export type SystemInfo = z.infer<typeof systemInfo>;
 
+/** A program in the panel's image, or a JavaScript package whose code the panel ships. */
+export const thirdPartyComponent = z.object({
+  name: z.string(),
+  /** Null for a program whose version is whatever its own repository had when the image was built. */
+  version: z.string().nullable(),
+  /** An SPDX expression, as the component states it. */
+  license: z.string(),
+  url: z.string().nullable(),
+  kind: z.enum(["program", "package"]),
+});
+export type ThirdPartyComponent = z.infer<typeof thirdPartyComponent>;
+
+/** GET /api/v1/system/about: the panel's license, where its source is, and what it ships from others. */
+export const systemAbout = z.object({
+  version: z.string(),
+  /** An SPDX identifier. */
+  license: z.string(),
+  copyright: z.string(),
+  sourceUrl: z.string(),
+  licenseUrl: z.string(),
+  /** The file in the panel's image that holds every license text. Null outside the image. */
+  noticesFile: z.string().nullable(),
+  components: z.array(thirdPartyComponent),
+});
+export type SystemAbout = z.infer<typeof systemAbout>;
+
 export const storageFailureReason = z.enum(["full", "read_only", "locked", "failed"]);
 export type StorageFailureReason = z.infer<typeof storageFailureReason>;
 

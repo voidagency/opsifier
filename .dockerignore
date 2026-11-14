@@ -20,6 +20,9 @@
 !packages/mcp/package.json
 !templates
 !scripts/install-builders.mjs
+!LICENSE
+!NOTICE
+!licenses
 **/node_modules
 **/dist
 **/*.test.ts

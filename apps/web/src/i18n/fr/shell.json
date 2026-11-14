@@ -16,7 +16,8 @@
     "authentication": "Authentification",
     "groups": {
       "user": "Utilisateur",
-      "server": "Serveur"
+      "server": "Serveur",
+      "opsifier": "Opsifier"
     },
     "github": "GitHub",
     "storageProviders": "Stockages",
@@ -30,7 +31,8 @@
     "monitoring": "Supervision",
     "purpose": "Rôle",
     "knownHosts": "Hôtes connus",
-    "backup": "Sauvegarde du serveur"
+    "backup": "Sauvegarde du serveur",
+    "about": "À propos"
   },
   "server": {
     "copyIp": "Copier l'IP du serveur",
@@ -48,7 +50,8 @@
     "role": {
       "admin": "Administrateur",
       "member": "Membre"
-    }
+    },
+    "about": "Opsifier v{{version}} · Apache 2.0"
   },
   "palette": {
     "open": "Ouvrir la palette de commandes",
