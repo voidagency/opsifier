@@ -115,6 +115,8 @@ describe("the server backup", () => {
 
     const backup = restic.find((request) => request.args[0] === "backup");
     expect(backup?.args).toEqual(expect.arrayContaining(["--tag", "opsifier"]));
+    // The server's own name, which updates of the panel do not change, not its container's.
+    expect(backup?.args).toEqual(expect.arrayContaining(["--host", "fake-node"]));
     expect(backup?.args.some((arg) => arg.endsWith("server-backup/staging"))).toBe(true);
     const forget = restic.find((request) => request.args[0] === "forget");
     expect(forget?.args).toEqual(

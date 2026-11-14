@@ -281,6 +281,24 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
+/**
+ * The name backups are kept under: the server's own, from its Swarm node. restic forgets old backups
+ * name by name, and the container's name, which a process sees as its host name, changes with every
+ * update of the panel: each update would start a series that retention never reaches again.
+ */
+async function serverName(deps: AppDeps): Promise<string> {
+  try {
+    const [swarm, nodes] = await Promise.all([deps.docker.swarmInfo(), deps.docker.listNodes()]);
+    const self = nodes.find((node) => node.id === swarm.nodeId);
+    if (self !== undefined && self.hostname !== "") {
+      return self.hostname;
+    }
+  } catch {
+    // Docker could not say: the container's name is better than none.
+  }
+  return hostname();
+}
+
 /** Everything a server backup holds, gathered, then handed to restic, then forgotten by retention. */
 async function runServerBackup(deps: AppDeps, ctx: ActionContext): Promise<void> {
   const settings = read(deps);
@@ -364,8 +382,9 @@ async function runServerBackup(deps: AppDeps, ctx: ActionContext): Promise<void>
         present.push(path);
       }
     }
+    const host = await serverName(deps);
     const lines = await restic.run(
-      ["backup", "--json", "--tag", TAG, "--host", hostname(), "--exclude-caches", ...present],
+      ["backup", "--json", "--tag", TAG, "--host", host, "--exclude-caches", ...present],
       { ctx, timeoutMs: RESTIC_TIMEOUT_MS },
     );
     const summary = lines

@@ -1,6 +1,6 @@
 {
   "name": "@opsifier/cli",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "license": "Apache-2.0",
   "description": "Command-line client for an Opsifier panel. Talks only to its API.",
   "keywords": [
