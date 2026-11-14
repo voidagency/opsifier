@@ -11,6 +11,7 @@ import {
   panelApi,
 } from "@opsifier/client";
 import pkg from "../package.json" with { type: "json" };
+import { sessionConnection, sessionIsLive } from "./accounts";
 import {
   COMMANDS,
   type Command,
@@ -241,7 +242,14 @@ async function connectionFor(
   if (stored === undefined) {
     throw new ClientError("not_configured", t("auth.noKeyFor", { panel }));
   }
-  return connectionFromEnv({ OPSIFIER_URL: address || panel, OPSIFIER_API_KEY: stored.apiKey });
+  if (stored.apiKey !== undefined) {
+    return connectionFromEnv({ OPSIFIER_URL: address || panel, OPSIFIER_API_KEY: stored.apiKey });
+  }
+  // Signed in with `login --web` alone: the person's session does the rest as well.
+  if (stored.session !== undefined && sessionIsLive(stored.session)) {
+    return sessionConnection(address || panel, stored.session.token);
+  }
+  throw new ClientError("not_configured", t("auth.sessionEnded", { panel }));
 }
 
 /** Stands in for the panel in a command that needs none: reaching for it anyway is a bug, said loudly. */

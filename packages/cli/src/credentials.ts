@@ -3,13 +3,21 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { ClientError } from "@opsifier/client";
 
+/** A person's session, from `opsifier login --web`: what account commands need. */
+export interface KeptSession {
+  token: string;
+  expiresAt: string;
+  email: string;
+}
+
 /**
- * What `opsifier login` keeps: one API key per panel, and the panel commands use when nothing else
- * names one. It lives in the user's own configuration folder, readable by that user only.
+ * What `opsifier login` keeps for each panel: an API key, a person's session from `login --web`, or
+ * both, and the panel commands use when nothing else names one. It lives in the user's own
+ * configuration folder, readable by that user only.
  */
 export interface Credentials {
   current: string | null;
-  panels: Record<string, { apiKey: string }>;
+  panels: Record<string, { apiKey?: string; session?: KeptSession }>;
 }
 
 const EMPTY: Credentials = { current: null, panels: {} };
@@ -49,7 +57,12 @@ export async function readCredentials(file: string): Promise<StoredCredentials> 
     panels === undefined ||
     typeof panels !== "object" ||
     panels === null ||
-    Object.values(panels).some((panel) => typeof panel?.apiKey !== "string")
+    Object.values(panels).some(
+      (panel) =>
+        typeof panel !== "object" ||
+        panel === null ||
+        (typeof panel.apiKey !== "string" && typeof panel.session?.token !== "string"),
+    )
   ) {
     throw new ClientError("usage", `${file} is damaged. Remove it, then log in again with opsifier login.`);
   }

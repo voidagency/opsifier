@@ -1,8 +1,24 @@
 {
   "name": "@opsifier/cli",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "license": "Apache-2.0",
   "description": "Command-line client for an Opsifier panel. Talks only to its API.",
+  "keywords": [
+    "opsifier",
+    "cli",
+    "self-hosted",
+    "paas",
+    "deploy",
+    "docker",
+    "swarm"
+  ],
+  "homepage": "https://opsifier.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/voidagency/opsifier.git",
+    "directory": "packages/cli"
+  },
+  "bugs": "https://github.com/voidagency/opsifier/issues",
   "type": "module",
   "bin": {
     "opsifier": "dist/opsifier.mjs"

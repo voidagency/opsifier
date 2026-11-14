@@ -4,7 +4,13 @@ import type {
   ActionPage,
   BackupsDocument,
   CallerIdentity,
+  CliLoginCollect,
+  CliLoginSession,
+  CliLoginStart,
+  CliLoginStarted,
   CreateDatabaseRequest,
+  CreatedInvitations,
+  CreateInvitationsRequest,
   CreateProjectRequest,
   CreateServiceRequest,
   DatabaseCredentials,
@@ -22,6 +28,7 @@ import type {
   LogSearchResult,
   MaintenanceSettings,
   MaintenanceSettingsInput,
+  PanelUser,
   ProjectList,
   ProjectSummary,
   ReleaseList,
@@ -40,6 +47,8 @@ import type {
   ServiceSource,
   SourceSettings,
   StartScriptRunRequest,
+  UpdateUserRequest,
+  UserList,
 } from "@opsifier/contract";
 import type { PanelClient } from "./http";
 
@@ -100,6 +109,13 @@ export const ROUTES = {
   action: { method: "GET", path: "/api/v1/actions/{id}" },
   cancelAction: { method: "POST", path: "/api/v1/actions/{id}/cancel" },
   openapi: { method: "GET", path: "/api/v1/openapi.json" },
+  logout: { method: "POST", path: "/api/v1/auth/logout" },
+  cliLoginStart: { method: "POST", path: "/api/v1/auth/cli/start" },
+  cliLoginToken: { method: "POST", path: "/api/v1/auth/cli/token" },
+  users: { method: "GET", path: "/api/v1/users" },
+  updateUser: { method: "PUT", path: "/api/v1/users/{user}" },
+  setUserActive: { method: "POST", path: "/api/v1/users/{user}/active" },
+  inviteUsers: { method: "POST", path: "/api/v1/users/invitations" },
 } as const satisfies Record<string, RouteRef>;
 
 export type RouteName = keyof typeof ROUTES;
@@ -238,6 +254,28 @@ export function panelApi(client: PanelClient) {
     actions: (query: Partial<ListActionsQuery> = {}) => call<ActionPage>(ROUTES.actions, {}, { query }),
     action: (id: string, signal?: AbortSignal) => call<ActionDetail>(ROUTES.action, { id }, { signal }),
     cancelAction: (id: string) => call<ActionEntry>(ROUTES.cancelAction, { id }),
+
+    /** Ends the session the call is made with: a person's session from `opsifier login --web`. */
+    logout: () => call<unknown>(ROUTES.logout),
+    /** Unauthenticated: asks to sign the command line in as a person, approved in a browser. */
+    startCliLogin: (client: string) =>
+      call<CliLoginStarted>(ROUTES.cliLoginStart, {}, { body: { client } satisfies CliLoginStart }),
+    /** Unauthenticated: the session once approved, `{ status: "pending" }` until then. */
+    collectCliLogin: (deviceCode: string) =>
+      call<CliLoginSession | { status: "pending" }>(
+        ROUTES.cliLoginToken,
+        {},
+        { body: { deviceCode } satisfies CliLoginCollect },
+      ),
+
+    /** Accounts: a person's session only, never an API key. */
+    users: () => call<UserList>(ROUTES.users),
+    updateUser: (user: string, body: UpdateUserRequest) =>
+      call<PanelUser>(ROUTES.updateUser, { user }, { body }),
+    setUserActive: (user: string, active: boolean) =>
+      call<PanelUser>(ROUTES.setUserActive, { user }, { body: { active } }),
+    inviteUsers: (body: CreateInvitationsRequest) =>
+      call<CreatedInvitations>(ROUTES.inviteUsers, {}, { body }),
   };
 }
 

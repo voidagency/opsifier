@@ -5,7 +5,10 @@ const MISSING = "OPSIFIER_URL and OPSIFIER_API_KEY must both be set.";
 export interface Connection {
   /** The panel's origin, with nothing after it. */
   url: URL;
+  /** The credential: an API key, or a person's session from `opsifier login --web`. Empty sends none. */
   apiKey: string;
+  /** How the credential is sent: `Bearer` for an API key, `Session` for a person's session. */
+  scheme?: "Bearer" | "Session";
 }
 
 /** Secrets only ever come from the environment: an argument would show up in the process list. */

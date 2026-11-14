@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 29
+# documented-changes: 31
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -70,6 +70,57 @@ POST /api/v1/actions/{id}/cancel
   404
   409
   path id!: string
+GET /api/v1/auth/cli/requests/{code}
+  200 address!: null|string
+  200 client!: string
+  200 expiresAt!: string
+  200 requestedAt!: string
+  200 sameAddress!: boolean
+  200 userCode!: string
+  401
+  403
+  404
+  path code!: string
+POST /api/v1/auth/cli/requests/{code}/approve
+  200 status!: enum(approved|denied)
+  400
+  401
+  403
+  404
+  429
+  body code: string
+  body currentPassword: string
+  body recoveryCode: string
+  path code!: string
+POST /api/v1/auth/cli/requests/{code}/deny
+  200 status!: enum(approved|denied)
+  401
+  403
+  404
+  path code!: string
+POST /api/v1/auth/cli/start
+  201 deviceCode!: string
+  201 expiresIn!: integer
+  201 interval!: integer
+  201 userCode!: string
+  201 verificationPath!: string
+  400
+  429
+  503
+  body client!: string
+POST /api/v1/auth/cli/token
+  200 expiresAt!: string
+  200 status!: enum(approved)
+  200 token!: string
+  200 user!.email!: string
+  200 user!.hostAdmin: boolean
+  200 user!.id!: string
+  200 user!.role!: enum(admin|member)
+  200 user!.twoFactorEnabled!: boolean
+  202 status!: enum(pending)
+  400
+  410
+  body deviceCode!: string
 POST /api/v1/auth/credentials
   200 status!: enum(needs-setup)
   200 status!: enum(signed-in)

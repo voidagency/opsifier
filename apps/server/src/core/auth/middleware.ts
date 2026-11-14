@@ -48,6 +48,8 @@ export const defaultAuthLimits: AuthLimits = {
 };
 
 const BEARER = /^Bearer\s+(\S+)$/i;
+/** A session the command line received from `opsifier login --web`, sent the way an API key is. */
+const SESSION = /^Session\s+(\S+)$/i;
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 function peerAddress(c: Context<AppEnv>): string | undefined {
@@ -96,10 +98,21 @@ export function authenticate(
     let principal: Principal | null = null;
 
     if (authorization !== undefined) {
-      const token = BEARER.exec(authorization)?.[1];
-      principal = token === undefined ? null : findTokenPrincipal(deps.db, token, deps.now());
-      if (principal === null) {
-        throw unauthorized("invalid_token", "This API token is not valid.");
+      const session = SESSION.exec(authorization)?.[1];
+      if (session !== undefined) {
+        principal = findSessionPrincipal(deps.db, session, deps.now());
+        if (principal === null) {
+          throw unauthorized(
+            "invalid_session",
+            "This session has ended. Sign in again with opsifier login --web.",
+          );
+        }
+      } else {
+        const token = BEARER.exec(authorization)?.[1];
+        principal = token === undefined ? null : findTokenPrincipal(deps.db, token, deps.now());
+        if (principal === null) {
+          throw unauthorized("invalid_token", "This API token is not valid.");
+        }
       }
     } else {
       const token = getCookie(c, sessionCookieName(requestScheme(c, deps.config)));
@@ -161,7 +174,10 @@ export function requirePrincipal(c: Context<AppEnv>): Principal {
 export function requireSessionPrincipal(c: Context<AppEnv>): Extract<Principal, { kind: "session" }> {
   const principal = requirePrincipal(c);
   if (principal.kind !== "session") {
-    throw forbidden("session_required", "This can only be done from a signed-in browser session.");
+    throw forbidden(
+      "session_required",
+      "This can only be done by a person signed in: in a browser, or from the command line after opsifier login --web.",
+    );
   }
   return principal;
 }

@@ -11,6 +11,7 @@ import {
 } from "@tanstack/react-router";
 import type { ComponentType } from "react";
 import { ActivityPage } from "../features/activity/ActivityPage";
+import { CliLoginPage } from "../features/auth/CliLoginPage";
 import { InvitationPage } from "../features/auth/InvitationPage";
 import { LoginPage } from "../features/auth/LoginPage";
 import { SetupPage } from "../features/auth/SetupPage";
@@ -138,6 +139,27 @@ const twoFactorRoute = createRoute({
   component: TwoFactorRequiredPage,
 });
 
+/** Where a person approves `opsifier login --web`: signed in, and past any required two-factor setup. */
+const cliLoginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "cli-login",
+  validateSearch: (search: Record<string, unknown>): { code?: string } =>
+    typeof search.code === "string" ? { code: search.code } : {},
+  beforeLoad: async ({ context, location }) => {
+    const session = await getSession(context.queryClient);
+    if (session.status === "needs-setup") {
+      throw redirect({ to: "/setup", replace: true });
+    }
+    if (session.status === "signed-out") {
+      throw redirect({ to: "/login", search: { redirect: location.href }, replace: true });
+    }
+    if (session.twoFactorSetupRequired) {
+      throw redirect({ to: "/two-factor", replace: true });
+    }
+  },
+  component: CliLoginPage,
+});
+
 const appRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "app",
@@ -158,6 +180,15 @@ const appRoute = createRoute({
     }
   },
   component: AppShell,
+});
+
+/** An address given out once for two-factor setup, before it moved under Settings. */
+const userAuthenticationRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "user/authentication",
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/user/authentication", replace: true });
+  },
 });
 
 const overviewRoute = createRoute({
@@ -323,9 +354,11 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   invitationRoute,
   twoFactorRoute,
+  cliLoginRoute,
   createIdeRoute(() => rootRoute),
   appRoute.addChildren([
     overviewRoute,
+    userAuthenticationRoute,
     activityRoute,
     monitorRoute,
     domainsRoute,

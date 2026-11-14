@@ -4,7 +4,21 @@
 
 ## Install
 
-The command line needs Node 22.13 or later, and is one file with no dependencies.
+The command line needs Node 22.13 or later, and is one file with no dependencies. With Homebrew, which brings Node along:
+
+```sh
+brew install voidagency/tap/opsifier
+```
+
+Or from the release itself, since 0.5.0:
+
+```sh
+curl -fsSL https://github.com/voidagency/opsifier/releases/latest/download/opsifier -o /usr/local/bin/opsifier
+chmod +x /usr/local/bin/opsifier
+opsifier --version
+```
+
+To build it from the sources instead:
 
 ```sh
 git clone <your fork or the project repository> opsifier
@@ -54,6 +68,18 @@ export OPSIFIER_API_KEY=opsifier_...
 A key is never read from an argument, because a process's arguments can be seen by others on the same machine: `opsifier login` asks for it, or reads the first line of standard input (`opsifier login https://panel.example.com < key.txt`), or takes `OPSIFIER_API_KEY` when `OPSIFIER_URL` names that same panel: that key is never sent to any other. Use HTTPS whenever the panel is on another machine: over plain HTTP the key can be read on the way, and `opsifier` says so each time it runs at a terminal.
 
 Give a key the smallest reach that will do: a read-only key for looking around, a key narrowed to one project for deploying it. A key can never do more than its owner can at that moment, and revoking it stops it at once.
+
+### Sign in as a person, for accounts
+
+Account administration (listing accounts, inviting, changing a role, deactivating) is never open to an API key. To do it from a terminal, sign the command line in as yourself:
+
+```sh
+opsifier login --web https://panel.example.com
+```
+
+The command prints a link and a code such as `BCDF-GHJK`, then waits. Open the link in a browser where you are signed in to the panel, check that it shows the same code, and approve with your two-factor code, or your password if your account has none. The page also says when the request came from another address than your browser's: refuse it if you did not run the command yourself. A request waits ten minutes.
+
+The command line then keeps a session of your own account, valid for a day, next to any key kept for that panel. Commands use the key when there is one, and the session otherwise; `opsifier users` always uses the session. `opsifier logout` ends the session on the panel too, and forgets the panel.
 
 ## Work from a project's folder
 
@@ -212,6 +238,24 @@ opsifier scripts remove shop/web migrate --yes
 ```
 
 Without it, the command refuses and sends nothing.
+
+## Accounts
+
+With a session from `opsifier login --web`:
+
+```sh
+opsifier users                                              # every account, its role, two-factor and state
+opsifier users invite ada@example.com bob@example.com       # prints each one's single-use link
+opsifier users invite ada@example.com --channel <id>        # the panel e-mails it through that channel
+opsifier users invite ada@example.com --admin
+opsifier users invite ada@example.com --all-projects operator
+opsifier users set ada@example.com --role admin
+opsifier users set ada@example.com --all-projects viewer    # or operator, or none
+opsifier users deactivate ada@example.com                   # its sessions and keys stop at once
+opsifier users activate ada@example.com
+```
+
+The panel applies its own rules, as it does in the browser: only the owner changes another administrator, for instance.
 
 ## Everything else
 

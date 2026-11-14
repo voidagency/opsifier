@@ -27,6 +27,7 @@ import type {
   ServiceStatus,
   ServiceSummary,
 } from "@opsifier/contract";
+import { endKeptSession, loginWithBrowser, usersCommand } from "./accounts";
 import { completionScript, SHELLS, type Shell } from "./completion";
 import { readCredentials, writeCredentials } from "./credentials";
 import { ENV_NAME, readEnv, setEnv, unsetEnv } from "./env";
@@ -328,6 +329,8 @@ export const COMMANDS: readonly Command[] = [
     name: "login",
     group: "setup",
     args: "[<panel address>]",
+    more: ["login --web [<panel address>]"],
+    options: { web: { type: "boolean", description: "flag.web" } },
     offline: true,
     run: login,
   },
@@ -337,6 +340,24 @@ export const COMMANDS: readonly Command[] = [
     args: "[<panel address>]",
     offline: true,
     run: logout,
+  },
+  {
+    name: "users",
+    group: "other",
+    args: "[invite <email>… | set <email> | deactivate <email> | activate <email>]",
+    verbs: ["invite", "set", "deactivate", "activate"],
+    more: [
+      "users invite ada@example.com [--admin] [--all-projects viewer|operator] [--channel <id>]",
+      "users set ada@example.com [--role admin|member] [--all-projects viewer|operator|none]",
+      "users deactivate ada@example.com",
+    ],
+    options: {
+      admin: { type: "boolean", description: "flag.admin" },
+      role: { type: "string", description: "flag.role" },
+      "all-projects": { type: "string", description: "flag.allProjects" },
+      channel: { type: "string", description: "flag.channel" },
+    },
+    run: usersCommand,
   },
   {
     name: "create",
@@ -1055,6 +1076,9 @@ async function login(context: CommandContext): Promise<CommandResult> {
   } catch {
     throw usage(t("usage.loginAddressInvalid"));
   }
+  if (context.flags.web === true) {
+    return loginWithBrowser(context, panel);
+  }
   let warned = false;
   const check = (apiKey: string) => {
     const connection = connectionFromEnv({ OPSIFIER_URL: panel, OPSIFIER_API_KEY: apiKey });
@@ -1100,7 +1124,8 @@ async function login(context: CommandContext): Promise<CommandResult> {
     // Nothing is kept until the panel itself has accepted the key.
     identity = await check(apiKey);
   }
-  credentials.panels[panel] = { apiKey };
+  // A session from login --web stays: account commands need it, whatever key is kept.
+  credentials.panels[panel] = { ...credentials.panels[panel], apiKey };
   credentials.current = panel;
   await writeCredentials(context.credentialsFile, credentials);
   const user = identity.user.email;
@@ -1126,6 +1151,8 @@ async function logout(context: CommandContext): Promise<CommandResult> {
       text: () => (panel === null ? t("logout.nowhere") : t("logout.none", { panel })),
     };
   }
+  const sessionEnded = await endKeptSession(context, panel);
+  const hadKey = credentials.panels[panel]?.apiKey !== undefined;
   delete credentials.panels[panel];
   // Never another panel quietly in its place: the next command would act there.
   const wasCurrent = credentials.current === panel;
@@ -1135,11 +1162,12 @@ async function logout(context: CommandContext): Promise<CommandResult> {
   await writeCredentials(context.credentialsFile, credentials);
   const others = Object.keys(credentials.panels);
   return {
-    data: { panel, removed: true, current: credentials.current },
+    data: { panel, removed: true, sessionEnded, current: credentials.current },
     text: () =>
       [
         t("logout.done", { panel }),
-        context.styles.dim(t("logout.revoke")),
+        ...(sessionEnded ? [t("logout.sessionEnded", { panel })] : []),
+        ...(hadKey ? [context.styles.dim(t("logout.revoke"))] : []),
         ...(wasCurrent && others.length > 0 ? [t("logout.choose", { panels: others.join(", ") })] : []),
       ].join("\n"),
   };

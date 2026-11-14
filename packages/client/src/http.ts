@@ -69,10 +69,10 @@ export class PanelClient {
       }
     }
 
-    const headers: Record<string, string> = {
-      accept: "application/json",
-      authorization: `Bearer ${this.connection.apiKey}`,
-    };
+    const headers: Record<string, string> = { accept: "application/json" };
+    if (this.connection.apiKey !== "") {
+      headers.authorization = `${this.connection.scheme ?? "Bearer"} ${this.connection.apiKey}`;
+    }
     if (options.raw !== undefined) {
       headers["content-type"] = options.raw.contentType;
     } else if (options.body !== undefined) {

@@ -1,5 +1,10 @@
 import {
   type ChangeCredentialsRequest,
+  type CliLoginApprove,
+  type CliLoginRequest,
+  type CliLoginSession,
+  type CliLoginStart,
+  type CliLoginStarted,
   type LoginRequest,
   type SessionState,
   type SessionUser,
@@ -13,6 +18,7 @@ import { nanoid } from "nanoid";
 import {
   buildOtpauthUri,
   deleteOtherSessions,
+  deleteSession,
   deleteSessionByToken,
   ensureSetupToken,
   generateRecoveryCodes,
@@ -36,9 +42,18 @@ import {
 import type { AppDeps } from "../../core/context";
 import type { DbHandle } from "../../core/db";
 import { apiTokens } from "../../core/db/schema";
-import { AppError, badRequest, conflict, forbidden, unauthorized } from "../../core/errors";
+import {
+  AppError,
+  badRequest,
+  conflict,
+  forbidden,
+  notFound,
+  serviceUnavailable,
+  unauthorized,
+} from "../../core/errors";
 import { revokeTriggersOfAccount } from "../service-tabs/deployments/trigger";
 import { needsTwoFactorSetup, twoFactorRequired } from "../two-factor-policy/service";
+import { CLI_LOGIN_INTERVAL_S, CLI_LOGIN_TTL_MS, CliLogins } from "./cli-login";
 import * as repo from "./repo";
 
 export interface SignedIn {
@@ -93,6 +108,7 @@ export function prepareSetupToken({ db, config, logger }: Pick<AppDeps, "db" | "
 
 export function createAuthService(deps: AppDeps) {
   const { db, config, logger, secrets, actions, realtime, rateLimiter, authLimits, now } = deps;
+  const cliLogins = new CliLogins(now);
 
   function reserveSensitive(userId: string): RateLimitReservation {
     return rateLimiter.consume([{ key: `sensitive:${userId}`, rule: authLimits.sensitivePerUser }]);
@@ -453,6 +469,138 @@ export function createAuthService(deps: AppDeps) {
         actorEmail: user.email,
       });
       return toSessionUser(updated);
+    },
+
+    /** A command line asks to sign in as a person. Nothing is granted until someone approves it. */
+    startCliLogin(input: CliLoginStart, meta: RequestMeta): CliLoginStarted {
+      rateLimiter.consume([{ key: `cli-login:address:${meta.ip}`, rule: authLimits.loginPerAddress }]);
+      const started = cliLogins.start(input.client, meta.ip === UNKNOWN_IP ? null : meta.ip);
+      if (started === null) {
+        throw serviceUnavailable(
+          "cli_login_busy",
+          "Too many sign-in requests are waiting. Try again in a few minutes.",
+        );
+      }
+      return {
+        deviceCode: started.deviceCode,
+        userCode: started.entry.userCode,
+        verificationPath: `/cli-login?code=${started.entry.userCode}`,
+        expiresIn: Math.round(CLI_LOGIN_TTL_MS / 1000),
+        interval: CLI_LOGIN_INTERVAL_S,
+      };
+    },
+
+    /** The command line asks for its session. Handed over once, when a person has approved it. */
+    collectCliLogin(deviceCode: string, meta: RequestMeta): CliLoginSession | { status: "pending" } {
+      const collected = cliLogins.collect(deviceCode);
+      if (collected.status === "pending") {
+        return { status: "pending" };
+      }
+      if (collected.status === "gone") {
+        throw new AppError(
+          410,
+          "cli_login_gone",
+          collected.reason === "denied"
+            ? "This sign-in was refused in the panel."
+            : "This sign-in request has expired or is unknown. Start again.",
+        );
+      }
+      const user =
+        collected.entry.userId === undefined ? undefined : repo.findUserById(db, collected.entry.userId);
+      if (user === undefined || user.deactivatedAt !== null) {
+        throw new AppError(410, "cli_login_gone", "The account that approved this sign-in no longer exists.");
+      }
+      const { token, session } = insertSession(db, {
+        userId: user.id,
+        persistent: false,
+        secure: meta.secure,
+        ip: meta.ip === UNKNOWN_IP ? null : meta.ip,
+        userAgent: `opsifier command line on ${collected.entry.client}`,
+        now: now(),
+      });
+      actions.record({
+        type: "auth.cli-login",
+        title: `Signed in the command line on ${collected.entry.client}`,
+        actorEmail: user.email,
+      });
+      return {
+        status: "approved",
+        token,
+        expiresAt: session.expiresAt.toISOString(),
+        user: toSessionUser(user),
+      };
+    },
+
+    /** What the approval page shows about a request still waiting. */
+    viewCliLogin(userCode: string, meta: RequestMeta): CliLoginRequest {
+      const entry = cliLogins.waiting(userCode);
+      if (entry === undefined) {
+        throw notFound("This sign-in request has expired, was already answered, or does not exist.");
+      }
+      return {
+        userCode: entry.userCode,
+        client: entry.client,
+        address: entry.address,
+        sameAddress: entry.address !== null && entry.address === meta.ip,
+        requestedAt: new Date(entry.requestedAt).toISOString(),
+        expiresAt: new Date(entry.expiresAt).toISOString(),
+      };
+    },
+
+    /**
+     * Approving hands a session of this account to a terminal: the person proves again who they are,
+     * with their code when they have one, else their password.
+     */
+    async approveCliLogin(
+      principal: SessionPrincipal,
+      userCode: string,
+      input: CliLoginApprove,
+    ): Promise<void> {
+      if (cliLogins.waiting(userCode) === undefined) {
+        throw notFound("This sign-in request has expired, was already answered, or does not exist.");
+      }
+      const attempt = reserveSensitive(principal.user.id);
+      const user = repo.findUserById(db, principal.user.id);
+      if (user === undefined) {
+        throw unauthorized("unauthenticated", "Sign in to continue.");
+      }
+      if (user.totpSecret !== null) {
+        if (input.recoveryCode !== undefined) {
+          if (!verifyRecoveryCode(user, input.recoveryCode)) {
+            throw badRequest("invalid_recovery_code", WRONG_CODE, { recoveryCode: WRONG_CODE });
+          }
+        } else if (input.code === undefined || !verifyActiveCode(user, input.code)) {
+          throw badRequest("invalid_two_factor_code", WRONG_CODE, { code: WRONG_CODE });
+        }
+      } else {
+        if (input.currentPassword === undefined) {
+          throw badRequest("current_password_required", "Enter your password.", {
+            currentPassword: "Required",
+          });
+        }
+        await assertCurrentPassword(user, input.currentPassword);
+      }
+      // Checked again after the slow checks, so two tabs cannot both answer it.
+      const entry = cliLogins.waiting(userCode);
+      if (entry === undefined) {
+        throw notFound("This sign-in request has expired, was already answered, or does not exist.");
+      }
+      cliLogins.approve(entry, user.id);
+      attempt.refund();
+    },
+
+    denyCliLogin(userCode: string): void {
+      const entry = cliLogins.waiting(userCode);
+      if (entry === undefined) {
+        throw notFound("This sign-in request has expired, was already answered, or does not exist.");
+      }
+      cliLogins.deny(entry);
+    },
+
+    /** Ends the session a request signs with, whether its token came in a cookie or a header. */
+    endSession(sessionId: string): void {
+      deleteSession(db, sessionId);
+      realtime.disconnectSessions([sessionId]);
     },
   };
 }

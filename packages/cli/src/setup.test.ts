@@ -149,7 +149,12 @@ describe("logging in", () => {
 
   it("forgets a panel's key on logout, never leaving another panel current in its place", async () => {
     const first = await run(["logout"], { env: {}, credentialsFile: file() });
-    expect(jsonOf(first)).toEqual({ panel: originOf(other), removed: true, current: null });
+    expect(jsonOf(first)).toEqual({
+      panel: originOf(other),
+      removed: true,
+      sessionEnded: false,
+      current: null,
+    });
     const nowhere = await run(["projects"], { env: {}, credentialsFile: file() });
     expect(nowhere.code).toBe(3);
 

@@ -149,6 +149,8 @@ jobs:
     permissions:
       contents: write
       packages: write
+      # npm provenance: the package on npm says which workflow run built it.
+      id-token: write
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
@@ -187,6 +189,22 @@ jobs:
           docker buildx imagetools create "${args[@]}" "${sources[@]}"
       - name: Check what was published
         run: docker buildx imagetools inspect "$IMAGE:${{ needs.plan.outputs.tag }}"
+      - uses: oven-sh/setup-bun@v2
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          bun-version: 1.4.3
+      - uses: actions/setup-node@v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          node-version: 22
+      - name: Build the command line
+        if: startsWith(github.ref, 'refs/tags/v')
+        # One file with no dependencies, for Node 22.13 or later: attached to the release below.
+        run: |
+          bun install --frozen-lockfile
+          bun run --filter '@opsifier/cli' build
+          cp packages/cli/dist/opsifier.mjs "$RUNNER_TEMP/opsifier"
+          node "$RUNNER_TEMP/opsifier" --version
       - name: Create the release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -204,4 +222,20 @@ jobs:
             --arg notes "$notes" \
             --arg publishedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             '{version: $version, image: $image, notes: $notes, migrations: [], publishedAt: $publishedAt}' >release.json
-          gh release create "$GITHUB_REF_NAME" release.json --verify-tag --title "Opsifier $VERSION" --notes "$notes"
+          gh release create "$GITHUB_REF_NAME" release.json "$RUNNER_TEMP/opsifier#opsifier (command line, Node 22.13+)" \
+            --verify-tag --title "Opsifier $VERSION" --notes "$notes"
+      - name: Publish the command line to npm
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        working-directory: packages/cli
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "No NPM_TOKEN secret yet: the command line is not published to npm."
+            exit 0
+          fi
+          # Published as plain `opsifier`, the bundled file only: the workspace links are for building.
+          npm pkg set name=opsifier
+          npm pkg delete devDependencies
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$RUNNER_TEMP/.npmrc"
+          npm publish --provenance --access public --userconfig "$RUNNER_TEMP/.npmrc"

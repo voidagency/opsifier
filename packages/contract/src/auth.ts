@@ -142,3 +142,71 @@ export const twoFactorPolicyState = z.object({
   canChange: z.boolean(),
 });
 export type TwoFactorPolicyState = z.infer<typeof twoFactorPolicyState>;
+
+/**
+ * Signing the command line in as a person (`opsifier login --web`). The command line asks for a
+ * request, the person approves it in a signed-in browser, and the command line receives a session of
+ * its own: account administration, which API keys can never reach, then works from a terminal.
+ */
+export const cliLoginStart = z.strictObject({
+  /** What the command line says about itself, shown on the approval page: its host name, say. */
+  client: z.string().trim().min(1, "Required").max(120, "Must be at most 120 characters"),
+});
+export type CliLoginStart = z.infer<typeof cliLoginStart>;
+
+/** POST /api/v1/auth/cli/start */
+export const cliLoginStarted = z.object({
+  /** Secret: only the command line that asked holds it, and only it can collect the session. */
+  deviceCode: z.string(),
+  /** Shown in the terminal and on the approval page, so the person can tell the two match. */
+  userCode: z.string(),
+  /** Where to approve it, from the panel's address. */
+  verificationPath: z.string(),
+  expiresIn: z.number().int().min(1),
+  /** How often to ask for the session, in seconds. */
+  interval: z.number().int().min(1),
+});
+export type CliLoginStarted = z.infer<typeof cliLoginStarted>;
+
+export const cliLoginCollect = z.strictObject({ deviceCode: z.string().min(1).max(200) });
+export type CliLoginCollect = z.infer<typeof cliLoginCollect>;
+
+/** POST /api/v1/auth/cli/token, once the request is approved. Given out once. */
+export const cliLoginSession = z.object({
+  status: z.literal("approved"),
+  token: z.string(),
+  expiresAt: z.string(),
+  user: sessionUser,
+});
+export type CliLoginSession = z.infer<typeof cliLoginSession>;
+
+/** POST /api/v1/auth/cli/token, while nobody has answered yet. */
+export const cliLoginPending = z.object({ status: z.literal("pending") });
+
+/** GET /api/v1/auth/cli/requests/{code}: what the approval page shows. */
+export const cliLoginRequest = z.object({
+  userCode: z.string(),
+  client: z.string(),
+  /** The address the request came from, when known. */
+  address: z.string().nullable(),
+  /** Whether it is the address of the browser looking at it: a different one deserves a second look. */
+  sameAddress: z.boolean(),
+  requestedAt: z.string(),
+  expiresAt: z.string(),
+});
+export type CliLoginRequest = z.infer<typeof cliLoginRequest>;
+
+/** POST /api/v1/auth/cli/requests/{code}/approve. The account's code if it has one, else its password. */
+export const cliLoginApprove = z.strictObject({
+  currentPassword: existingPassword.optional(),
+  code: totpCode.optional(),
+  recoveryCode: recoveryCode.optional(),
+});
+export type CliLoginApprove = z.infer<typeof cliLoginApprove>;
+
+export const cliLoginPath = z.object({
+  code: z.string().regex(/^[A-Za-z]{4}-?[A-Za-z]{4}$/, "Invalid code"),
+});
+
+/** The answer to an approval or a refusal. */
+export const cliLoginAnswered = z.object({ status: z.enum(["approved", "denied"]) });
