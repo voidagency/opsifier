@@ -14,12 +14,13 @@
   },
   "list": {
     "emptyTitle": "Aucun projet dans le Studio pour l'instant",
-    "emptyDescription": "Reliez le service qui montre l'aperçu en direct d'un projet, et le dossier où travaille l'agent.",
+    "emptyDescription": "Ajoutez un projet depuis GitHub : le Studio le copie pour l'agent, crée son aperçu en direct et l'ouvre.",
     "noConversation": "{{project}} · pas encore de conversation",
     "lastConversation": "{{project}} · {{title}} · {{date}}",
     "untitled": "Conversation sans titre",
     "open": "Ouvrir",
-    "openNamed": "Ouvrir {{name}} dans le Studio"
+    "openNamed": "Ouvrir {{name}} dans le Studio",
+    "emptyNoFolder": "Réglez le dossier des projets dans les réglages du Studio pour ajouter des projets depuis GitHub, ou reliez un service qui montre déjà l'aperçu d'un projet."
   },
   "link": {
     "action": "Relier un projet",
@@ -113,7 +114,9 @@
     "saved": "Réglages du Studio enregistrés",
     "check": "Tester la connexion",
     "checkOk": "Le panneau joint le serveur d'agent, version {{version}}.",
-    "checkFailed": "Le panneau ne joint pas le serveur d'agent : {{message}}"
+    "checkFailed": "Le panneau ne joint pas le serveur d'agent : {{message}}",
+    "projectsDir": "Dossier des projets",
+    "projectsDirHint": "Où vont les projets dans le conteneur du serveur d'agent, par exemple /projects. Ce doit être un dossier du serveur monté dans ce service, depuis son onglet Stockage : chaque projet ajouté y est copié, et son aperçu monte le même dossier."
   },
   "actions": {
     "command": "A lancé",
@@ -163,5 +166,18 @@
     "label": "Afficher",
     "chat": "Conversation",
     "preview": "Aperçu"
+  },
+  "add": {
+    "action": "Ajouter un projet",
+    "title": "Ajouter un projet GitHub",
+    "description": "Le Studio copie le dépôt avec le jeton GitHub du serveur d'agent, crée son aperçu en direct et l'ouvre. L'agent pousse ensuite ses changements sur le dépôt.",
+    "repository": "Dépôt",
+    "repositoryHint": "Son adresse, comme https://github.com/owner/name, ou owner/name. Le jeton GitHub du serveur d'agent doit y avoir accès, avec Contents en lecture et écriture.",
+    "repositoryRequired": "Saisissez le dépôt.",
+    "branch": "Branche",
+    "branchHint": "La branche sur laquelle l'agent travaille et pousse. La branche par défaut du dépôt si vous la laissez vide.",
+    "submit": "Ajouter",
+    "working": "Copie du dépôt et création de son aperçu… Cela peut prendre une minute.",
+    "done": "{{name}} est dans le Studio. Son aperçu démarre : le premier démarrage installe ses dépendances."
   }
 }

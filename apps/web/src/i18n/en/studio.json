@@ -14,12 +14,13 @@
   },
   "list": {
     "emptyTitle": "No project in the Studio yet",
-    "emptyDescription": "Link the service that shows a project's live preview, and the folder the agent works in.",
+    "emptyDescription": "Add a project from GitHub: the Studio copies it for the agent, makes its live preview and opens it.",
     "noConversation": "{{project}} · no conversation yet",
     "lastConversation": "{{project}} · {{title}} · {{date}}",
     "untitled": "Untitled conversation",
     "open": "Open",
-    "openNamed": "Open {{name}} in the Studio"
+    "openNamed": "Open {{name}} in the Studio",
+    "emptyNoFolder": "Set the projects folder in the Studio's settings to add projects from GitHub, or link a service that already shows a project's preview."
   },
   "link": {
     "action": "Link a project",
@@ -113,7 +114,9 @@
     "saved": "Studio settings saved",
     "check": "Check the connection",
     "checkOk": "The panel reaches the agent server, version {{version}}.",
-    "checkFailed": "The panel does not reach the agent server: {{message}}"
+    "checkFailed": "The panel does not reach the agent server: {{message}}",
+    "projectsDir": "Projects folder",
+    "projectsDirHint": "Where projects go in the agent server's container, such as /projects. It must be a folder of the server mounted in that service, from its Storage tab: each project added is copied there, and its preview mounts the same folder."
   },
   "actions": {
     "command": "Ran",
@@ -163,5 +166,18 @@
     "label": "Show",
     "chat": "Conversation",
     "preview": "Preview"
+  },
+  "add": {
+    "action": "Add a project",
+    "title": "Add a GitHub project",
+    "description": "The Studio copies the repository with the agent server's GitHub token, makes its live preview, and opens it. The agent then pushes its changes to the repository.",
+    "repository": "Repository",
+    "repositoryHint": "Its address, such as https://github.com/owner/name, or owner/name. The agent server's GitHub token must reach it, with Contents in read and write.",
+    "repositoryRequired": "Enter the repository.",
+    "branch": "Branch",
+    "branchHint": "The branch the agent works on and pushes to. The repository's default branch when left empty.",
+    "submit": "Add",
+    "working": "Copying the repository and making its preview… This can take a minute.",
+    "done": "{{name}} is in the Studio. Its preview is starting: the first start installs its dependencies."
   }
 }

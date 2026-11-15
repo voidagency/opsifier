@@ -1,4 +1,5 @@
 import {
+  type AddStudioProjectRequest,
   type LinkStudioAppRequest,
   type StudioMessageRequest,
   type StudioSettings,
@@ -48,6 +49,8 @@ export const studioSettingsQuery = queryOptions({
 export const studioApi = {
   saveSettings: (body: StudioSettings) => api.put("/settings/studio", { body, schema: studioSettings }),
   check: () => api.post("/settings/studio/check", { schema: studioCheck }),
+  addProject: (body: AddStudioProjectRequest) =>
+    api.post("/studio/projects", { body, schema: studioAppDetail }),
   link: (project: string, service: string, body: LinkStudioAppRequest) =>
     api.put(appPath(project, service), { body, schema: studioAppDetail }),
   unlink: (project: string, service: string) =>

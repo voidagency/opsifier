@@ -1,5 +1,6 @@
 import { createRoute } from "@hono/zod-openapi";
 import {
+  addStudioProjectRequest,
   linkStudioAppRequest,
   servicePath,
   studioAppDetail,
@@ -17,6 +18,8 @@ import {
 import { requirePrincipal, requireSessionPrincipal } from "../../core/auth";
 import type { Feature } from "../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
+import { requestAccess } from "../access/guard";
+import { addStudioProject } from "./projects";
 import {
   checkStudioAgent,
   getStudioApp,
@@ -98,6 +101,29 @@ const overviewRoute = createRoute({
     200: jsonResponse(studioOverview, "The linked services, with their previews."),
     401: denied,
     403: refused,
+  },
+});
+
+const addProjectRoute = createRoute({
+  method: "post",
+  path: "/api/v1/studio/projects",
+  tags,
+  description:
+    "Adds a GitHub project to the Studio: copies it into the projects folder from inside the agent server's container, " +
+    "with the agent server's GITHUB_TOKEN secret, makes its preview in the agent server's project, links the two, " +
+    "and starts the preview's first deployment. The token never leaves the agent server's container.",
+  request: { body: jsonBody(addStudioProjectRequest) },
+  responses: {
+    201: jsonResponse(studioAppDetail, "The project, linked to the Studio."),
+    400: invalid,
+    401: denied,
+    403: errorResponse("A folder of the server takes an administrator."),
+    409: blocked,
+    422: errorResponse(
+      "GitHub did not let the agent server read the repository, it has no such branch, or it is not a Vite project.",
+    ),
+    502: errorResponse("The copy failed."),
+    503: errorResponse("The agent server could not be reached."),
   },
 });
 
@@ -251,6 +277,18 @@ export const feature: Feature = {
     app.openapi(modelsRoute, async (c) => c.json(await getStudioModels(deps), 200));
 
     app.openapi(appRoute, async (c) => c.json(await getStudioApp(deps, target(c.req.valid("param"))), 200));
+
+    app.openapi(addProjectRoute, async (c) => {
+      const principal = requirePrincipal(c);
+      const added = await addStudioProject(
+        deps,
+        c.req.valid("json"),
+        requestAccess(deps, c),
+        actorOf(principal),
+        principal.user.role === "admin",
+      );
+      return c.json(added, 201);
+    });
 
     app.openapi(linkRoute, async (c) => {
       const params = c.req.valid("param");

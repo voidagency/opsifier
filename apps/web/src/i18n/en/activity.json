@@ -107,7 +107,8 @@
       "link": "Project linked to the Studio",
       "unlink": "Project taken out of the Studio",
       "conversation": "Studio conversation started"
-    }
+    },
+    "studio.add-project": "Project added to the Studio"
   },
   "healthLabel": "Recent actions by outcome",
   "noMatch": "Nothing with this outcome in the entries shown.",

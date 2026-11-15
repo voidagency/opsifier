@@ -189,7 +189,15 @@
     "studio_agent_error": "Le serveur d'agent n'a pas pu le faire. Réessayez dans un instant.",
     "studio_agent_unknown": "Ce service n'existe pas.",
     "service_without_id": "Ce service n'a pas encore d'identifiant : déployez-le une fois, puis reliez-le.",
-    "studio_model_unknown": "Le serveur d'agent n'a pas ce modèle."
+    "studio_model_unknown": "Le serveur d'agent n'a pas ce modèle.",
+    "studio_off": "Activez d'abord le Studio et choisissez son serveur d'agent.",
+    "studio_projects_unset": "Réglez d'abord le dossier des projets, dans les réglages du Studio.",
+    "studio_projects_unmounted": "Le service du serveur d'agent n'a aucun dossier du serveur monté sur le dossier des projets. Ajoutez-en un dans son onglet Stockage.",
+    "studio_repository_invalid": "Indiquez un dépôt GitHub : son adresse, comme https://github.com/owner/name, ou owner/name.",
+    "studio_repository_unreachable": "Le jeton GitHub du serveur d'agent n'a pas accès à ce dépôt. Ajoutez le dépôt à ce jeton, avec Contents en lecture et écriture, ou vérifiez son adresse.",
+    "studio_branch_missing": "Le dépôt n'a pas de branche de ce nom.",
+    "studio_project_exists": "Ce projet existe déjà : ouvrez-le dans le Studio, ou reliez son aperçu.",
+    "studio_project_unsupported": "Ce projet n'utilise pas Vite, le seul serveur de développement que les aperçus du Studio font tourner pour l'instant."
   },
   "retention": {
     "removed": "Supprimé",

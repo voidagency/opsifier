@@ -51,6 +51,7 @@ function SettingsForm({ settings }: { settings: StudioSettings }) {
       service: agent === null ? "" : `${agent.project}/${agent.service}`,
       url: agent?.url ?? DEFAULT_URL,
       keyFile: agent === null ? DEFAULT_KEY_FILE : (agent.keyFile ?? ""),
+      projectsDir: agent?.projectsDir ?? "",
     },
     validate: (values) => ({
       ...(values.enabled && values.service === "" ? { service: t("settings.serviceRequired") } : {}),
@@ -67,6 +68,7 @@ function SettingsForm({ settings }: { settings: StudioSettings }) {
                 service,
                 url: values.url.trim(),
                 keyFile: values.keyFile.trim() === "" ? null : values.keyFile.trim(),
+                projectsDir: values.projectsDir.trim() === "" ? null : values.projectsDir.trim(),
               },
       });
       await queryClient.invalidateQueries({ queryKey: studioKey });
@@ -112,6 +114,20 @@ function SettingsForm({ settings }: { settings: StudioSettings }) {
         optional
       >
         <Input {...form.field("keyFile")} mono autoComplete="off" spellCheck={false} />
+      </Field>
+      <Field
+        label={t("settings.projectsDir")}
+        hint={t("settings.projectsDirHint")}
+        error={form.errors.projectsDir}
+        optional
+      >
+        <Input
+          {...form.field("projectsDir")}
+          mono
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="/projects"
+        />
       </Field>
       {check !== null && (
         <FormBanner tone={check.reachable ? "success" : "error"}>

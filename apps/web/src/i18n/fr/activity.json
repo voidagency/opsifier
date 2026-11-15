@@ -107,7 +107,8 @@
       "link": "Projet relié au Studio",
       "unlink": "Projet retiré du Studio",
       "conversation": "Conversation du Studio lancée"
-    }
+    },
+    "studio.add-project": "Projet ajouté au Studio"
   },
   "healthLabel": "Actions récentes par résultat",
   "noMatch": "Aucune entrée affichée n'a ce résultat.",

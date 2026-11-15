@@ -3,7 +3,14 @@ import "../../testing/browser-stubs";
 import type { StudioApp, StudioAppDetail, StudioEventPage } from "@opsifier/contract";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { type FakeRoute, installFakeServer, renderApp, resetApp, SIGNED_IN } from "../../testing/appHarness";
+import {
+  type FakeRoute,
+  installFakeServer,
+  renderApp,
+  resetApp,
+  SIGNED_IN,
+  withStatus,
+} from "../../testing/appHarness";
 
 afterEach(resetApp);
 
@@ -80,7 +87,7 @@ const page = (overrides: Partial<StudioEventPage> = {}): StudioEventPage => ({
 
 const base = (extra: FakeRoute = {}): FakeRoute => ({
   "GET /projects": { projects: [] },
-  "GET /studio": { enabled: true, agentConfigured: true, apps: [app()] },
+  "GET /studio": { enabled: true, agentConfigured: true, canAddProjects: false, apps: [app()] },
   [`GET ${APP}`]: detail(),
   [`GET ${APP}/conversations/${CONVERSATION}/events`]: page(),
   "GET /studio/models": { active: "qwen-rtx", models: [QWEN] },
@@ -100,13 +107,77 @@ describe("the Studio's list", () => {
   });
 
   it("says how to turn it on while it is off", async () => {
-    installFakeServer(base({ "GET /studio": { enabled: false, agentConfigured: false, apps: [] } }));
+    installFakeServer(
+      base({ "GET /studio": { enabled: false, agentConfigured: false, canAddProjects: false, apps: [] } }),
+    );
     renderApp("/studio");
 
     expect(await screen.findByText("The Studio is turned off")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Open the Studio settings" }).getAttribute("href")).toBe(
       "/settings/server/studio",
     );
+  });
+
+  it("adds a GitHub project, then opens it", async () => {
+    const added = detail({
+      service: "un-mot-par-jour-landing-preview",
+      workspaceDir: "/projects/un-mot-par-jour-landing",
+      conversations: [],
+      lastConversation: null,
+    });
+    const server = installFakeServer(
+      base({
+        "GET /studio": { enabled: true, agentConfigured: true, canAddProjects: true, apps: [app()] },
+        "POST /studio/projects": added,
+        "GET /projects/lovable/services/un-mot-par-jour-landing-preview/studio": added,
+      }),
+    );
+    const rendered = renderApp("/studio");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add a project" }));
+    fireEvent.change(await screen.findByLabelText("Repository"), {
+      target: { value: "https://github.com/mehdinajeddine/un-mot-par-jour-landing" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() =>
+      expect(server.calls.find((call) => call.path === "/studio/projects")?.body).toEqual({
+        repository: "https://github.com/mehdinajeddine/un-mot-par-jour-landing",
+      }),
+    );
+    await waitFor(() => expect(rendered.location()).toBe("/studio/lovable/un-mot-par-jour-landing-preview"));
+  });
+
+  it("says what the agent server's token needs when it does not reach the repository", async () => {
+    installFakeServer(
+      base({
+        "GET /studio": { enabled: true, agentConfigured: true, canAddProjects: true, apps: [] },
+        "POST /studio/projects": withStatus(422, {
+          error: {
+            code: "studio_repository_unreachable",
+            message: "The agent server's GitHub token does not reach x/y.",
+          },
+        }),
+      }),
+    );
+    renderApp("/studio");
+
+    // The empty list offers it too, next to the page's own button.
+    fireEvent.click((await screen.findAllByRole("button", { name: "Add a project" }))[0] as HTMLElement);
+    fireEvent.change(await screen.findByLabelText("Repository"), { target: { value: "x/y" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(await screen.findByText(/does not reach this repository/)).toBeTruthy();
+  });
+
+  it("asks for the projects folder before projects can be added", async () => {
+    installFakeServer(
+      base({ "GET /studio": { enabled: true, agentConfigured: true, canAddProjects: false, apps: [] } }),
+    );
+    renderApp("/studio");
+
+    expect(await screen.findByText(/Set the projects folder in the Studio's settings/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add a project" })).toBeNull();
   });
 
   it("is in the bar for administrators only", async () => {
@@ -505,6 +576,7 @@ describe("the Studio's settings", () => {
       service: "openhands",
       url: "http://127.0.0.1:18000",
       keyFile: "/home/openhands/.openhands/agent-canvas/api-key.txt",
+      projectsDir: null,
     },
   };
 
@@ -522,6 +594,22 @@ describe("the Studio's settings", () => {
         ...settings,
         enabled: true,
       }),
+    );
+  });
+
+  it("keeps where projects go in the agent server's container", async () => {
+    const server = installFakeServer(
+      base({ "GET /settings/studio": settings, "PUT /settings/studio": settings }),
+    );
+    renderApp("/settings/server/studio");
+
+    fireEvent.change(await screen.findByLabelText(/Projects folder/), { target: { value: "/projects" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(
+        (server.calls.find((call) => call.method === "PUT")?.body as typeof settings | undefined)?.agent,
+      ).toEqual({ ...settings.agent, projectsDir: "/projects" }),
     );
   });
 

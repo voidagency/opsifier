@@ -21,6 +21,12 @@ export const studioAgent = z.object({
     .max(100)
     .regex(/^http:\/\/(127\.0\.0\.1|localhost)(:\d{1,5})?$/, "An http address on 127.0.0.1 or localhost"),
   keyFile: absolutePath.nullable(),
+  /**
+   * Where the projects live in the agent server's container, mounted from a folder of the server. A
+   * project added to the Studio is copied there, and its preview mounts the same folder. Null leaves
+   * adding projects off: a project is then linked by hand.
+   */
+  projectsDir: absolutePath.nullable().default(null),
 });
 export type StudioAgent = z.infer<typeof studioAgent>;
 
@@ -75,6 +81,8 @@ export type StudioApp = z.infer<typeof studioApp>;
 export const studioOverview = z.object({
   enabled: z.boolean(),
   agentConfigured: z.boolean(),
+  /** Whether a GitHub project can be added: the Studio knows where projects go. */
+  canAddProjects: z.boolean(),
   apps: z.array(studioApp),
 });
 export type StudioOverview = z.infer<typeof studioOverview>;
@@ -85,6 +93,24 @@ export type StudioAppDetail = z.infer<typeof studioAppDetail>;
 
 export const linkStudioAppRequest = z.object({ workspaceDir: absolutePath });
 export type LinkStudioAppRequest = z.infer<typeof linkStudioAppRequest>;
+
+/**
+ * POST /api/v1/studio/projects: copies a GitHub repository into the projects folder, from inside the
+ * agent server's container and with its GitHub token, makes the project's preview, and links it.
+ */
+export const addStudioProjectRequest = z.object({
+  /** https://github.com/owner/name, git@github.com:owner/name.git, or owner/name. */
+  repository: z.string().trim().min(1, "Required").max(300),
+  /** The branch to work on. The repository's default branch when left out. */
+  branch: z
+    .string()
+    .trim()
+    .max(200)
+    .regex(/^[A-Za-z0-9._/-]+$/, "A branch name")
+    .refine((value) => !value.startsWith("-") && !value.includes(".."), "A branch name")
+    .optional(),
+});
+export type AddStudioProjectRequest = z.input<typeof addStudioProjectRequest>;
 
 /** DELETE .../studio: the service is no longer in the Studio. Its preview and folder stay. */
 export const unlinkedStudioApp = z.object({ project: z.string(), service: z.string() });

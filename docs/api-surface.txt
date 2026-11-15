@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 39
+# documented-changes: 40
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -5066,6 +5066,7 @@ PUT /api/v1/settings/monitoring
 GET /api/v1/settings/studio
   200 agent!.keyFile!: null|string
   200 agent!.project!: string
+  200 agent!.projectsDir: null|string
   200 agent!.service!: string
   200 agent!.url!: string
   200 enabled!: boolean
@@ -5074,6 +5075,7 @@ GET /api/v1/settings/studio
 PUT /api/v1/settings/studio
   200 agent!.keyFile!: null|string
   200 agent!.project!: string
+  200 agent!.projectsDir: null|string
   200 agent!.service!: string
   200 agent!.url!: string
   200 enabled!: boolean
@@ -5082,6 +5084,7 @@ PUT /api/v1/settings/studio
   403
   body agent!.keyFile!: null|string
   body agent!.project!: string
+  body agent!.projectsDir: null|string
   body agent!.service!: string
   body agent!.url!: string
   body enabled!: boolean
@@ -5359,6 +5362,7 @@ GET /api/v1/studio
   200 apps![].project!: string
   200 apps![].service!: string
   200 apps![].workspaceDir!: string
+  200 canAddProjects!: boolean
   200 enabled!: boolean
   401
   403
@@ -5372,6 +5376,31 @@ GET /api/v1/studio/models
   403
   409
   503
+POST /api/v1/studio/projects
+  201 conversations![].createdAt!: string
+  201 conversations![].createdBy!: null|string
+  201 conversations![].id!: string
+  201 conversations![].title!: null|string
+  201 conversations![].updatedAt!: string
+  201 lastConversation!.createdAt!: string
+  201 lastConversation!.createdBy!: null|string
+  201 lastConversation!.id!: string
+  201 lastConversation!.title!: null|string
+  201 lastConversation!.updatedAt!: string
+  201 previewStatus!: enum(failing|running|starting|stopped|undeployed|unknown)
+  201 previewUrl!: null|string
+  201 project!: string
+  201 service!: string
+  201 workspaceDir!: string
+  400
+  401
+  403
+  409
+  422
+  502
+  503
+  body branch: string
+  body repository!: string
 GET /api/v1/system/about
   200 components![].kind!: enum(package|program)
   200 components![].license!: string

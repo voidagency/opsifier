@@ -1,7 +1,7 @@
 import type { ServiceStatus, StudioApp } from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { Plus } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { Link2, Plus } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { errorMessage, useForm } from "../../lib/forms";
@@ -41,6 +41,7 @@ export function StudioPage() {
   const admin = user?.role === "admin";
   const { data, isPending, isError, error, refetch } = useQuery({ ...studioOverviewQuery, enabled: admin });
   const [linking, setLinking] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   const body = () => {
     if (!admin) {
@@ -77,11 +78,17 @@ export function StudioPage() {
         <EmptyState
           illustration="no-projects"
           title={t("list.emptyTitle")}
-          description={t("list.emptyDescription")}
+          description={t(data.canAddProjects ? "list.emptyDescription" : "list.emptyNoFolder")}
           action={
-            <Button variant="primary" onClick={() => setLinking(true)}>
-              {t("link.action")}
-            </Button>
+            data.canAddProjects ? (
+              <Button variant="primary" onClick={() => setAdding(true)}>
+                {t("add.action")}
+              </Button>
+            ) : (
+              <Link to="/settings/server/studio" className={buttonClass("primary")}>
+                {t("setup.action")}
+              </Link>
+            )
           }
         />
       );
@@ -102,14 +109,26 @@ export function StudioPage() {
         description={t("description")}
         actions={
           admin && data?.enabled === true ? (
-            <Button icon={<Plus aria-hidden="true" className="size-4" />} onClick={() => setLinking(true)}>
-              {t("link.action")}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button icon={<Link2 aria-hidden="true" className="size-4" />} onClick={() => setLinking(true)}>
+                {t("link.action")}
+              </Button>
+              {data.canAddProjects && (
+                <Button
+                  variant="primary"
+                  icon={<Plus aria-hidden="true" className="size-4" />}
+                  onClick={() => setAdding(true)}
+                >
+                  {t("add.action")}
+                </Button>
+              )}
+            </div>
           ) : undefined
         }
       />
       {body()}
       {linking && <LinkDialog onClose={() => setLinking(false)} />}
+      {adding && <AddProjectDialog onClose={() => setAdding(false)} />}
     </div>
   );
 }
@@ -210,6 +229,75 @@ function LinkDialog({ onClose }: { onClose: () => void }) {
             spellCheck={false}
           />
         </Field>
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * Adds a GitHub project: the panel copies it into the projects folder with the agent server's own
+ * GitHub token, makes its preview and links it, then opens it. The copy can take a minute.
+ */
+function AddProjectDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation(["studio", "common"]);
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const form = useForm({
+    t,
+    initialValues: { repository: "", branch: "" },
+    validate: (values) => ({
+      ...(values.repository.trim() === "" ? { repository: t("add.repositoryRequired") } : {}),
+    }),
+    onSubmit: async (values) => {
+      const added = await studioApi.addProject({
+        repository: values.repository.trim(),
+        ...(values.branch.trim() === "" ? {} : { branch: values.branch.trim() }),
+      });
+      await queryClient.invalidateQueries({ queryKey: studioKey });
+      toast.success(t("add.done", { name: added.service }));
+      onClose();
+      await navigate({
+        to: "/studio/$project/$service",
+        params: { project: added.project, service: added.service },
+        search: {},
+      });
+    },
+  });
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => !open && !form.pending && onClose()}
+      size="sm"
+      title={t("add.title")}
+      description={t("add.description")}
+      onSubmit={form.handleSubmit}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={form.pending}>
+            {t("common:actions.cancel")}
+          </Button>
+          <Button type="submit" variant="primary" pending={form.pending}>
+            {t("add.submit")}
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-4">
+        {form.banner && <FormBanner>{form.banner}</FormBanner>}
+        <Field label={t("add.repository")} hint={t("add.repositoryHint")} error={form.errors.repository}>
+          <Input
+            {...form.field("repository")}
+            mono
+            placeholder="https://github.com/owner/name"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </Field>
+        <Field label={t("add.branch")} hint={t("add.branchHint")} error={form.errors.branch} optional>
+          <Input {...form.field("branch")} mono placeholder="main" autoComplete="off" spellCheck={false} />
+        </Field>
+        {form.pending && <p className="text-sm text-muted">{t("add.working")}</p>}
       </div>
     </Dialog>
   );

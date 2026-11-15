@@ -32,6 +32,7 @@ const AGENT = {
   service: "openhands",
   url: "http://127.0.0.1:18000",
   keyFile: "/home/openhands/.openhands/agent-canvas/api-key.txt",
+  projectsDir: null as string | null,
 };
 
 type Raw = Record<string, unknown>;
@@ -332,6 +333,160 @@ describe("the Studio's projects", () => {
   });
 });
 
+describe("adding a project to the Studio", () => {
+  const REPOSITORY = "https://github.com/mehdinajeddine/un-mot-par-jour-landing";
+  const ADDED = "/projects/lovable/services/un-mot-par-jour-landing-preview";
+  type Clone = Record<string, unknown>;
+
+  /** Plays the copy script in the agent server's container: what it is sent, and what it answers. */
+  function installFakeClone(result: Clone) {
+    const inputs: Record<string, unknown>[] = [];
+    const agentHandler = context.docker.execHandler;
+    context.docker.execHandler = (options) => {
+      if (
+        options.service === "lovable_openhands" &&
+        String(options.command[2]).includes("opsifier-studio-clone")
+      ) {
+        return (input: string) => {
+          inputs.push(JSON.parse(input) as Record<string, unknown>);
+          return { output: `Cloning…\nopsifier-studio-clone ${JSON.stringify(result)}\n`, exitCode: 0 };
+        };
+      }
+      return agentHandler?.(options);
+    };
+    return inputs;
+  }
+
+  const copied = {
+    ok: true,
+    reused: false,
+    uid: 10001,
+    gid: 10001,
+    branch: "main",
+    manifest: true,
+    vite: true,
+  };
+  const add = (body: unknown) => api<StudioAppDetail>("/studio/projects", "POST", body);
+
+  async function prepare(projectsDir: string | null = "/projects", mounted = true): Promise<void> {
+    await deployAgent();
+    if (mounted) {
+      const mount = await api("/projects/lovable/services/openhands/storage/mounts", "POST", {
+        type: "bind",
+        hostPath: "/srv/studio",
+        mountPath: "/projects",
+      });
+      expect(mount.status).toBe(201);
+    }
+    await enable({ ...AGENT, projectsDir });
+  }
+
+  it("copies the repository in the agent server's container, makes its preview and links it", async () => {
+    await prepare();
+    const inputs = installFakeClone(copied);
+
+    const added = await add({ repository: REPOSITORY });
+
+    expect(added.status).toBe(201);
+    expect(added.body).toMatchObject({
+      project: "lovable",
+      service: "un-mot-par-jour-landing-preview",
+      workspaceDir: "/projects/un-mot-par-jour-landing",
+      conversations: [],
+    });
+    // The token stays in the agent server: the panel names the secret and never sees its value.
+    expect(inputs).toEqual([
+      {
+        agentUrl: AGENT.url,
+        keyFile: AGENT.keyFile,
+        secret: "GITHUB_TOKEN",
+        url: "https://github.com/mehdinajeddine/un-mot-par-jour-landing.git",
+        dir: "/projects/un-mot-par-jour-landing",
+      },
+    ]);
+    const settings = await api<{ source: { type: string; dockerfile?: string } | null }>(`${ADDED}/source`);
+    expect(settings.body.source?.type).toBe("dockerfile");
+    expect(settings.body.source?.dockerfile).toContain("USER 10001:10001");
+    expect(settings.body.source?.dockerfile).toContain("--config /opt/opsifier-studio/vite.config.mjs");
+    const storage = await api<{ mounts: Record<string, unknown>[] }>(`${ADDED}/storage`);
+    expect(storage.body.mounts).toEqual([
+      expect.objectContaining({
+        type: "bind",
+        hostPath: "/srv/studio/un-mot-par-jour-landing",
+        mountPath: "/app",
+      }),
+    ]);
+    const overview = await api<StudioOverview>("/studio");
+    expect(overview.body.apps.map((app) => app.service)).toContain("un-mot-par-jour-landing-preview");
+    const actions = await api<ActionPage>("/actions?limit=30");
+    expect(actions.body.items.some((action) => action.type === "studio.add-project")).toBe(true);
+  });
+
+  it("takes a branch, and the repository as owner/name", async () => {
+    await prepare();
+    const inputs = installFakeClone(copied);
+
+    const added = await add({ repository: "mehdinajeddine/un-mot-par-jour-landing", branch: "design" });
+
+    expect(added.status).toBe(201);
+    expect(inputs[0]).toMatchObject({ branch: "design", dir: "/projects/un-mot-par-jour-landing" });
+  });
+
+  it("says what to do when the agent server's GitHub token does not reach the repository", async () => {
+    await prepare();
+    installFakeClone({
+      ok: false,
+      code: "no_access",
+      token: true,
+      message: "remote: Write access to repository not granted.",
+    });
+
+    const refused = await add({ repository: REPOSITORY });
+
+    expect(refused.status).toBe(422);
+    expect(apiErrorOf(refused).code).toBe("studio_repository_unreachable");
+    expect(apiErrorOf(refused).message).toContain("mehdinajeddine/un-mot-par-jour-landing");
+    expect((await api(ADDED)).status).toBe(404);
+  });
+
+  it("refuses a project its previews cannot run, before making anything", async () => {
+    await prepare();
+    installFakeClone({ ...copied, manifest: false, vite: false });
+
+    const refused = await add({ repository: REPOSITORY });
+
+    expect(refused.status).toBe(422);
+    expect(apiErrorOf(refused).code).toBe("studio_project_unsupported");
+    expect((await api(ADDED)).status).toBe(404);
+  });
+
+  it("needs the projects folder, mounted from the server in the agent server's container", async () => {
+    await prepare(null);
+    const unset = await add({ repository: REPOSITORY });
+    expect(unset.status).toBe(409);
+    expect(apiErrorOf(unset).code).toBe("studio_projects_unset");
+
+    await enable({ ...AGENT, projectsDir: "/elsewhere" });
+    const unmounted = await add({ repository: REPOSITORY });
+    expect(unmounted.status).toBe(409);
+    expect(apiErrorOf(unmounted).code).toBe("studio_projects_unmounted");
+  });
+
+  it("refuses an address that is not a GitHub repository, and a preview that already exists", async () => {
+    await prepare();
+    installFakeClone(copied);
+
+    const invalid = await add({ repository: "https://gitlab.com/someone/site" });
+    expect(invalid.status).toBe(400);
+    expect(apiErrorOf(invalid).code).toBe("studio_repository_invalid");
+
+    await api("/projects/lovable/services", "POST", { name: "un-mot-par-jour-landing-preview" });
+    const taken = await add({ repository: REPOSITORY });
+    expect(taken.status).toBe(409);
+    expect(apiErrorOf(taken).code).toBe("studio_project_exists");
+  });
+});
+
 describe("a Studio conversation", () => {
   beforeEach(async () => {
     await deployAgent();
@@ -369,7 +524,13 @@ describe("a Studio conversation", () => {
       },
     });
     const additions = conversation?.started.agent_launch_additions as Record<string, string> | undefined;
-    expect(additions?.system_message_suffix_append).toContain("Opsifier Studio");
+    const told = additions?.system_message_suffix_append ?? "";
+    expect(told).toContain("Opsifier Studio");
+    expect(told).toContain("The project is your working directory, /projects/cd-studio.");
+    // The agent server is in the preview's project: it reaches the preview by the service's name.
+    expect(told).toContain("From your container, the preview answers at http://cd-studio-preview.");
+    expect(told).toMatch(/The user sees it at https?:\/\/\S+/);
+    expect(told).toContain("GITHUB_TOKEN=$GITHUB_TOKEN git push");
     const detail = await api<StudioAppDetail>(`${PREVIEW}/studio`);
     expect(detail.body.conversations.map((one) => one.id)).toEqual([started.body.id]);
     const actions = await api<ActionPage>("/actions?limit=20");

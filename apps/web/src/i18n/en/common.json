@@ -189,7 +189,15 @@
     "studio_agent_error": "The agent server could not do it. Try again in a moment.",
     "studio_agent_unknown": "There is no such service.",
     "service_without_id": "This service has no identifier yet: deploy it once, then link it.",
-    "studio_model_unknown": "The agent server has no such model."
+    "studio_model_unknown": "The agent server has no such model.",
+    "studio_off": "Turn the Studio on and choose its agent server first.",
+    "studio_projects_unset": "Set the Studio's projects folder first, in its settings.",
+    "studio_projects_unmounted": "The agent server's service has no folder of the server mounted at the projects folder. Add one in its Storage tab.",
+    "studio_repository_invalid": "Give a GitHub repository: its address, such as https://github.com/owner/name, or owner/name.",
+    "studio_repository_unreachable": "The agent server's GitHub token does not reach this repository. Add the repository to that token, with Contents in read and write, or check its address.",
+    "studio_branch_missing": "The repository has no branch by that name.",
+    "studio_project_exists": "This project is already there: open it in the Studio, or link its preview.",
+    "studio_project_unsupported": "This project does not use Vite, the only development server the Studio's previews run for now."
   },
   "retention": {
     "removed": "Removed",

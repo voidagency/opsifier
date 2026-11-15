@@ -1,0 +1,341 @@
+import { posix } from "node:path";
+import type { AddStudioProjectRequest, StudioAgent, StudioAppDetail } from "@opsifier/contract";
+import type { AppDeps } from "../../core/context";
+import { DockerDriverError } from "../../core/docker";
+import { AppError, badRequest, conflict, serviceUnavailable } from "../../core/errors";
+import type { Access } from "../access/rules";
+import { runInDatabase } from "../databases/exec";
+import { getPanelDomainSettings } from "../server/settings";
+import { createFromDefinition } from "../service-definition/service";
+import { qualifiedName } from "../services/compile";
+import { findService } from "../services/repo";
+import { requireService } from "../services/service";
+import { previewDockerfile } from "./preview";
+import { getStudioApp, linkStudioApp } from "./service";
+import { readStudioSettings } from "./settings";
+
+/** The agent server's secret that holds the GitHub token, as OpenHands names it. */
+export const GITHUB_SECRET = "GITHUB_TOKEN";
+/** What a preview may use: a development server installs and rebuilds a whole project. */
+const PREVIEW_RESOURCES = { memoryReservation: 0, memoryLimit: 3072, cpuReservation: 0, cpuLimit: 2 };
+/** Copying a large repository takes a while. */
+const CLONE_TIMEOUT_MS = 300_000;
+const CLONE_PREFIX = "opsifier-studio-clone ";
+/** A service's default address is `<project>-<service>.<base>`, and a DNS label holds 63 characters. */
+const MAX_LABEL = 63;
+const PREVIEW_SUFFIX = "-preview";
+
+export interface GithubRepository {
+  owner: string;
+  name: string;
+  /** owner/name */
+  slug: string;
+  /** The plain https address the agent clones and pushes with. */
+  url: string;
+}
+
+const REPOSITORY =
+  /^(?:https?:\/\/(?:www\.)?github\.com\/|git@github\.com:|github\.com\/)?([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100}?)(?:\.git)?\/?$/;
+
+/** A GitHub repository from its address, its SSH address, or owner/name. */
+export function parseRepository(input: string): GithubRepository {
+  const match = REPOSITORY.exec(input.trim());
+  const owner = match?.[1];
+  const name = match?.[2];
+  if (owner === undefined || name === undefined || name === "." || name === "..") {
+    throw badRequest(
+      "studio_repository_invalid",
+      "Give a GitHub repository: its address, such as https://github.com/owner/name, or owner/name.",
+      { repository: "A GitHub repository, such as https://github.com/owner/name" },
+    );
+  }
+  return { owner, name, slug: `${owner}/${name}`, url: `https://github.com/${owner}/${name}.git` };
+}
+
+/** The project's folder name, from the repository's: lowercase letters, digits and dashes. */
+export function folderName(repository: GithubRepository): string {
+  const name = repository.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return name === "" ? "project" : name;
+}
+
+/** The preview's service name, short enough for its default address in the agent server's project. */
+export function previewName(project: string, folder: string): string {
+  const room = MAX_LABEL - project.length - 1 - PREVIEW_SUFFIX.length;
+  const base = folder.slice(0, Math.max(1, room)).replace(/-+$/g, "");
+  return `${base || "project"}${PREVIEW_SUFFIX}`;
+}
+
+/**
+ * The server's folder behind the projects folder, from the agent server's mounts. A preview mounts
+ * the same folder, so that what the agent writes shows at once.
+ */
+export function projectsHostDir(deps: AppDeps, agent: StudioAgent & { projectsDir: string }): string {
+  const record = requireService(deps, { projectName: agent.project, serviceName: agent.service });
+  const covering = record.spec.mounts
+    .filter((mount) => mount.type === "bind")
+    .filter(
+      (mount) => agent.projectsDir === mount.mountPath || agent.projectsDir.startsWith(`${mount.mountPath}/`),
+    )
+    .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
+  if (covering === undefined || covering.type !== "bind") {
+    throw conflict(
+      "studio_projects_unmounted",
+      `The agent server's service has no folder of the server mounted at ${agent.projectsDir}. Add one in its Storage tab, then add the project again.`,
+    );
+  }
+  return posix.join(covering.hostPath, posix.relative(covering.mountPath, agent.projectsDir));
+}
+
+/**
+ * Runs in the agent server's container. Reads the agent server's key there, and with it the GitHub
+ * token it keeps as a secret, then copies the repository with a credential helper that reads the
+ * token from the environment: the token is never written, printed or sent back. A folder that
+ * already holds a copy of the same repository is kept, so that adding a project again goes on from
+ * where it stopped. The request comes on standard input.
+ */
+export const CLONE_SCRIPT = `
+import json, os, subprocess, sys, urllib.error, urllib.request
+request = json.load(sys.stdin)
+def done(result):
+    print(${JSON.stringify(CLONE_PREFIX)} + json.dumps(result))
+    sys.exit(0)
+key = os.environ.get("SESSION_API_KEY") or os.environ.get("OH_SESSION_API_KEYS_0")
+if not key and request.get("keyFile"):
+    try:
+        with open(request["keyFile"]) as handle:
+            key = handle.read().strip()
+    except OSError:
+        key = None
+token = ""
+headers = {"X-Session-API-Key": key} if key else {}
+try:
+    secret = urllib.request.Request(request["agentUrl"] + "/api/settings/secrets/" + request["secret"], headers=headers)
+    with urllib.request.urlopen(secret, timeout=20) as answer:
+        token = answer.read().decode().strip()
+    if token.startswith('"'):
+        token = json.loads(token)
+except urllib.error.HTTPError as error:
+    if error.code in (401, 403):
+        done({"ok": False, "code": "refused"})
+except Exception:
+    done({"ok": False, "code": "unreachable"})
+helper = '!f() { test "$1" = get && echo username=x-access-token && echo "password=$GITHUB_TOKEN"; }; f'
+env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GITHUB_TOKEN=token)
+def clean(text):
+    text = text.strip().splitlines()[-1] if text.strip() else ""
+    return text.replace(token, "***")[:300] if token else text[:300]
+target = request["dir"]
+reused = False
+if os.path.exists(target):
+    origin = ""
+    if os.path.isdir(os.path.join(target, ".git")):
+        origin = subprocess.run(["git", "-C", target, "remote", "get-url", "origin"], capture_output=True, text=True).stdout.strip()
+    if origin.removesuffix("/").removesuffix(".git").lower() != request["url"].removesuffix(".git").lower():
+        done({"ok": False, "code": "exists"})
+    reused = True
+else:
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    command = ["git", "-c", "credential.helper=", "-c", "credential.https://github.com.helper=" + helper, "clone", "--quiet"]
+    if request.get("branch"):
+        command += ["--branch", request["branch"]]
+    try:
+        cloned = subprocess.run(command + ["--", request["url"], target], env=env, capture_output=True, text=True, timeout=280)
+    except subprocess.TimeoutExpired:
+        done({"ok": False, "code": "failed", "message": "The copy took longer than 280 seconds."})
+    if cloned.returncode != 0:
+        said = cloned.stderr.lower()
+        if "remote branch" in said and "not found" in said:
+            done({"ok": False, "code": "branch", "message": clean(cloned.stderr)})
+        if any(sign in said for sign in ("403", "404", "not found", "authentication failed", "could not read username", "access to repository not granted")):
+            done({"ok": False, "code": "no_access", "token": bool(token), "message": clean(cloned.stderr)})
+        done({"ok": False, "code": "failed", "message": clean(cloned.stderr)})
+subprocess.run(["git", "-C", target, "config", "credential.https://github.com.helper", helper], capture_output=True)
+branch = subprocess.run(["git", "-C", target, "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True).stdout.strip()
+packages = {}
+try:
+    with open(os.path.join(target, "package.json")) as handle:
+        manifest = json.load(handle)
+    for field in ("dependencies", "devDependencies"):
+        if isinstance(manifest.get(field), dict):
+            packages.update(manifest[field])
+except Exception:
+    manifest = None
+done({"ok": True, "reused": reused, "uid": os.getuid(), "gid": os.getgid(), "branch": branch, "manifest": manifest is not None, "vite": "vite" in packages})
+`;
+
+export type CloneResult =
+  | {
+      ok: true;
+      reused: boolean;
+      uid: number;
+      gid: number;
+      branch: string;
+      manifest: boolean;
+      vite: boolean;
+    }
+  | { ok: false; code: "refused" | "unreachable" | "exists" | "branch" | "failed"; message?: string }
+  | { ok: false; code: "no_access"; token: boolean; message?: string };
+
+/** The script's verdict, from its output. Null when it printed none. */
+export function readCloneResult(output: string): CloneResult | null {
+  const line = output
+    .split("\n")
+    .reverse()
+    .find((one) => one.startsWith(CLONE_PREFIX));
+  if (line === undefined) {
+    return null;
+  }
+  try {
+    return JSON.parse(line.slice(CLONE_PREFIX.length)) as CloneResult;
+  } catch {
+    return null;
+  }
+}
+
+async function cloneInAgent(
+  deps: AppDeps,
+  agent: StudioAgent,
+  repository: GithubRepository,
+  dir: string,
+  branch: string | undefined,
+): Promise<Extract<CloneResult, { ok: true }>> {
+  const input = JSON.stringify({
+    agentUrl: agent.url,
+    keyFile: agent.keyFile,
+    secret: GITHUB_SECRET,
+    url: repository.url,
+    dir,
+    ...(branch === undefined ? {} : { branch }),
+  });
+  let outcome: Awaited<ReturnType<typeof runInDatabase>>;
+  try {
+    outcome = await runInDatabase(
+      deps,
+      qualifiedName(agent.project, agent.service),
+      { command: ["python3", "-c", CLONE_SCRIPT], stdin: input },
+      { timeoutMs: CLONE_TIMEOUT_MS },
+    );
+  } catch (error) {
+    if (error instanceof DockerDriverError) {
+      throw conflict(
+        "studio_agent_not_running",
+        `The agent server's service ${agent.project}/${agent.service} is not running.`,
+      );
+    }
+    throw error;
+  }
+  const result = readCloneResult(outcome.output);
+  if (result === null) {
+    throw serviceUnavailable(
+      "studio_agent_unavailable",
+      "The agent server's container did not run the copy.",
+    );
+  }
+  if (result.ok) {
+    return result;
+  }
+  switch (result.code) {
+    case "exists":
+      throw conflict(
+        "studio_project_exists",
+        `The projects folder already holds ${posix.basename(dir)}, which is not a copy of ${repository.slug}.`,
+      );
+    case "no_access":
+      throw new AppError(
+        422,
+        "studio_repository_unreachable",
+        result.token
+          ? `The agent server's GitHub token does not reach ${repository.slug}. Add the repository to that token, with Contents in read and write, or check its address.`
+          : `GitHub did not let the agent server read ${repository.slug}, and the agent server has no ${GITHUB_SECRET} secret. Add a GitHub token there, with Contents in read and write on the repository.`,
+      );
+    case "branch":
+      throw new AppError(422, "studio_branch_missing", `${repository.slug} has no branch by that name.`);
+    case "refused":
+      throw serviceUnavailable("studio_agent_refused", "The agent server refused the panel's key.");
+    case "unreachable":
+      throw serviceUnavailable("studio_agent_unavailable", "The agent server could not be reached.");
+    default:
+      throw new AppError(
+        502,
+        "studio_clone_failed",
+        `The copy of ${repository.slug} failed${result.message ? `: ${result.message}` : "."}`,
+      );
+  }
+}
+
+/**
+ * Adds a GitHub project to the Studio: copies it into the projects folder from inside the agent
+ * server's container, makes its preview next to the agent server, and links the two. The preview's
+ * first deployment installs the project's dependencies; the Studio starts it again when it is opened.
+ */
+export async function addStudioProject(
+  deps: AppDeps,
+  request: AddStudioProjectRequest,
+  access: Access,
+  actorEmail: string | undefined,
+  isAdmin: boolean,
+): Promise<StudioAppDetail> {
+  const settings = readStudioSettings(deps);
+  const agent = settings.agent;
+  if (!settings.enabled || agent === null) {
+    throw conflict("studio_off", "Turn the Studio on and choose its agent server first.");
+  }
+  const projectsDir = agent.projectsDir;
+  if (projectsDir === null) {
+    throw conflict(
+      "studio_projects_unset",
+      "Set the Studio's projects folder first, in its settings: where projects go in the agent server's container.",
+    );
+  }
+  const repository = parseRepository(request.repository);
+  const folder = folderName(repository);
+  const service = previewName(agent.project, folder);
+  const target = { projectName: agent.project, serviceName: service };
+  if (findService(deps.db, agent.project, service) !== undefined) {
+    throw conflict(
+      "studio_project_exists",
+      `${agent.project}/${service} already exists: link it from the Studio, or remove it first.`,
+    );
+  }
+  const hostDir = posix.join(projectsHostDir(deps, { ...agent, projectsDir }), folder);
+  const workspaceDir = posix.join(projectsDir, folder);
+
+  const copy = await cloneInAgent(deps, agent, repository, workspaceDir, request.branch);
+  // No package.json, or no Vite in it: there is no development server the preview knows how to run.
+  if (!copy.vite) {
+    throw new AppError(
+      422,
+      "studio_project_unsupported",
+      `${repository.slug} does not use Vite, the only development server the Studio's previews run for now.`,
+    );
+  }
+
+  const panel = getPanelDomainSettings(deps).url;
+  await createFromDefinition(
+    deps,
+    agent.project,
+    {
+      name: service,
+      source: { type: "dockerfile", dockerfile: previewDockerfile(copy) },
+      env: panel === null ? "" : `OPSIFIER_STUDIO_INSPECTOR_URL=${panel}/studio-inspector.js\n`,
+      domains: [],
+      mounts: [{ type: "bind", hostPath: hostDir, mountPath: "/app", acknowledgeRisk: false }],
+      resources: PREVIEW_RESOURCES,
+      deploy: true,
+    },
+    access,
+    actorEmail,
+    isAdmin,
+  );
+  await linkStudioApp(deps, target, { workspaceDir });
+  deps.actions.record({
+    type: "studio.add-project",
+    title: `Add ${repository.slug} to the Studio`,
+    ...target,
+    actorEmail,
+  });
+  return getStudioApp(deps, target);
+}

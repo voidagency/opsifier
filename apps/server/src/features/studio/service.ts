@@ -12,33 +12,74 @@ import type {
 } from "@opsifier/contract";
 import type { AppDeps } from "../../core/context";
 import { AppError, badRequest, conflict, notFound, serviceUnavailable } from "../../core/errors";
-import { primaryUrl } from "../service-tabs/domains/service";
+import { listDomainRows, primaryUrl } from "../service-tabs/domains/service";
 import { findService, type ServiceRecord } from "../services/repo";
 import { requireService, type ServiceTarget } from "../services/service";
 import { indexActiveActions, type LiveState, readLiveState, summarize } from "../services/status";
 import { AGENT_KEY_PLACEHOLDER, callAgent, expectJson } from "./agent";
 import { toStudioEvents, toStudioStatus } from "./events";
 import { conversationModel, toStudioModels } from "./models";
+import { PREVIEW_PORT } from "./preview";
 import * as repo from "./repo";
 import { readStudioSettings, writeStudioSettings } from "./settings";
 
-/** What the agent is told about where it is talked to from, on top of its profile's own instructions. */
-const STUDIO_CONTEXT = [
-  "<OPSIFIER_STUDIO>",
-  "The user talks to you from Opsifier Studio. The project's live preview is shown next to this",
-  "conversation and reloads by itself when a file changes, so never open it only to show it to the user:",
-  "open it in your browser to check your own work. The user reads along as you work: before each step,",
-  "say in one short sentence what you are about to do and why, always in the user's language, never in",
-  "another. Keep your final answer short, and plain: no technical jargon unless they ask for details.",
-  "The user judges your work by how it looks. After each change to what a page shows, look at that page",
-  "in the preview at a phone's width and at a desktop's, with screenshots when you can take them. When",
-  "anything is off, fix it and look again, and answer only once it is right, saying what you checked.",
-  "When a message holds a <selected_element> block, the user pointed at that element in the preview: it is",
-  "the element to change. Find it in the code from its text, its classes and the React components it names.",
-  "End each final answer with two or three short requests the user might send next, in their language, one",
-  'per line starting with "- ", inside <suggestions></suggestions>, and write nothing after that block.',
-  "</OPSIFIER_STUDIO>",
-].join("\n");
+/**
+ * What the agent is told on top of its profile's own instructions: where it is talked to from, the
+ * project's folder and preview, as the Studio knows them, and how to work so that the user sees it.
+ */
+export function studioContext(
+  deps: Pick<AppDeps, "db">,
+  agent: StudioAgent,
+  target: ServiceTarget,
+  workspaceDir: string,
+): string {
+  const rows = listDomainRows(deps.db, target);
+  const port = (rows.find((row) => row.isPrimary) ?? rows[0])?.port ?? PREVIEW_PORT;
+  // The agent server reaches a service of its own project by the service's name.
+  const inside =
+    agent.project === target.projectName
+      ? `http://${target.serviceName}${port === 80 ? "" : `:${port}`}`
+      : null;
+  const outside = primaryUrl(deps.db, target);
+  return [
+    "<OPSIFIER_STUDIO>",
+    "The user talks to you from Opsifier Studio. The user reads along as you work: before each step, say",
+    "in one short sentence what you are about to do and why, always in the user's language, never in",
+    "another. Keep your final answer short, and plain: no technical jargon unless they ask for details.",
+    "",
+    `The project is your working directory, ${workspaceDir}. Its live preview is the service`,
+    `${target.projectName}/${target.serviceName}: its development server runs on these same files and shows each`,
+    "saved change at once, next to this conversation. Never start a development server yourself (no vite,",
+    "npm run dev, bun run dev or vite preview), and never look for a free port: it would fight the preview",
+    "over the same files.",
+    ...(inside === null ? [] : [`From your container, the preview answers at ${inside}.`]),
+    ...(outside === null ? [] : [`The user sees it at ${outside}.`]),
+    "When it does not answer, it is starting: the Studio starts it when the user opens the project. Wait",
+    "twenty seconds and try again; if it still does not answer, ask the user to open the project in the",
+    "Studio again. Never open the preview only to show it to the user: open it to check your own work.",
+    "",
+    "The user judges your work by how it looks. After each change to what a page shows, look at that page",
+    "in the preview at a phone's width and at a desktop's, with screenshots when you can take them. When",
+    "anything is off, fix it and look again, and answer only once it is right, saying what you checked.",
+    "",
+    "The folder is a copy of the project's Git repository. Before a change, run",
+    "`GITHUB_TOKEN=$GITHUB_TOKEN git pull --rebase --autostash`. When a change works, look at `git status`,",
+    "commit only the files you meant to change, with a clear message, and run",
+    "`GITHUB_TOKEN=$GITHUB_TOKEN git push`, unless the user asks for a branch, a pull request or not to push",
+    "yet. Never force push, and never rewrite commits that are pushed. The GITHUB_TOKEN secret is set only",
+    "for a command that names it. Never put a token in an address, a file, a commit or a message, never",
+    "change git's credential settings, and never ask the user for a token or a password. If GitHub refuses",
+    "a pull or a push (403 or 404), tell the user that the agent server's GitHub token does not cover this",
+    "repository, and stop there. Install packages with the package manager whose lockfile the project",
+    "has, and never create another lockfile.",
+    "",
+    "When a message holds a <selected_element> block, the user pointed at that element in the preview: it is",
+    "the element to change. Find it in the code from its text, its classes and the React components it names.",
+    "End each final answer with two or three short requests the user might send next, in their language, one",
+    'per line starting with "- ", inside <suggestions></suggestions>, and write nothing after that block.',
+    "</OPSIFIER_STUDIO>",
+  ].join("\n");
+}
 
 /** One page of events at a time: a busy agent's backlog arrives over several polls. */
 const EVENT_PAGE_SIZE = 100;
@@ -170,7 +211,12 @@ export async function getStudioOverview(deps: AppDeps): Promise<StudioOverview> 
     const record = findService(deps.db, app.projectName, app.serviceName);
     return record === undefined || live === null ? [] : [appView(deps, record, app, live, active)];
   });
-  return { enabled: settings.enabled, agentConfigured: settings.agent !== null, apps };
+  return {
+    enabled: settings.enabled,
+    agentConfigured: settings.agent !== null,
+    canAddProjects: settings.enabled && (settings.agent?.projectsDir ?? null) !== null,
+    apps,
+  };
 }
 
 export async function getStudioApp(deps: AppDeps, target: ServiceTarget): Promise<StudioAppDetail> {
@@ -250,7 +296,7 @@ export async function startStudioConversation(
       body: {
         agent_profile_id: profileId,
         agent_launch_additions: {
-          system_message_suffix_append: STUDIO_CONTEXT,
+          system_message_suffix_append: studioContext(deps, agent, target, app.workspaceDir),
           ...(message.model === undefined ? {} : { llm_profile_ref: message.model }),
         },
         workspace: { working_dir: app.workspaceDir, kind: "LocalWorkspace" },
