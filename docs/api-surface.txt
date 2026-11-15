@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 34
+# documented-changes: 35
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -1815,6 +1815,7 @@ POST /api/v1/projects/{project}/services/{service}/backups/{backup}/restore
   path service!: string
 GET /api/v1/projects/{project}/services/{service}/basic-auth
   200 entries![].id!: string
+  200 entries![].revealable!: boolean
   200 entries![].username!: string
   400
   401
@@ -1823,6 +1824,7 @@ GET /api/v1/projects/{project}/services/{service}/basic-auth
   path service!: string
 POST /api/v1/projects/{project}/services/{service}/basic-auth
   201 id!: string
+  201 revealable!: boolean
   201 username!: string
   400
   401
@@ -1842,6 +1844,7 @@ DELETE /api/v1/projects/{project}/services/{service}/basic-auth/{entry}
   path service!: string
 PUT /api/v1/projects/{project}/services/{service}/basic-auth/{entry}
   200 id!: string
+  200 revealable!: boolean
   200 username!: string
   400
   401
@@ -1849,6 +1852,15 @@ PUT /api/v1/projects/{project}/services/{service}/basic-auth/{entry}
   409
   body password: string
   body username!: string
+  path entry!: string
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/basic-auth/{entry}/reveal
+  200 value!: string
+  400
+  401
+  404
+  409
   path entry!: string
   path project!: string
   path service!: string

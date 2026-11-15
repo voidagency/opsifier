@@ -13,6 +13,7 @@ const typePictograms: Readonly<Record<string, PictogramName>> = {
   "service.domains": "domain",
   "service.redirects": "redirect",
   "service.security": "access",
+  "service.security-reveal": "access",
   "service.maintenance": "maintenance",
   "service.console": "console",
   "service.scripts": "console",

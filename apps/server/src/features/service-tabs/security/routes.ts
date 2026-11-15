@@ -5,13 +5,20 @@ import {
   basicAuthPath,
   createBasicAuthRequest,
   deletedBasicAuth,
+  revealedSecret,
   servicePath,
   updateBasicAuthRequest,
 } from "@opsifier/contract";
 import { requirePrincipal } from "../../../core/auth";
 import type { Feature } from "../../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../../core/openapi";
-import { addBasicAuth, deleteBasicAuth, listBasicAuth, updateBasicAuth } from "./service";
+import {
+  addBasicAuth,
+  deleteBasicAuth,
+  listBasicAuth,
+  revealBasicAuthPassword,
+  updateBasicAuth,
+} from "./service";
 
 const tags = ["Service security"];
 const BASE = "/api/v1/projects/{project}/services/{service}/basic-auth";
@@ -26,7 +33,10 @@ const listRoute = createRoute({
   tags,
   request: { params: servicePath },
   responses: {
-    200: jsonResponse(basicAuthList, "Who may enter. Passwords are never sent back."),
+    200: jsonResponse(
+      basicAuthList,
+      "Who may enter, and whether each password can be shown. Passwords are never in this list.",
+    ),
     400: invalid,
     401: denied,
     404: missing,
@@ -77,6 +87,22 @@ const deleteEntryRoute = createRoute({
   },
 });
 
+const revealRoute = createRoute({
+  method: "post",
+  path: `${BASE}/{entry}/reveal`,
+  tags,
+  description:
+    "Returns one user's password and records who asked for it in the activity log. A password set before the panel kept them answers 409 `password_not_kept`.",
+  request: { params: basicAuthPath },
+  responses: {
+    200: jsonResponse(revealedSecret, "The password."),
+    400: invalid,
+    401: denied,
+    404: missing,
+    409: errorResponse("The panel did not keep this password: give the user a new one."),
+  },
+});
+
 const target = (params: { project: string; service: string }) => ({
   projectName: params.project,
   serviceName: params.service,
@@ -84,6 +110,9 @@ const target = (params: { project: string; service: string }) => ({
 
 const actorEmailOf = (principal: ReturnType<typeof requirePrincipal>) =>
   principal.kind === "session" ? principal.user.email : undefined;
+
+/** The person behind the request, including whoever owns an API key: a reveal is always named. */
+const auditEmail = (principal: ReturnType<typeof requirePrincipal>) => principal.user.email;
 
 export const feature: Feature = {
   register(app, deps) {
@@ -123,6 +152,15 @@ export const feature: Feature = {
       await deleteBasicAuth(deps, target(params), params.entry);
       record(params, `Remove a basic auth user of ${params.project}/${params.service}`, requirePrincipal(c));
       return c.json({ id: params.entry }, 200);
+    });
+
+    app.openapi(revealRoute, (c) => {
+      const params = c.req.valid("param");
+      c.header("Cache-Control", "no-store");
+      return c.json(
+        revealBasicAuthPassword(deps, target(params), params.entry, auditEmail(requirePrincipal(c))),
+        200,
+      );
     });
   },
 };

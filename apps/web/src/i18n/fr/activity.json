@@ -66,6 +66,7 @@
       "domains": "Domaines modifiés",
       "redirects": "Redirections modifiées",
       "security": "Authentification basique modifiée",
+      "security-reveal": "Mot de passe d'authentification basique affiché",
       "maintenance": "Page de maintenance modifiée",
       "console": "Session de console",
       "resources": "Ressources modifiées",

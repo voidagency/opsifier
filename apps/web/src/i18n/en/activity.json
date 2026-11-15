@@ -66,6 +66,7 @@
       "domains": "Domains changed",
       "redirects": "Redirects changed",
       "security": "Basic authentication changed",
+      "security-reveal": "Basic authentication password shown",
       "maintenance": "Maintenance page changed",
       "console": "Console session",
       "resources": "Resources changed",

@@ -20,6 +20,9 @@ export type { StoredDatabase };
 /** The password is sealed with this context, whichever service it belongs to. */
 export const REGISTRY_PASSWORD_CONTEXT = "registry-password";
 
+/** A basic auth user's password, kept so that it can be shown again. */
+export const BASIC_AUTH_PASSWORD_CONTEXT = "basic-auth-password";
+
 export type { StoredImageSource };
 
 /**

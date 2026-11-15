@@ -38,16 +38,25 @@ export type CreateBasicAuthRequest = z.infer<typeof createBasicAuthRequest>;
 export const updateBasicAuthRequest = z.object({ username, password: password.optional() });
 export type UpdateBasicAuthRequest = z.infer<typeof updateBasicAuthRequest>;
 
-/** What is kept for Traefik. The hash never leaves the server. */
+/**
+ * What is kept. Traefik gets the hash. The password itself is sealed with the panel's key, so that
+ * the people who manage the service can read it again: the hash never leaves the server, and the
+ * password only through `POST .../basic-auth/{entry}/reveal`. An entry saved before the panel kept
+ * passwords has none sealed, and becomes readable once it gets a new password.
+ */
 export const storedBasicAuthEntry = z.object({
   id: z.string(),
   username: z.string(),
   passwordHash: z.string(),
+  sealedPassword: z.string().nullable().default(null),
 });
 export type StoredBasicAuthEntry = z.infer<typeof storedBasicAuthEntry>;
 
-/** One entry as the panel shows it: never with its password or hash. */
-export const basicAuthEntry = z.object({ id: z.string(), username: z.string() });
+/**
+ * One entry as the panel shows it: never with its password or hash. `revealable` says whether the
+ * panel kept the password, so that it can be shown.
+ */
+export const basicAuthEntry = z.object({ id: z.string(), username: z.string(), revealable: z.boolean() });
 export type BasicAuthEntry = z.infer<typeof basicAuthEntry>;
 
 /** GET .../basic-auth */

@@ -588,13 +588,43 @@ describe("the security tab", () => {
     expect(await screen.findByText("This service is open to everyone")).toBeTruthy();
   });
 
-  it("never shows a password: there is nothing to reveal", async () => {
-    installFakeServer(base({ [BASIC_AUTH]: { entries: [{ id: "a1", username: "probeuser" }] } }));
+  it("shows a password only when asked, through the audited endpoint, and hides it without asking again", async () => {
+    let reveals = 0;
+    installFakeServer(
+      base({
+        [BASIC_AUTH]: { entries: [{ id: "a1", username: "probeuser", revealable: true }] },
+        "POST /projects/shop/services/web/basic-auth/a1/reveal": () => {
+          reveals += 1;
+          return { value: "hunter2hunter2" };
+        },
+      }),
+    );
     renderApp("/projects/shop/app/web/security");
 
     expect(await screen.findByText("probeuser")).toBeTruthy();
-    expect(screen.getByText("Password stored as a hash, not shown here")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Show password|Reveal/i })).toBeNull();
+    expect(screen.getByText("Password hidden")).toBeTruthy();
+    expect(screen.queryByText("hunter2hunter2")).toBeNull();
+    expect(reveals).toBe(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show the password" }));
+    expect(await screen.findByText("hunter2hunter2")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Hide the password" }));
+    expect(await screen.findByText("Password hidden")).toBeTruthy();
+    expect(screen.queryByText("hunter2hunter2")).toBeNull();
+    expect(reveals).toBe(1);
+  });
+
+  it("says why a password saved as a hash only cannot be shown, and offers a new one", async () => {
+    const server = installFakeServer(
+      base({ [BASIC_AUTH]: { entries: [{ id: "a1", username: "olduser", revealable: false }] } }),
+    );
+    renderApp("/projects/shop/app/web/security");
+
+    expect(await screen.findByText(/Set before the panel kept passwords/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Show the password" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Give a new one" }));
+    expect(await screen.findByLabelText("Password")).toBeTruthy();
+    expect(server.calls.some((entry) => entry.path.endsWith("/reveal"))).toBe(false);
   });
 
   it("needs both fields to create a user", async () => {
@@ -614,7 +644,7 @@ describe("the security tab", () => {
     const server = installFakeServer(
       base({
         [BASIC_AUTH]: { entries: [] },
-        "POST /projects/shop/services/web/basic-auth": { id: "a1", username: "bob" },
+        "POST /projects/shop/services/web/basic-auth": { id: "a1", username: "bob", revealable: true },
       }),
     );
     renderApp("/projects/shop/app/web/security");
@@ -634,8 +664,8 @@ describe("the security tab", () => {
   it("leaves the password out of an edit when it stays blank", async () => {
     const server = installFakeServer(
       base({
-        [BASIC_AUTH]: { entries: [{ id: "a1", username: "bob" }] },
-        "PUT /projects/shop/services/web/basic-auth/a1": { id: "a1", username: "robert" },
+        [BASIC_AUTH]: { entries: [{ id: "a1", username: "bob", revealable: true }] },
+        "PUT /projects/shop/services/web/basic-auth/a1": { id: "a1", username: "robert", revealable: true },
       }),
     );
     renderApp("/projects/shop/app/web/security");

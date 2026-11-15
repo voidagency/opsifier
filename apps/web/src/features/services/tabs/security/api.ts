@@ -4,6 +4,7 @@ import {
   basicAuthList,
   type CreateBasicAuthRequest,
   deletedBasicAuth,
+  revealedSecret,
   type UpdateBasicAuthRequest,
 } from "@opsifier/contract";
 import { queryOptions } from "@tanstack/react-query";
@@ -26,4 +27,7 @@ export const basicAuthApi = {
     api.put<BasicAuthEntry>(`${base(project, service)}/${id}`, { body, schema: basicAuthEntry }),
   remove: (project: string, service: string, id: string) =>
     api.delete(`${base(project, service)}/${id}`, { schema: deletedBasicAuth }),
+  /** Audited: the activity log notes who asked. */
+  reveal: (project: string, service: string, id: string) =>
+    api.post(`${base(project, service)}/${id}/reveal`, { schema: revealedSecret }),
 };

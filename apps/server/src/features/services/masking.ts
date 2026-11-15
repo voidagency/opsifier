@@ -11,7 +11,7 @@ import { resolveEnvPairs } from "./compile/env";
 import { BUILD_SECRET_CONTEXT, openEnv, openRetired } from "./env-store";
 import { findService, type ServiceRecord } from "./repo";
 import type { ServiceTarget } from "./service";
-import { REGISTRY_PASSWORD_CONTEXT } from "./spec";
+import { BASIC_AUTH_PASSWORD_CONTEXT, REGISTRY_PASSWORD_CONTEXT } from "./spec";
 
 type MaskingDeps = Pick<AppDeps, "db" | "secrets" | "logger">;
 
@@ -150,6 +150,17 @@ function addBuild(deps: MaskingDeps, redact: Redactor, record: ServiceRecord): v
   }
 }
 
+/** The passwords of the service's basic auth users, where the panel kept them. */
+function addBasicAuth(deps: MaskingDeps, redact: Redactor, record: ServiceRecord): void {
+  for (const { sealedPassword } of record.spec.basicAuth) {
+    if (sealedPassword !== null) {
+      attempt(deps, () => {
+        redact.addSecret(deps.secrets.unseal(sealedPassword, BASIC_AUTH_PASSWORD_CONTEXT));
+      });
+    }
+  }
+}
+
 /**
  * Everything this service's output could give away: what it is configured with now, what the container
  * that is running holds (`applied`, as Docker reports it), and what it has held before. Nothing here is
@@ -174,6 +185,7 @@ export function serviceRedactor(
     addEnvironment(deps, redact, target, record, projectEnv);
     addBuild(deps, redact, record);
     addDatabase(deps, redact, record);
+    addBasicAuth(deps, redact, record);
   }
   for (const entry of applied) {
     const separator = entry.indexOf("=");

@@ -25,9 +25,12 @@ export interface MiddlewaresInput {
   project?: string;
   service?: string;
   redirects?: readonly RedirectRule[];
-  basicAuth?: readonly StoredBasicAuthEntry[];
+  /** Only the name and the hash: the sealed password never reaches Traefik's files. */
+  basicAuth?: readonly BasicAuthUser[];
   maintenance?: Pick<MaintenanceSettings, "enabled">;
 }
+
+type BasicAuthUser = Pick<StoredBasicAuthEntry, "id" | "username" | "passwordHash">;
 
 /** What one service adds to the proxy, beyond the shared middlewares in `_base.yaml`. */
 export interface CompiledMiddlewares {
@@ -46,7 +49,7 @@ function assertRedirect(rule: RedirectRule): void {
 }
 
 /** Traefik refuses a whole middleware for one bad entry, and a colon would split `user:hash` wrongly. */
-function assertBasicAuthEntry(entry: StoredBasicAuthEntry): void {
+function assertBasicAuthEntry(entry: BasicAuthUser): void {
   if (!BASIC_AUTH_USER.test(entry.username) || !BCRYPT_HASH.test(entry.passwordHash)) {
     throw new InvalidProxyInputError(`Invalid basic auth entry for ${JSON.stringify(entry.username)}.`);
   }
