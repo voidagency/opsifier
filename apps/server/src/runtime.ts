@@ -17,7 +17,7 @@ import {
   refuseOnUnsupportedEngine,
 } from "./core/docker";
 import { createLogger } from "./core/logger";
-import { ProxyFiles } from "./core/proxy";
+import { DEFAULT_PANEL_UPSTREAM_URL, ProxyFiles } from "./core/proxy";
 import { RealtimeHub } from "./core/realtime";
 import { createSecrets, type Secrets } from "./core/secrets";
 import { createTools, FakeTools, type ToolRunner } from "./core/tools";
@@ -26,6 +26,7 @@ import { restoreInterruptedUpdate } from "./features/panel-update/journal";
 import { protectionGuard } from "./features/server-purpose/service";
 import { sealStoredVariables } from "./features/services/env-store";
 import { actionRedactor } from "./features/services/masking";
+import { SIGNIN_CHECK_PATH, studioSignInGuard } from "./features/studio/signin";
 
 export interface RuntimeOverrides {
   docker?: DockerDriver;
@@ -89,7 +90,11 @@ function assembleRuntime(
     docker,
     proxy: new ProxyFiles(
       config.traefikDynamicDir,
-      addressCertificatesGuard(database.db, config.namesUrl !== null, protectionGuard(database.db, now)),
+      studioSignInGuard(
+        database.db,
+        `${config.panelUpstream ?? DEFAULT_PANEL_UPSTREAM_URL}${SIGNIN_CHECK_PATH}`,
+        addressCertificatesGuard(database.db, config.namesUrl !== null, protectionGuard(database.db, now)),
+      ),
     ),
     realtime,
     actions: new ActionEngine({

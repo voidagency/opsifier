@@ -2,7 +2,7 @@
 
 The Studio lets someone change a web project by talking to an AI agent, and watch the result live: the conversation on the left, the project's preview on the right. It is optional and off by default. The agent is [OpenHands](https://github.com/OpenHands/OpenHands) (MIT), used as it is published: Opsifier talks to its agent server, and brings the interface, the projects and their previews.
 
-The Studio is new. For now it is open to the server's administrators only, because one agent server works on every project's folder. Each project will get an agent of its own, after which the Studio can be shared with other people project by project.
+The server's administrators reach every project in the Studio, and anyone else the projects shared with them: a designer, for example, with an account of the panel and nothing else on the server. One agent server still works on every project's folder, so someone a project is shared with could ask it about another project's files; each project will get an agent of its own.
 
 ## Set it up
 
@@ -56,6 +56,22 @@ Open **Studio** in the top bar, then **Add a project**, and give the repository:
 
 When the token does not reach the repository, the Studio says so, and adding it again once the token reaches it carries on from the copy already made. Only projects that use Vite can be added this way for now. Any other set-up can still be linked by hand with **Link a project**: a service whose container shows the project's live preview, and the project's folder as the agent server sees it.
 
+## Share a project
+
+1. Invite the person to the panel, from **Settings**, **Accounts**, as a member with no project: such an account reaches nothing on the server by itself.
+2. In the Studio, open the project and use **Share this project**: tick the accounts that may work on it.
+
+Each account a project is shared with sees it in the Studio, with its conversations, which everyone on the project shares, and its live preview, which it may start. It sees no other project, and no service, log, variable, terminal or setting of the server. Untick an account to take the project back.
+
+## Previews behind the panel's sign-in
+
+With **Previews behind the panel's sign-in** on, in the Studio's settings, each preview asks for the panel's own account instead of the password the server's gate shares with every site. The server's administrators and the accounts the project is shared with get in; nobody else does.
+
+- Traefik asks the panel about every request to a preview. With no cookie for that preview, the browser goes through the panel, which knows who is signed in and sends it back with a code good once, for a minute, which becomes a cookie of that preview only, for twelve hours.
+- Whether that account may still open the preview is read again at least every half minute: a project taken back, or an account turned off, stops opening it.
+- The agent reaches the preview inside the server, by its service's name, which the sign-in does not stand in front of.
+- For the preview to open inside the Studio, the panel and the previews must share a domain, as `panel.example.com` and the previews' `*.example.com` do: a browser only sends a frame its cookies within one site.
+
 ## How it works
 
 - **The panel reaches the agent server from inside its container.** For each request it runs a short Python script in the agent server's container, which calls the server on 127.0.0.1 and returns its answer. The agent server needs no domain, and it shares no network with the panel.
@@ -105,9 +121,9 @@ The agent ends each answer with two or three requests you might send next, which
 
 ## Limits
 
-- On a server whose role asks for a password before every site, a browser asks for it again for each preview's address, and it cannot ask inside the Studio's frame. Open the preview once in its own tab with **Open the preview in a new tab**, sign in, and reload the Studio.
+- On a server whose role asks for a password before every site, and with the previews' sign-in off, a browser asks for that password again for each preview's address, and it cannot ask inside the Studio's frame. Open the preview once in its own tab with **Open the preview in a new tab**, sign in, and reload the Studio, or put the previews behind the panel's sign-in.
 - The agent's hidden reasoning, the output of its commands and its screenshots stay in the agent server: the Studio shows what it writes, its steps and its plan.
 
 ## API
 
-`GET` and `PUT /api/v1/settings/studio` and `POST /api/v1/settings/studio/check` for the settings, `GET /api/v1/studio` for the linked projects, `POST /api/v1/studio/projects` to add a GitHub project, and under `/api/v1/projects/{project}/services/{service}/studio`: the link (`GET`, `PUT`, `DELETE`), `POST .../conversations` to start one, and `GET .../conversations/{conversation}/events`, `POST .../messages` and `POST .../stop` for a conversation. See [API.md](API.md).
+`GET` and `PUT /api/v1/settings/studio` and `POST /api/v1/settings/studio/check` for the settings, `GET /api/v1/studio` for the linked projects, `POST /api/v1/studio/projects` to add a GitHub project, `GET /api/v1/studio/preview-signin` for the hop of a preview's sign-in, and under `/api/v1/projects/{project}/services/{service}/studio`: the link (`GET`, `PUT`, `DELETE`), `GET` and `PUT .../members` for who it is shared with, `POST .../preview/start`, `POST .../conversations` to start one, and `GET .../conversations/{conversation}/events`, `POST .../messages` and `POST .../stop` for a conversation. See [API.md](API.md).

@@ -39,25 +39,29 @@ export function StudioPage() {
   const { t } = useTranslation(["studio", "common"]);
   const user = useCurrentUser();
   const admin = user?.role === "admin";
-  const { data, isPending, isError, error, refetch } = useQuery({ ...studioOverviewQuery, enabled: admin });
+  const { data, isPending, isError, error, refetch } = useQuery({
+    ...studioOverviewQuery,
+    enabled: user !== null && user !== undefined,
+  });
   const [linking, setLinking] = useState(false);
   const [adding, setAdding] = useState(false);
 
   const body = () => {
-    if (!admin) {
-      return (
-        <EmptyState
-          illustration="not-found"
-          title={t("restricted.title")}
-          description={t("restricted.description")}
-        />
-      );
-    }
     if (isPending) {
       return <Skeleton className="h-32" />;
     }
     if (isError) {
       return <ErrorState message={errorMessage(error, t)} onRetry={() => refetch()} />;
+    }
+    if (!admin && (!data.enabled || data.apps.length === 0)) {
+      // Someone a project is shared with: there is nothing to set up from here.
+      return (
+        <EmptyState
+          illustration="no-projects"
+          title={t(data.enabled ? "list.memberEmptyTitle" : "setup.memberOffTitle")}
+          description={t(data.enabled ? "list.memberEmptyDescription" : "setup.memberOffDescription")}
+        />
+      );
     }
     if (!data.enabled || !data.agentConfigured) {
       return (

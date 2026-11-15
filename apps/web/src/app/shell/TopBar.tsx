@@ -9,6 +9,7 @@ import { projectsQuery } from "../../features/projects/api";
 import { ServerPurposeIndicator } from "../../features/server-purpose/ProtectionIndicator";
 import type { CrumbControlProps } from "../../features/services/Crumbs";
 import { serviceCounts } from "../../features/services/serviceState";
+import { studioOverviewQuery } from "../../features/studio/api";
 import { cn } from "../../lib/cn";
 import {
   Kbd,
@@ -36,13 +37,18 @@ const primaryNav = [
   { to: "/settings", key: "settings", exact: false, pictogram: "settings" },
 ] as const satisfies ReadonlyArray<{ pictogram: PictogramName } & Record<string, unknown>>;
 
-/** What only the server's administrators see in the bar. */
+/** What only the server's administrators see in the bar. The Studio also shows to whoever has a project in it. */
 const ADMIN_ONLY: ReadonlySet<string> = new Set(["monitor", "studio"]);
 
 function PrimaryNav({ className }: { className?: string }) {
   const { t } = useTranslation("shell");
   const user = useCurrentUser();
-  const items = primaryNav.filter((item) => !ADMIN_ONLY.has(item.key) || user?.role === "admin");
+  const admin = user?.role === "admin";
+  const studio = useQuery({ ...studioOverviewQuery, enabled: user !== null && user !== undefined && !admin });
+  const studioShared = (studio.data?.apps.length ?? 0) > 0;
+  const items = primaryNav.filter(
+    (item) => !ADMIN_ONLY.has(item.key) || admin || (item.key === "studio" && studioShared),
+  );
   return (
     <nav aria-label={t("nav.label")} className={cn("gap-5", className)}>
       {items.map((item) => (

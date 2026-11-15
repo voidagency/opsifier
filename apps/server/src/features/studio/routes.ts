@@ -3,37 +3,54 @@ import {
   addStudioProjectRequest,
   linkStudioAppRequest,
   servicePath,
+  setStudioMembersRequest,
   studioAppDetail,
   studioCheck,
   studioConversation,
   studioConversationPath,
   studioEventPage,
   studioEventsQuery,
+  studioMembers,
   studioMessageRequest,
   studioModels,
   studioOverview,
+  studioPreviewStart,
   studioSettings,
   unlinkedStudioApp,
 } from "@opsifier/contract";
+import { getCookie, setCookie } from "hono/cookie";
 import { requirePrincipal, requireSessionPrincipal } from "../../core/auth";
 import type { Feature } from "../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
 import { requestAccess } from "../access/guard";
+import { getPanelDomainSettings } from "../server/settings";
 import { addStudioProject } from "./projects";
 import {
   checkStudioAgent,
   getStudioApp,
   getStudioEvents,
+  getStudioMembers,
   getStudioModels,
   getStudioOverview,
   getStudioSettings,
   linkStudioApp,
   saveStudioSettings,
   sendStudioMessage,
+  setStudioMembers,
   startStudioConversation,
+  startStudioPreview,
   stopStudioConversation,
   unlinkStudioApp,
 } from "./service";
+import {
+  mayOpenPreview,
+  PREVIEW_COOKIE,
+  PreviewSignIn,
+  previewAppOfHost,
+  SIGNIN_CHECK_PATH,
+  SIGNIN_RETURN_PATH,
+  safeReturnPath,
+} from "./signin";
 
 const tags = ["Studio"];
 const SETTINGS = "/api/v1/settings/studio";
@@ -42,7 +59,7 @@ const CONVERSATION = `${APP}/conversations/{conversation}`;
 
 const invalid = errorResponse("The request failed validation.");
 const denied = errorResponse("Not signed in.");
-const refused = errorResponse("Not allowed: the Studio is for the server's administrators for now.");
+const refused = errorResponse("Not allowed: this is for the server's administrators.");
 const missing = errorResponse("No such service, Studio link or conversation.");
 const blocked = errorResponse(
   "The Studio is turned off, has no agent server, or the agent server's service is not running.",
@@ -124,6 +141,53 @@ const addProjectRoute = createRoute({
     ),
     502: errorResponse("The copy failed."),
     503: errorResponse("The agent server could not be reached."),
+  },
+});
+
+const membersRoute = createRoute({
+  method: "get",
+  path: `${APP}/members`,
+  tags,
+  description: "The accounts the Studio project is shared with. Only the server's administrators see it.",
+  request: { params: servicePath },
+  responses: {
+    200: jsonResponse(studioMembers, "The accounts, by e-mail."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    404: missing,
+  },
+});
+
+const setMembersRoute = createRoute({
+  method: "put",
+  path: `${APP}/members`,
+  tags,
+  description:
+    "Shares the Studio project with exactly these accounts. Each reaches the project's conversations and its preview, and nothing else of the server.",
+  request: { params: servicePath, body: jsonBody(setStudioMembersRequest) },
+  responses: {
+    200: jsonResponse(studioMembers, "The accounts it is now shared with."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    404: missing,
+  },
+});
+
+const startPreviewRoute = createRoute({
+  method: "post",
+  path: `${APP}/preview/start`,
+  tags,
+  description:
+    "Starts the project's preview, for anyone the project is shared with. A preview that runs already is left as it is.",
+  request: { params: servicePath },
+  responses: {
+    200: jsonResponse(studioPreviewStart, "Whether a start was asked for."),
+    400: invalid,
+    401: denied,
+    404: missing,
+    409: blocked,
   },
 });
 
@@ -249,16 +313,109 @@ const target = (params: { project: string; service: string }) => ({
 /** The person behind the request, including whoever owns an API key. */
 const actorOf = (principal: ReturnType<typeof requirePrincipal>) => principal.user.email;
 
+/** A short page in the panel's two languages, for the hops of a preview's sign-in that can fail. */
+function signInPage(title: string, body: string): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:36rem;margin:15vh auto;padding:0 1rem;color:#222}</style></head><body><h1 style="font-size:1.25rem">${title}</h1><p>${body}</p></body></html>`;
+}
+
+const NOT_A_PREVIEW = signInPage(
+  "Aperçu introuvable · Preview not found",
+  "Cette adresse n'est pas celle d'un aperçu du Studio. This address is not a Studio preview's.",
+);
+const NOT_SHARED = signInPage(
+  "Aperçu non partagé · Preview not shared",
+  "Ce projet n'est pas partagé avec votre compte : demandez-le à un administrateur. This project is not shared with your account: ask an administrator.",
+);
+const EXPIRED = signInPage(
+  "Lien expiré · Link expired",
+  "Rechargez la page de l'aperçu pour vous connecter de nouveau. Reload the preview to sign in again.",
+);
+
 export const feature: Feature = {
   register(app, deps) {
+    const signIn = new PreviewSignIn(deps.secrets, deps.now);
+
+    // On the panel, from a browser: a code for a preview the person signed in may open, and back to it.
+    app.get("/api/v1/studio/preview-signin", (c) => {
+      c.header("Cache-Control", "no-store");
+      const host = (c.req.query("host") ?? "").toLowerCase();
+      const to = safeReturnPath(c.req.query("to"));
+      const preview = previewAppOfHost(deps.db, host);
+      if (preview === null) {
+        return c.html(NOT_A_PREVIEW, 404);
+      }
+      const principal = c.get("principal");
+      if (principal === null || principal.kind !== "session") {
+        // The panel's own page signs the person in, then comes back here.
+        return c.redirect(`/studio/open-preview?${new URLSearchParams({ host, to })}`, 302);
+      }
+      if (!mayOpenPreview(deps.db, principal.user.id, preview.serviceId)) {
+        return c.html(NOT_SHARED, 403);
+      }
+      const code = signIn.issueCode(principal.user.id, host);
+      const scheme = preview.https ? "https" : "http";
+      return c.redirect(`${scheme}://${host}${SIGNIN_RETURN_PATH}?${new URLSearchParams({ code, to })}`, 302);
+    });
+
+    // From Traefik, for every request to a preview behind the sign-in: through, or to the panel.
+    app.get(SIGNIN_CHECK_PATH, (c) => {
+      c.header("Cache-Control", "no-store");
+      const host = (c.req.header("x-forwarded-host") ?? "").toLowerCase().replace(/:\d+$/, "");
+      const uri = c.req.header("x-forwarded-uri") ?? "/";
+      const method = (c.req.header("x-forwarded-method") ?? "GET").toUpperCase();
+      const preview = previewAppOfHost(deps.db, host);
+      if (preview === null) {
+        return c.html(NOT_A_PREVIEW, 403);
+      }
+      const url = new URL(uri.startsWith("/") ? uri : `/${uri}`, `https://${host}`);
+      if (url.pathname === SIGNIN_RETURN_PATH) {
+        const userId = signIn.redeemCode(url.searchParams.get("code") ?? "", host);
+        if (userId === null || !mayOpenPreview(deps.db, userId, preview.serviceId)) {
+          return c.html(EXPIRED, 403);
+        }
+        const cookie = signIn.cookieFor(userId, host);
+        setCookie(c, PREVIEW_COOKIE, cookie.value, {
+          path: "/",
+          maxAge: cookie.maxAgeSeconds,
+          httpOnly: true,
+          secure: preview.https,
+          sameSite: "Lax",
+        });
+        return c.redirect(safeReturnPath(url.searchParams.get("to") ?? undefined), 302);
+      }
+      const value = getCookie(c, PREVIEW_COOKIE);
+      if (value !== undefined) {
+        const allowed = signIn.allowed(`${host}|${value}`, () => {
+          const userId = signIn.readCookie(value, host);
+          return userId !== null && mayOpenPreview(deps.db, userId, preview.serviceId);
+        });
+        if (allowed) {
+          return c.body(null, 200);
+        }
+      }
+      // A page someone opens goes through the panel to sign in; anything else is refused.
+      const panel = getPanelDomainSettings(deps).url;
+      if (
+        (method === "GET" || method === "HEAD") &&
+        (c.req.header("accept") ?? "").includes("text/html") &&
+        panel !== null
+      ) {
+        return c.redirect(
+          `${panel}/api/v1/studio/preview-signin?${new URLSearchParams({ host, to: uri })}`,
+          302,
+        );
+      }
+      return c.text("Sign in to the panel to open this preview.", 401);
+    });
+
     app.openapi(getSettingsRoute, (c) => {
       requireSessionPrincipal(c);
       return c.json(getStudioSettings(deps), 200);
     });
 
-    app.openapi(saveSettingsRoute, (c) => {
+    app.openapi(saveSettingsRoute, async (c) => {
       const principal = requireSessionPrincipal(c);
-      const saved = saveStudioSettings(deps, c.req.valid("json"));
+      const saved = await saveStudioSettings(deps, c.req.valid("json"));
       deps.actions.record({
         type: "studio.settings",
         title: saved.enabled ? "Turn the Studio on" : "Turn the Studio off",
@@ -272,9 +429,35 @@ export const feature: Feature = {
       return c.json(await checkStudioAgent(deps), 200);
     });
 
-    app.openapi(overviewRoute, async (c) => c.json(await getStudioOverview(deps), 200));
+    app.openapi(overviewRoute, async (c) => {
+      const principal = requirePrincipal(c);
+      const access = requestAccess(deps, c);
+      const everything = access.admin && !access.scoped;
+      return c.json(await getStudioOverview(deps, everything ? null : principal.user.id), 200);
+    });
 
-    app.openapi(modelsRoute, async (c) => c.json(await getStudioModels(deps), 200));
+    app.openapi(modelsRoute, async (c) => {
+      requirePrincipal(c);
+      return c.json(await getStudioModels(deps), 200);
+    });
+
+    app.openapi(membersRoute, (c) => c.json(getStudioMembers(deps, target(c.req.valid("param"))), 200));
+
+    app.openapi(setMembersRoute, (c) =>
+      c.json(
+        setStudioMembers(
+          deps,
+          target(c.req.valid("param")),
+          c.req.valid("json").userIds,
+          actorOf(requirePrincipal(c)),
+        ),
+        200,
+      ),
+    );
+
+    app.openapi(startPreviewRoute, async (c) =>
+      c.json(await startStudioPreview(deps, target(c.req.valid("param")), actorOf(requirePrincipal(c))), 200),
+    );
 
     app.openapi(appRoute, async (c) => c.json(await getStudioApp(deps, target(c.req.valid("param"))), 200));
 
@@ -302,9 +485,9 @@ export const feature: Feature = {
       return c.json(linked, 200);
     });
 
-    app.openapi(unlinkRoute, (c) => {
+    app.openapi(unlinkRoute, async (c) => {
       const params = c.req.valid("param");
-      unlinkStudioApp(deps, target(params));
+      await unlinkStudioApp(deps, target(params));
       deps.actions.record({
         type: "studio.unlink",
         title: `Take ${params.project}/${params.service} out of the Studio`,

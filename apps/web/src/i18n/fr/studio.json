@@ -10,7 +10,9 @@
     "offTitle": "Le Studio est désactivé",
     "agentTitle": "Le Studio n'a pas de serveur d'agent",
     "description": "Activez-le et choisissez le service qui fait tourner son serveur d'agent OpenHands, dans Réglages, Studio.",
-    "action": "Ouvrir les réglages du Studio"
+    "action": "Ouvrir les réglages du Studio",
+    "memberOffTitle": "Le Studio est éteint",
+    "memberOffDescription": "Un administrateur de ce serveur peut l'allumer."
   },
   "list": {
     "emptyTitle": "Aucun projet dans le Studio pour l'instant",
@@ -20,7 +22,9 @@
     "untitled": "Conversation sans titre",
     "open": "Ouvrir",
     "openNamed": "Ouvrir {{name}} dans le Studio",
-    "emptyNoFolder": "Réglez le dossier des projets dans les réglages du Studio pour ajouter des projets depuis GitHub, ou reliez un service qui montre déjà l'aperçu d'un projet."
+    "emptyNoFolder": "Réglez le dossier des projets dans les réglages du Studio pour ajouter des projets depuis GitHub, ou reliez un service qui montre déjà l'aperçu d'un projet.",
+    "memberEmptyTitle": "Aucun projet partagé avec vous pour l'instant",
+    "memberEmptyDescription": "Dès qu'un administrateur vous partage un projet, il apparaît ici : ouvrez-le pour parler à l'agent et le voir en direct."
   },
   "link": {
     "action": "Relier un projet",
@@ -95,7 +99,8 @@
     "address": "Adresse de la page affichée",
     "inspect": "Désigner un élément",
     "inspectUnavailable": "Cet aperçu ne charge pas l'inspecteur du Studio",
-    "inspecting": "Cliquez sur un élément de l'aperçu pour le joindre à votre message. Échap annule."
+    "inspecting": "Cliquez sur un élément de l'aperçu pour le joindre à votre message. Échap annule.",
+    "opening": "Ouverture de l'aperçu…"
   },
   "settings": {
     "title": "Studio",
@@ -116,7 +121,9 @@
     "checkOk": "Le panneau joint le serveur d'agent, version {{version}}.",
     "checkFailed": "Le panneau ne joint pas le serveur d'agent : {{message}}",
     "projectsDir": "Dossier des projets",
-    "projectsDirHint": "Où vont les projets dans le conteneur du serveur d'agent, par exemple /projects. Ce doit être un dossier du serveur monté dans ce service, depuis son onglet Stockage : chaque projet ajouté y est copié, et son aperçu monte le même dossier."
+    "projectsDirHint": "Où vont les projets dans le conteneur du serveur d'agent, par exemple /projects. Ce doit être un dossier du serveur monté dans ce service, depuis son onglet Stockage : chaque projet ajouté y est copié, et son aperçu monte le même dossier.",
+    "previewSignIn": "Aperçus derrière la connexion au panneau",
+    "previewSignInHint": "Chaque aperçu demande le compte du panneau au lieu du mot de passe que le serveur partage entre tous les sites : seuls entrent les administrateurs du serveur et les comptes avec qui son projet est partagé. Le panneau et les aperçus doivent partager un domaine, comme panel.example.com et les *.example.com des aperçus, pour que l'aperçu s'ouvre dans le Studio."
   },
   "actions": {
     "command": "A lancé",
@@ -179,5 +186,16 @@
     "submit": "Ajouter",
     "working": "Copie du dépôt et création de son aperçu… Cela peut prendre une minute.",
     "done": "{{name}} est dans le Studio. Son aperçu démarre : le premier démarrage installe ses dépendances."
+  },
+  "share": {
+    "action": "Partager ce projet",
+    "title": "Partager {{name}}",
+    "description": "Chaque compte coché voit ce projet dans le Studio, ses conversations et son aperçu en direct, et rien d'autre du serveur.",
+    "accounts": "Comptes membres",
+    "none": "Aucun compte membre pour l'instant. Invitez les designers depuis Réglages, Comptes, comme membres sans projet : ils apparaîtront ici.",
+    "admins": "Les administrateurs du serveur voient déjà tous les projets.",
+    "save": "Enregistrer",
+    "saved_one": "Partagé avec {{count}} compte",
+    "saved_other": "Partagé avec {{count}} comptes"
   }
 }

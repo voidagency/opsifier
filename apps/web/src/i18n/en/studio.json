@@ -10,7 +10,9 @@
     "offTitle": "The Studio is turned off",
     "agentTitle": "The Studio has no agent server",
     "description": "Turn it on and name the service that runs its OpenHands agent server, in Settings, Studio.",
-    "action": "Open the Studio settings"
+    "action": "Open the Studio settings",
+    "memberOffTitle": "The Studio is turned off",
+    "memberOffDescription": "An administrator of this server can turn it on."
   },
   "list": {
     "emptyTitle": "No project in the Studio yet",
@@ -20,7 +22,9 @@
     "untitled": "Untitled conversation",
     "open": "Open",
     "openNamed": "Open {{name}} in the Studio",
-    "emptyNoFolder": "Set the projects folder in the Studio's settings to add projects from GitHub, or link a service that already shows a project's preview."
+    "emptyNoFolder": "Set the projects folder in the Studio's settings to add projects from GitHub, or link a service that already shows a project's preview.",
+    "memberEmptyTitle": "No project shared with you yet",
+    "memberEmptyDescription": "Once an administrator shares a project with you, it shows here: open it to talk to the agent and see it live."
   },
   "link": {
     "action": "Link a project",
@@ -95,7 +99,8 @@
     "address": "Address of the page shown",
     "inspect": "Point at an element",
     "inspectUnavailable": "This preview does not load the Studio's inspector",
-    "inspecting": "Click an element of the preview to join it to your message. Esc cancels."
+    "inspecting": "Click an element of the preview to join it to your message. Esc cancels.",
+    "opening": "Opening the preview…"
   },
   "settings": {
     "title": "Studio",
@@ -116,7 +121,9 @@
     "checkOk": "The panel reaches the agent server, version {{version}}.",
     "checkFailed": "The panel does not reach the agent server: {{message}}",
     "projectsDir": "Projects folder",
-    "projectsDirHint": "Where projects go in the agent server's container, such as /projects. It must be a folder of the server mounted in that service, from its Storage tab: each project added is copied there, and its preview mounts the same folder."
+    "projectsDirHint": "Where projects go in the agent server's container, such as /projects. It must be a folder of the server mounted in that service, from its Storage tab: each project added is copied there, and its preview mounts the same folder.",
+    "previewSignIn": "Previews behind the panel's sign-in",
+    "previewSignInHint": "Each preview asks for the panel's own account instead of the password the server shares with every site: the server's administrators and the accounts its project is shared with get in, nobody else. The panel and the previews should share a domain, as panel.example.com and the previews' *.example.com do, for the preview to open inside the Studio."
   },
   "actions": {
     "command": "Ran",
@@ -179,5 +186,16 @@
     "submit": "Add",
     "working": "Copying the repository and making its preview… This can take a minute.",
     "done": "{{name}} is in the Studio. Its preview is starting: the first start installs its dependencies."
+  },
+  "share": {
+    "action": "Share this project",
+    "title": "Share {{name}}",
+    "description": "Each account ticked sees this project in the Studio, its conversations and its live preview, and nothing else of the server.",
+    "accounts": "Member accounts",
+    "none": "No member account yet. Invite the designers from Settings, Accounts, as members with no project: they will appear here.",
+    "admins": "The server's administrators see every project already.",
+    "save": "Save",
+    "saved_one": "Shared with {{count}} account",
+    "saved_other": "Shared with {{count}} accounts"
   }
 }

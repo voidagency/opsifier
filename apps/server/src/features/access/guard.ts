@@ -3,6 +3,7 @@ import { actionsTopic, projectName, serviceLogsTopic, serviceMetricsTopic } from
 import type { Context, MiddlewareHandler } from "hono";
 import { HOST_ADMIN_ONLY, holdsHostAdmin, requestScheme } from "../../core/auth";
 import type { AppDeps, AppEnv } from "../../core/context";
+import type { DbHandle } from "../../core/db";
 import { AppError, forbidden, notFound } from "../../core/errors";
 import { PROXY_PAGES_PREFIX } from "../../core/proxy";
 import type { TopicGuard } from "../../core/realtime";
@@ -11,6 +12,7 @@ import { belongsToCurrent } from "../projects/generation";
 import { isPanelHostAllowed, isPanelOwnName } from "../server/panel-host";
 import { needsTwoFactorSetup } from "../two-factor-policy/service";
 import { type ProjectLevel, type Requirement, requirementFor } from "./policy";
+import { isStudioMember } from "./repo";
 import {
   type Access,
   accessOf,
@@ -73,7 +75,7 @@ function assertWriteAllowed(access: Access, method: string): void {
   }
 }
 
-function enforce(access: Access, method: string, requirement: Requirement): void {
+function enforce(access: Access, method: string, requirement: Requirement, db?: DbHandle): void {
   switch (requirement.kind) {
     case "open":
       assertWriteAllowed(access, method);
@@ -103,6 +105,19 @@ function enforce(access: Access, method: string, requirement: Requirement): void
     case "project":
       requireLevel(access, method, requirement);
       return;
+    case "studio":
+      if (access.admin && !access.scoped) {
+        assertWriteAllowed(access, method);
+        return;
+      }
+      if (
+        access.principal.kind === "session" &&
+        db !== undefined &&
+        isStudioMember(db, requirement.project, requirement.service, access.principal.user.id)
+      ) {
+        return;
+      }
+      throw notFound();
   }
 }
 
@@ -111,7 +126,7 @@ export function authorizeRequests(deps: Pick<AppDeps, "db">): MiddlewareHandler<
   return async (c, next) => {
     const principal = c.get("principal");
     if (principal !== null) {
-      enforce(accessOf(deps.db, principal), c.req.method, requirementFor(c.req.method, c.req.path));
+      enforce(accessOf(deps.db, principal), c.req.method, requirementFor(c.req.method, c.req.path), deps.db);
     }
     return next();
   };

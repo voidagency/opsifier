@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/forms";
 import { Button, buttonClass, Lamp, Tooltip, toast } from "../../ui";
-import { servicesApi } from "../services/api";
+import { studioApi } from "./api";
 import { readSelected, type SelectedElement } from "./selection";
 
 type LampState = "running" | "stopped" | "progress" | "failed" | "unknown";
@@ -106,7 +106,7 @@ export function PreviewPane({
   const start = async () => {
     onStartRequested();
     try {
-      await servicesApi.start(app.project, app.service);
+      await studioApi.startPreview(app.project, app.service);
     } catch (reason) {
       toast.error(errorMessage(reason, t));
     }

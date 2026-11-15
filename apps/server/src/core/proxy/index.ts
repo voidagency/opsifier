@@ -14,6 +14,13 @@ const DEFAULT_FILE_MODE = 0o640;
 
 /** Where the panel answers with the pages the proxy shows in place of a site. Public, no session. */
 export const PROXY_PAGES_PREFIX = "/api/proxy-pages";
+/**
+ * A route behind the panel's own sign-in, as the Studio's previews are: the server's gate, a password
+ * shared by every site, leaves such a route alone.
+ */
+export const STUDIO_SIGNIN_PREFIX = "opsifier-studio-signin-";
+/** Where Traefik reaches the panel, unless the configuration says otherwise. */
+export const DEFAULT_PANEL_UPSTREAM_URL = DEFAULT_PANEL_UPSTREAM;
 
 export const PANEL_SERVICE = "opsifier-panel";
 export const REDIRECT_HTTPS_MIDDLEWARE = "opsifier-redirect-https";

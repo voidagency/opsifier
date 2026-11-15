@@ -1,4 +1,6 @@
-import { type AnyRoute, createRoute } from "@tanstack/react-router";
+import { type AnyRoute, createRoute, useSearch } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { StudioPage } from "./StudioPage";
 import { StudioSettingsPage } from "./StudioSettingsPage";
 import { WorkspacePage } from "./WorkspacePage";
@@ -15,7 +17,17 @@ export function createStudioRoutes<TParent extends AnyRoute>(getParentRoute: () 
       typeof search.c === "string" && search.c !== "" ? { c: search.c } : {},
     component: WorkspacePage,
   });
-  return studioRoute.addChildren([listRoute, workspaceRoute]);
+  // Signed in, a preview behind the panel's sign-in carries on through the panel's own hop.
+  const openPreviewRoute = createRoute({
+    getParentRoute: () => studioRoute,
+    path: "open-preview",
+    validateSearch: (search: Record<string, unknown>): { host?: string; to?: string } => ({
+      ...(typeof search.host === "string" ? { host: search.host } : {}),
+      ...(typeof search.to === "string" ? { to: search.to } : {}),
+    }),
+    component: OpenPreviewPage,
+  });
+  return studioRoute.addChildren([listRoute, openPreviewRoute, workspaceRoute]);
 }
 
 /** Settings, Server, Studio. */
@@ -26,4 +38,16 @@ export function createStudioSettingsRoute<TParent extends AnyRoute>(getParentRou
     staticData: { crumb: "settingsNav.studio" },
     component: StudioSettingsPage,
   });
+}
+
+/** Hands a signed-in browser back to the panel's hop for a preview, which sends it on to the preview. */
+function OpenPreviewPage() {
+  const { t } = useTranslation("studio");
+  const { host = "", to = "/" } = useSearch({ strict: false }) as { host?: string; to?: string };
+  useEffect(() => {
+    if (host !== "") {
+      window.location.replace(`/api/v1/studio/preview-signin?${new URLSearchParams({ host, to })}`);
+    }
+  }, [host, to]);
+  return <p className="m-6 text-sm text-muted">{t("preview.opening")}</p>;
 }

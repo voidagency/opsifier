@@ -1,14 +1,17 @@
 import {
   type AddStudioProjectRequest,
   type LinkStudioAppRequest,
+  type SetStudioMembersRequest,
   type StudioMessageRequest,
   type StudioSettings,
   studioAppDetail,
   studioCheck,
   studioConversation,
   studioEventPage,
+  studioMembers,
   studioModels,
   studioOverview,
+  studioPreviewStart,
   studioSettings,
   unlinkedStudioApp,
 } from "@opsifier/contract";
@@ -40,6 +43,14 @@ export const studioModelsQuery = queryOptions({
   staleTime: 60_000,
 });
 
+export const studioMembersQuery = (project: string, service: string) =>
+  queryOptions({
+    queryKey: [...studioKey, "members", project, service] as const,
+    queryFn: ({ signal }) =>
+      api.get(`${appPath(project, service)}/members`, { schema: studioMembers, signal }),
+    staleTime: 0,
+  });
+
 export const studioSettingsQuery = queryOptions({
   queryKey: [...studioKey, "settings"] as const,
   queryFn: ({ signal }) => api.get("/settings/studio", { schema: studioSettings, signal }),
@@ -51,6 +62,10 @@ export const studioApi = {
   check: () => api.post("/settings/studio/check", { schema: studioCheck }),
   addProject: (body: AddStudioProjectRequest) =>
     api.post("/studio/projects", { body, schema: studioAppDetail }),
+  setMembers: (project: string, service: string, body: SetStudioMembersRequest) =>
+    api.put(`${appPath(project, service)}/members`, { body, schema: studioMembers }),
+  startPreview: (project: string, service: string) =>
+    api.post(`${appPath(project, service)}/preview/start`, { schema: studioPreviewStart }),
   link: (project: string, service: string, body: LinkStudioAppRequest) =>
     api.put(appPath(project, service), { body, schema: studioAppDetail }),
   unlink: (project: string, service: string) =>

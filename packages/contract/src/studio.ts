@@ -31,7 +31,15 @@ export const studioAgent = z.object({
 export type StudioAgent = z.infer<typeof studioAgent>;
 
 /** GET and PUT /api/v1/settings/studio */
-export const studioSettings = z.object({ enabled: z.boolean(), agent: studioAgent.nullable() });
+export const studioSettings = z.object({
+  enabled: z.boolean(),
+  agent: studioAgent.nullable(),
+  /**
+   * The previews ask for the panel's own sign-in, and let in the server's administrators and the
+   * accounts each project is shared with, instead of the password the server's gate shares.
+   */
+  previewSignIn: z.boolean().default(false),
+});
 export type StudioSettings = z.infer<typeof studioSettings>;
 
 /** POST /api/v1/settings/studio/check: whether the panel reaches the agent server, and with its key. */
@@ -114,6 +122,23 @@ export type AddStudioProjectRequest = z.input<typeof addStudioProjectRequest>;
 
 /** DELETE .../studio: the service is no longer in the Studio. Its preview and folder stay. */
 export const unlinkedStudioApp = z.object({ project: z.string(), service: z.string() });
+
+/** An account a Studio project is shared with. */
+export const studioMember = z.object({ userId: z.string(), email: z.string(), addedAt: z.string() });
+export type StudioMember = z.infer<typeof studioMember>;
+
+/** GET and PUT .../studio/members: the accounts the project is shared with, by e-mail. */
+export const studioMembers = z.object({ members: z.array(studioMember) });
+export type StudioMembers = z.infer<typeof studioMembers>;
+
+/** PUT .../studio/members: shares the project with exactly these accounts. */
+export const setStudioMembersRequest = z.object({
+  userIds: z.array(z.string().min(1).max(100)).max(200),
+});
+export type SetStudioMembersRequest = z.infer<typeof setStudioMembersRequest>;
+
+/** POST .../studio/preview/start: whether a start was asked for; false when it runs already. */
+export const studioPreviewStart = z.object({ started: z.boolean() });
 
 /** An image pasted into a message, sent inline. The panel's request size limit applies to the whole message. */
 export const studioImage = z

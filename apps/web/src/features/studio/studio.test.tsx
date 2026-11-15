@@ -41,6 +41,19 @@ const detail = (overrides: Partial<StudioAppDetail> = {}): StudioAppDetail => ({
   ...overrides,
 });
 
+const ACCOUNT = {
+  name: "",
+  role: "member",
+  owner: false,
+  hostAdmin: false,
+  twoFactorEnabled: false,
+  active: true,
+  createdAt: "2026-11-15T12:00:00.000Z",
+  projects: [],
+  allProjects: null,
+  apiKeyCount: 0,
+};
+
 const QWEN = { profile: "qwen-rtx", name: "Qwen3.6-27B", host: "100.89.0.1", private: true };
 const CLOUD = { profile: "cloud", name: "claude-sonnet-4-5", host: null, private: false };
 
@@ -180,14 +193,30 @@ describe("the Studio's list", () => {
     expect(screen.queryByRole("button", { name: "Add a project" })).toBeNull();
   });
 
-  it("is in the bar for administrators only", async () => {
+  it("is not in the bar of an account with no project shared with it", async () => {
+    installFakeServer(
+      base({
+        "GET /auth/session": { status: "signed-in", user: { ...SIGNED_IN.user, role: "member" } },
+        "GET /studio": { enabled: true, agentConfigured: true, canAddProjects: false, apps: [] },
+      }),
+    );
+    renderApp("/studio");
+
+    expect(await screen.findByText("No project shared with you yet")).toBeTruthy();
+    expect(screen.queryAllByRole("link", { name: "Studio" })).toEqual([]);
+    expect(screen.queryByRole("button", { name: "Link a project" })).toBeNull();
+  });
+
+  it("shows a designer the projects shared with them, without the administration", async () => {
     installFakeServer(
       base({ "GET /auth/session": { status: "signed-in", user: { ...SIGNED_IN.user, role: "member" } } }),
     );
     renderApp("/studio");
 
-    expect(await screen.findByText("For the server's administrators")).toBeTruthy();
-    expect(screen.queryAllByRole("link", { name: "Studio" })).toEqual([]);
+    expect(await screen.findByRole("link", { name: "Open cd-studio-preview in the Studio" })).toBeTruthy();
+    expect((await screen.findAllByRole("link", { name: "Studio" })).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Link a project" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add a project" })).toBeNull();
   });
 });
 
@@ -256,6 +285,41 @@ describe("a Studio project", () => {
       },
     });
     await waitFor(() => expect(conversationPane.className).not.toContain("hidden"));
+  });
+
+  it("shares the project with the member accounts ticked", async () => {
+    const server = installFakeServer(
+      base({
+        "GET /users": {
+          users: [
+            { ...ACCOUNT, id: "u2", email: "designer@example.com" },
+            { ...ACCOUNT, id: "u3", email: "other@example.com" },
+            { ...ACCOUNT, id: "u1", email: "admin@example.com", role: "admin" },
+          ],
+        },
+        [`GET ${APP}/members`]: {
+          members: [{ userId: "u3", email: "other@example.com", addedAt: "2026-11-15T12:00:00.000Z" }],
+        },
+        [`PUT ${APP}/members`]: { members: [] },
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Share this project" }));
+    const accounts = await screen.findByRole("list", { name: "Member accounts" });
+    // Administrators see every project: only member accounts are offered.
+    expect(within(accounts).queryByText("admin@example.com")).toBeNull();
+    expect((within(accounts).getByLabelText("other@example.com") as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(within(accounts).getByLabelText("designer@example.com"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(
+        server.calls.find((call) => call.method === "PUT" && call.path === `${APP}/members`)?.body,
+      ).toEqual({
+        userIds: ["u3", "u2"],
+      }),
+    );
   });
 
   it("shows a message as soon as it is sent", async () => {
@@ -551,18 +615,16 @@ describe("a Studio project", () => {
     const server = installFakeServer(
       base({
         [`GET ${APP}`]: detail({ previewStatus: "stopped" }),
-        "POST /projects/lovable/services/cd-studio-preview/start": {
-          id: "a1",
-          type: "service.start",
-          title: "Start",
-          status: "queued",
-        },
+        [`POST ${APP}/preview/start`]: { started: true },
       }),
     );
     renderApp("/studio/lovable/cd-studio-preview");
 
+    // Through the Studio, which lets the accounts a project is shared with start its preview.
     await waitFor(() =>
-      expect(server.calls.some((call) => call.method === "POST" && call.path.endsWith("/start"))).toBe(true),
+      expect(
+        server.calls.some((call) => call.method === "POST" && call.path === `${APP}/preview/start`),
+      ).toBe(true),
     );
     expect(await screen.findByText("The preview is starting")).toBeTruthy();
   });
@@ -578,6 +640,7 @@ describe("the Studio's settings", () => {
       keyFile: "/home/openhands/.openhands/agent-canvas/api-key.txt",
       projectsDir: null,
     },
+    previewSignIn: false,
   };
 
   it("turns the Studio on, keeping its agent server", async () => {
@@ -610,6 +673,23 @@ describe("the Studio's settings", () => {
       expect(
         (server.calls.find((call) => call.method === "PUT")?.body as typeof settings | undefined)?.agent,
       ).toEqual({ ...settings.agent, projectsDir: "/projects" }),
+    );
+  });
+
+  it("puts the previews behind the panel's sign-in", async () => {
+    const server = installFakeServer(
+      base({ "GET /settings/studio": settings, "PUT /settings/studio": settings }),
+    );
+    renderApp("/settings/server/studio");
+
+    fireEvent.click(await screen.findByRole("switch", { name: "Previews behind the panel's sign-in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(
+        (server.calls.find((call) => call.method === "PUT")?.body as typeof settings | undefined)
+          ?.previewSignIn,
+      ).toBe(true),
     );
   });
 

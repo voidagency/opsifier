@@ -48,6 +48,7 @@ function SettingsForm({ settings }: { settings: StudioSettings }) {
     t,
     initialValues: {
       enabled: settings.enabled,
+      previewSignIn: settings.previewSignIn,
       service: agent === null ? "" : `${agent.project}/${agent.service}`,
       url: agent?.url ?? DEFAULT_URL,
       keyFile: agent === null ? DEFAULT_KEY_FILE : (agent.keyFile ?? ""),
@@ -60,6 +61,7 @@ function SettingsForm({ settings }: { settings: StudioSettings }) {
       const [project = "", service = ""] = values.service.split("/");
       await studioApi.saveSettings({
         enabled: values.enabled,
+        previewSignIn: values.previewSignIn,
         agent:
           values.service === ""
             ? null
@@ -94,6 +96,14 @@ function SettingsForm({ settings }: { settings: StudioSettings }) {
           hint={t("settings.enabledHint")}
           checked={form.values.enabled}
           onCheckedChange={(enabled) => form.set("enabled", enabled)}
+        />
+      </section>
+      <section className="border-b pb-3">
+        <Switch
+          label={t("settings.previewSignIn")}
+          hint={t("settings.previewSignInHint")}
+          checked={form.values.previewSignIn}
+          onCheckedChange={(previewSignIn) => form.set("previewSignIn", previewSignIn)}
         />
       </section>
       <Field label={t("settings.service")} hint={t("settings.serviceHint")} error={form.errors.service}>

@@ -9,11 +9,12 @@ const SETTINGS_KEY = "studio";
 const stored = z.object({
   enabled: z.boolean().default(false),
   agent: studioAgent.nullable().default(null),
+  previewSignIn: z.boolean().default(false),
 });
 
 export function readStudioSettings(deps: Pick<AppDeps, "db">): StudioSettings {
   const parsed = stored.safeParse(getSetting(deps.db, SETTINGS_KEY) ?? {});
-  return parsed.success ? parsed.data : { enabled: false, agent: null };
+  return parsed.success ? parsed.data : { enabled: false, agent: null, previewSignIn: false };
 }
 
 export function writeStudioSettings(

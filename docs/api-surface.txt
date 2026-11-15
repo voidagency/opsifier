@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 40
+# documented-changes: 41
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -4100,6 +4100,35 @@ POST /api/v1/projects/{project}/services/{service}/studio/conversations/{convers
   path conversation!: string
   path project!: string
   path service!: string
+GET /api/v1/projects/{project}/services/{service}/studio/members
+  200 members![].addedAt!: string
+  200 members![].email!: string
+  200 members![].userId!: string
+  400
+  401
+  403
+  404
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/studio/members
+  200 members![].addedAt!: string
+  200 members![].email!: string
+  200 members![].userId!: string
+  400
+  401
+  403
+  404
+  body userIds![]: string
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/studio/preview/start
+  200 started!: boolean
+  400
+  401
+  404
+  409
+  path project!: string
+  path service!: string
 GET /api/v1/projects/{project}/templates
   200 installs![].category!: enum(automation|communication|data|development|documents|infrastructure|media|monitoring|productivity|security)
   200 installs![].components![].kind!: enum(app|compose|database)
@@ -5070,6 +5099,7 @@ GET /api/v1/settings/studio
   200 agent!.service!: string
   200 agent!.url!: string
   200 enabled!: boolean
+  200 previewSignIn: boolean
   401
   403
 PUT /api/v1/settings/studio
@@ -5079,6 +5109,7 @@ PUT /api/v1/settings/studio
   200 agent!.service!: string
   200 agent!.url!: string
   200 enabled!: boolean
+  200 previewSignIn: boolean
   400
   401
   403
@@ -5088,6 +5119,7 @@ PUT /api/v1/settings/studio
   body agent!.service!: string
   body agent!.url!: string
   body enabled!: boolean
+  body previewSignIn: boolean
 POST /api/v1/settings/studio/check
   200 message!: null|string
   200 reachable!: boolean

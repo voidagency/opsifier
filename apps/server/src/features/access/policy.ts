@@ -18,7 +18,12 @@ export type Requirement =
   /** The server itself: its shell, its disk and a reboot. A right of its own, never reachable with a key. */
   | { kind: "host" }
   /** Inside one project. Out of reach looks the same as missing. */
-  | { kind: "project"; project: string; level: ProjectLevel; session: boolean };
+  | { kind: "project"; project: string; level: ProjectLevel; session: boolean }
+  /**
+   * A Studio project, named by its preview's service: an administrator, or an account it is shared
+   * with, at a browser. Out of reach looks the same as missing.
+   */
+  | { kind: "studio"; project: string; service: string };
 
 const OPEN: Requirement = { kind: "open" };
 const OWN_CREDENTIAL: Requirement = { kind: "own_credential" };
@@ -81,9 +86,7 @@ function projectRequirement(method: string, project: string, rest: readonly stri
     return { kind: "project", project, level: "admin", session: false };
   }
   if (rest[2] === "studio") {
-    // One agent server works on every Studio project's folder: until each project has its own, only
-    // the server's administrators may talk to it.
-    return ADMIN;
+    return studioRequirement(method, project, rest);
   }
   if (rest[2] === "deployments" && (rest[3] === "trigger" || rest[3] === "webhook")) {
     // A trigger or webhook is its own credential, separate from sessions and API keys.
@@ -99,6 +102,28 @@ function projectRequirement(method: string, project: string, rest: readonly stri
     level: safe && isViewerReadable(rest) ? "viewer" : "operator",
     session: false,
   };
+}
+
+/**
+ * A Studio project's conversations and its preview are open to the accounts it is shared with.
+ * Linking it, taking it out and sharing it are administration.
+ */
+function studioRequirement(method: string, project: string, rest: readonly string[]): Requirement {
+  const [, service, , section] = rest;
+  if (service === undefined) {
+    return ADMIN;
+  }
+  if (section === undefined) {
+    return isSafeMethod(method) ? { kind: "studio", project, service } : ADMIN;
+  }
+  if (section === "conversations" || section === "preview") {
+    return { kind: "studio", project, service };
+  }
+  if (section === "members") {
+    // Who reaches a project is account administration: an administrator at a browser, never a key.
+    return SERVER_ADMIN;
+  }
+  return ADMIN;
 }
 
 export function requirementFor(method: string, path: string): Requirement {
@@ -145,6 +170,14 @@ export function requirementFor(method: string, path: string): Requirement {
         : SERVER_ADMIN;
     case "domains":
       return second === undefined && isSafeMethod(method) ? OPEN : SERVER_ADMIN;
+    case "studio":
+      // The list and the models are for anyone signed in: the list holds the projects shared with
+      // the caller. Adding a project is administration.
+      // The hop of a preview's sign-in answers signed out too, and checks who may open what itself.
+      if (second === "preview-signin" && isSafeMethod(method)) {
+        return OPEN;
+      }
+      return (second === undefined || second === "models") && isSafeMethod(method) ? OPEN : ADMIN;
     case "projects":
       if (second === undefined) {
         return isSafeMethod(method) ? OPEN : ADMIN;

@@ -13,6 +13,7 @@ import {
   Plus,
   Sparkles,
   Square,
+  Users,
   X,
 } from "lucide-react";
 import {
@@ -31,7 +32,6 @@ import { errorMessage } from "../../lib/forms";
 import {
   Button,
   buttonClass,
-  EmptyState,
   ErrorState,
   Lamp,
   Markdown,
@@ -46,6 +46,7 @@ import { studioApi, studioAppQuery, studioKey, studioModelsQuery } from "./api";
 import { type ChatItem, changedFiles, type StudioActionEvent, toChatItems, userMessageCount } from "./chat";
 import { imageToDataUrl } from "./images";
 import { PreviewPane } from "./PreviewPane";
+import { ShareDialog } from "./ShareDialog";
 import { elementBlock, elementLabel, type SelectedElement, splitMessage } from "./selection";
 import { useConversation } from "./useConversation";
 
@@ -82,7 +83,7 @@ export function WorkspacePage() {
   const [pane, setPane] = useState<"chat" | "preview">("chat");
   const { data, isPending, isError, error, refetch } = useQuery({
     ...studioAppQuery(project, service),
-    enabled: user?.role === "admin",
+    enabled: user !== null && user !== undefined,
     refetchInterval: (query) =>
       startRequested || query.state.data?.previewStatus === "starting"
         ? STARTING_REFRESH_MS
@@ -95,16 +96,6 @@ export function WorkspacePage() {
     }
   }, [startRequested, data?.previewStatus]);
 
-  if (user?.role !== "admin") {
-    return (
-      <EmptyState
-        className="m-6"
-        illustration="not-found"
-        title={t("restricted.title")}
-        description={t("restricted.description")}
-      />
-    );
-  }
   if (isPending) {
     return <Skeleton className="m-6 h-[60vh]" />;
   }
@@ -175,6 +166,8 @@ function ConversationPane({
   const [stopping, setStopping] = useState(false);
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<PendingMessage | null>(null);
+  const admin = useCurrentUser()?.role === "admin";
+  const [sharing, setSharing] = useState(false);
   const models = useQuery({ ...studioModelsQuery, enabled: conversationId === null });
   const [chosenModel, setChosenModel] = useState<string | null>(null);
   const nextProfile = chosenModel ?? models.data?.active ?? null;
@@ -282,6 +275,17 @@ function ConversationPane({
             className="max-w-[45%]"
           />
         )}
+        {admin && (
+          <Tooltip content={t("share.action")}>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label={t("share.action")}
+              icon={<Users aria-hidden="true" className="size-4" />}
+              onClick={() => setSharing(true)}
+            />
+          </Tooltip>
+        )}
         <Tooltip content={t("conversation.new")}>
           <Link
             to="/studio/$project/$service"
@@ -352,6 +356,10 @@ function ConversationPane({
             </li>
           ))}
         </ul>
+      )}
+
+      {sharing && (
+        <ShareDialog project={app.project} service={app.service} onClose={() => setSharing(false)} />
       )}
 
       <Composer

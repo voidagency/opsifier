@@ -809,3 +809,24 @@ export const studioConversations = sqliteTable(
   },
   (table) => [index("studio_conversations_service_idx").on(table.serviceId, table.updatedAt)],
 );
+
+/**
+ * The accounts a Studio project is shared with. An administrator reaches every project; anyone else
+ * reaches the ones shared with them, their conversations and their preview, and nothing more.
+ */
+export const studioMembers = sqliteTable(
+  "studio_members",
+  {
+    serviceId: text("service_id")
+      .notNull()
+      .references(() => studioApps.serviceId, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: millis("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.serviceId, table.userId] }),
+    index("studio_members_user_idx").on(table.userId),
+  ],
+);

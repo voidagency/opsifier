@@ -5,6 +5,7 @@ import {
   PANEL_SERVICE,
   PROXY_PAGES_PREFIX,
   REDIRECT_HTTPS_MIDDLEWARE,
+  STUDIO_SIGNIN_PREFIX,
 } from "../../../core/proxy";
 
 /**
@@ -168,11 +169,18 @@ function exemptionMatcher({ kind, value }: ProtectionExemption): string | null {
   return value.endsWith("/*") ? `PathPrefix(\`${value.slice(0, -1)}\`)` : `Path(\`${value}\`)`;
 }
 
-function gatedChain(chain: readonly string[], gate: string): string[] {
+function gatedChain(chain: readonly string[], gate: string | null): string[] {
+  if (gate === null) {
+    return [NOINDEX_MIDDLEWARE, ...chain];
+  }
   return chain[0] === REDIRECT_HTTPS_MIDDLEWARE
     ? [NOINDEX_MIDDLEWARE, REDIRECT_HTTPS_MIDDLEWARE, gate, ...chain.slice(1)]
     : [NOINDEX_MIDDLEWARE, gate, ...chain];
 }
+
+/** A route that asks for the panel's own sign-in, which says who someone is, needs no shared password. */
+const behindPanelSignIn = (chain: readonly string[]): boolean =>
+  chain.some((name) => name.startsWith(STUDIO_SIGNIN_PREFIX));
 
 const gateUsers = (plan: ProtectionPlan): string[] =>
   plan.users.length > 0 ? [...plan.users] : [LOCKED_USER];
@@ -200,7 +208,10 @@ function gateFor(
   definitions: Record<string, unknown>,
   plan: ProtectionPlan,
   added: Record<string, unknown>,
-): string {
+): string | null {
+  if (behindPanelSignIn(router.middlewares ?? [])) {
+    return null;
+  }
   const own = (router.middlewares ?? []).flatMap((middleware) => {
     const definition = definitions[middleware];
     return isBasicAuth(definition) ? (definition.basicAuth.users ?? []) : [];
@@ -337,10 +348,13 @@ function isGated(
   shared: Record<string, unknown>,
   own: Record<string, unknown>,
 ): boolean {
-  return chain.some(
-    (name) =>
-      (name === GATE_MIDDLEWARE && definedUsers(shared[name]).length > 0) ||
-      (name.startsWith(`${GATE_MIDDLEWARE}-`) && definedUsers(own[name]).length > 0),
+  return (
+    behindPanelSignIn(chain) ||
+    chain.some(
+      (name) =>
+        (name === GATE_MIDDLEWARE && definedUsers(shared[name]).length > 0) ||
+        (name.startsWith(`${GATE_MIDDLEWARE}-`) && definedUsers(own[name]).length > 0),
+    )
   );
 }
 

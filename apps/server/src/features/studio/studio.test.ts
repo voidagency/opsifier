@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type {
   ActionEntry,
   ActionPage,
@@ -229,13 +231,21 @@ afterEach(async () => {
 
 describe("the Studio's settings", () => {
   it("are off until an administrator turns them on, and hold no secret", async () => {
-    expect((await api<StudioSettings>("/settings/studio")).body).toEqual({ enabled: false, agent: null });
+    expect((await api<StudioSettings>("/settings/studio")).body).toEqual({
+      enabled: false,
+      agent: null,
+      previewSignIn: false,
+    });
 
     const saved = await enable();
 
     expect(saved.status).toBe(200);
-    expect(saved.body).toEqual({ enabled: true, agent: AGENT });
-    expect((await api<StudioSettings>("/settings/studio")).body).toEqual({ enabled: true, agent: AGENT });
+    expect(saved.body).toEqual({ enabled: true, agent: AGENT, previewSignIn: false });
+    expect((await api<StudioSettings>("/settings/studio")).body).toEqual({
+      enabled: true,
+      agent: AGENT,
+      previewSignIn: false,
+    });
     const actions = await api<ActionPage>("/actions?limit=20");
     expect(actions.body.items.some((action) => action.type === "studio.settings")).toBe(true);
   });
@@ -319,16 +329,16 @@ describe("the Studio's projects", () => {
     expect((await api(PREVIEW)).status).toBe(200);
   });
 
-  it("is for the server's administrators for now, as one agent works on every project", async () => {
+  it("is out of reach of a project's operators until the Studio project is shared with them", async () => {
     await enable();
     await link();
     const member = await signInMember(context.app, cookie, "op@example.com", [
       { project: "lovable", role: "operator" },
     ]);
 
-    expect((await api("/studio", "GET", undefined, member)).status).toBe(403);
-    expect((await api(`${PREVIEW}/studio`, "GET", undefined, member)).status).toBe(403);
-    expect((await api(`${PREVIEW}/studio/conversations`, "POST", { text: "hi" }, member)).status).toBe(403);
+    expect((await api<StudioOverview>("/studio", "GET", undefined, member)).body.apps).toEqual([]);
+    expect((await api(`${PREVIEW}/studio`, "GET", undefined, member)).status).toBe(404);
+    expect((await api(`${PREVIEW}/studio/conversations`, "POST", { text: "hi" }, member)).status).toBe(404);
     expect((await api("/settings/studio", "GET", undefined, member)).status).toBe(403);
   });
 });
@@ -484,6 +494,198 @@ describe("adding a project to the Studio", () => {
     const taken = await add({ repository: REPOSITORY });
     expect(taken.status).toBe(409);
     expect(apiErrorOf(taken).code).toBe("studio_project_exists");
+  });
+});
+
+describe("a Studio project shared with a designer", () => {
+  const DESIGNER = "designer@example.com";
+
+  async function designer(): Promise<{ cookie: string; id: string }> {
+    const designerCookie = await signInMember(context.app, cookie, DESIGNER, []);
+    const users = await api<{ users: { id: string; email: string }[] }>("/users");
+    const id = users.body.users.find((user) => user.email === DESIGNER)?.id ?? "";
+    return { cookie: designerCookie, id };
+  }
+
+  async function prepare(): Promise<void> {
+    await deployAgent();
+    await api(`${PREVIEW}/source`, "PUT", { image: "node:22" });
+    await run(`${PREVIEW}/deploy`);
+    await run(`${PREVIEW}/stop`);
+    installFakeAgent();
+    await enable();
+    await link();
+    await api("/projects/lovable/services", "POST", { name: "other-preview" });
+    await api("/projects/lovable/services/other-preview/studio", "PUT", { workspaceDir: "/projects/other" });
+  }
+
+  it("reaches the projects shared with them, their conversations and their preview, and nothing more", async () => {
+    await prepare();
+    const { cookie: as, id } = await designer();
+
+    expect((await api<StudioOverview>("/studio", "GET", undefined, as)).body.apps).toEqual([]);
+    expect((await api(`${PREVIEW}/studio`, "GET", undefined, as)).status).toBe(404);
+
+    const shared = await api<{ members: { email: string }[] }>(`${PREVIEW}/studio/members`, "PUT", {
+      userIds: [id],
+    });
+    expect(shared.status).toBe(200);
+    expect(shared.body.members.map((member) => member.email)).toEqual([DESIGNER]);
+
+    const overview = await api<StudioOverview>("/studio", "GET", undefined, as);
+    expect(overview.body.apps.map((app) => app.service)).toEqual(["cd-studio-preview"]);
+    expect(overview.body.canAddProjects).toBe(false);
+    expect((await api(`${PREVIEW}/studio`, "GET", undefined, as)).status).toBe(200);
+    const started = await api<StudioConversation>(
+      `${PREVIEW}/studio/conversations`,
+      "POST",
+      { text: "Bonjour" },
+      as,
+    );
+    expect(started.status).toBe(201);
+    const page = await api<StudioEventPage>(
+      `${PREVIEW}/studio/conversations/${started.body.id}/events`,
+      "GET",
+      undefined,
+      as,
+    );
+    expect(page.status).toBe(200);
+    const sent = await api(
+      `${PREVIEW}/studio/conversations/${started.body.id}/messages`,
+      "POST",
+      { text: "Encore" },
+      as,
+    );
+    expect(sent.status).toBe(200);
+    // The preview was stopped: the designer starts it, without any right on its service.
+    const start = await api<{ started: boolean }>(`${PREVIEW}/studio/preview/start`, "POST", undefined, as);
+    expect(start.status).toBe(200);
+    expect(start.body.started).toBe(true);
+
+    // Everything else stays out of reach: another project, administration, and the services themselves.
+    expect((await api("/projects/lovable/services/other-preview/studio", "GET", undefined, as)).status).toBe(
+      404,
+    );
+    expect((await api(`${PREVIEW}/studio`, "PUT", { workspaceDir: "/projects/x" }, as)).status).toBe(403);
+    expect((await api(`${PREVIEW}/studio/members`, "GET", undefined, as)).status).toBe(403);
+    expect((await api("/studio/projects", "POST", { repository: "a/b" }, as)).status).toBe(403);
+    expect((await api("/settings/studio", "GET", undefined, as)).status).toBe(403);
+    expect((await api(PREVIEW, "GET", undefined, as)).status).toBe(404);
+  });
+
+  it("loses the project once it is no longer shared with them", async () => {
+    await prepare();
+    const { cookie: as, id } = await designer();
+    await api(`${PREVIEW}/studio/members`, "PUT", { userIds: [id] });
+    expect((await api(`${PREVIEW}/studio`, "GET", undefined, as)).status).toBe(200);
+
+    const unshared = await api<{ members: unknown[] }>(`${PREVIEW}/studio/members`, "PUT", { userIds: [] });
+
+    expect(unshared.body.members).toEqual([]);
+    expect((await api(`${PREVIEW}/studio`, "GET", undefined, as)).status).toBe(404);
+    const actions = await api<ActionPage>("/actions?limit=30");
+    expect(actions.body.items.filter((action) => action.type === "studio.share")).toHaveLength(2);
+  });
+
+  it("is shared with accounts that exist only", async () => {
+    await prepare();
+
+    const refused = await api(`${PREVIEW}/studio/members`, "PUT", { userIds: ["no-such-account"] });
+
+    expect(refused.status).toBe(400);
+    expect(apiErrorOf(refused).code).toBe("studio_member_unknown");
+  });
+});
+
+describe("a Studio preview behind the panel's sign-in", () => {
+  const HOST = "preview.example.com";
+  const CHECK = "/api/proxy-pages/studio-signin";
+  const ROUTES = () =>
+    readFileSync(join(context.deps.config.traefikDynamicDir, "lovable__cd-studio-preview.yaml"), "utf8");
+
+  async function prepare(): Promise<{ designer: string; stranger: string }> {
+    const domain = await api(`${PREVIEW}/domains`, "POST", { host: HOST });
+    expect(domain.status).toBe(201);
+    await enable();
+    await link();
+    const designer = await signInMember(context.app, cookie, "designer@example.com", []);
+    const stranger = await signInMember(context.app, cookie, "stranger@example.com", []);
+    const users = await api<{ users: { id: string; email: string }[] }>("/users");
+    const id = users.body.users.find((user) => user.email === "designer@example.com")?.id;
+    await api(`${PREVIEW}/studio/members`, "PUT", { userIds: [id] });
+    const saved = await api<StudioSettings>("/settings/studio", "PUT", {
+      enabled: true,
+      agent: AGENT,
+      previewSignIn: true,
+    });
+    expect(saved.body.previewSignIn).toBe(true);
+    return { designer, stranger };
+  }
+
+  /** What Traefik sends the panel about a request to the preview. */
+  const askedByTraefik = (uri: string, previewCookie?: string) =>
+    call(context.app, CHECK, {
+      headers: {
+        "x-forwarded-host": HOST,
+        "x-forwarded-uri": uri,
+        "x-forwarded-method": "GET",
+        accept: "text/html",
+        ...(previewCookie === undefined ? {} : { cookie: previewCookie }),
+      },
+    });
+  const hop = (as: string, to: string) =>
+    call(context.app, `/api/v1/studio/preview-signin?${new URLSearchParams({ host: HOST, to })}`, {
+      cookie: as,
+      origin: TEST_ORIGIN,
+    });
+
+  it("lets in, through the panel, the accounts the project is shared with", async () => {
+    const { designer } = await prepare();
+    expect(ROUTES()).toContain("forwardAuth");
+    expect(ROUTES()).toContain(CHECK);
+
+    // No cookie for the preview yet: a page goes to the panel to say who is there, or is refused.
+    const first = await askedByTraefik("/page");
+    expect([302, 401]).toContain(first.status);
+    if (first.status === 302) {
+      expect(first.headers.get("location")).toContain(`/api/v1/studio/preview-signin?host=${HOST}`);
+    }
+
+    const sent = await hop(designer, "/page");
+    expect(sent.status).toBe(302);
+    const back = new URL(sent.headers.get("location") ?? "");
+    expect(back.host).toBe(HOST);
+    expect(back.pathname).toBe("/__opsifier/studio-signin");
+
+    const landed = await askedByTraefik(`${back.pathname}${back.search}`);
+    expect(landed.status).toBe(302);
+    expect(landed.headers.get("location")).toBe("/page");
+    expect(landed.setCookie).toContain("opsifier_studio_preview=");
+    expect(landed.setCookie).toContain("HttpOnly");
+    expect(landed.setCookie).toContain("SameSite=Lax");
+
+    expect((await askedByTraefik("/page", landed.cookie)).status).toBe(200);
+    // A code is good once.
+    expect((await askedByTraefik(`${back.pathname}${back.search}`)).status).toBe(403);
+  });
+
+  it("keeps out the accounts the project is not shared with, and a code past its minute", async () => {
+    const { designer, stranger } = await prepare();
+
+    expect((await hop(stranger, "/")).status).toBe(403);
+
+    const sent = await hop(designer, "/");
+    const back = new URL(sent.headers.get("location") ?? "");
+    context.advance(61_000);
+    expect((await askedByTraefik(`${back.pathname}${back.search}`)).status).toBe(403);
+  });
+
+  it("gives the routes back to the server's gate once it is turned off", async () => {
+    await prepare();
+
+    await api("/settings/studio", "PUT", { enabled: true, agent: AGENT, previewSignIn: false });
+
+    expect(ROUTES()).not.toContain("forwardAuth");
   });
 });
 

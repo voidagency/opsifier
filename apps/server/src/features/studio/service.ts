@@ -6,15 +6,18 @@ import type {
   StudioCheck,
   StudioConversation,
   StudioEventPage,
+  StudioMembers,
   StudioModels,
   StudioOverview,
   StudioSettings,
 } from "@opsifier/contract";
 import type { AppDeps } from "../../core/context";
 import { AppError, badRequest, conflict, notFound, serviceUnavailable } from "../../core/errors";
+import { findUserById } from "../access/repo";
 import { listDomainRows, primaryUrl } from "../service-tabs/domains/service";
+import { enqueueStart } from "../services/lifecycle";
 import { findService, type ServiceRecord } from "../services/repo";
-import { requireService, type ServiceTarget } from "../services/service";
+import { requireService, type ServiceTarget, writeProxyConfig } from "../services/service";
 import { indexActiveActions, type LiveState, readLiveState, summarize } from "../services/status";
 import { AGENT_KEY_PLACEHOLDER, callAgent, expectJson } from "./agent";
 import { toStudioEvents, toStudioStatus } from "./events";
@@ -165,10 +168,7 @@ export function getStudioSettings(deps: Pick<AppDeps, "db">): StudioSettings {
   return readStudioSettings(deps);
 }
 
-export function saveStudioSettings(
-  deps: Pick<AppDeps, "db" | "now">,
-  settings: StudioSettings,
-): StudioSettings {
+export async function saveStudioSettings(deps: AppDeps, settings: StudioSettings): Promise<StudioSettings> {
   if (
     settings.agent !== null &&
     findService(deps.db, settings.agent.project, settings.agent.service) === undefined
@@ -177,7 +177,30 @@ export function saveStudioSettings(
       agent: "There is no such service",
     });
   }
-  return writeStudioSettings(deps, settings);
+  const signInBefore = readStudioSettings(deps).previewSignIn;
+  const saved = writeStudioSettings(deps, settings);
+  if (saved.previewSignIn !== signInBefore) {
+    for (const app of repo.listLinkedApps(deps.db)) {
+      await rewriteRoutes(deps, { projectName: app.projectName, serviceName: app.serviceName });
+    }
+  }
+  return saved;
+}
+
+/**
+ * Writes a preview's routes again, so that they ask for the panel's sign-in or stop asking: the
+ * proxy's guard decides from the settings and the link as each file is written.
+ */
+async function rewriteRoutes(deps: AppDeps, target: ServiceTarget): Promise<void> {
+  const record = findService(deps.db, target.projectName, target.serviceName);
+  if (record === undefined) {
+    return;
+  }
+  try {
+    await writeProxyConfig(deps, target, record.spec);
+  } catch (error) {
+    deps.logger.warn({ err: error, ...target }, "Could not write a Studio preview's routes again");
+  }
 }
 
 /** Reaches the agent server the way every Studio request does, and says what stood in the way. */
@@ -202,9 +225,17 @@ export async function checkStudioAgent(deps: AppDeps): Promise<StudioCheck> {
   }
 }
 
-export async function getStudioOverview(deps: AppDeps): Promise<StudioOverview> {
+/**
+ * The Studio's projects the caller reaches: every one for an administrator, the ones shared with them
+ * for anyone else. Null `sharedWith` is an administrator.
+ */
+export async function getStudioOverview(
+  deps: AppDeps,
+  sharedWith: string | null = null,
+): Promise<StudioOverview> {
   const settings = readStudioSettings(deps);
-  const linked = repo.listLinkedApps(deps.db);
+  const shared = sharedWith === null ? null : repo.appsSharedWith(deps.db, sharedWith);
+  const linked = repo.listLinkedApps(deps.db).filter((app) => shared === null || shared.has(app.serviceId));
   const live = linked.length === 0 ? null : await readLiveState(deps);
   const active = indexActiveActions(deps);
   const apps = linked.flatMap((app) => {
@@ -214,9 +245,68 @@ export async function getStudioOverview(deps: AppDeps): Promise<StudioOverview> 
   return {
     enabled: settings.enabled,
     agentConfigured: settings.agent !== null,
-    canAddProjects: settings.enabled && (settings.agent?.projectsDir ?? null) !== null,
+    canAddProjects: sharedWith === null && settings.enabled && (settings.agent?.projectsDir ?? null) !== null,
     apps,
   };
+}
+
+/** The accounts a Studio project is shared with. */
+export function getStudioMembers(deps: Pick<AppDeps, "db">, target: ServiceTarget): StudioMembers {
+  const { app } = requireLinked(deps, target);
+  return {
+    members: repo.listMembers(deps.db, app.serviceId).map((member) => ({
+      userId: member.userId,
+      email: member.email,
+      addedAt: member.addedAt.toISOString(),
+    })),
+  };
+}
+
+/** Shares a Studio project with exactly these accounts. */
+export function setStudioMembers(
+  deps: AppDeps,
+  target: ServiceTarget,
+  userIds: readonly string[],
+  actorEmail: string | undefined,
+): StudioMembers {
+  const { app } = requireLinked(deps, target);
+  const unique = [...new Set(userIds)];
+  const unknown = unique.filter((id) => findUserById(deps.db, id) === undefined);
+  if (unknown.length > 0) {
+    throw badRequest("studio_member_unknown", "One of these accounts does not exist.", {
+      userIds: "An account that does not exist",
+    });
+  }
+  deps.db.transaction((tx) => repo.setMembers(tx, app.serviceId, unique, new Date(deps.now())));
+  deps.actions.record({
+    type: "studio.share",
+    title: `Share ${target.projectName}/${target.serviceName} in the Studio with ${unique.length} account${unique.length === 1 ? "" : "s"}`,
+    projectName: target.projectName,
+    serviceName: target.serviceName,
+    actorEmail,
+  });
+  return getStudioMembers(deps, target);
+}
+
+/**
+ * Starts a Studio project's preview for whoever may work on it, an account it is shared with
+ * included, who may not start services otherwise. A preview that runs already is left as it is.
+ */
+export async function startStudioPreview(
+  deps: AppDeps,
+  target: ServiceTarget,
+  actorEmail: string | undefined,
+): Promise<{ started: boolean }> {
+  requireLinked(deps, target);
+  try {
+    await enqueueStart(deps, target, actorEmail);
+    return { started: true };
+  } catch (error) {
+    if (error instanceof AppError && error.code === "service_running") {
+      return { started: false };
+    }
+    throw error;
+  }
 }
 
 export async function getStudioApp(deps: AppDeps, target: ServiceTarget): Promise<StudioAppDetail> {
@@ -238,12 +328,18 @@ export async function linkStudioApp(
     throw conflict("service_without_id", "This service has no identifier yet: deploy it once, then link it.");
   }
   repo.saveApp(deps.db, record.id, request.workspaceDir, new Date(deps.now()));
+  if (readStudioSettings(deps).previewSignIn) {
+    await rewriteRoutes(deps, target);
+  }
   return getStudioApp(deps, target);
 }
 
-export function unlinkStudioApp(deps: Pick<AppDeps, "db">, target: ServiceTarget): void {
+export async function unlinkStudioApp(deps: AppDeps, target: ServiceTarget): Promise<void> {
   const { app } = requireLinked(deps, target);
   repo.deleteApp(deps.db, app.serviceId);
+  if (readStudioSettings(deps).previewSignIn) {
+    await rewriteRoutes(deps, target);
+  }
 }
 
 function messageContent(message: StudioMessage): unknown[] {

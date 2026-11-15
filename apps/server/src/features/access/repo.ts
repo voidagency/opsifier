@@ -1,6 +1,14 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { DbHandle } from "../../core/db";
-import { apiTokens, projectMembers, projects, sessions, users } from "../../core/db/schema";
+import {
+  apiTokens,
+  projectMembers,
+  projects,
+  services,
+  sessions,
+  studioMembers,
+  users,
+} from "../../core/db/schema";
 
 export type UserRow = typeof users.$inferSelect;
 export type ApiKeyRow = typeof apiTokens.$inferSelect;
@@ -116,4 +124,27 @@ export function sessionIdsOf(db: DbHandle, userId: string): string[] {
     .where(eq(sessions.userId, userId))
     .all()
     .map((row) => row.id);
+}
+
+/** Whether a Studio project, named by its preview's service, is shared with this account. */
+export function isStudioMember(
+  db: DbHandle,
+  projectName: string,
+  serviceName: string,
+  userId: string,
+): boolean {
+  return (
+    db
+      .select({ userId: studioMembers.userId })
+      .from(studioMembers)
+      .innerJoin(services, eq(services.id, studioMembers.serviceId))
+      .where(
+        and(
+          eq(services.projectName, projectName),
+          eq(services.name, serviceName),
+          eq(studioMembers.userId, userId),
+        ),
+      )
+      .get() !== undefined
+  );
 }
