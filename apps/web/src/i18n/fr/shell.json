@@ -82,8 +82,6 @@
     "expand": "Afficher le journal en direct",
     "collapse": "Masquer le journal en direct",
     "drawerLabel": "Journal d'activité en direct",
-    "drawerEmptyTitle": "Aucune tâche en cours",
-    "drawerEmptyBody": "Quand un déploiement, un redémarrage ou une sauvegarde démarre, sa sortie défile ici ligne par ligne.",
     "openActivity": "Voir l'activité passée",
     "pickAction": "Choisissez une tâche pour voir sa sortie.",
     "noOutput": "Pas encore de sortie.",

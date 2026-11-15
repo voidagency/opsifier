@@ -18,6 +18,8 @@ export function AppShell() {
   const { t } = useTranslation("shell");
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const main = useRef<HTMLElement>(null);
+  // A Studio project takes the whole height, as a builder does: no activity bar under its conversation.
+  const inStudioProject = /^\/studio\/[^/]+\/[^/]+/.test(pathname);
   useAppCommands();
   usePlatformCommands();
   useLiveServiceData();
@@ -67,7 +69,7 @@ export function AppShell() {
       >
         <Outlet />
       </main>
-      <ActivityTape />
+      {!inStudioProject && <ActivityTape />}
       <CommandPalette />
     </div>
   );

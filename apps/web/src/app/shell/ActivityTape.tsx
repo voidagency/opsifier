@@ -154,14 +154,12 @@ function TapeDrawer({
   now,
   selectedId,
   onSelect,
-  onClose,
 }: {
   id: string;
   actions: ActionEntry[];
   now: number;
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onClose: () => void;
 }) {
   const { t } = useTranslation("shell");
   const selected = actions.find((action) => action.id === selectedId);
@@ -171,61 +169,78 @@ function TapeDrawer({
       aria-label={t("tape.drawerLabel")}
       className="absolute inset-x-0 bottom-full z-40 h-[min(420px,56dvh)] animate-slide-in border-t bg-raised shadow-overlay"
     >
-      {actions.length === 0 ? (
-        <div className="flex h-full flex-col items-start justify-center gap-2 px-4 md:px-6">
-          <p className="text-md font-medium">{t("tape.drawerEmptyTitle")}</p>
-          <p className="max-w-[56ch] text-sm text-muted">{t("tape.drawerEmptyBody")}</p>
-          <Link to="/activity" onClick={onClose} className="text-sm text-accent underline underline-offset-4">
-            {t("tape.openActivity")}
-          </Link>
+      <div className="grid h-full grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[320px_minmax(0,1fr)] md:grid-rows-none">
+        <div className="max-h-[170px] overflow-y-auto border-b md:max-h-none md:border-r md:border-b-0">
+          {actions.map((action) => (
+            <ActionRow
+              key={action.id}
+              action={action}
+              now={now}
+              selected={action.id === selectedId}
+              onSelect={() => onSelect(action.id)}
+            />
+          ))}
         </div>
-      ) : (
-        <div className="grid h-full grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[320px_minmax(0,1fr)] md:grid-rows-none">
-          <div className="max-h-[170px] overflow-y-auto border-b md:max-h-none md:border-r md:border-b-0">
-            {actions.map((action) => (
-              <ActionRow
-                key={action.id}
-                action={action}
-                now={now}
-                selected={action.id === selectedId}
-                onSelect={() => onSelect(action.id)}
-              />
-            ))}
-          </div>
-          <div className="min-h-0">
-            {selected ? (
-              selected.hasLog ? (
-                <ActionLog key={selected.id} actionId={selected.id} />
-              ) : (
-                <p className="p-4 text-sm text-muted">{t("tape.noLog")}</p>
-              )
+        <div className="min-h-0">
+          {selected ? (
+            selected.hasLog ? (
+              <ActionLog key={selected.id} actionId={selected.id} />
             ) : (
-              <p className="p-4 text-sm text-muted">{t("tape.pickAction")}</p>
-            )}
-          </div>
+              <p className="p-4 text-sm text-muted">{t("tape.noLog")}</p>
+            )
+          ) : (
+            <p className="p-4 text-sm text-muted">{t("tape.pickAction")}</p>
+          )}
         </div>
-      )}
+      </div>
     </section>
   );
 }
 
 const drawerId = "activity-tape-drawer";
 
-/** Running actions along the bottom edge, expanding into a live log. */
+/** What the drawer shows of a list of actions: which ones, and how far each has got. */
+function tapeSignature(actions: readonly ActionEntry[]): string {
+  return actions.map((action) => `${action.id}:${action.status}:${action.phase ?? ""}`).join("|");
+}
+
+/**
+ * Running actions along the bottom edge, expanding into a live log. With nothing to follow, the bar
+ * leads to the activity page instead of opening an empty drawer.
+ */
 export function ActivityTape() {
   const { t } = useTranslation(["shell", "activity"]);
   const actions = useTapeActions();
   const connection = useConnectionStatus();
   const [expanded, setExpanded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // An action that ends while its log is open stays in the drawer until the drawer closes.
+  const [kept, setKept] = useState<ActionEntry[]>([]);
   const toggle = useRef<HTMLButtonElement>(null);
 
+  // The list is a new array on every render: it is kept again only when what it shows changed,
+  // or each render would ask for another.
+  useEffect(() => {
+    if (actions.length > 0) {
+      setKept((current) => (tapeSignature(current) === tapeSignature(actions) ? current : actions));
+    }
+  }, [actions]);
+
+  const shown = actions.length > 0 ? actions : expanded ? kept : [];
   const running = actions.filter(isActive);
   const hasElapsed = actions.length > 0;
   const now = useNow(hasElapsed);
   const current = running.at(-1) ?? actions.at(-1);
   const effectiveSelected =
-    selectedId && actions.some((a) => a.id === selectedId) ? selectedId : (current?.id ?? null);
+    selectedId && shown.some((a) => a.id === selectedId)
+      ? selectedId
+      : ((running.at(-1) ?? shown.at(-1))?.id ?? null);
+
+  useEffect(() => {
+    if (expanded && shown.length === 0) {
+      setExpanded(false);
+    }
+  }, [expanded, shown.length]);
 
   useEffect(() => {
     if (!expanded) {
@@ -244,75 +259,91 @@ export function ActivityTape() {
   const connectionLabel =
     connection === "open" ? t("tape.connection.live") : t("tape.connection.reconnecting");
   const connectionState: VisualState = connection === "open" ? "running" : "progress";
+  const barClass =
+    "group flex h-8 w-full items-center gap-3 px-4 text-left hover:bg-wash focus-visible:-outline-offset-2 md:px-6";
+
+  const status = (
+    <span className="flex min-w-0 flex-1 items-center gap-2.5">
+      {running.length > 0 && current ? (
+        <>
+          <Lamp state="progress" label={t("tape.status.running")} />
+          <span className="shrink-0 font-mono text-xs">{t("tape.running", { count: running.length })}</span>
+          <span aria-hidden="true" className="h-3 w-px shrink-0 bg-rule" />
+          <span className="min-w-0 truncate text-xs">{current.title}</span>
+          {current.phase !== null && (
+            <span className="hidden min-w-0 shrink-0 truncate text-xs text-muted sm:inline">
+              {actionPhase(current, t)}
+            </span>
+          )}
+          <span className="shrink-0 font-mono text-xs text-muted">
+            {formatDuration(current.startedAt ?? current.createdAt, null, now)}
+          </span>
+        </>
+      ) : current ? (
+        <>
+          <Lamp state={stateFromAction(current.status)} label={t(`tape.status.${current.status}`)} />
+          <span className="min-w-0 truncate text-xs">{current.title}</span>
+        </>
+      ) : (
+        <>
+          <Lamp state="stopped" label={t("tape.status.idle")} />
+          <span className="min-w-0 truncate text-xs text-muted">{t("tape.idle")}</span>
+        </>
+      )}
+    </span>
+  );
+  const live = (
+    <span className="flex items-center gap-1.5">
+      <Lamp state={connectionState} label={connectionLabel} />
+      <span aria-hidden="true" className="hidden text-xs text-muted sm:inline">
+        {connectionLabel}
+      </span>
+    </span>
+  );
 
   return (
     <footer className="relative z-40 shrink-0 border-t bg-bg">
-      {expanded && (
+      {expanded && shown.length > 0 && (
         <TapeDrawer
           id={drawerId}
-          actions={actions}
+          actions={shown}
           now={now}
           selectedId={effectiveSelected}
           onSelect={setSelectedId}
-          onClose={() => setExpanded(false)}
         />
       )}
       <div aria-hidden="true" className="graduated pointer-events-none absolute inset-x-0 top-0 h-[5px]" />
-      <button
-        ref={toggle}
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        aria-expanded={expanded}
-        aria-controls={drawerId}
-        className="group flex h-8 w-full items-center gap-3 px-4 text-left hover:bg-wash focus-visible:-outline-offset-2 md:px-6"
-      >
-        <span className="flex min-w-0 flex-1 items-center gap-2.5">
-          {running.length > 0 && current ? (
-            <>
-              <Lamp state="progress" label={t("tape.status.running")} />
-              <span className="shrink-0 font-mono text-xs">
-                {t("tape.running", { count: running.length })}
-              </span>
-              <span aria-hidden="true" className="h-3 w-px shrink-0 bg-rule" />
-              <span className="min-w-0 truncate text-xs">{current.title}</span>
-              {current.phase !== null && (
-                <span className="hidden min-w-0 shrink-0 truncate text-xs text-muted sm:inline">
-                  {actionPhase(current, t)}
-                </span>
-              )}
-              <span className="shrink-0 font-mono text-xs text-muted">
-                {formatDuration(current.startedAt ?? current.createdAt, null, now)}
-              </span>
-            </>
-          ) : current ? (
-            <>
-              <Lamp state={stateFromAction(current.status)} label={t(`tape.status.${current.status}`)} />
-              <span className="min-w-0 truncate text-xs">{current.title}</span>
-            </>
-          ) : (
-            <>
-              <Lamp state="stopped" label={t("tape.status.idle")} />
-              <span className="min-w-0 truncate text-xs text-muted">{t("tape.idle")}</span>
-            </>
-          )}
-        </span>
-        <span className="flex shrink-0 items-center gap-3">
-          <span className="flex items-center gap-1.5">
-            <Lamp state={connectionState} label={connectionLabel} />
-            <span aria-hidden="true" className="hidden text-xs text-muted sm:inline">
-              {connectionLabel}
-            </span>
+      {shown.length === 0 ? (
+        <Link to="/activity" className={barClass}>
+          {status}
+          <span className="flex shrink-0 items-center gap-3">
+            {live}
+            <span className="sr-only">{t("tape.openActivity")}</span>
           </span>
-          <ChevronUp
-            aria-hidden="true"
-            className={cn(
-              "size-3.5 text-muted transition-transform duration-[160ms] ease-out",
-              expanded && "rotate-180",
-            )}
-          />
-          <span className="sr-only">{expanded ? t("tape.collapse") : t("tape.expand")}</span>
-        </span>
-      </button>
+        </Link>
+      ) : (
+        <button
+          ref={toggle}
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          aria-expanded={expanded}
+          aria-controls={drawerId}
+          className={barClass}
+        >
+          {status}
+          <span className="flex shrink-0 items-center gap-3">
+            {live}
+            <ChevronUp
+              aria-hidden="true"
+              className={cn(
+                "size-3.5 text-muted transition-transform duration-[160ms] ease-out",
+                expanded && "rotate-180",
+              )}
+            />
+            <span className="sr-only">{expanded ? t("tape.collapse") : t("tape.expand")}</span>
+          </span>
+        </button>
+      )}
     </footer>
   );
 }

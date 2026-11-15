@@ -24,7 +24,7 @@ Then open **Studio** in the top bar, and **Link a project**: its preview service
 
 - **The panel reaches the agent server from inside its container.** For each request it runs a short Python script in the agent server's container, which calls the server on 127.0.0.1 and returns its answer. The agent server needs no domain, and it shares no network with the panel.
 - **The panel never holds the agent server's key.** The script reads it inside the container, from `SESSION_API_KEY`, `OH_SESSION_API_KEYS_0` or the key file. A conversation needs the key to look up the agent server's own secrets, such as a GitHub token: the panel sends a stand-in, and the script puts the key in its place.
-- **A conversation starts the way the agent server's own interface starts one:** with its active agent profile and its instructions, the project's folder as the workspace, and its secrets looked up by name. The Studio adds a few lines telling the agent that the user sees the preview next to the conversation.
+- **A conversation starts the way the agent server's own interface starts one:** with its active agent profile and its instructions, the project's folder as the workspace, and its secrets looked up by name. The Studio adds a few lines telling the agent that the user sees the preview next to the conversation, and that it checks each change on screen, at a phone's and at a desktop's width, before it answers.
 - **The agent server keeps what was said.** The panel keeps which conversations belong to which project, and who started each. Taking a project out of the Studio, or deleting its service, forgets them in the panel; the agent server keeps them.
 - **Opening a project starts its preview** when it is stopped, as opening a project in a hosted builder would.
 - **Each conversation says which model it works with**, and whether what it is sent stays on private addresses, such as a model served on your own machines, or goes to an outside provider. When the agent server has several model profiles, a new conversation can start with any of them.
@@ -40,19 +40,28 @@ The inspector is a small script the panel serves at `/studio-inspector.js`. A pr
 ```js
 // In a Vite config: the inspector, fetched once from the panel when the server starts.
 const source = await (await fetch("https://panel.example.com/studio-inspector.js")).text();
+// Vite's import analysis resolves the import by its name through this plugin; the browser then asks
+// for /@id/__x00__opsifier-studio-inspector, which comes back as `id`.
+const name = "virtual:opsifier-studio-inspector";
 const id = "\0opsifier-studio-inspector";
 export const studioInspector = () => ({
   name: "opsifier-studio-inspector",
   apply: "serve",
+  resolveId: (module) => (module === name || module === id ? id : undefined),
   load: (module) => (module === id ? source : undefined),
   transform: (code, module) =>
-    /vite\/dist\/client\/client\.mjs/.test(module)
-      ? `${code}\nimport("/@id/__x00__opsifier-studio-inspector");`
-      : undefined,
+    /vite\/dist\/client\/client\.mjs/.test(module) ? `${code}\nimport("${name}");` : undefined,
 });
 ```
 
 The page and the Studio talk with `postMessage`. The Studio sends `{ source: "opsifier-studio", type: "ping" }` and `{ type: "inspect", on }`; the page answers `{ source: "opsifier-studio-preview", type: "ready", path }`, then `location`, `selected` with the element, and `inspect-ended`. The page listens to its parent frame only, and the Studio to its preview's address only.
+
+## The conversation
+
+- **What the agent does shows as it works:** what it writes before each step, one line per step, and its plan. Once it has answered, those steps fold into one line, such as « 5 steps · 2 files changed », which opens on a click.
+- **A message shows as soon as it is sent**, before the agent server has it.
+- **Nothing in the conversation is wider than it:** long words and addresses wrap, and a code block scrolls within itself.
+- **On a phone**, the Studio shows the conversation or the preview, one at a time at full height. Pointing at an element in the preview brings the conversation back, with the element joined to the next message.
 
 ## Suggestions
 
@@ -61,7 +70,7 @@ The agent ends each answer with two or three requests you might send next, which
 ## Limits
 
 - On a server whose role asks for a password before every site, a browser asks for it again for each preview's address, and it cannot ask inside the Studio's frame. Open the preview once in its own tab with **Open the preview in a new tab**, sign in, and reload the Studio.
-- The Studio shows what the agent writes as it works, one line per action, and its plan. Its hidden reasoning, the output of its commands and its browser's screenshots stay in the agent server.
+- The agent's hidden reasoning, the output of its commands and its screenshots stay in the agent server: the Studio shows what it writes, its steps and its plan.
 
 ## API
 

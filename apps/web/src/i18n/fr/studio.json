@@ -47,7 +47,9 @@
     "emptyDescription": "Décrivez-le avec vos mots, ou collez une capture d'écran. L'agent modifie le code, et l'aperçu à droite suit.",
     "error": "L'agent s'est arrêté : {{message}}",
     "you": "Vous",
-    "agent": "Agent"
+    "agent": "Agent",
+    "sending": "Envoi…",
+    "latest": "Derniers messages"
   },
   "composer": {
     "label": "Message à l'agent",
@@ -150,5 +152,16 @@
   "element": {
     "label": "Élément désigné dans l'aperçu",
     "remove": "Retirer cet élément"
+  },
+  "work": {
+    "steps_one": "{{count}} étape",
+    "steps_other": "{{count}} étapes",
+    "files_one": "{{count}} fichier modifié",
+    "files_other": "{{count}} fichiers modifiés"
+  },
+  "panes": {
+    "label": "Afficher",
+    "chat": "Conversation",
+    "preview": "Aperçu"
   }
 }

@@ -142,8 +142,14 @@ function renderBlock(block: Block, index: number): ReactNode {
   }
 }
 
+/**
+ * A long word or address wraps anywhere rather than widen what holds the text, and a code block
+ * scrolls within itself.
+ */
 export function Markdown({ text, className }: { text: string; className?: string }) {
   return (
-    <div className={className ?? "grid gap-2 text-sm"}>{parseMarkdownBlocks(text).map(renderBlock)}</div>
+    <div className={className ?? "grid grid-cols-1 gap-2 text-sm wrap-anywhere"}>
+      {parseMarkdownBlocks(text).map(renderBlock)}
+    </div>
   );
 }

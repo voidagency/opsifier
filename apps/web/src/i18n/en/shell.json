@@ -82,8 +82,6 @@
     "expand": "Show live log",
     "collapse": "Hide live log",
     "drawerLabel": "Live activity log",
-    "drawerEmptyTitle": "Nothing running",
-    "drawerEmptyBody": "When a deploy, restart or backup starts, its output streams here line by line.",
     "openActivity": "See past activity",
     "pickAction": "Pick an action to see its output.",
     "noOutput": "No output yet.",

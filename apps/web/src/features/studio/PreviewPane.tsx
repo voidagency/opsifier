@@ -80,11 +80,13 @@ export function PreviewPane({
   startRequested,
   onStartRequested,
   onSelected,
+  className,
 }: {
   app: StudioAppDetail;
   startRequested: boolean;
   onStartRequested: () => void;
   onSelected: (element: SelectedElement) => void;
+  className?: string;
 }) {
   const { t } = useTranslation(["studio", "common"]);
   const status = app.previewStatus;
@@ -196,7 +198,7 @@ export function PreviewPane({
         };
 
   return (
-    <section aria-label={t("preview.label")} className="flex min-h-0 flex-col">
+    <section aria-label={t("preview.label")} className={cn("flex min-h-0 min-w-0 flex-col", className)}>
       <header className="flex flex-wrap items-center gap-2 border-b px-3 py-2 text-sm">
         <Lamp state={waiting ? "progress" : lampOf[status]} size="xs" decorative />
         <span className="shrink-0 text-muted">

@@ -126,20 +126,95 @@ describe("a Studio project", () => {
     renderApp("/studio/lovable/cd-studio-preview");
 
     expect(await screen.findByText("Change le titre")).toBeTruthy();
-    expect(screen.getByText("Edited")).toBeTruthy();
-    expect(screen.getByText("src/routes/index.tsx")).toBeTruthy();
     expect(screen.getByText("Qwen3.6-27B")).toBeTruthy();
     expect(screen.getByText("· private network (100.89.0.1)")).toBeTruthy();
     expect(screen.getByText("fait")).toBeTruthy();
     const frame = screen.getByTitle("Live preview of cd-studio-preview");
     expect(frame.getAttribute("src")).toBe("https://lovable-cd-studio-preview.app.example.com");
     expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+    // A Studio project takes the whole height: no activity bar under the conversation.
+    expect(screen.queryByText("Nothing running")).toBeNull();
+  });
+
+  it("folds the steps behind an answer, and opens them on demand", async () => {
+    installFakeServer(base());
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    const steps = await screen.findByRole("button", { name: "1 step · 1 file changed" });
+    expect(steps.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Edited")).toBeNull();
+    fireEvent.click(steps);
+
+    expect(steps.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Edited")).toBeTruthy();
+    expect(screen.getByText("src/routes/index.tsx")).toBeTruthy();
+    expect(screen.getByText("titre")).toBeTruthy();
+  });
+
+  it("shows one pane at a time on a phone, and comes back to the conversation for an element", async () => {
+    installFakeServer(base());
+    renderApp("/studio/lovable/cd-studio-preview");
+    const conversationPane = await screen.findByRole("region", { name: "Conversation" });
+    const previewPane = screen.getByRole("region", { name: "Live preview" });
+    expect(previewPane.className).toContain("hidden lg:flex");
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(conversationPane.className).toContain("hidden lg:flex");
+    expect(previewPane.className).not.toContain("hidden");
+
+    const frame = screen.getByTitle("Live preview of cd-studio-preview") as HTMLIFrameElement;
+    const fromPreview = (data: Record<string, unknown>) =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { source: "opsifier-studio-preview", ...data },
+          origin: "https://lovable-cd-studio-preview.app.example.com",
+          source: frame.contentWindow,
+        }),
+      );
+    fromPreview({ type: "ready", path: "/" });
+    fromPreview({
+      type: "selected",
+      element: {
+        tag: "h1",
+        text: "Bienvenue",
+        classes: [],
+        attributes: {},
+        selector: "h1",
+        components: [],
+        path: "/",
+      },
+    });
+    await waitFor(() => expect(conversationPane.className).not.toContain("hidden"));
+  });
+
+  it("shows a message as soon as it is sent", async () => {
+    let answer: (value: unknown) => void = () => {};
+    installFakeServer(
+      base({
+        [`POST ${APP}/conversations/${CONVERSATION}/messages`]: () =>
+          new Promise((resolve) => {
+            answer = resolve;
+          }),
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+    await screen.findByText("Change le titre");
+
+    fireEvent.change(screen.getByLabelText("Message to the agent"), { target: { value: "Plus grand" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const log = screen.getByRole("log", { name: "Messages" });
+    expect(await within(log).findByText("Plus grand")).toBeTruthy();
+    expect(within(log).getByText("Sending…")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Ajoute un mode sombre" })).toBeNull();
+    answer(conversation);
   });
 
   it("shows what the agent says as it works, and its plan", async () => {
     installFakeServer(
       base({
         [`GET ${APP}/conversations/${CONVERSATION}/events`]: page({
+          status: "running",
           items: [
             {
               kind: "action",
@@ -231,7 +306,8 @@ describe("a Studio project", () => {
       expect(sent?.text).toContain('Element: <button class="toolbox"> "Nous contacter"');
       expect(sent?.text).toContain("React components: Toolbox < SiteLayout");
     });
-    await waitFor(() => expect(screen.queryByText("Toolbox <button> « Nous contacter »")).toBeNull());
+    // The composer lets the element go; the message on its way shows it as a tag.
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Remove this element" })).toBeNull());
   });
 
   it("shows an element a message pointed at as a tag, not as its block", async () => {

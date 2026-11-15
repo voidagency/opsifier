@@ -47,7 +47,9 @@
     "emptyDescription": "Describe it in plain words, or paste a screenshot. The agent changes the code, and the preview on the right follows.",
     "error": "The agent stopped: {{message}}",
     "you": "You",
-    "agent": "Agent"
+    "agent": "Agent",
+    "sending": "Sending…",
+    "latest": "Latest messages"
   },
   "composer": {
     "label": "Message to the agent",
@@ -150,5 +152,16 @@
   "element": {
     "label": "Element pointed at in the preview",
     "remove": "Remove this element"
+  },
+  "work": {
+    "steps_one": "{{count}} step",
+    "steps_other": "{{count}} steps",
+    "files_one": "{{count}} file changed",
+    "files_other": "{{count}} files changed"
+  },
+  "panes": {
+    "label": "Show",
+    "chat": "Conversation",
+    "preview": "Preview"
   }
 }
