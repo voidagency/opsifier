@@ -24,6 +24,7 @@ import type { Feature } from "../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
 import { requestAccess } from "../access/guard";
 import { getPanelDomainSettings } from "../server/settings";
+import { needsTwoFactorSetup } from "../two-factor-policy/service";
 import { addStudioProject } from "./projects";
 import {
   checkStudioAgent,
@@ -318,6 +319,9 @@ function signInPage(title: string, body: string): string {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:36rem;margin:15vh auto;padding:0 1rem;color:#222}</style></head><body><h1 style="font-size:1.25rem">${title}</h1><p>${body}</p></body></html>`;
 }
 
+/** On the panel: where a browser comes to be given a code for a preview. */
+const PREVIEW_SIGNIN_HOP = "/api/v1/studio/preview-signin";
+
 const NOT_A_PREVIEW = signInPage(
   "Aperçu introuvable · Preview not found",
   "Cette adresse n'est pas celle d'un aperçu du Studio. This address is not a Studio preview's.",
@@ -332,11 +336,13 @@ const EXPIRED = signInPage(
 );
 
 export const feature: Feature = {
+  // The hop of a preview's sign-in sends someone signed out to the panel's page that signs them in.
+  publicPaths: [PREVIEW_SIGNIN_HOP],
   register(app, deps) {
     const signIn = new PreviewSignIn(deps.secrets, deps.now);
 
     // On the panel, from a browser: a code for a preview the person signed in may open, and back to it.
-    app.get("/api/v1/studio/preview-signin", (c) => {
+    app.get(PREVIEW_SIGNIN_HOP, (c) => {
       c.header("Cache-Control", "no-store");
       const host = (c.req.query("host") ?? "").toLowerCase();
       const to = safeReturnPath(c.req.query("to"));
@@ -345,8 +351,13 @@ export const feature: Feature = {
         return c.html(NOT_A_PREVIEW, 404);
       }
       const principal = c.get("principal");
-      if (principal === null || principal.kind !== "session") {
-        // The panel's own page signs the person in, then comes back here.
+      if (
+        principal === null ||
+        principal.kind !== "session" ||
+        needsTwoFactorSetup(deps.db, principal.user)
+      ) {
+        // The panel's own page signs the person in, or has them turn on two-factor sign-in first,
+        // then comes back here.
         return c.redirect(`/studio/open-preview?${new URLSearchParams({ host, to })}`, 302);
       }
       if (!mayOpenPreview(deps.db, principal.user.id, preview.serviceId)) {
@@ -381,7 +392,12 @@ export const feature: Feature = {
           secure: preview.https,
           sameSite: "Lax",
         });
-        return c.redirect(safeReturnPath(url.searchParams.get("to") ?? undefined), 302);
+        // Absolute: Traefik makes a relative address absolute against the panel's own, inside the server.
+        const scheme = preview.https ? "https" : "http";
+        return c.redirect(
+          `${scheme}://${host}${safeReturnPath(url.searchParams.get("to") ?? undefined)}`,
+          302,
+        );
       }
       const value = getCookie(c, PREVIEW_COOKIE);
       if (value !== undefined) {

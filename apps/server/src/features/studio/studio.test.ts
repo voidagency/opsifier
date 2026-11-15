@@ -659,7 +659,8 @@ describe("a Studio preview behind the panel's sign-in", () => {
 
     const landed = await askedByTraefik(`${back.pathname}${back.search}`);
     expect(landed.status).toBe(302);
-    expect(landed.headers.get("location")).toBe("/page");
+    // Absolute, on the preview: Traefik would make "/page" an address of the panel inside the server.
+    expect(landed.headers.get("location")).toBe(`https://${HOST}/page`);
     expect(landed.setCookie).toContain("opsifier_studio_preview=");
     expect(landed.setCookie).toContain("HttpOnly");
     expect(landed.setCookie).toContain("SameSite=Lax");
@@ -667,6 +668,20 @@ describe("a Studio preview behind the panel's sign-in", () => {
     expect((await askedByTraefik("/page", landed.cookie)).status).toBe(200);
     // A code is good once.
     expect((await askedByTraefik(`${back.pathname}${back.search}`)).status).toBe(403);
+  });
+
+  it("sends someone signed out to the panel's page that signs them in", async () => {
+    await prepare();
+
+    const hopped = await call(
+      context.app,
+      `/api/v1/studio/preview-signin?${new URLSearchParams({ host: HOST, to: "/fr" })}`,
+    );
+
+    expect(hopped.status).toBe(302);
+    expect(hopped.headers.get("location")).toBe(
+      `/studio/open-preview?${new URLSearchParams({ host: HOST, to: "/fr" })}`,
+    );
   });
 
   it("keeps out the accounts the project is not shared with, and a code past its minute", async () => {
