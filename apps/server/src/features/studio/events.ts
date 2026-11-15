@@ -16,6 +16,26 @@ function shorten(value: string): string {
   return oneLine.length > MAX_DETAIL_CHARS ? `${oneLine.slice(0, MAX_DETAIL_CHARS - 1)}…` : oneLine;
 }
 
+/** The block the agent ends its answers with, as the Studio asks it to. */
+const SUGGESTIONS = /<suggestions>([\s\S]*?)(?:<\/suggestions>|$)/i;
+const MAX_SUGGESTIONS = 4;
+
+/** An agent's message without its suggestions block, and the suggestions, one per line. */
+export function splitSuggestions(message: string): { text: string; suggestions: string[] } {
+  const match = SUGGESTIONS.exec(message);
+  if (match === null) {
+    return { text: message, suggestions: [] };
+  }
+  const suggestions = (match[1] ?? "")
+    .split("\n")
+    .map((line) => line.replace(/^\s*(?:[-*\u2022]|\d+[.)])\s*/, "").trim())
+    .filter((line) => line !== "")
+    .slice(0, MAX_SUGGESTIONS)
+    .map((line) => (line.length > 160 ? `${line.slice(0, 159)}\u2026` : line));
+  const text = `${message.slice(0, match.index)}${message.slice(match.index + match[0].length)}`.trim();
+  return { text, suggestions };
+}
+
 /** The text and the images of an LLM message, whichever way its content is given. */
 function readContent(message: unknown): { text: string; images: string[] } {
   if (!isRecord(message)) {
@@ -136,7 +156,11 @@ function toEvent(raw: Raw, workspaceDir: string | undefined): StudioEvent | null
       if (content.text === "" && content.images.length === 0) {
         return null;
       }
-      return { kind: "message", id, timestamp, role: raw.source, ...content };
+      if (raw.source === "agent") {
+        const split = splitSuggestions(content.text);
+        return { kind: "message", id, timestamp, role: "agent", ...split, images: content.images };
+      }
+      return { kind: "message", id, timestamp, role: "user", ...content, suggestions: [] };
     }
     case "ActionEvent": {
       const tool = text(raw.tool_name) ?? "tool";
@@ -146,7 +170,14 @@ function toEvent(raw: Raw, workspaceDir: string | undefined): StudioEvent | null
         const message = text(action.message);
         return message === null || message.trim() === ""
           ? null
-          : { kind: "message", id, timestamp, role: "agent", text: message.trim(), images: [] };
+          : {
+              kind: "message",
+              id,
+              timestamp,
+              role: "agent",
+              ...splitSuggestions(message.trim()),
+              images: [],
+            };
       }
       if (tool === "think") {
         return null;

@@ -1,15 +1,15 @@
-import type { ServiceStatus, StudioAppDetail, StudioEvent, StudioModel } from "@opsifier/contract";
+import type { StudioAppDetail, StudioEvent, StudioModel } from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
   ArrowLeft,
-  ExternalLink,
   Globe,
   ImagePlus,
   Lock,
+  MousePointerClick,
   Plus,
-  RotateCw,
   Send,
+  Sparkles,
   Square,
   X,
 } from "lucide-react";
@@ -30,26 +30,17 @@ import {
   toast,
 } from "../../ui";
 import { useCurrentUser } from "../auth/session";
-import { servicesApi } from "../services/api";
 import { studioApi, studioAppQuery, studioKey, studioModelsQuery } from "./api";
 import { imageToDataUrl } from "./images";
+import { PreviewPane } from "./PreviewPane";
+import { elementBlock, elementLabel, type SelectedElement, splitMessage } from "./selection";
 import { useConversation } from "./useConversation";
 
 const MAX_IMAGES = 4;
 /** How often the preview's state is read while it starts, and otherwise. */
 const STARTING_REFRESH_MS = 2000;
 const IDLE_REFRESH_MS = 15_000;
-
-type LampState = "running" | "stopped" | "progress" | "failed" | "unknown";
-
-const lampOf: Record<ServiceStatus, LampState> = {
-  running: "running",
-  stopped: "stopped",
-  starting: "progress",
-  failing: "failed",
-  undeployed: "stopped",
-  unknown: "unknown",
-};
+const STARTERS = ["design", "mobile", "texts"] as const;
 
 /** The Studio of one project: its conversation with the agent on the left, its live preview on the right. */
 export function WorkspacePage() {
@@ -59,6 +50,7 @@ export function WorkspacePage() {
   const search = useSearch({ strict: false }) as { c?: string };
   const navigate = useNavigate();
   const [startRequested, setStartRequested] = useState(false);
+  const [element, setElement] = useState<SelectedElement | null>(null);
   const { data, isPending, isError, error, refetch } = useQuery({
     ...studioAppQuery(project, service),
     enabled: user?.role === "admin",
@@ -97,11 +89,18 @@ export function WorkspacePage() {
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(340px,440px)_minmax(0,1fr)] lg:grid-rows-1">
-      <ConversationPane app={data} conversationId={selected} onSelect={select} />
+      <ConversationPane
+        app={data}
+        conversationId={selected}
+        onSelect={select}
+        element={element}
+        onClearElement={() => setElement(null)}
+      />
       <PreviewPane
         app={data}
         startRequested={startRequested}
         onStartRequested={() => setStartRequested(true)}
+        onSelected={setElement}
       />
     </div>
   );
@@ -111,21 +110,56 @@ function ConversationPane({
   app,
   conversationId,
   onSelect,
+  element,
+  onClearElement,
 }: {
   app: StudioAppDetail;
   conversationId: string | null;
   onSelect: (id: string) => void;
+  element: SelectedElement | null;
+  onClearElement: () => void;
 }) {
   const { t } = useTranslation(["studio", "common"]);
   const queryClient = useQueryClient();
   const conversation = useConversation(app.project, app.service, conversationId);
   const busy = conversation.status === "running" || conversation.status === "waiting";
   const [stopping, setStopping] = useState(false);
+  const [sending, setSending] = useState(false);
   const models = useQuery({ ...studioModelsQuery, enabled: conversationId === null });
   const [chosenModel, setChosenModel] = useState<string | null>(null);
   const nextProfile = chosenModel ?? models.data?.active ?? null;
   const nextModel =
     models.data?.models.find((model) => model.profile === nextProfile) ?? models.data?.models[0] ?? null;
+
+  /** Sends what was typed, with the element pointed at in the preview, to a new conversation or this one. */
+  const send = async (text: string, images: string[]): Promise<boolean> => {
+    if (sending) {
+      return false;
+    }
+    const full = element === null ? text : `${text.trim()}\n\n${elementBlock(element)}`.trim();
+    setSending(true);
+    try {
+      if (conversationId === null) {
+        const started = await studioApi.start(app.project, app.service, {
+          text: full,
+          images,
+          ...(chosenModel === null ? {} : { model: chosenModel }),
+        });
+        await queryClient.invalidateQueries({ queryKey: [...studioKey, "apps", app.project, app.service] });
+        onSelect(started.id);
+      } else {
+        await studioApi.send(app.project, app.service, conversationId, { text: full, images });
+        conversation.refresh();
+      }
+      onClearElement();
+      return true;
+    } catch (reason) {
+      toast.error(errorMessage(reason, t));
+      return false;
+    } finally {
+      setSending(false);
+    }
+  };
 
   const stop = async () => {
     if (conversationId === null) {
@@ -146,6 +180,15 @@ function ConversationPane({
     value: one.id,
     label: one.title ?? new Date(one.createdAt).toLocaleString(),
   }));
+
+  // The agent's suggestions follow its last word, while it waits for the next request.
+  const lastMessage = [...conversation.events].reverse().find((event) => event.kind === "message");
+  const suggestions =
+    conversationId === null
+      ? STARTERS.map((key) => t(`suggestions.starters.${key}`))
+      : !busy && lastMessage?.kind === "message" && lastMessage.role === "agent"
+        ? lastMessage.suggestions
+        : [];
 
   return (
     <section
@@ -233,20 +276,30 @@ function ConversationPane({
         </div>
       )}
 
+      {suggestions.length > 0 && (
+        <ul aria-label={t("suggestions.label")} className="flex flex-wrap gap-1.5 border-t px-3 pt-2.5">
+          {suggestions.map((suggestion) => (
+            <li key={suggestion}>
+              <button
+                type="button"
+                disabled={sending}
+                onClick={() => void send(suggestion, [])}
+                className="inline-flex max-w-full items-center gap-1.5 rounded-full border bg-raised px-2.5 py-1 text-left text-xs hover:border-accent hover:text-ink disabled:opacity-45"
+              >
+                <Sparkles aria-hidden="true" className="size-3 shrink-0 text-accent" />
+                <span className="min-w-0">{suggestion}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
       <Composer
-        app={app}
-        conversationId={conversationId}
-        model={chosenModel}
-        onSent={async (startedId) => {
-          if (startedId !== null) {
-            await queryClient.invalidateQueries({
-              queryKey: [...studioKey, "apps", app.project, app.service],
-            });
-            onSelect(startedId);
-          } else {
-            conversation.refresh();
-          }
-        }}
+        firstMessage={conversationId === null}
+        sending={sending}
+        element={element}
+        onClearElement={onClearElement}
+        onSend={send}
       />
     </section>
   );
@@ -330,6 +383,27 @@ function ModelLine({ model }: { model: StudioModel }) {
   );
 }
 
+function ElementChip({ label, onRemove }: { label: string; onRemove?: () => void }) {
+  const { t } = useTranslation("studio");
+  return (
+    <span className="inline-flex max-w-full items-center gap-1.5 rounded-sm border border-accent/40 bg-raised px-2 py-0.5 text-xs">
+      <MousePointerClick aria-hidden="true" className="size-3.5 shrink-0 text-accent" />
+      <span className="sr-only">{t("element.label")}</span>
+      <span className="min-w-0 truncate font-mono">{label}</span>
+      {onRemove !== undefined && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={t("element.remove")}
+          className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-muted hover:text-ink"
+        >
+          <X aria-hidden="true" className="size-3" />
+        </button>
+      )}
+    </span>
+  );
+}
+
 function EventItem({ event }: { event: StudioEvent }) {
   const { t } = useTranslation("studio");
   if (event.kind === "action") {
@@ -374,10 +448,14 @@ function EventItem({ event }: { event: StudioEvent }) {
       </div>
     );
   if (event.role === "user") {
+    const { text, elements } = splitMessage(event.text);
     return (
       <div className="ml-auto grid max-w-[88%] gap-1.5 rounded-md bg-wash px-3 py-2">
         <span className="sr-only">{t("conversation.you")}</span>
-        {event.text !== "" && <p className="whitespace-pre-wrap text-sm">{event.text}</p>}
+        {elements.map((label) => (
+          <ElementChip key={label} label={label} />
+        ))}
+        {text !== "" && <p className="whitespace-pre-wrap text-sm">{text}</p>}
         {images}
       </div>
     );
@@ -392,22 +470,31 @@ function EventItem({ event }: { event: StudioEvent }) {
 }
 
 function Composer({
-  app,
-  conversationId,
-  model,
-  onSent,
+  firstMessage,
+  sending,
+  element,
+  onClearElement,
+  onSend,
 }: {
-  app: StudioAppDetail;
-  conversationId: string | null;
-  /** The model profile chosen for a conversation being started, or null for the agent server's. */
-  model: string | null;
-  onSent: (startedId: string | null) => Promise<void>;
+  firstMessage: boolean;
+  sending: boolean;
+  element: SelectedElement | null;
+  onClearElement: () => void;
+  /** Resolves true once sent, when what was typed can go. */
+  onSend: (text: string, images: string[]) => Promise<boolean>;
 }) {
   const { t } = useTranslation(["studio", "common"]);
   const [text, setText] = useState("");
   const [images, setImages] = useState<string[]>([]);
-  const [sending, setSending] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const area = useRef<HTMLTextAreaElement>(null);
+
+  // Pointing at an element is the start of a request about it.
+  useEffect(() => {
+    if (element !== null) {
+      area.current?.focus();
+    }
+  }, [element]);
 
   const addImages = async (files: readonly File[]) => {
     const room = MAX_IMAGES - images.length;
@@ -425,38 +512,20 @@ function Composer({
     }
   };
 
-  const send = async () => {
-    if (sending || (text.trim() === "" && images.length === 0)) {
+  const submit = async () => {
+    if (text.trim() === "" && images.length === 0) {
       return;
     }
-    setSending(true);
-    try {
-      const body = { text, images };
-      if (conversationId === null) {
-        const started = await studioApi.start(app.project, app.service, {
-          ...body,
-          ...(model === null ? {} : { model }),
-        });
-        setText("");
-        setImages([]);
-        await onSent(started.id);
-      } else {
-        await studioApi.send(app.project, app.service, conversationId, body);
-        setText("");
-        setImages([]);
-        await onSent(null);
-      }
-    } catch (reason) {
-      toast.error(errorMessage(reason, t));
-    } finally {
-      setSending(false);
+    if (await onSend(text, images)) {
+      setText("");
+      setImages([]);
     }
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
-      void send();
+      void submit();
     }
   };
 
@@ -470,12 +539,17 @@ function Composer({
 
   return (
     <form
-      className="grid gap-2 border-t p-3"
+      className="grid gap-2 p-3"
       onSubmit={(event) => {
         event.preventDefault();
-        void send();
+        void submit();
       }}
     >
+      {element !== null && (
+        <div>
+          <ElementChip label={elementLabel(element)} onRemove={onClearElement} />
+        </div>
+      )}
       {images.length > 0 && (
         <ul className="flex flex-wrap gap-1.5" aria-label={t("composer.images")}>
           {images.map((url, index) => (
@@ -498,8 +572,15 @@ function Composer({
         </ul>
       )}
       <Textarea
+        ref={area}
         aria-label={t("composer.label")}
-        placeholder={conversationId === null ? t("composer.firstPlaceholder") : t("composer.placeholder")}
+        placeholder={
+          element !== null
+            ? t("composer.elementPlaceholder")
+            : firstMessage
+              ? t("composer.firstPlaceholder")
+              : t("composer.placeholder")
+        }
         value={text}
         rows={3}
         onChange={(event) => setText(event.target.value)}
@@ -540,116 +621,5 @@ function Composer({
         </Button>
       </div>
     </form>
-  );
-}
-
-function PreviewPane({
-  app,
-  startRequested,
-  onStartRequested,
-}: {
-  app: StudioAppDetail;
-  startRequested: boolean;
-  onStartRequested: () => void;
-}) {
-  const { t } = useTranslation(["studio", "common"]);
-  const [reloadKey, setReloadKey] = useState(0);
-  const autoStarted = useRef(false);
-  const status = app.previewStatus;
-
-  const start = async () => {
-    onStartRequested();
-    try {
-      await servicesApi.start(app.project, app.service);
-    } catch (reason) {
-      toast.error(errorMessage(reason, t));
-    }
-  };
-
-  // Opening a project starts its preview, as opening it in Lovable would.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: starts once per visit, on the first stopped state.
-  useEffect(() => {
-    if (!autoStarted.current && status === "stopped") {
-      autoStarted.current = true;
-      void start();
-    }
-  }, [status]);
-
-  const showFrame = status === "running" && app.previewUrl !== null;
-  const waiting = status === "starting" || (startRequested && status !== "running");
-
-  return (
-    <section aria-label={t("preview.label")} className="flex min-h-0 flex-col">
-      <header className="flex items-center gap-2 border-b px-3 py-2 text-sm">
-        <Lamp state={waiting ? "progress" : lampOf[status]} size="xs" decorative />
-        <span className="shrink-0 text-muted">
-          {t(waiting ? "preview.status.starting" : `preview.status.${status}`)}
-        </span>
-        <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">{app.previewUrl ?? ""}</span>
-        {showFrame && (
-          <>
-            <Tooltip content={t("preview.reload")}>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={t("preview.reload")}
-                onClick={() => setReloadKey((key) => key + 1)}
-              >
-                <RotateCw aria-hidden="true" className="size-4" />
-              </Button>
-            </Tooltip>
-            <Tooltip content={t("preview.open")}>
-              <a
-                href={app.previewUrl ?? undefined}
-                target="_blank"
-                rel="noreferrer"
-                className={buttonClass("ghost", "icon-sm")}
-                aria-label={t("preview.open")}
-              >
-                <ExternalLink aria-hidden="true" className="size-4" />
-              </a>
-            </Tooltip>
-          </>
-        )}
-      </header>
-      <div className="min-h-0 flex-1 bg-wash">
-        {showFrame ? (
-          <iframe
-            key={reloadKey}
-            title={t("preview.frameTitle", { name: app.service })}
-            src={app.previewUrl ?? undefined}
-            className="h-full w-full border-0 bg-white"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
-          />
-        ) : (
-          <div className="grid h-full place-items-center p-6">
-            <div className="grid max-w-sm justify-items-center gap-3 text-center">
-              <Lamp state={waiting ? "progress" : lampOf[status]} size="lg" decorative />
-              <p className="font-medium">
-                {waiting
-                  ? t("preview.startingTitle")
-                  : status === "running"
-                    ? t("preview.noAddressTitle")
-                    : t("preview.stoppedTitle")}
-              </p>
-              <p className="text-sm text-muted">
-                {waiting
-                  ? t("preview.startingDescription")
-                  : status === "running"
-                    ? t("preview.noAddressDescription")
-                    : status === "undeployed"
-                      ? t("preview.undeployedDescription")
-                      : t("preview.stoppedDescription")}
-              </p>
-              {!waiting && status !== "running" && status !== "undeployed" && (
-                <Button variant="primary" onClick={start}>
-                  {t("preview.start")}
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </section>
   );
 }

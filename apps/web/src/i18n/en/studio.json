@@ -59,7 +59,8 @@
     "removeImage": "Remove image {{number}}",
     "tooManyImages": "At most {{count}} images per message.",
     "imageFailed": "This image could not be read.",
-    "send": "Send"
+    "send": "Send",
+    "elementPlaceholder": "What should change in this element?"
   },
   "preview": {
     "label": "Live preview",
@@ -81,7 +82,17 @@
     "undeployedDescription": "Its service has never been deployed: deploy it once from its page.",
     "noAddressTitle": "The preview has no address",
     "noAddressDescription": "Give its service a domain, then come back.",
-    "start": "Start the preview"
+    "start": "Start the preview",
+    "device": "Device",
+    "devices": {
+      "desktop": "Desktop",
+      "tablet": "Tablet",
+      "mobile": "Phone"
+    },
+    "address": "Address of the page shown",
+    "inspect": "Point at an element",
+    "inspectUnavailable": "This preview does not load the Studio's inspector",
+    "inspecting": "Click an element of the preview to join it to your message. Esc cancels."
   },
   "settings": {
     "title": "Studio",
@@ -127,5 +138,17 @@
     "todo": "to do",
     "in_progress": "in progress",
     "done": "done"
+  },
+  "suggestions": {
+    "label": "Suggestions",
+    "starters": {
+      "design": "Give the home page a more modern look",
+      "mobile": "Make the site pleasant on a phone",
+      "texts": "Read the texts and fix the typos"
+    }
+  },
+  "element": {
+    "label": "Element pointed at in the preview",
+    "remove": "Remove this element"
   }
 }

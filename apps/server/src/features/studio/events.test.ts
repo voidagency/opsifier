@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toStudioEvents, toStudioStatus } from "./events";
+import { splitSuggestions, toStudioEvents, toStudioStatus } from "./events";
 
 const base = (id: string) => ({ id, timestamp: "2026-11-15T12:00:00Z" });
 
@@ -28,9 +28,10 @@ describe("toStudioEvents", () => {
         role: "user",
         text: "Et ça ?",
         images: ["data:image/png;base64,AAAA"],
+        suggestions: [],
       },
-      { ...base("2"), kind: "message", role: "agent", text: "Voilà.", images: [] },
-      { ...base("3"), kind: "message", role: "agent", text: "Terminé.", images: [] },
+      { ...base("2"), kind: "message", role: "agent", text: "Voilà.", images: [], suggestions: [] },
+      { ...base("3"), kind: "message", role: "agent", text: "Terminé.", images: [], suggestions: [] },
     ]);
   });
 
@@ -157,5 +158,53 @@ describe("toStudioStatus", () => {
     expect(toStudioStatus("running")).toBe("running");
     expect(toStudioStatus("deleting")).toBe("unknown");
     expect(toStudioStatus(undefined)).toBe("unknown");
+  });
+});
+
+describe("splitSuggestions", () => {
+  it("takes the suggestions out of the agent's answer, one per line", () => {
+    expect(
+      splitSuggestions(
+        "C'est fait.\n\n<suggestions>\n- Ajoute un mode sombre\n* Agrandis le logo\n3. Traduis\n</suggestions>",
+      ),
+    ).toEqual({
+      text: "C'est fait.",
+      suggestions: ["Ajoute un mode sombre", "Agrandis le logo", "Traduis"],
+    });
+  });
+
+  it("reads a block the model left open, and leaves an answer without one as it is", () => {
+    expect(splitSuggestions("Voilà.\n<suggestions>\n- Une autre idée")).toEqual({
+      text: "Voilà.",
+      suggestions: ["Une autre idée"],
+    });
+    expect(splitSuggestions("Rien à suggérer.")).toEqual({ text: "Rien à suggérer.", suggestions: [] });
+  });
+
+  it("gives the agent's messages their suggestions, and the user's none", () => {
+    const [agent, finish, user] = toStudioEvents([
+      {
+        ...base("1"),
+        kind: "MessageEvent",
+        source: "agent",
+        llm_message: { content: "Ok.\n<suggestions>\n- A\n</suggestions>" },
+      },
+      {
+        ...base("2"),
+        kind: "ActionEvent",
+        tool_name: "finish",
+        action: { message: "Fini.\n<suggestions>\n- B\n</suggestions>" },
+      },
+      {
+        ...base("3"),
+        kind: "MessageEvent",
+        source: "user",
+        llm_message: { content: "<suggestions>\n- C\n</suggestions>" },
+      },
+    ]);
+
+    expect(agent).toMatchObject({ text: "Ok.", suggestions: ["A"] });
+    expect(finish).toMatchObject({ text: "Fini.", suggestions: ["B"] });
+    expect(user).toMatchObject({ role: "user", suggestions: [] });
   });
 });

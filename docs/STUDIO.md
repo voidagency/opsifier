@@ -31,6 +31,33 @@ Then open **Studio** in the top bar, and **Link a project**: its preview service
 - **Answers are kept small in the container.** The script keeps what the Studio shows of each answer before it travels: a page of events where the agent read whole files can weigh megabytes, and comes back as a few dozen kilobytes.
 - **Images pasted into a message** are scaled down in the browser before they are sent, so that a screenshot fits the panel's request size limit.
 
+## Pointing at an element of the preview
+
+The preview's toolbar shows the page at a desktop's, a tablet's or a phone's width, and gives the address of the page shown. When the preview's page loads the Studio's inspector, **Point at an element** outlines what the pointer is on, and a click joins that element to the next message: its tag, its text, its classes, a CSS selector, and the React components around it, which a development build of React keeps. The agent is told what the block means.
+
+The inspector is a small script the panel serves at `/studio-inspector.js`. A preview loads it however suits it; with Vite, a plugin can import it from Vite's client, which every page of a development server loads:
+
+```js
+// In a Vite config: the inspector, fetched once from the panel when the server starts.
+const source = await (await fetch("https://panel.example.com/studio-inspector.js")).text();
+const id = "\0opsifier-studio-inspector";
+export const studioInspector = () => ({
+  name: "opsifier-studio-inspector",
+  apply: "serve",
+  load: (module) => (module === id ? source : undefined),
+  transform: (code, module) =>
+    /vite\/dist\/client\/client\.mjs/.test(module)
+      ? `${code}\nimport("/@id/__x00__opsifier-studio-inspector");`
+      : undefined,
+});
+```
+
+The page and the Studio talk with `postMessage`. The Studio sends `{ source: "opsifier-studio", type: "ping" }` and `{ type: "inspect", on }`; the page answers `{ source: "opsifier-studio-preview", type: "ready", path }`, then `location`, `selected` with the element, and `inspect-ended`. The page listens to its parent frame only, and the Studio to its preview's address only.
+
+## Suggestions
+
+The agent ends each answer with two or three requests you might send next, which the Studio shows as tags to send in one click. A new conversation offers a few to start with.
+
 ## Limits
 
 - On a server whose role asks for a password before every site, a browser asks for it again for each preview's address, and it cannot ask inside the Studio's frame. Open the preview once in its own tab with **Open the preview in a new tab**, sign in, and reload the Studio.

@@ -30,6 +30,10 @@ const STUDIO_CONTEXT = [
   "open it in your browser to check your own work. The user reads along as you work: before each step,",
   "say in one short sentence what you are about to do and why, always in the user's language, never in",
   "another. Keep your final answer short, and plain: no technical jargon unless they ask for details.",
+  "When a message holds a <selected_element> block, the user pointed at that element in the preview: it is",
+  "the element to change. Find it in the code from its text, its classes and the React components it names.",
+  "End each final answer with two or three short requests the user might send next, in their language, one",
+  'per line starting with "- ", inside <suggestions></suggestions>, and write nothing after that block.',
   "</OPSIFIER_STUDIO>",
 ].join("\n");
 

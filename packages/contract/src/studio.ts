@@ -127,6 +127,8 @@ export const studioEvent = z.discriminatedUnion("kind", [
     role: z.enum(["user", "agent"]),
     text: z.string(),
     images: z.array(z.string()),
+    /** What the agent suggests asking next, taken out of its message's text. */
+    suggestions: z.array(z.string()),
   }),
   z.object({
     ...eventFields,

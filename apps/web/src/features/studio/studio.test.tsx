@@ -46,6 +46,7 @@ const page = (overrides: Partial<StudioEventPage> = {}): StudioEventPage => ({
       role: "user",
       text: "Change le titre",
       images: [],
+      suggestions: [],
     },
     {
       kind: "action",
@@ -66,6 +67,7 @@ const page = (overrides: Partial<StudioEventPage> = {}): StudioEventPage => ({
       role: "agent",
       text: "C'est **fait**.",
       images: [],
+      suggestions: ["Ajoute un mode sombre", "Agrandis le logo"],
     },
   ],
   cursor: "e3",
@@ -166,6 +168,111 @@ describe("a Studio project", () => {
     expect(within(plan).getByText("in progress")).toBeTruthy();
   });
 
+  it("sends a suggestion of the agent in one click", async () => {
+    const server = installFakeServer(
+      base({ [`POST ${APP}/conversations/${CONVERSATION}/messages`]: conversation }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Ajoute un mode sombre" }));
+
+    await waitFor(() =>
+      expect(server.calls.find((call) => call.path.endsWith("/messages"))?.body).toEqual({
+        text: "Ajoute un mode sombre",
+        images: [],
+      }),
+    );
+  });
+
+  it("joins the element pointed at in the preview to the next message", async () => {
+    const server = installFakeServer(
+      base({ [`POST ${APP}/conversations/${CONVERSATION}/messages`]: conversation }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+    const frame = (await screen.findByTitle("Live preview of cd-studio-preview")) as HTMLIFrameElement;
+    const fromPreview = (data: Record<string, unknown>) =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { source: "opsifier-studio-preview", ...data },
+          origin: "https://lovable-cd-studio-preview.app.example.com",
+          source: frame.contentWindow,
+        }),
+      );
+
+    expect(screen.getByRole("button", { name: "Point at an element" }).hasAttribute("disabled")).toBe(true);
+    fromPreview({ type: "ready", path: "/fr" });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Point at an element" }).hasAttribute("disabled")).toBe(
+        false,
+      ),
+    );
+    expect((screen.getByLabelText("Address of the page shown") as HTMLInputElement).value).toBe("/fr");
+    fromPreview({
+      type: "selected",
+      element: {
+        tag: "button",
+        text: "Nous contacter",
+        classes: ["toolbox"],
+        attributes: { "aria-label": "Contact" },
+        selector: "aside > button:nth-of-type(2)",
+        components: ["Toolbox", "SiteLayout"],
+        path: "/fr",
+      },
+    });
+    expect(await screen.findByText("Toolbox <button> « Nous contacter »")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Message to the agent"), { target: { value: "Arrondis-le" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      const sent = server.calls.find((call) => call.path.endsWith("/messages"))?.body as
+        | { text: string }
+        | undefined;
+      expect(sent?.text).toContain("Arrondis-le");
+      expect(sent?.text).toContain('Element: <button class="toolbox"> "Nous contacter"');
+      expect(sent?.text).toContain("React components: Toolbox < SiteLayout");
+    });
+    await waitFor(() => expect(screen.queryByText("Toolbox <button> « Nous contacter »")).toBeNull());
+  });
+
+  it("shows an element a message pointed at as a tag, not as its block", async () => {
+    const text =
+      'Arrondis-le\n\n<selected_element>\nPage: /fr\nElement: <button class="toolbox"> "Nous contacter"\nReact components: Toolbox < SiteLayout\nSelector: aside > button\n</selected_element>';
+    installFakeServer(
+      base({
+        [`GET ${APP}/conversations/${CONVERSATION}/events`]: page({
+          items: [
+            {
+              kind: "message",
+              id: "e1",
+              timestamp: "2026-11-15T12:00:01Z",
+              role: "user",
+              text,
+              images: [],
+              suggestions: [],
+            },
+          ],
+        }),
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    expect(await screen.findByText("Arrondis-le")).toBeTruthy();
+    expect(screen.getByText("Toolbox <button> « Nous contacter »")).toBeTruthy();
+    expect(screen.queryByText(/selected_element/)).toBeNull();
+  });
+
+  it("shows the preview at a phone's width", async () => {
+    installFakeServer(base());
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Phone" }));
+
+    expect((screen.getByTitle("Live preview of cd-studio-preview") as HTMLIFrameElement).style.width).toBe(
+      "390px",
+    );
+    expect(screen.getByRole("button", { name: "Phone" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("sends a message to the conversation shown, and asks for what follows", async () => {
     const server = installFakeServer(
       base({ [`POST ${APP}/conversations/${CONVERSATION}/messages`]: conversation }),
@@ -186,6 +293,33 @@ describe("a Studio project", () => {
     );
     await waitFor(() =>
       expect(server.calls.filter((call) => call.path.endsWith("/events")).length).toBeGreaterThan(1),
+    );
+  });
+
+  it("offers a few first requests for a new conversation", async () => {
+    const started = { ...conversation, id: "c0ffee00-0000-4000-8000-000000000004", title: null };
+    const server = installFakeServer(
+      base({
+        [`GET ${APP}`]: detail({ conversations: [], lastConversation: null }),
+        [`POST ${APP}/conversations`]: started,
+        [`GET ${APP}/conversations/${started.id}/events`]: page({
+          items: [],
+          cursor: null,
+          status: "running",
+        }),
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Make the site pleasant on a phone" }));
+
+    await waitFor(() =>
+      expect(
+        server.calls.find((call) => call.method === "POST" && call.path.endsWith("/conversations"))?.body,
+      ).toEqual({
+        text: "Make the site pleasant on a phone",
+        images: [],
+      }),
     );
   });
 

@@ -59,7 +59,8 @@
     "removeImage": "Retirer l'image {{number}}",
     "tooManyImages": "{{count}} images au plus par message.",
     "imageFailed": "Cette image n'a pas pu être lue.",
-    "send": "Envoyer"
+    "send": "Envoyer",
+    "elementPlaceholder": "Que faut-il changer dans cet élément ?"
   },
   "preview": {
     "label": "Aperçu en direct",
@@ -81,7 +82,17 @@
     "undeployedDescription": "Son service n'a jamais été déployé : déployez-le une fois depuis sa page.",
     "noAddressTitle": "L'aperçu n'a pas d'adresse",
     "noAddressDescription": "Donnez un domaine à son service, puis revenez.",
-    "start": "Démarrer l'aperçu"
+    "start": "Démarrer l'aperçu",
+    "device": "Appareil",
+    "devices": {
+      "desktop": "Ordinateur",
+      "tablet": "Tablette",
+      "mobile": "Mobile"
+    },
+    "address": "Adresse de la page affichée",
+    "inspect": "Désigner un élément",
+    "inspectUnavailable": "Cet aperçu ne charge pas l'inspecteur du Studio",
+    "inspecting": "Cliquez sur un élément de l'aperçu pour le joindre à votre message. Échap annule."
   },
   "settings": {
     "title": "Studio",
@@ -127,5 +138,17 @@
     "todo": "à faire",
     "in_progress": "en cours",
     "done": "fait"
+  },
+  "suggestions": {
+    "label": "Suggestions",
+    "starters": {
+      "design": "Donne un look plus moderne à la page d'accueil",
+      "mobile": "Rends le site agréable sur mobile",
+      "texts": "Relis les textes et corrige les fautes"
+    }
+  },
+  "element": {
+    "label": "Élément désigné dans l'aperçu",
+    "remove": "Retirer cet élément"
   }
 }
