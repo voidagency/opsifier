@@ -1,0 +1,105 @@
+{
+  "title": "Studio",
+  "description": "Ask the agent for a change in plain words, and watch the project change live next to the conversation.",
+  "back": "Back to the Studio",
+  "restricted": {
+    "title": "For the server's administrators",
+    "description": "The Studio is open to the server's administrators for now."
+  },
+  "setup": {
+    "offTitle": "The Studio is turned off",
+    "agentTitle": "The Studio has no agent server",
+    "description": "Turn it on and name the service that runs its OpenHands agent server, in Settings, Studio.",
+    "action": "Open the Studio settings"
+  },
+  "list": {
+    "emptyTitle": "No project in the Studio yet",
+    "emptyDescription": "Link the service that shows a project's live preview, and the folder the agent works in.",
+    "noConversation": "{{project}} · no conversation yet",
+    "lastConversation": "{{project}} · {{title}} · {{date}}",
+    "untitled": "Untitled conversation",
+    "open": "Open",
+    "openNamed": "Open {{name}} in the Studio"
+  },
+  "link": {
+    "action": "Link a project",
+    "title": "Link a project to the Studio",
+    "description": "The Studio shows the service's live preview, and the agent works on the project's folder.",
+    "service": "Preview service",
+    "serviceHint": "The service whose container shows the project's live preview.",
+    "servicePlaceholder": "Choose a service",
+    "serviceRequired": "Choose the preview's service.",
+    "folder": "Project folder",
+    "folderHint": "The project's folder as the agent server sees it, such as /projects/my-project.",
+    "folderRequired": "Enter an absolute path, starting with /.",
+    "submit": "Link",
+    "done": "{{name}} is in the Studio"
+  },
+  "conversation": {
+    "label": "Conversation",
+    "pick": "Conversation shown",
+    "new": "New conversation",
+    "messages": "Messages",
+    "working": "The agent is working…",
+    "waiting": "The agent is waiting for a confirmation.",
+    "stop": "Stop",
+    "emptyTitle": "What should change in {{name}}?",
+    "emptyDescription": "Describe it in plain words, or paste a screenshot. The agent changes the code, and the preview on the right follows.",
+    "error": "The agent stopped: {{message}}",
+    "you": "You",
+    "agent": "Agent"
+  },
+  "composer": {
+    "label": "Message to the agent",
+    "firstPlaceholder": "Describe the change you want…",
+    "placeholder": "Reply to the agent… Enter sends, Shift+Enter adds a line.",
+    "attach": "Add an image",
+    "images": "Images to send",
+    "imageAlt": "Image sent to the agent",
+    "removeImage": "Remove image {{number}}",
+    "tooManyImages": "At most {{count}} images per message.",
+    "imageFailed": "This image could not be read.",
+    "send": "Send"
+  },
+  "preview": {
+    "label": "Live preview",
+    "reload": "Reload the preview",
+    "open": "Open the preview in a new tab",
+    "frameTitle": "Live preview of {{name}}",
+    "status": {
+      "running": "Live",
+      "stopped": "Stopped",
+      "starting": "Starting",
+      "failing": "Failing",
+      "undeployed": "Never deployed",
+      "unknown": "Unknown"
+    },
+    "startingTitle": "The preview is starting",
+    "startingDescription": "It usually takes about fifteen seconds.",
+    "stoppedTitle": "The preview is stopped",
+    "stoppedDescription": "Start it to see the project here.",
+    "undeployedDescription": "Its service has never been deployed: deploy it once from its page.",
+    "noAddressTitle": "The preview has no address",
+    "noAddressDescription": "Give its service a domain, then come back.",
+    "start": "Start the preview"
+  },
+  "settings": {
+    "title": "Studio",
+    "description": "The Studio lets someone talk to an OpenHands agent about a project and see the result live. The panel reaches the agent server from inside its service's container, so the server needs no domain, and its key stays in its container.",
+    "enabled": "Turn the Studio on",
+    "enabledHint": "It shows in the top bar for the server's administrators.",
+    "service": "Agent server's service",
+    "serviceHint": "The service that runs the OpenHands agent server.",
+    "servicePlaceholder": "Choose a service",
+    "serviceRequired": "Choose the agent server's service.",
+    "url": "Address in its container",
+    "urlHint": "Where the agent server listens inside its container, on 127.0.0.1.",
+    "keyFile": "Key file",
+    "keyFileHint": "Where the agent server keeps its key, in its container. Not needed when the key is in SESSION_API_KEY.",
+    "save": "Save",
+    "saved": "Studio settings saved",
+    "check": "Check the connection",
+    "checkOk": "The panel reaches the agent server, version {{version}}.",
+    "checkFailed": "The panel does not reach the agent server: {{message}}"
+  }
+}

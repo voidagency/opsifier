@@ -27,6 +27,7 @@ const typePictograms: Readonly<Record<string, PictogramName>> = {
   "database.reveal": "access",
   "database.expose": "port",
   "database.settings": "settings",
+  "studio.settings": "settings",
 };
 
 const familyPictograms: Readonly<Record<string, PictogramName>> = {
@@ -40,6 +41,7 @@ const familyPictograms: Readonly<Record<string, PictogramName>> = {
   template: "template",
   compose: "compose",
   system: "node",
+  studio: "editor",
 };
 
 /** What an action is about, drawn: by its type, then by the kind of thing it acts on. */

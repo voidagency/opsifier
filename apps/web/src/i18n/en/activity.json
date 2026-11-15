@@ -101,6 +101,12 @@
       "process-restart": "Box process restarted",
       "ide-access": "Box IDE access changed",
       "ide-open": "Box IDE opened"
+    },
+    "studio": {
+      "settings": "Studio settings changed",
+      "link": "Project linked to the Studio",
+      "unlink": "Project taken out of the Studio",
+      "conversation": "Studio conversation started"
     }
   },
   "healthLabel": "Recent actions by outcome",

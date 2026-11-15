@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 35
+# documented-changes: 36
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -3960,6 +3960,134 @@ PUT /api/v1/projects/{project}/services/{service}/storage/mounts/{index}
   path index!: integer
   path project!: string
   path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/studio
+  200 project!: string
+  200 service!: string
+  400
+  401
+  403
+  404
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/studio
+  200 conversations![].createdAt!: string
+  200 conversations![].createdBy!: null|string
+  200 conversations![].id!: string
+  200 conversations![].title!: null|string
+  200 conversations![].updatedAt!: string
+  200 lastConversation!.createdAt!: string
+  200 lastConversation!.createdBy!: null|string
+  200 lastConversation!.id!: string
+  200 lastConversation!.title!: null|string
+  200 lastConversation!.updatedAt!: string
+  200 previewStatus!: enum(failing|running|starting|stopped|undeployed|unknown)
+  200 previewUrl!: null|string
+  200 project!: string
+  200 service!: string
+  200 workspaceDir!: string
+  400
+  401
+  403
+  404
+  path project!: string
+  path service!: string
+PUT /api/v1/projects/{project}/services/{service}/studio
+  200 conversations![].createdAt!: string
+  200 conversations![].createdBy!: null|string
+  200 conversations![].id!: string
+  200 conversations![].title!: null|string
+  200 conversations![].updatedAt!: string
+  200 lastConversation!.createdAt!: string
+  200 lastConversation!.createdBy!: null|string
+  200 lastConversation!.id!: string
+  200 lastConversation!.title!: null|string
+  200 lastConversation!.updatedAt!: string
+  200 previewStatus!: enum(failing|running|starting|stopped|undeployed|unknown)
+  200 previewUrl!: null|string
+  200 project!: string
+  200 service!: string
+  200 workspaceDir!: string
+  400
+  401
+  403
+  404
+  409
+  body workspaceDir!: string
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/studio/conversations
+  201 createdAt!: string
+  201 createdBy!: null|string
+  201 id!: string
+  201 title!: null|string
+  201 updatedAt!: string
+  400
+  401
+  403
+  404
+  409
+  503
+  body images[]: string
+  body text: string
+  path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/studio/conversations/{conversation}/events
+  200 cursor!: null|string
+  200 items![].detail!: null|string
+  200 items![].id!: string
+  200 items![].images![]: string
+  200 items![].kind!: enum(action)
+  200 items![].kind!: enum(error)
+  200 items![].kind!: enum(message)
+  200 items![].role!: enum(agent|user)
+  200 items![].summary!: string
+  200 items![].text!: string
+  200 items![].timestamp!: string
+  200 items![].tool!: string
+  200 status!: enum(error|finished|idle|paused|running|stuck|unknown|waiting)
+  200 title!: null|string
+  400
+  401
+  403
+  404
+  409
+  503
+  path conversation!: string
+  path project!: string
+  path service!: string
+  query after: string
+POST /api/v1/projects/{project}/services/{service}/studio/conversations/{conversation}/messages
+  200 createdAt!: string
+  200 createdBy!: null|string
+  200 id!: string
+  200 title!: null|string
+  200 updatedAt!: string
+  400
+  401
+  403
+  404
+  409
+  503
+  body images[]: string
+  body text: string
+  path conversation!: string
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/studio/conversations/{conversation}/stop
+  200 createdAt!: string
+  200 createdBy!: null|string
+  200 id!: string
+  200 title!: null|string
+  200 updatedAt!: string
+  400
+  401
+  403
+  404
+  409
+  503
+  path conversation!: string
+  path project!: string
+  path service!: string
 GET /api/v1/projects/{project}/templates
   200 installs![].category!: enum(automation|communication|data|development|documents|infrastructure|media|monitoring|productivity|security)
   200 installs![].components![].kind!: enum(app|compose|database)
@@ -4923,6 +5051,34 @@ PUT /api/v1/settings/monitoring
   body metrics!.scrapeSeconds!: enum(300)
   body metrics!.scrapeSeconds!: enum(5)
   body metrics!.scrapeSeconds!: enum(60)
+GET /api/v1/settings/studio
+  200 agent!.keyFile!: null|string
+  200 agent!.project!: string
+  200 agent!.service!: string
+  200 agent!.url!: string
+  200 enabled!: boolean
+  401
+  403
+PUT /api/v1/settings/studio
+  200 agent!.keyFile!: null|string
+  200 agent!.project!: string
+  200 agent!.service!: string
+  200 agent!.url!: string
+  200 enabled!: boolean
+  400
+  401
+  403
+  body agent!.keyFile!: null|string
+  body agent!.project!: string
+  body agent!.service!: string
+  body agent!.url!: string
+  body enabled!: boolean
+POST /api/v1/settings/studio/check
+  200 message!: null|string
+  200 reachable!: boolean
+  200 version!: null|string
+  401
+  403
 GET /api/v1/settings/two-factor
   200 accountsWithout!: integer
   200 canChange!: boolean
@@ -5179,6 +5335,21 @@ POST /api/v1/storage-providers/{id}/disconnect
   403
   404
   path id!: string
+GET /api/v1/studio
+  200 agentConfigured!: boolean
+  200 apps![].lastConversation!.createdAt!: string
+  200 apps![].lastConversation!.createdBy!: null|string
+  200 apps![].lastConversation!.id!: string
+  200 apps![].lastConversation!.title!: null|string
+  200 apps![].lastConversation!.updatedAt!: string
+  200 apps![].previewStatus!: enum(failing|running|starting|stopped|undeployed|unknown)
+  200 apps![].previewUrl!: null|string
+  200 apps![].project!: string
+  200 apps![].service!: string
+  200 apps![].workspaceDir!: string
+  200 enabled!: boolean
+  401
+  403
 GET /api/v1/system/about
   200 components![].kind!: enum(package|program)
   200 components![].license!: string

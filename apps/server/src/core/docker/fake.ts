@@ -131,6 +131,9 @@ export interface FakeExecReply {
   exitCode: number;
 }
 
+/** A reply worked out from what the command was given on its standard input, once that is closed. */
+export type FakeExecResponder = (input: string) => FakeExecReply;
+
 /**
  * An in-memory Docker: services get tasks that move through Swarm's states, produce logs and
  * can be exec'd into. `OPSIFIER_DRIVER=fake` uses it in development and tests.
@@ -169,7 +172,7 @@ export class FakeDriver implements DockerDriver {
   /** The markers `terminateExec` was asked to end, in order. */
   readonly endedMarkers: string[] = [];
   /** Runs first. Answering for a command replaces the simulation of a shell. */
-  execHandler: ((options: ExecOptions) => FakeExecReply | undefined) | undefined;
+  execHandler: ((options: ExecOptions) => FakeExecReply | FakeExecResponder | undefined) | undefined;
 
   constructor(options: FakeDriverOptions = {}) {
     this.tickMs = options.tickMs ?? 250;
@@ -594,24 +597,35 @@ export class FakeDriver implements DockerDriver {
   }
 
   /** A process whose whole output is known: it prints it and exits as soon as its input ends. */
-  private scriptedExec(options: ExecOptions, reply: FakeExecReply): ExecSession {
+  private scriptedExec(options: ExecOptions, reply: FakeExecReply | FakeExecResponder): ExecSession {
     const state: ExecState = { running: true, exitCode: null };
+    let finish: (code: number) => void = () => {};
     const exited = new Promise<number | null>((resolve) => {
-      queueMicrotask(() => {
+      finish = (code) => {
         state.running = false;
-        state.exitCode = reply.exitCode;
-        resolve(reply.exitCode);
-      });
+        state.exitCode = code;
+        resolve(code);
+      };
+      if (typeof reply !== "function") {
+        queueMicrotask(() => finish(reply.exitCode));
+      }
     });
+    const input: Buffer[] = [];
     const stream = new Duplex({
       read() {},
-      write(_chunk, _encoding, callback) {
+      write(chunk: Buffer, _encoding, callback) {
+        input.push(Buffer.from(chunk));
         callback();
       },
       final(callback) {
-        this.push(reply.output);
+        // A responder answers what it was given, so it only ends once its input has.
+        const answer = typeof reply === "function" ? reply(Buffer.concat(input).toString("utf8")) : reply;
+        this.push(answer.output);
         this.push(null);
         callback();
+        if (typeof reply === "function") {
+          finish(answer.exitCode);
+        }
       },
     });
     const exec: FakeExec = {

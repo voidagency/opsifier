@@ -32,13 +32,17 @@ const primaryNav = [
   { to: "/activity", key: "activity", exact: false, pictogram: "activity" },
   { to: "/monitor", key: "monitor", exact: false, pictogram: "metrics" },
   { to: "/domains", key: "domains", exact: false, pictogram: "domain" },
+  { to: "/studio", key: "studio", exact: false, pictogram: "editor" },
   { to: "/settings", key: "settings", exact: false, pictogram: "settings" },
 ] as const satisfies ReadonlyArray<{ pictogram: PictogramName } & Record<string, unknown>>;
+
+/** What only the server's administrators see in the bar. */
+const ADMIN_ONLY: ReadonlySet<string> = new Set(["monitor", "studio"]);
 
 function PrimaryNav({ className }: { className?: string }) {
   const { t } = useTranslation("shell");
   const user = useCurrentUser();
-  const items = primaryNav.filter((item) => item.key !== "monitor" || user?.role === "admin");
+  const items = primaryNav.filter((item) => !ADMIN_ONLY.has(item.key) || user?.role === "admin");
   return (
     <nav aria-label={t("nav.label")} className={cn("gap-5", className)}>
       {items.map((item) => (

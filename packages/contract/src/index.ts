@@ -51,5 +51,6 @@ export * from "./service-tabs/source";
 export * from "./service-tabs/storage";
 export * from "./services";
 export * from "./storage-providers";
+export * from "./studio";
 export * from "./system";
 export * from "./templates";

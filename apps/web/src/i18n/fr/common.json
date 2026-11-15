@@ -180,7 +180,15 @@
     "panel_address_unknown": "Ce panneau n'a pas de domaine à lui à mettre dans un e-mail. Indiquez-en un dans Réglages → Général, ou affichez plutôt les liens.",
     "two_factor_setup_required": "Ce panneau exige la double authentification : activez-la d'abord sur ce compte.",
     "two_factor_required_by_policy": "Ce panneau exige la double authentification : elle ne peut pas être désactivée.",
-    "two_factor_first": "Activez d'abord la double authentification sur votre propre compte."
+    "two_factor_first": "Activez d'abord la double authentification sur votre propre compte.",
+    "studio_disabled": "Le Studio est désactivé. Un administrateur l'active dans Réglages, Studio.",
+    "studio_agent_missing": "Aucun serveur d'agent n'est réglé pour le Studio, dans Réglages, Studio.",
+    "studio_agent_not_running": "Le service du serveur d'agent ne tourne pas. Démarrez-le, puis réessayez.",
+    "studio_agent_unavailable": "Le serveur d'agent ne répond pas. Vérifiez son service, puis réessayez.",
+    "studio_agent_refused": "Le serveur d'agent a refusé le panneau. Vérifiez son fichier de clé dans Réglages, Studio.",
+    "studio_agent_error": "Le serveur d'agent n'a pas pu le faire. Réessayez dans un instant.",
+    "studio_agent_unknown": "Ce service n'existe pas.",
+    "service_without_id": "Ce service n'a pas encore d'identifiant : déployez-le une fois, puis reliez-le."
   },
   "retention": {
     "removed": "Supprimé",

@@ -9,6 +9,7 @@
     "activity": "Activité",
     "monitor": "Supervision",
     "domains": "Domaines",
+    "studio": "Studio",
     "settings": "Réglages"
   },
   "settingsNav": {
@@ -32,6 +33,7 @@
     "purpose": "Rôle",
     "knownHosts": "Hôtes connus",
     "backup": "Sauvegarde du serveur",
+    "studio": "Studio",
     "about": "À propos",
     "nodes": "Nœuds"
   },

@@ -180,7 +180,15 @@
     "panel_address_unknown": "This panel has no domain of its own to put in an email. Set one in Settings → General, or show the links instead.",
     "two_factor_setup_required": "This panel requires two-factor sign-in: turn it on for this account first.",
     "two_factor_required_by_policy": "This panel requires two-factor sign-in, so it can't be turned off.",
-    "two_factor_first": "Turn on two-factor sign-in on your own account first."
+    "two_factor_first": "Turn on two-factor sign-in on your own account first.",
+    "studio_disabled": "The Studio is turned off. An administrator turns it on in Settings, Studio.",
+    "studio_agent_missing": "No agent server is set for the Studio, in Settings, Studio.",
+    "studio_agent_not_running": "The agent server's service is not running. Start it, then try again.",
+    "studio_agent_unavailable": "The agent server could not be reached. Check its service, then try again.",
+    "studio_agent_refused": "The agent server refused the panel. Check its key file in Settings, Studio.",
+    "studio_agent_error": "The agent server could not do it. Try again in a moment.",
+    "studio_agent_unknown": "There is no such service.",
+    "service_without_id": "This service has no identifier yet: deploy it once, then link it."
   },
   "retention": {
     "removed": "Removed",

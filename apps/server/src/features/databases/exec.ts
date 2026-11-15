@@ -24,6 +24,8 @@ const MAX_OUTPUT_CHARS = 16 * 1024;
 export interface RunExecOptions {
   timeoutMs?: number;
   signal?: AbortSignal;
+  /** How much output is kept. A database script prints little; an agent server's answer can be long. */
+  maxOutputChars?: number;
 }
 
 /**
@@ -70,17 +72,18 @@ export async function runInDatabase(
   for (const { line } of parser.flush()) {
     lines.push(line);
   }
+  const limit = options.maxOutputChars ?? MAX_OUTPUT_CHARS;
   if (typeof exitCode === "string") {
     session.stream.destroy();
-    return { ok: false, output: truncate(lines.join("\n") || "The command did not finish in time.") };
+    return { ok: false, output: truncate(lines.join("\n") || "The command did not finish in time.", limit) };
   }
 
-  const output = truncate(lines.join("\n"));
+  const output = truncate(lines.join("\n"), limit);
   return { ok: exitCode === 0 && output.includes(SUCCESS_MARKER), output };
 }
 
-function truncate(text: string): string {
-  return text.length > MAX_OUTPUT_CHARS ? `${text.slice(0, MAX_OUTPUT_CHARS)}...` : text;
+function truncate(text: string, limit: number): string {
+  return text.length > limit ? `${text.slice(0, limit)}...` : text;
 }
 
 /**

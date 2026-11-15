@@ -9,6 +9,7 @@
     "activity": "Activity",
     "monitor": "Monitor",
     "domains": "Domains",
+    "studio": "Studio",
     "settings": "Settings"
   },
   "settingsNav": {
@@ -32,6 +33,7 @@
     "purpose": "Purpose",
     "knownHosts": "Known hosts",
     "backup": "Server backup",
+    "studio": "Studio",
     "about": "About",
     "nodes": "Nodes"
   },

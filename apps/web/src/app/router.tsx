@@ -43,6 +43,7 @@ import { createPlatformSettingsRoutes } from "../features/settings/routes";
 import { SettingsLayout } from "../features/settings/SettingsLayout";
 import { KnownHostsPage } from "../features/settings/server/KnownHostsPage";
 import { StorageProvidersPage } from "../features/storage-providers/StorageProvidersPage";
+import { createStudioRoutes, createStudioSettingsRoute } from "../features/studio/routes";
 import { createInstallRoute } from "../features/templates/routes";
 import { isApiError } from "../lib/api";
 import { BootScreen, NotFoundPage, RootError } from "./RouteStates";
@@ -362,6 +363,7 @@ const routeTree = rootRoute.addChildren([
     activityRoute,
     monitorRoute,
     domainsRoute,
+    createStudioRoutes(() => appRoute),
     settingsRoute.addChildren([
       settingsIndexRoute,
       settingsAuthenticationRoute,
@@ -370,6 +372,7 @@ const routeTree = rootRoute.addChildren([
       settingsKnownHostsRoute,
       settingsStorageProvidersRoute,
       ...createPlatformSettingsRoutes(() => settingsRoute),
+      createStudioSettingsRoute(() => settingsRoute),
     ]),
     projectRoute.addChildren([
       projectIndexRoute,

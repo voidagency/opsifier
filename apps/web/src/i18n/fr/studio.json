@@ -1,0 +1,105 @@
+{
+  "title": "Studio",
+  "description": "Demandez une modification à l'agent avec vos mots, et voyez le projet changer en direct à côté de la conversation.",
+  "back": "Retour au Studio",
+  "restricted": {
+    "title": "Réservé aux administrateurs du serveur",
+    "description": "Le Studio est pour l'instant ouvert aux administrateurs du serveur."
+  },
+  "setup": {
+    "offTitle": "Le Studio est désactivé",
+    "agentTitle": "Le Studio n'a pas de serveur d'agent",
+    "description": "Activez-le et choisissez le service qui fait tourner son serveur d'agent OpenHands, dans Réglages, Studio.",
+    "action": "Ouvrir les réglages du Studio"
+  },
+  "list": {
+    "emptyTitle": "Aucun projet dans le Studio pour l'instant",
+    "emptyDescription": "Reliez le service qui montre l'aperçu en direct d'un projet, et le dossier où travaille l'agent.",
+    "noConversation": "{{project}} · pas encore de conversation",
+    "lastConversation": "{{project}} · {{title}} · {{date}}",
+    "untitled": "Conversation sans titre",
+    "open": "Ouvrir",
+    "openNamed": "Ouvrir {{name}} dans le Studio"
+  },
+  "link": {
+    "action": "Relier un projet",
+    "title": "Relier un projet au Studio",
+    "description": "Le Studio montre l'aperçu en direct du service, et l'agent travaille sur le dossier du projet.",
+    "service": "Service de l'aperçu",
+    "serviceHint": "Le service dont le conteneur montre l'aperçu en direct du projet.",
+    "servicePlaceholder": "Choisissez un service",
+    "serviceRequired": "Choisissez le service de l'aperçu.",
+    "folder": "Dossier du projet",
+    "folderHint": "Le dossier du projet tel que le voit le serveur d'agent, par exemple /projects/mon-projet.",
+    "folderRequired": "Saisissez un chemin absolu, qui commence par /.",
+    "submit": "Relier",
+    "done": "{{name}} est dans le Studio"
+  },
+  "conversation": {
+    "label": "Conversation",
+    "pick": "Conversation affichée",
+    "new": "Nouvelle conversation",
+    "messages": "Messages",
+    "working": "L'agent travaille…",
+    "waiting": "L'agent attend une confirmation.",
+    "stop": "Arrêter",
+    "emptyTitle": "Que faut-il changer dans {{name}} ?",
+    "emptyDescription": "Décrivez-le avec vos mots, ou collez une capture d'écran. L'agent modifie le code, et l'aperçu à droite suit.",
+    "error": "L'agent s'est arrêté : {{message}}",
+    "you": "Vous",
+    "agent": "Agent"
+  },
+  "composer": {
+    "label": "Message à l'agent",
+    "firstPlaceholder": "Décrivez la modification voulue…",
+    "placeholder": "Répondez à l'agent… Entrée envoie, Maj+Entrée ajoute une ligne.",
+    "attach": "Ajouter une image",
+    "images": "Images à envoyer",
+    "imageAlt": "Image envoyée à l'agent",
+    "removeImage": "Retirer l'image {{number}}",
+    "tooManyImages": "{{count}} images au plus par message.",
+    "imageFailed": "Cette image n'a pas pu être lue.",
+    "send": "Envoyer"
+  },
+  "preview": {
+    "label": "Aperçu en direct",
+    "reload": "Recharger l'aperçu",
+    "open": "Ouvrir l'aperçu dans un nouvel onglet",
+    "frameTitle": "Aperçu en direct de {{name}}",
+    "status": {
+      "running": "En direct",
+      "stopped": "Arrêté",
+      "starting": "Démarrage",
+      "failing": "En échec",
+      "undeployed": "Jamais déployé",
+      "unknown": "Inconnu"
+    },
+    "startingTitle": "L'aperçu démarre",
+    "startingDescription": "Cela prend en général une quinzaine de secondes.",
+    "stoppedTitle": "L'aperçu est arrêté",
+    "stoppedDescription": "Démarrez-le pour voir le projet ici.",
+    "undeployedDescription": "Son service n'a jamais été déployé : déployez-le une fois depuis sa page.",
+    "noAddressTitle": "L'aperçu n'a pas d'adresse",
+    "noAddressDescription": "Donnez un domaine à son service, puis revenez.",
+    "start": "Démarrer l'aperçu"
+  },
+  "settings": {
+    "title": "Studio",
+    "description": "Le Studio permet de parler à un agent OpenHands d'un projet et d'en voir le résultat en direct. Le panneau joint le serveur d'agent depuis l'intérieur du conteneur de son service : le serveur n'a besoin d'aucun domaine, et sa clé reste dans son conteneur.",
+    "enabled": "Activer le Studio",
+    "enabledHint": "Il apparaît dans la barre du haut pour les administrateurs du serveur.",
+    "service": "Service du serveur d'agent",
+    "serviceHint": "Le service qui fait tourner le serveur d'agent OpenHands.",
+    "servicePlaceholder": "Choisissez un service",
+    "serviceRequired": "Choisissez le service du serveur d'agent.",
+    "url": "Adresse dans son conteneur",
+    "urlHint": "Où le serveur d'agent écoute dans son conteneur, sur 127.0.0.1.",
+    "keyFile": "Fichier de clé",
+    "keyFileHint": "Où le serveur d'agent garde sa clé, dans son conteneur. Inutile si la clé est dans SESSION_API_KEY.",
+    "save": "Enregistrer",
+    "saved": "Réglages du Studio enregistrés",
+    "check": "Tester la connexion",
+    "checkOk": "Le panneau joint le serveur d'agent, version {{version}}.",
+    "checkFailed": "Le panneau ne joint pas le serveur d'agent : {{message}}"
+  }
+}

@@ -101,6 +101,12 @@
       "process-restart": "Processus de box relancé",
       "ide-access": "Accès à l'IDE de box modifié",
       "ide-open": "IDE de box ouvert"
+    },
+    "studio": {
+      "settings": "Réglages du Studio modifiés",
+      "link": "Projet relié au Studio",
+      "unlink": "Projet retiré du Studio",
+      "conversation": "Conversation du Studio lancée"
     }
   },
   "healthLabel": "Actions récentes par résultat",

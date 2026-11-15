@@ -80,6 +80,11 @@ function projectRequirement(method: string, project: string, rest: readonly stri
   if (rest[2] === "console") {
     return { kind: "project", project, level: "admin", session: false };
   }
+  if (rest[2] === "studio") {
+    // One agent server works on every Studio project's folder: until each project has its own, only
+    // the server's administrators may talk to it.
+    return ADMIN;
+  }
   if (rest[2] === "deployments" && (rest[3] === "trigger" || rest[3] === "webhook")) {
     // A trigger or webhook is its own credential, separate from sessions and API keys.
     return { kind: "project", project, level: "operator", session: true };

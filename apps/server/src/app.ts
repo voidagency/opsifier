@@ -108,6 +108,8 @@ export function createApp(deps: AppDeps, featureList: Feature[] = features): Api
         imgSrc: ["'self'", "data:"],
         fontSrc: ["'self'", "data:"],
         connectSrc: ["'self'"],
+        // The Studio shows a project's live preview, which lives at the project's own address.
+        frameSrc: ["'self'", "https:", "http:"],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
         formAction: ["'self'"],

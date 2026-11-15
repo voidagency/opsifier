@@ -26,6 +26,7 @@ const settingsMenu = [
       { to: "/settings/server/known-hosts", key: "knownHosts" },
       { to: "/settings/server/storage-providers", key: "storageProviders" },
       { to: "/settings/server/backup", key: "backup" },
+      { to: "/settings/server/studio", key: "studio" },
       { to: "/settings/server/users", key: "users" },
       { to: "/settings/server/notifications", key: "notifications" },
       { to: "/settings/server/certificates", key: "certificates" },

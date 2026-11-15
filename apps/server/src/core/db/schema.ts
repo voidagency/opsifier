@@ -779,3 +779,33 @@ export const templateInstalls = sqliteTable(
   },
   (table) => [index("template_installs_project_idx").on(table.projectName)],
 );
+
+/**
+ * A service linked to the Studio: its live preview, and the folder the agent works in, as the agent
+ * server sees it. It follows the service through a rename and goes with it.
+ */
+export const studioApps = sqliteTable("studio_apps", {
+  serviceId: text("service_id")
+    .primaryKey()
+    .references(() => services.id, { onDelete: "cascade" }),
+  workspaceDir: text("workspace_dir").notNull(),
+  createdAt: millis("created_at").notNull(),
+  updatedAt: millis("updated_at").notNull(),
+});
+
+/** The Studio's conversations. The agent server keeps what was said; the panel keeps who started each. */
+export const studioConversations = sqliteTable(
+  "studio_conversations",
+  {
+    /** The agent server's own identifier for it. */
+    id: text("id").primaryKey(),
+    serviceId: text("service_id")
+      .notNull()
+      .references(() => studioApps.serviceId, { onDelete: "cascade" }),
+    title: text("title"),
+    createdBy: text("created_by"),
+    createdAt: millis("created_at").notNull(),
+    updatedAt: millis("updated_at").notNull(),
+  },
+  (table) => [index("studio_conversations_service_idx").on(table.serviceId, table.updatedAt)],
+);
