@@ -188,7 +188,8 @@
     "studio_agent_refused": "The agent server refused the panel. Check its key file in Settings, Studio.",
     "studio_agent_error": "The agent server could not do it. Try again in a moment.",
     "studio_agent_unknown": "There is no such service.",
-    "service_without_id": "This service has no identifier yet: deploy it once, then link it."
+    "service_without_id": "This service has no identifier yet: deploy it once, then link it.",
+    "studio_model_unknown": "The agent server has no such model."
   },
   "retention": {
     "removed": "Removed",

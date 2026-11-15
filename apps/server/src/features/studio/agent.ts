@@ -5,16 +5,24 @@ import { AppError, conflict, serviceUnavailable } from "../../core/errors";
 import { runInDatabase } from "../databases/exec";
 import { qualifiedName } from "../services/compile";
 
+/**
+ * What the script keeps of an answer, inside the container, before it travels: an event page or a
+ * conversation can weigh megabytes (whole files the agent read, its system prompt, its settings),
+ * when the Studio needs a few fields of each.
+ */
+export type AgentShape = "events" | "conversation";
+
 export interface AgentCall {
   method: "GET" | "POST" | "PATCH" | "DELETE";
   /** Root-relative, as the agent server's API names it: `/api/conversations`. */
   path: string;
   body?: unknown;
+  shape?: AgentShape;
 }
 
 export interface AgentReply {
   status: number;
-  /** The body as the agent server sent it, still to be parsed. */
+  /** The body as the agent server sent it, or as its shape keeps it, still to be parsed. */
   text: string;
 }
 
@@ -25,16 +33,19 @@ export interface AgentReply {
  */
 export const AGENT_KEY_PLACEHOLDER = "__OPSIFIER_AGENT_KEY__";
 
-/** Where the script's answer starts, on a line of its own. */
+/** Starts each line of the script's answer. */
 const ANSWER_PREFIX = "opsifier-studio ";
+/** Docker's output is read line by line, and a line longer than 64 KiB is cut: the answer comes in pieces. */
+const PIECE_CHARS = 30_000;
 
 /**
  * Runs inside the agent server's container: reads the key there, makes the calls on 127.0.0.1 in
- * order, and prints their answers on one line. The request comes on standard input, never as an
- * argument, so nothing of it shows in a process list.
+ * order, keeps what each call's shape needs, and prints the answers in base64, in lines short enough
+ * to come back whole. The request comes on standard input, never as an argument, so nothing of it
+ * shows in a process list.
  */
 export const AGENT_SCRIPT = `
-import json, os, sys, urllib.error, urllib.request
+import base64, json, os, sys, urllib.error, urllib.request
 request = json.load(sys.stdin)
 key = os.environ.get("SESSION_API_KEY") or os.environ.get("OH_SESSION_API_KEYS_0")
 if not key and request.get("keyFile"):
@@ -43,6 +54,50 @@ if not key and request.get("keyFile"):
             key = handle.read().strip()
     except OSError:
         key = None
+QUIET = {"SystemPromptEvent", "ObservationEvent", "SecurityAnalysisEvent", "ConversationStateUpdateEvent"}
+BASE = ("id", "kind", "timestamp", "source")
+def pick(item, names):
+    return {name: item.get(name) for name in names if name in item}
+def shaped(shape, text):
+    if not shape:
+        return text
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return text
+    if not isinstance(data, dict):
+        return text
+    if shape == "events":
+        items = []
+        for item in data.get("items") or []:
+            if not isinstance(item, dict):
+                continue
+            kind = item.get("kind")
+            if kind in QUIET:
+                items.append(pick(item, BASE))
+            elif kind == "ActionEvent":
+                kept = pick(item, BASE + ("tool_name", "summary"))
+                action = item.get("action") or {}
+                kept["action"] = pick(action, ("kind", "command", "path", "url", "message"))
+                tasks = action.get("task_list")
+                if isinstance(tasks, list):
+                    kept["action"]["task_list"] = [pick(task, ("title", "status")) for task in tasks[:30] if isinstance(task, dict)]
+                thought = item.get("thought")
+                if isinstance(thought, list):
+                    thought = " ".join(part.get("text", "") for part in thought if isinstance(part, dict) and part.get("type") == "text")
+                if isinstance(thought, str) and thought.strip():
+                    kept["thought"] = thought.strip()[:4000]
+                items.append(kept)
+            elif kind == "MessageEvent":
+                items.append(pick(item, BASE + ("llm_message",)))
+            else:
+                items.append(pick(item, BASE + ("error", "detail")))
+        data = {"items": items, "next_page_id": data.get("next_page_id")}
+    elif shape == "conversation":
+        llm = (data.get("agent") or {}).get("llm") or {}
+        data = pick(data, ("id", "title", "execution_status"))
+        data["llm"] = pick(llm, ("model", "base_url"))
+    return json.dumps(data)
 answers = []
 for call in request["calls"]:
     body = call.get("body")
@@ -55,22 +110,47 @@ for call in request["calls"]:
     sent = urllib.request.Request(request["url"] + call["path"], data=data, method=call["method"], headers=headers)
     try:
         with urllib.request.urlopen(sent, timeout=25) as answer:
-            answers.append({"status": answer.status, "text": answer.read().decode("utf-8", "replace")})
+            status, text = answer.status, answer.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as error:
-        answers.append({"status": error.code, "text": error.read().decode("utf-8", "replace")})
+        status, text = error.code, error.read().decode("utf-8", "replace")
     except Exception as error:
-        answers.append({"status": 0, "text": str(error)})
-print(${JSON.stringify(ANSWER_PREFIX)} + json.dumps({"keyFound": bool(key), "answers": answers}))
+        status, text = 0, str(error)
+    if 200 <= status < 300:
+        text = shaped(call.get("shape"), text)
+    answers.append({"status": status, "text": text})
+encoded = base64.b64encode(json.dumps({"keyFound": bool(key), "answers": answers}).encode()).decode()
+for start in range(0, len(encoded), ${PIECE_CHARS}):
+    print(${JSON.stringify(ANSWER_PREFIX)} + encoded[start:start + ${PIECE_CHARS}])
 print("opsifier-ok")
 `;
 
 const EXEC_TIMEOUT_MS = 60_000;
-/** An event page with long terminal output, or a pasted screenshot, stays well under this. */
+/** An event page with pasted screenshots, in base64, stays well under this. */
 const MAX_ANSWER_CHARS = 32 * 1024 * 1024;
 
 export interface AgentAnswers {
   keyFound: boolean;
   replies: AgentReply[];
+}
+
+/** Puts the script's answer back together from its lines, in order. */
+export function readAnswer(output: string): AgentAnswers | null {
+  const pieces = output
+    .split("\n")
+    .filter((line) => line.startsWith(ANSWER_PREFIX))
+    .map((line) => line.slice(ANSWER_PREFIX.length).trim());
+  if (pieces.length === 0) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(Buffer.from(pieces.join(""), "base64").toString("utf8")) as {
+      keyFound: boolean;
+      answers: AgentReply[];
+    };
+    return { keyFound: parsed.keyFound, replies: parsed.answers };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -105,15 +185,11 @@ export async function callAgent(
     }
     throw error;
   }
-  const line = outcome.output.split("\n").find((candidate) => candidate.startsWith(ANSWER_PREFIX));
-  if (!outcome.ok || line === undefined) {
+  const answers = outcome.ok ? readAnswer(outcome.output) : null;
+  if (answers === null) {
     throw serviceUnavailable("studio_agent_unavailable", "The agent server could not be reached.");
   }
-  const parsed = JSON.parse(line.slice(ANSWER_PREFIX.length)) as {
-    keyFound: boolean;
-    answers: AgentReply[];
-  };
-  return { keyFound: parsed.keyFound, replies: parsed.answers };
+  return answers;
 }
 
 /** The parsed body of a successful answer, or the error the panel should give for a failed one. */

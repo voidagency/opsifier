@@ -34,29 +34,105 @@ describe("toStudioEvents", () => {
     ]);
   });
 
-  it("gives each action one line: its summary, or what its tool does, and what it acted on", () => {
+  it("gives each action one line: what it does, the agent's own words when it gave some, and what it acted on", () => {
     const long = `bun run build && ${"x".repeat(400)}`;
-    const [summarized, plain, unknown] = toStudioEvents([
+    const [own, raw, read, browse, search] = toStudioEvents(
+      [
+        {
+          ...base("1"),
+          kind: "ActionEvent",
+          tool_name: "terminal",
+          summary: "Builds the project",
+          action: { command: long },
+        },
+        {
+          ...base("2"),
+          kind: "ActionEvent",
+          tool_name: "terminal",
+          summary: 'terminal: {"command": "ls src"}',
+          action: { command: "ls src" },
+        },
+        {
+          ...base("3"),
+          kind: "ActionEvent",
+          tool_name: "file_editor",
+          action: { command: "view", path: "/projects/cd-studio/src/components/Header.tsx" },
+        },
+        {
+          ...base("4"),
+          kind: "ActionEvent",
+          tool_name: "browser_navigate",
+          action: { url: "http://cd-studio-preview" },
+        },
+        { ...base("5"), kind: "ActionEvent", tool_name: "glob", action: {} },
+      ],
+      "/projects/cd-studio",
+    );
+
+    expect(own).toMatchObject({ verb: "command", summary: "Builds the project", described: true });
+    expect(own?.kind === "action" ? own.detail?.length : 0).toBe(300);
+    // A model that gives no summary gets the tool call written out instead: that is no description.
+    expect(raw).toMatchObject({
+      verb: "command",
+      summary: "Ran a command",
+      described: false,
+      detail: "ls src",
+    });
+    expect(read).toMatchObject({ verb: "read", described: false, detail: "src/components/Header.tsx" });
+    expect(browse).toMatchObject({ verb: "browse", detail: "http://cd-studio-preview" });
+    expect(search).toMatchObject({ verb: "search", summary: "Searched the code", detail: null });
+  });
+
+  it("keeps what the agent wrote as it took a step, and its plan", () => {
+    const [step] = toStudioEvents([
       {
         ...base("1"),
         kind: "ActionEvent",
-        tool_name: "terminal",
-        summary: "Builds the project",
-        action: { command: long },
+        tool_name: "task_tracker",
+        thought: [
+          { type: "text", text: "Je planifie." },
+          { type: "text", text: " Ensuite je modifie." },
+        ],
+        action: {
+          command: "plan",
+          task_list: [
+            { title: "Trouver le menu", status: "done" },
+            { title: "Arrondir", status: "in_progress" },
+            { title: "", status: "todo" },
+            { title: "Inconnu", status: "later" },
+          ],
+        },
+      },
+    ]);
+
+    expect(step).toMatchObject({
+      verb: "plan",
+      thought: "Je planifie.  Ensuite je modifie.",
+      tasks: [
+        { title: "Trouver le menu", status: "done" },
+        { title: "Arrondir", status: "in_progress" },
+      ],
+    });
+  });
+
+  it("tells a file the agent creates from one it edits", () => {
+    const [created, edited] = toStudioEvents([
+      {
+        ...base("1"),
+        kind: "ActionEvent",
+        tool_name: "file_editor",
+        action: { command: "create", path: "/tmp/a" },
       },
       {
         ...base("2"),
         kind: "ActionEvent",
-        tool_name: "browser_navigate",
-        action: { url: "http://cd-studio-preview" },
+        tool_name: "file_editor",
+        action: { command: "str_replace", path: "/tmp/a" },
       },
-      { ...base("3"), kind: "ActionEvent", tool_name: "glob", action: {} },
     ]);
 
-    expect(summarized).toMatchObject({ kind: "action", summary: "Builds the project", tool: "terminal" });
-    expect(summarized?.kind === "action" ? summarized.detail?.length : 0).toBe(300);
-    expect(plain).toMatchObject({ summary: "Opened a page", detail: "http://cd-studio-preview" });
-    expect(unknown).toMatchObject({ summary: "Used glob", detail: null });
+    expect(created).toMatchObject({ verb: "create", detail: "/tmp/a" });
+    expect(edited).toMatchObject({ verb: "edit" });
   });
 
   it("leaves out what a person does not read, and keeps errors", () => {

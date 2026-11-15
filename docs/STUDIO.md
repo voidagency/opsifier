@@ -27,12 +27,14 @@ Then open **Studio** in the top bar, and **Link a project**: its preview service
 - **A conversation starts the way the agent server's own interface starts one:** with its active agent profile and its instructions, the project's folder as the workspace, and its secrets looked up by name. The Studio adds a few lines telling the agent that the user sees the preview next to the conversation.
 - **The agent server keeps what was said.** The panel keeps which conversations belong to which project, and who started each. Taking a project out of the Studio, or deleting its service, forgets them in the panel; the agent server keeps them.
 - **Opening a project starts its preview** when it is stopped, as opening a project in a hosted builder would.
+- **Each conversation says which model it works with**, and whether what it is sent stays on private addresses, such as a model served on your own machines, or goes to an outside provider. When the agent server has several model profiles, a new conversation can start with any of them.
+- **Answers are kept small in the container.** The script keeps what the Studio shows of each answer before it travels: a page of events where the agent read whole files can weigh megabytes, and comes back as a few dozen kilobytes.
 - **Images pasted into a message** are scaled down in the browser before they are sent, so that a screenshot fits the panel's request size limit.
 
 ## Limits
 
 - On a server whose role asks for a password before every site, a browser asks for it again for each preview's address, and it cannot ask inside the Studio's frame. Open the preview once in its own tab with **Open the preview in a new tab**, sign in, and reload the Studio.
-- The Studio shows what the agent says and one line per action. Its reasoning, the output of its commands and its browser's screenshots stay in the agent server.
+- The Studio shows what the agent writes as it works, one line per action, and its plan. Its hidden reasoning, the output of its commands and its browser's screenshots stay in the agent server.
 
 ## API
 

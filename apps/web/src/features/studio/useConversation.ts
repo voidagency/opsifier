@@ -1,4 +1,4 @@
-import type { StudioConversationStatus, StudioEvent } from "@opsifier/contract";
+import type { StudioConversationStatus, StudioEvent, StudioModel } from "@opsifier/contract";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { studioApi } from "./api";
 
@@ -12,11 +12,19 @@ export interface ConversationState {
   events: StudioEvent[];
   status: StudioConversationStatus | null;
   title: string | null;
+  model: StudioModel | null;
   error: unknown;
   loaded: boolean;
 }
 
-const EMPTY: ConversationState = { events: [], status: null, title: null, error: null, loaded: false };
+const EMPTY: ConversationState = {
+  events: [],
+  status: null,
+  title: null,
+  model: null,
+  error: null,
+  loaded: false,
+};
 
 /**
  * Follows one conversation: its events as they come, oldest first, and what the agent is doing. Asks
@@ -61,11 +69,13 @@ export function useConversation(project: string, service: string, id: string | n
             events: [...current.events, ...page.items.filter((event) => !known.has(event.id))],
             status: page.status,
             title: page.title ?? current.title,
+            model: page.model ?? current.model,
             error: null,
             loaded: true,
           };
         });
-        delay = BUSY.has(page.status) || page.items.length > 0 ? BUSY_MS : QUIET_MS;
+        // A long conversation reopened comes in pages: the next one is asked for at once.
+        delay = page.more ? 0 : BUSY.has(page.status) || page.items.length > 0 ? BUSY_MS : QUIET_MS;
       } catch (error) {
         if (stopped) {
           return;

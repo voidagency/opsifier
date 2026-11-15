@@ -9,6 +9,7 @@ import {
   studioEventPage,
   studioEventsQuery,
   studioMessageRequest,
+  studioModels,
   studioOverview,
   studioSettings,
   unlinkedStudioApp,
@@ -20,6 +21,7 @@ import {
   checkStudioAgent,
   getStudioApp,
   getStudioEvents,
+  getStudioModels,
   getStudioOverview,
   getStudioSettings,
   linkStudioApp,
@@ -71,6 +73,21 @@ const checkRoute = createRoute({
   tags,
   description: "Reaches the agent server as every Studio request does, and says what stood in the way.",
   responses: { 200: jsonResponse(studioCheck, "What the check found."), 401: denied, 403: refused },
+});
+
+const modelsRoute = createRoute({
+  method: "get",
+  path: "/api/v1/studio/models",
+  tags,
+  description:
+    "The agent server's model profiles, each with whether what it is sent stays on private addresses, and the one a conversation starts with when none is chosen.",
+  responses: {
+    200: jsonResponse(studioModels, "The model profiles."),
+    401: denied,
+    403: refused,
+    409: blocked,
+    503: unreachable,
+  },
 });
 
 const overviewRoute = createRoute({
@@ -230,6 +247,8 @@ export const feature: Feature = {
     });
 
     app.openapi(overviewRoute, async (c) => c.json(await getStudioOverview(deps), 200));
+
+    app.openapi(modelsRoute, async (c) => c.json(await getStudioModels(deps), 200));
 
     app.openapi(appRoute, async (c) => c.json(await getStudioApp(deps, target(c.req.valid("param"))), 200));
 

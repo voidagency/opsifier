@@ -4,6 +4,7 @@ import type { StudioConversationStatus, StudioEvent } from "@opsifier/contract";
 const MAX_DETAIL_CHARS = 300;
 
 type Raw = Record<string, unknown>;
+type Verb = Extract<StudioEvent, { kind: "action" }>["verb"];
 
 const isRecord = (value: unknown): value is Raw =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -33,24 +34,94 @@ function readContent(message: unknown): { text: string; images: string[] } {
   return { text: texts.join("\n\n").trim(), images };
 }
 
-/** What a tool call is about, when its summary does not say. */
-const TOOL_SUMMARIES: Record<string, string> = {
-  terminal: "Ran a command",
-  file_editor: "Edited a file",
-  str_replace_editor: "Edited a file",
-  browser_navigate: "Opened a page",
-  task_tracker: "Updated its plan",
+/** What kind of thing a tool call does, from its tool and, for the file editor, its command. */
+function verbOf(tool: string, action: Raw): Verb {
+  if (tool === "terminal" || tool === "execute_bash" || tool === "bash") {
+    return "command";
+  }
+  if (tool === "file_editor" || tool === "str_replace_editor") {
+    const command = text(action.command);
+    return command === "view" ? "read" : command === "create" ? "create" : "edit";
+  }
+  if (tool === "browser_navigate") {
+    return "browse";
+  }
+  if (tool.startsWith("browser")) {
+    return "look";
+  }
+  if (tool === "grep" || tool === "glob" || tool === "find") {
+    return "search";
+  }
+  if (tool === "task_tracker") {
+    return "plan";
+  }
+  return "other";
+}
+
+const PLAIN: Record<Verb, string> = {
+  command: "Ran a command",
+  read: "Read a file",
+  edit: "Edited a file",
+  create: "Created a file",
+  browse: "Opened a page",
+  look: "Looked at the page",
+  search: "Searched the code",
+  plan: "Updated its plan",
+  other: "Used a tool",
 };
 
-function actionDetail(action: unknown): string | null {
-  if (!isRecord(action)) {
+/**
+ * The agent's own words for an action. A model that gives none gets the tool call written out in their
+ * place, `terminal: {"command": …}`, which is no description.
+ */
+function ownSummary(tool: string, summary: unknown): string | null {
+  const value = text(summary)?.trim() ?? "";
+  if (value === "" || value.startsWith(`${tool}:`) || value.startsWith("{") || value.includes('{"')) {
     return null;
   }
-  const value = text(action.command) ?? text(action.path) ?? text(action.url);
+  return value;
+}
+
+const TASK_STATUSES = new Set(["todo", "in_progress", "done"]);
+
+/** The agent's plan, as the task tracker gives it. */
+function readTasks(action: Raw): Extract<StudioEvent, { kind: "action" }>["tasks"] {
+  if (!Array.isArray(action.task_list)) {
+    return null;
+  }
+  return action.task_list.filter(isRecord).flatMap((task) => {
+    const title = text(task.title)?.trim();
+    const status = text(task.status);
+    return title === undefined || title === "" || status === null || !TASK_STATUSES.has(status)
+      ? []
+      : [{ title, status: status as "todo" | "in_progress" | "done" }];
+  });
+}
+
+/** What the agent wrote alongside a tool call, whether as text parts or as one string. */
+function readThought(value: unknown): string | null {
+  const words = Array.isArray(value)
+    ? value
+        .filter(isRecord)
+        .filter((part) => part.type === undefined || part.type === "text")
+        .map((part) => text(part.text) ?? "")
+        .join(" ")
+    : (text(value) ?? "");
+  const trimmed = words.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+function actionDetail(action: Raw, workspaceDir: string | undefined): string | null {
+  const path = text(action.path);
+  if (path !== null) {
+    const inside = workspaceDir !== undefined && path.startsWith(`${workspaceDir.replace(/\/+$/, "")}/`);
+    return shorten(inside ? path.slice(workspaceDir.replace(/\/+$/, "").length + 1) : path);
+  }
+  const value = text(action.command) ?? text(action.url);
   return value === null ? null : shorten(value);
 }
 
-function toEvent(raw: Raw): StudioEvent | null {
+function toEvent(raw: Raw, workspaceDir: string | undefined): StudioEvent | null {
   const id = text(raw.id);
   const timestamp = text(raw.timestamp);
   if (id === null || timestamp === null) {
@@ -80,8 +151,20 @@ function toEvent(raw: Raw): StudioEvent | null {
       if (tool === "think") {
         return null;
       }
-      const summary = text(raw.summary)?.trim() || TOOL_SUMMARIES[tool] || `Used ${tool}`;
-      return { kind: "action", id, timestamp, tool, summary: shorten(summary), detail: actionDetail(action) };
+      const verb = verbOf(tool, action);
+      const own = ownSummary(tool, raw.summary);
+      return {
+        kind: "action",
+        id,
+        timestamp,
+        tool,
+        verb,
+        summary: shorten(own ?? PLAIN[verb]),
+        described: own !== null,
+        detail: actionDetail(action, workspaceDir),
+        thought: readThought(raw.thought),
+        tasks: verb === "plan" ? readTasks(action) : null,
+      };
     }
     case "AgentErrorEvent":
     case "ConversationErrorEvent": {
@@ -94,9 +177,9 @@ function toEvent(raw: Raw): StudioEvent | null {
 }
 
 /** The events a person reads, in the order the agent server gave them. */
-export function toStudioEvents(raws: readonly unknown[]): StudioEvent[] {
+export function toStudioEvents(raws: readonly unknown[], workspaceDir?: string): StudioEvent[] {
   return raws.filter(isRecord).flatMap((raw) => {
-    const event = toEvent(raw);
+    const event = toEvent(raw, workspaceDir);
     return event === null ? [] : [event];
   });
 }

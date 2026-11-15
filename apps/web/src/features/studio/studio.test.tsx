@@ -34,6 +34,9 @@ const detail = (overrides: Partial<StudioAppDetail> = {}): StudioAppDetail => ({
   ...overrides,
 });
 
+const QWEN = { profile: "qwen-rtx", name: "Qwen3.6-27B", host: "100.89.0.1", private: true };
+const CLOUD = { profile: "cloud", name: "claude-sonnet-4-5", host: null, private: false };
+
 const page = (overrides: Partial<StudioEventPage> = {}): StudioEventPage => ({
   items: [
     {
@@ -49,8 +52,12 @@ const page = (overrides: Partial<StudioEventPage> = {}): StudioEventPage => ({
       id: "e2",
       timestamp: "2026-11-15T12:00:02Z",
       tool: "file_editor",
+      verb: "edit",
       summary: "Edited a file",
-      detail: "/projects/cd-studio/src/routes/index.tsx",
+      described: false,
+      detail: "src/routes/index.tsx",
+      thought: "Je modifie le **titre** de la page d'accueil.",
+      tasks: null,
     },
     {
       kind: "message",
@@ -64,6 +71,8 @@ const page = (overrides: Partial<StudioEventPage> = {}): StudioEventPage => ({
   cursor: "e3",
   status: "finished",
   title: "Titre de la page d'accueil",
+  model: QWEN,
+  more: false,
   ...overrides,
 });
 
@@ -72,6 +81,7 @@ const base = (extra: FakeRoute = {}): FakeRoute => ({
   "GET /studio": { enabled: true, agentConfigured: true, apps: [app()] },
   [`GET ${APP}`]: detail(),
   [`GET ${APP}/conversations/${CONVERSATION}/events`]: page(),
+  "GET /studio/models": { active: "qwen-rtx", models: [QWEN] },
   ...extra,
 });
 
@@ -114,12 +124,46 @@ describe("a Studio project", () => {
     renderApp("/studio/lovable/cd-studio-preview");
 
     expect(await screen.findByText("Change le titre")).toBeTruthy();
-    expect(screen.getByText("Edited a file")).toBeTruthy();
-    expect(screen.getByText("/projects/cd-studio/src/routes/index.tsx")).toBeTruthy();
+    expect(screen.getByText("Edited")).toBeTruthy();
+    expect(screen.getByText("src/routes/index.tsx")).toBeTruthy();
+    expect(screen.getByText("Qwen3.6-27B")).toBeTruthy();
+    expect(screen.getByText("· private network (100.89.0.1)")).toBeTruthy();
     expect(screen.getByText("fait")).toBeTruthy();
     const frame = screen.getByTitle("Live preview of cd-studio-preview");
     expect(frame.getAttribute("src")).toBe("https://lovable-cd-studio-preview.app.example.com");
     expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+  });
+
+  it("shows what the agent says as it works, and its plan", async () => {
+    installFakeServer(
+      base({
+        [`GET ${APP}/conversations/${CONVERSATION}/events`]: page({
+          items: [
+            {
+              kind: "action",
+              id: "e9",
+              timestamp: "2026-11-15T12:00:09Z",
+              tool: "task_tracker",
+              verb: "plan",
+              summary: "Updated its plan",
+              described: false,
+              detail: null,
+              thought: "Je planifie les modifications.",
+              tasks: [
+                { title: "Trouver le menu", status: "done" },
+                { title: "Arrondir les boutons", status: "in_progress" },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    expect(await screen.findByText("Je planifie les modifications.")).toBeTruthy();
+    const plan = screen.getByRole("list", { name: "The agent's plan" });
+    expect(within(plan).getByText("Trouver le menu")).toBeTruthy();
+    expect(within(plan).getByText("in progress")).toBeTruthy();
   });
 
   it("sends a message to the conversation shown, and asks for what follows", async () => {
@@ -175,6 +219,36 @@ describe("a Studio project", () => {
       }),
     );
     await waitFor(() => expect(rendered.router.state.location.search).toEqual({ c: started.id }));
+  });
+
+  it("chooses the model of a new conversation, and says where it runs", async () => {
+    const started = { ...conversation, id: "c0ffee00-0000-4000-8000-000000000003", title: null };
+    const server = installFakeServer(
+      base({
+        [`GET ${APP}`]: detail({ conversations: [], lastConversation: null }),
+        "GET /studio/models": { active: "qwen-rtx", models: [QWEN, CLOUD] },
+        [`POST ${APP}/conversations`]: started,
+        [`GET ${APP}/conversations/${started.id}/events`]: page({ items: [], cursor: null, model: CLOUD }),
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    expect(await screen.findByText("· private network (100.89.0.1)")).toBeTruthy();
+    fireEvent.click(screen.getByRole("combobox", { name: "Model" }));
+    fireEvent.click(await screen.findByRole("option", { name: "claude-sonnet-4-5 · outside provider" }));
+    expect(await screen.findByText("· outside provider: its provider's address")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Message to the agent"), { target: { value: "Bonjour" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(
+        server.calls.find((call) => call.method === "POST" && call.path.endsWith("/conversations"))?.body,
+      ).toEqual({
+        text: "Bonjour",
+        images: [],
+        model: "cloud",
+      }),
+    );
   });
 
   it("stops the agent while it works", async () => {

@@ -100,6 +100,13 @@ export const studioMessageRequest = z
   .object({
     text: z.string().max(20_000).default(""),
     images: z.array(studioImage).max(4).default([]),
+    /** The agent server's model profile for a conversation being started. Its active one when left out. */
+    model: z
+      .string()
+      .min(1)
+      .max(100)
+      .regex(/^[A-Za-z0-9._-]+$/)
+      .optional(),
   })
   .refine((message) => message.text.trim() !== "" || message.images.length > 0, {
     message: "Write a message or add an image",
@@ -125,13 +132,44 @@ export const studioEvent = z.discriminatedUnion("kind", [
     ...eventFields,
     kind: z.literal("action"),
     tool: z.string(),
+    /** What kind of thing the action does, for an interface to say in its own words. */
+    verb: z.enum(["command", "read", "edit", "create", "browse", "look", "search", "plan", "other"]),
+    /** The agent's own words for it when it gave some, otherwise a plain description. */
     summary: z.string(),
-    /** The command, file or address it acted on. */
+    /** Whether `summary` is the agent's own words. */
+    described: z.boolean(),
+    /** The command, file or address it acted on. A file inside the project's folder is given from there. */
     detail: z.string().nullable(),
+    /** What the agent wrote as it took the step, for the person following along. */
+    thought: z.string().nullable(),
+    /** The agent's plan, when the step updates it. */
+    tasks: z
+      .array(z.object({ title: z.string(), status: z.enum(["todo", "in_progress", "done"]) }))
+      .nullable(),
   }),
   z.object({ ...eventFields, kind: z.literal("error"), text: z.string() }),
 ]);
 export type StudioEvent = z.infer<typeof studioEvent>;
+
+/**
+ * A model the agent works with, and whether what it is sent stays on private addresses, such as a model
+ * served on one's own machines, or goes to an outside provider.
+ */
+export const studioModel = z.object({
+  /** The agent server's profile for it, when known. */
+  profile: z.string().nullable(),
+  name: z.string(),
+  host: z.string().nullable(),
+  private: z.boolean(),
+});
+export type StudioModel = z.infer<typeof studioModel>;
+
+/** GET /api/v1/studio/models: the agent server's model profiles, and the one a conversation starts with. */
+export const studioModels = z.object({
+  active: z.string().nullable(),
+  models: z.array(studioModel),
+});
+export type StudioModels = z.infer<typeof studioModels>;
 
 /** GET .../conversations/{conversation}/events: the events after `after`, oldest first. */
 export const studioEventPage = z.object({
@@ -140,6 +178,10 @@ export const studioEventPage = z.object({
   cursor: z.string().nullable(),
   status: studioConversationStatus,
   title: z.string().nullable(),
+  /** The model the conversation works with. */
+  model: studioModel.nullable(),
+  /** Whether more events are already waiting: ask again at once, as after reopening a long conversation. */
+  more: z.boolean(),
 });
 export type StudioEventPage = z.infer<typeof studioEventPage>;
 

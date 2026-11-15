@@ -1,7 +1,18 @@
-import type { ServiceStatus, StudioAppDetail, StudioEvent } from "@opsifier/contract";
+import type { ServiceStatus, StudioAppDetail, StudioEvent, StudioModel } from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { ArrowLeft, ExternalLink, ImagePlus, Plus, RotateCw, Send, Square, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ExternalLink,
+  Globe,
+  ImagePlus,
+  Lock,
+  Plus,
+  RotateCw,
+  Send,
+  Square,
+  X,
+} from "lucide-react";
 import { type ClipboardEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { errorMessage } from "../../lib/forms";
@@ -20,7 +31,7 @@ import {
 } from "../../ui";
 import { useCurrentUser } from "../auth/session";
 import { servicesApi } from "../services/api";
-import { studioApi, studioAppQuery, studioKey } from "./api";
+import { studioApi, studioAppQuery, studioKey, studioModelsQuery } from "./api";
 import { imageToDataUrl } from "./images";
 import { useConversation } from "./useConversation";
 
@@ -110,6 +121,11 @@ function ConversationPane({
   const conversation = useConversation(app.project, app.service, conversationId);
   const busy = conversation.status === "running" || conversation.status === "waiting";
   const [stopping, setStopping] = useState(false);
+  const models = useQuery({ ...studioModelsQuery, enabled: conversationId === null });
+  const [chosenModel, setChosenModel] = useState<string | null>(null);
+  const nextProfile = chosenModel ?? models.data?.active ?? null;
+  const nextModel =
+    models.data?.models.find((model) => model.profile === nextProfile) ?? models.data?.models[0] ?? null;
 
   const stop = async () => {
     if (conversationId === null) {
@@ -163,6 +179,30 @@ function ConversationPane({
         </Tooltip>
       </header>
 
+      {conversationId === null && (models.data?.models.length ?? 0) > 1 && (
+        <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs">
+          <span className="shrink-0 text-muted">{t("model.pick")}</span>
+          <Select
+            aria-label={t("model.pick")}
+            value={nextProfile ?? undefined}
+            onValueChange={setChosenModel}
+            options={(models.data?.models ?? []).flatMap((model) =>
+              model.profile === null
+                ? []
+                : [
+                    {
+                      value: model.profile,
+                      label: `${model.name} · ${model.private ? t("model.privateShort") : t("model.externalShort")}`,
+                    },
+                  ],
+            )}
+          />
+        </div>
+      )}
+      {conversationId === null
+        ? nextModel !== null && <ModelLine model={nextModel} />
+        : conversation.model !== null && <ModelLine model={conversation.model} />}
+
       <EventList
         conversationId={conversationId}
         events={conversation.events}
@@ -196,6 +236,7 @@ function ConversationPane({
       <Composer
         app={app}
         conversationId={conversationId}
+        model={chosenModel}
         onSent={async (startedId) => {
           if (startedId !== null) {
             await queryClient.invalidateQueries({
@@ -268,15 +309,52 @@ function EventList({
   );
 }
 
+/** Which model the agent works with, and whether what it is sent stays on private addresses. */
+function ModelLine({ model }: { model: StudioModel }) {
+  const { t } = useTranslation("studio");
+  const where = model.private
+    ? t("model.private", { host: model.host ?? "" })
+    : t("model.external", { host: model.host ?? t("model.unknownHost") });
+  return (
+    <p className="flex min-w-0 items-center gap-1.5 border-b px-3 py-1.5 text-xs text-muted">
+      {model.private ? (
+        <Lock aria-hidden="true" className="size-3.5 shrink-0 text-ok" />
+      ) : (
+        <Globe aria-hidden="true" className="size-3.5 shrink-0 text-busy" />
+      )}
+      <span className="sr-only">{t("model.label")}</span>
+      <span className="shrink-0 font-medium text-ink">{model.name}</span>
+      {model.profile !== null && <span className="shrink-0">· {model.profile}</span>}
+      <span className="min-w-0 truncate">· {where}</span>
+    </p>
+  );
+}
+
 function EventItem({ event }: { event: StudioEvent }) {
   const { t } = useTranslation("studio");
   if (event.kind === "action") {
     return (
-      <p className="flex min-w-0 items-baseline gap-2 text-xs text-muted">
-        <span aria-hidden="true">·</span>
-        <span className="shrink-0">{event.summary}</span>
-        {event.detail !== null && <code className="min-w-0 truncate font-mono">{event.detail}</code>}
-      </p>
+      <div className="grid gap-1">
+        {event.thought !== null && <Markdown text={event.thought} />}
+        <p className="flex min-w-0 items-baseline gap-2 text-xs text-muted">
+          <span aria-hidden="true">·</span>
+          <span className="shrink-0">{event.described ? event.summary : t(`actions.${event.verb}`)}</span>
+          {event.detail !== null && <code className="min-w-0 truncate font-mono">{event.detail}</code>}
+        </p>
+        {event.tasks !== null && event.tasks.length > 0 && (
+          <ul className="grid gap-0.5 rounded-sm border px-2.5 py-1.5 text-xs" aria-label={t("tasks.label")}>
+            {event.tasks.map((task) => (
+              <li key={task.title} className="flex items-baseline gap-2">
+                <span aria-hidden="true" className={task.status === "done" ? "text-ok" : "text-muted"}>
+                  {task.status === "done" ? "✓" : task.status === "in_progress" ? "◐" : "○"}
+                </span>
+                <span className={task.status === "done" ? "text-muted line-through" : ""}>{task.title}</span>
+                <span className="sr-only">{t(`tasks.${task.status}`)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     );
   }
   if (event.kind === "error") {
@@ -316,10 +394,13 @@ function EventItem({ event }: { event: StudioEvent }) {
 function Composer({
   app,
   conversationId,
+  model,
   onSent,
 }: {
   app: StudioAppDetail;
   conversationId: string | null;
+  /** The model profile chosen for a conversation being started, or null for the agent server's. */
+  model: string | null;
   onSent: (startedId: string | null) => Promise<void>;
 }) {
   const { t } = useTranslation(["studio", "common"]);
@@ -352,7 +433,10 @@ function Composer({
     try {
       const body = { text, images };
       if (conversationId === null) {
-        const started = await studioApi.start(app.project, app.service, body);
+        const started = await studioApi.start(app.project, app.service, {
+          ...body,
+          ...(model === null ? {} : { model }),
+        });
         setText("");
         setImages([]);
         await onSent(started.id);

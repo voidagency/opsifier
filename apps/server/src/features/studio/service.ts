@@ -6,6 +6,7 @@ import type {
   StudioCheck,
   StudioConversation,
   StudioEventPage,
+  StudioModels,
   StudioOverview,
   StudioSettings,
 } from "@opsifier/contract";
@@ -17,6 +18,7 @@ import { requireService, type ServiceTarget } from "../services/service";
 import { indexActiveActions, type LiveState, readLiveState, summarize } from "../services/status";
 import { AGENT_KEY_PLACEHOLDER, callAgent, expectJson } from "./agent";
 import { toStudioEvents, toStudioStatus } from "./events";
+import { conversationModel, toStudioModels } from "./models";
 import * as repo from "./repo";
 import { readStudioSettings, writeStudioSettings } from "./settings";
 
@@ -25,8 +27,9 @@ const STUDIO_CONTEXT = [
   "<OPSIFIER_STUDIO>",
   "The user talks to you from Opsifier Studio. The project's live preview is shown next to this",
   "conversation and reloads by itself when a file changes, so never open it only to show it to the user:",
-  "open it in your browser to check your own work. Keep your answers short and in the user's language,",
-  "without technical jargon unless they ask for details.",
+  "open it in your browser to check your own work. The user reads along as you work: before each step,",
+  "say in one short sentence what you are about to do and why, always in the user's language, never in",
+  "another. Keep your final answer short, and plain: no technical jargon unless they ask for details.",
   "</OPSIFIER_STUDIO>",
 ].join("\n");
 
@@ -41,6 +44,8 @@ const stringOrNull = (value: unknown): string | null => (typeof value === "strin
 export interface StudioMessage {
   text: string;
   images: string[];
+  /** The agent server's model profile, for a conversation being started. */
+  model?: string;
 }
 
 function requireAgent(deps: Pick<AppDeps, "db">): StudioAgent {
@@ -99,13 +104,13 @@ function requireConversation(
   deps: Pick<AppDeps, "db">,
   target: ServiceTarget,
   id: string,
-): repo.StudioConversationRow {
+): repo.StudioConversationRow & { workspaceDir: string } {
   const { app } = requireLinked(deps, target);
   const row = repo.findConversation(deps.db, app.serviceId, id);
   if (row === undefined) {
     throw notFound("This service has no such Studio conversation.");
   }
-  return row;
+  return { ...row, workspaceDir: app.workspaceDir };
 }
 
 export function getStudioSettings(deps: Pick<AppDeps, "db">): StudioSettings {
@@ -211,12 +216,21 @@ export async function startStudioConversation(
   const setup = await callAgent(deps, agent, [
     { method: "GET", path: "/api/agent-profiles" },
     { method: "GET", path: "/api/settings/secrets" },
+    ...(message.model === undefined ? [] : [{ method: "GET" as const, path: "/api/profiles" }]),
   ]);
   const profiles = expectJson(setup.replies[0], setup.keyFound);
   const secrets = expectJson(setup.replies[1], setup.keyFound);
   const profileId = isRecord(profiles) ? stringOrNull(profiles.active_agent_profile_id) : null;
   if (profileId === null) {
     throw serviceUnavailable("studio_agent_error", "The agent server has no active agent profile.");
+  }
+  if (message.model !== undefined) {
+    const known = toStudioModels(expectJson(setup.replies[2], setup.keyFound)).models;
+    if (!known.some((model) => model.profile === message.model)) {
+      throw badRequest("studio_model_unknown", "The agent server has no such model profile.", {
+        model: "No such model profile",
+      });
+    }
   }
   const names = (isRecord(secrets) && Array.isArray(secrets.secrets) ? secrets.secrets : [])
     .map((secret) => (isRecord(secret) ? stringOrNull(secret.name) : null))
@@ -228,7 +242,10 @@ export async function startStudioConversation(
       path: "/api/conversations",
       body: {
         agent_profile_id: profileId,
-        agent_launch_additions: { system_message_suffix_append: STUDIO_CONTEXT },
+        agent_launch_additions: {
+          system_message_suffix_append: STUDIO_CONTEXT,
+          ...(message.model === undefined ? {} : { llm_profile_ref: message.model }),
+        },
         workspace: { working_dir: app.workspaceDir, kind: "LocalWorkspace" },
         secrets: Object.fromEntries(
           names.map((name) => [
@@ -324,11 +341,14 @@ export async function getStudioEvents(
     query.set("page_id", after);
   }
   const { keyFound, replies } = await callAgent(deps, agent, [
-    { method: "GET", path: `/api/conversations/${id}` },
-    { method: "GET", path: `/api/conversations/${id}/events/search?${query}` },
+    { method: "GET", path: `/api/conversations/${id}`, shape: "conversation" },
+    { method: "GET", path: `/api/conversations/${id}/events/search?${query}`, shape: "events" },
+    { method: "GET", path: "/api/profiles" },
   ]);
   const conversation = expectJson(replies[0], keyFound);
   const page = expectJson(replies[1], keyFound);
+  // Knowing the model by its profile's name is a nicety: the events come without it.
+  const profiles = replies[2]?.status === 200 ? safeJson(replies[2].text) : null;
   const raws = isRecord(page) && Array.isArray(page.items) ? page.items.filter(isRecord) : [];
   const fresh = after !== undefined && raws[0]?.id === after ? raws.slice(1) : raws;
   const lastId = stringOrNull(raws.at(-1)?.id) ?? after ?? null;
@@ -338,9 +358,26 @@ export async function getStudioEvents(
     repo.updateConversation(deps.db, id, { title });
   }
   return {
-    items: toStudioEvents(fresh),
+    items: toStudioEvents(fresh, row.workspaceDir),
     cursor: lastId,
     status: toStudioStatus(isRecord(conversation) ? conversation.execution_status : null),
     title,
+    model: isRecord(conversation) ? conversationModel(conversation.llm, profiles) : null,
+    more: isRecord(page) && typeof page.next_page_id === "string" && page.next_page_id !== "",
   };
+}
+
+function safeJson(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+/** The agent server's model profiles, and the one a conversation starts with when none is chosen. */
+export async function getStudioModels(deps: AppDeps): Promise<StudioModels> {
+  const agent = requireAgent(deps);
+  const { keyFound, replies } = await callAgent(deps, agent, [{ method: "GET", path: "/api/profiles" }]);
+  return toStudioModels(expectJson(replies[0], keyFound));
 }

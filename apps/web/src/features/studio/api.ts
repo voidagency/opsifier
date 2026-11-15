@@ -6,6 +6,7 @@ import {
   studioCheck,
   studioConversation,
   studioEventPage,
+  studioModels,
   studioOverview,
   studioSettings,
   unlinkedStudioApp,
@@ -31,6 +32,12 @@ export const studioAppQuery = (project: string, service: string) =>
     queryFn: ({ signal }) => api.get(appPath(project, service), { schema: studioAppDetail, signal }),
     staleTime: 0,
   });
+
+export const studioModelsQuery = queryOptions({
+  queryKey: [...studioKey, "models"] as const,
+  queryFn: ({ signal }) => api.get("/studio/models", { schema: studioModels, signal }),
+  staleTime: 60_000,
+});
 
 export const studioSettingsQuery = queryOptions({
   queryKey: [...studioKey, "settings"] as const,

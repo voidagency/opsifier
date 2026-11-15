@@ -5,6 +5,7 @@ import type {
   StudioCheck,
   StudioConversation,
   StudioEventPage,
+  StudioModels,
   StudioOverview,
   StudioSettings,
 } from "@opsifier/contract";
@@ -48,6 +49,11 @@ interface FakeConversation {
   sent: unknown[];
 }
 
+const PROFILES = [
+  { name: "qwen-rtx", model: "openai/Qwen/Qwen3.6-27B", base_url: "http://100.89.0.1:8000/v1" },
+  { name: "cloud", model: "anthropic/claude-sonnet-4-5", base_url: null },
+];
+
 let sequence = 0;
 const nextId = (prefix: string) => `${prefix}-0000-4000-8000-${String(++sequence).padStart(12, "0")}`;
 const at = () => new Date(Date.UTC(2026, 10, 15, 12, 0, sequence)).toISOString();
@@ -90,6 +96,9 @@ function installFakeAgent() {
     if (url.pathname === "/api/agent-profiles") {
       return ok({ profiles: [{ id: "profile-1", name: "default" }], active_agent_profile_id: "profile-1" });
     }
+    if (url.pathname === "/api/profiles") {
+      return ok({ active_profile: "qwen-rtx", profiles: PROFILES });
+    }
     if (url.pathname === "/api/settings/secrets") {
       return ok({ secrets: [{ name: "GITHUB_TOKEN", description: null }] });
     }
@@ -115,7 +124,17 @@ function installFakeAgent() {
       return ok({ detail: "Not Found" }, 404);
     }
     if (call.method === "GET" && parts.length === 3) {
-      return ok({ id: conversation.id, title: conversation.title, execution_status: conversation.status });
+      // The script keeps these fields of a conversation, the shape the panel asks for.
+      const profile =
+        PROFILES.find(
+          (one) => one.name === (conversation.started.agent_launch_additions as Raw).llm_profile_ref,
+        ) ?? PROFILES[0];
+      return ok({
+        id: conversation.id,
+        title: conversation.title,
+        execution_status: conversation.status,
+        llm: { model: profile?.model, base_url: profile?.base_url },
+      });
     }
     if (call.method === "GET" && parts[3] === "events" && parts[4] === "search") {
       const limit = Number(url.searchParams.get("limit") ?? "100");
@@ -151,8 +170,11 @@ function installFakeAgent() {
         agent.calls.push(one);
         return answer(one);
       });
+      // As the script prints it: base64, in lines short enough for Docker's output to keep whole.
+      const encoded = Buffer.from(JSON.stringify({ keyFound: true, answers })).toString("base64");
+      const pieces = encoded.match(/.{1,30000}/g) ?? [];
       return {
-        output: `opsifier-studio ${JSON.stringify({ keyFound: true, answers })}\nopsifier-ok\n`,
+        output: `${pieces.map((piece) => `opsifier-studio ${piece}\n`).join("")}opsifier-ok\n`,
         exitCode: 0,
       };
     };
@@ -354,6 +376,48 @@ describe("a Studio conversation", () => {
     expect(actions.body.items.some((action) => action.type === "studio.conversation")).toBe(true);
   });
 
+  it("lists the agent server's models, and says which keep what they are sent on private addresses", async () => {
+    installFakeAgent();
+
+    const models = await api<StudioModels>("/studio/models");
+
+    expect(models.body).toEqual({
+      active: "qwen-rtx",
+      models: [
+        { profile: "qwen-rtx", name: "Qwen3.6-27B", host: "100.89.0.1", private: true },
+        { profile: "cloud", name: "claude-sonnet-4-5", host: null, private: false },
+      ],
+    });
+  });
+
+  it("starts a conversation with the model chosen, and says which one it works with", async () => {
+    const agent = installFakeAgent();
+
+    const started = await api<StudioConversation>(`${PREVIEW}/studio/conversations`, "POST", {
+      text: "Bonjour",
+      model: "cloud",
+    });
+
+    expect(started.status).toBe(201);
+    const additions = agent.conversations.get(started.body.id)?.started.agent_launch_additions as Raw;
+    expect(additions.llm_profile_ref).toBe("cloud");
+    expect((await events(started.body.id)).body.model).toEqual({
+      profile: "cloud",
+      name: "claude-sonnet-4-5",
+      host: null,
+      private: false,
+    });
+  });
+
+  it("refuses a model the agent server does not have", async () => {
+    installFakeAgent();
+
+    const refused = await api(`${PREVIEW}/studio/conversations`, "POST", { text: "Bonjour", model: "nope" });
+
+    expect(refused.status).toBe(400);
+    expect(apiErrorOf(refused).code).toBe("studio_model_unknown");
+  });
+
   it("shows what a person reads, and picks up after the last event it gave", async () => {
     const agent = installFakeAgent();
     const { body: started } = await start("Change le titre");
@@ -387,6 +451,17 @@ describe("a Studio conversation", () => {
     ]);
     expect(first.body.status).toBe("running");
     expect(first.body.title).toBe("Titre de la page d'accueil");
+    expect(first.body.model).toEqual({
+      profile: "qwen-rtx",
+      name: "Qwen3.6-27B",
+      host: "100.89.0.1",
+      private: true,
+    });
+    expect(first.body.items[2]).toMatchObject({
+      verb: "edit",
+      described: false,
+      detail: "src/routes/index.tsx",
+    });
     expect(first.body.cursor).toBe(conversation.events.at(-1)?.id);
 
     conversation.events.push(
@@ -404,6 +479,22 @@ describe("a Studio conversation", () => {
     expect(idle.body.cursor).toBe(next.body.cursor);
     const detail = await api<StudioAppDetail>(`${PREVIEW}/studio`);
     expect(detail.body.conversations[0]?.title).toBe("Titre de la page d'accueil");
+  });
+
+  it("says when more events are waiting, so that a long conversation reopens at once", async () => {
+    const agent = installFakeAgent();
+    const { body: started } = await start("Bonjour");
+    const conversation = agent.conversations.get(started.id) as FakeConversation;
+    for (let index = 0; index < 120; index += 1) {
+      conversation.events.push(actionEvent("terminal", { command: `echo ${index}` }));
+    }
+
+    const first = await events(started.id);
+    const second = await events(started.id, first.body.cursor ?? undefined);
+
+    expect(first.body.more).toBe(true);
+    expect(second.body.more).toBe(false);
+    expect(first.body.items.length + second.body.items.length).toBe(121);
   });
 
   it("sends messages and stops the agent where it is", async () => {

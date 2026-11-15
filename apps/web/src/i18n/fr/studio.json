@@ -101,5 +101,31 @@
     "check": "Tester la connexion",
     "checkOk": "Le panneau joint le serveur d'agent, version {{version}}.",
     "checkFailed": "Le panneau ne joint pas le serveur d'agent : {{message}}"
+  },
+  "actions": {
+    "command": "A lancé",
+    "read": "A lu",
+    "edit": "A modifié",
+    "create": "A créé",
+    "browse": "A ouvert",
+    "look": "A regardé la page",
+    "search": "A cherché",
+    "plan": "A mis à jour son plan",
+    "other": "A utilisé un outil"
+  },
+  "model": {
+    "label": "Modèle",
+    "private": "réseau privé ({{host}})",
+    "external": "fournisseur externe : {{host}}",
+    "unknownHost": "l'adresse de son fournisseur",
+    "pick": "Modèle",
+    "privateShort": "réseau privé",
+    "externalShort": "fournisseur externe"
+  },
+  "tasks": {
+    "label": "Le plan de l'agent",
+    "todo": "à faire",
+    "in_progress": "en cours",
+    "done": "fait"
   }
 }

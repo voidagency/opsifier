@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 36
+# documented-changes: 38
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -4028,11 +4028,13 @@ POST /api/v1/projects/{project}/services/{service}/studio/conversations
   409
   503
   body images[]: string
+  body model: string
   body text: string
   path project!: string
   path service!: string
 GET /api/v1/projects/{project}/services/{service}/studio/conversations/{conversation}/events
   200 cursor!: null|string
+  200 items![].described!: boolean
   200 items![].detail!: null|string
   200 items![].id!: string
   200 items![].images![]: string
@@ -4041,9 +4043,17 @@ GET /api/v1/projects/{project}/services/{service}/studio/conversations/{conversa
   200 items![].kind!: enum(message)
   200 items![].role!: enum(agent|user)
   200 items![].summary!: string
+  200 items![].tasks!: array|null
   200 items![].text!: string
+  200 items![].thought!: null|string
   200 items![].timestamp!: string
   200 items![].tool!: string
+  200 items![].verb!: enum(browse|command|create|edit|look|other|plan|read|search)
+  200 model!.host!: null|string
+  200 model!.name!: string
+  200 model!.private!: boolean
+  200 model!.profile!: null|string
+  200 more!: boolean
   200 status!: enum(error|finished|idle|paused|running|stuck|unknown|waiting)
   200 title!: null|string
   400
@@ -4069,6 +4079,7 @@ POST /api/v1/projects/{project}/services/{service}/studio/conversations/{convers
   409
   503
   body images[]: string
+  body model: string
   body text: string
   path conversation!: string
   path project!: string
@@ -5350,6 +5361,16 @@ GET /api/v1/studio
   200 enabled!: boolean
   401
   403
+GET /api/v1/studio/models
+  200 active!: null|string
+  200 models![].host!: null|string
+  200 models![].name!: string
+  200 models![].private!: boolean
+  200 models![].profile!: null|string
+  401
+  403
+  409
+  503
 GET /api/v1/system/about
   200 components![].kind!: enum(package|program)
   200 components![].license!: string

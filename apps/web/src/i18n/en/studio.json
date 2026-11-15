@@ -101,5 +101,31 @@
     "check": "Check the connection",
     "checkOk": "The panel reaches the agent server, version {{version}}.",
     "checkFailed": "The panel does not reach the agent server: {{message}}"
+  },
+  "actions": {
+    "command": "Ran",
+    "read": "Read",
+    "edit": "Edited",
+    "create": "Created",
+    "browse": "Opened",
+    "look": "Looked at the page",
+    "search": "Searched",
+    "plan": "Updated its plan",
+    "other": "Used a tool"
+  },
+  "model": {
+    "label": "Model",
+    "private": "private network ({{host}})",
+    "external": "outside provider: {{host}}",
+    "unknownHost": "its provider's address",
+    "pick": "Model",
+    "privateShort": "private network",
+    "externalShort": "outside provider"
+  },
+  "tasks": {
+    "label": "The agent's plan",
+    "todo": "to do",
+    "in_progress": "in progress",
+    "done": "done"
   }
 }
