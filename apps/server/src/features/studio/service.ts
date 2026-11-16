@@ -108,8 +108,9 @@ const OWN_GIT_RULES = [
   "pull request or not to push yet. Never force push, and never rewrite commits that are pushed. The",
   "Studio passes your pulls and pushes to GitHub for this repository: there is no token to use or to ask",
   "for. Never change git's settings, its remotes or its credential settings, and never ask the user for a",
-  "token or a password. If GitHub refuses a pull or a push (403), tell the user that the Studio's GitHub",
-  "token does not cover this repository, and stop there. Install packages with the package manager whose",
+  "token or a password. If GitHub refuses a pull or a push (403), tell the user that no GitHub key of the",
+  "Studio reaches this repository: an administrator adds one for its owner in the Studio's settings. Stop",
+  "there. Install packages with the package manager whose",
   "lockfile the project has, and never create another lockfile.",
 ];
 

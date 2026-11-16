@@ -196,7 +196,7 @@
     "studio_projects_unset": "Set the Studio's projects folder first, in its settings.",
     "studio_projects_unmounted": "The agent server's service has no folder of the server mounted at the projects folder. Add one in its Storage tab.",
     "studio_repository_invalid": "Give a GitHub repository: its address, such as https://github.com/owner/name, or owner/name.",
-    "studio_repository_unreachable": "The agent server's GitHub token does not reach this repository. Add the repository to that token, with Contents in read and write, or check its address.",
+    "studio_repository_unreachable": "GitHub did not let the Studio read this repository. Check its address, then the token that should reach it, with Contents in read and write: the Studio's GitHub key for its owner, for a project with an agent server of its own, or else the agent server's GITHUB_TOKEN secret.",
     "studio_branch_missing": "The repository has no branch by that name.",
     "studio_project_exists": "This project is already there: open it in the Studio, or link its preview.",
     "studio_project_unsupported": "This project does not use Vite, the only development server the Studio's previews run for now.",
@@ -219,7 +219,10 @@
     "studio_project_isolating": "This project is being given its own agent already.",
     "studio_preview_not_movable": "This preview is not one the Studio knows how to make again (a Vite project), so it is not moved: move it to an Opsifier project of its own, then give it its agent.",
     "studio_agent_name_taken": "Every name for an agent server in this project is taken.",
-    "studio_project_busy": "Work is still running on this project. Wait for it to finish, then try again."
+    "studio_project_busy": "Work is still running on this project. Wait for it to finish, then try again.",
+    "studio_github_key_exists": "The Studio has a key for this owner already: give it a new token instead.",
+    "too_many_github_keys": "The Studio holds as many GitHub keys as it can.",
+    "studio_github_keys_unreadable": "The Studio's GitHub keys cannot be read on this server, so nothing was changed."
   },
   "retention": {
     "removed": "Removed",

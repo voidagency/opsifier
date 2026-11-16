@@ -1,9 +1,12 @@
 import { createRoute } from "@hono/zod-openapi";
 import {
   actionEntry,
+  addStudioGithubKeyRequest,
   addStudioProjectRequest,
+  deletedStudioGithubKey,
   destroyRequest,
   linkStudioAppRequest,
+  replaceStudioGithubKeyRequest,
   servicePath,
   setStudioMembersRequest,
   studioAppDetail,
@@ -12,6 +15,10 @@ import {
   studioConversationPath,
   studioEventPage,
   studioEventsQuery,
+  studioGithubKey,
+  studioGithubKeyCheck,
+  studioGithubKeyList,
+  studioGithubKeyPath,
   studioIsolateAll,
   studioIsolated,
   studioMembers,
@@ -31,6 +38,13 @@ import { requestAccess } from "../access/guard";
 import { getPanelDomainSettings } from "../server/settings";
 import { needsTwoFactorSetup } from "../two-factor-policy/service";
 import { GIT_RELAY_PREFIX, startIdleAgentSweeper } from "./agents";
+import {
+  addGithubKey,
+  checkGithubKey,
+  listGithubKeys,
+  removeGithubKey,
+  replaceGithubKey,
+} from "./github-keys";
 import { isolateAllStudioApps, isolateStudioApp } from "./isolate";
 import { refreshPreviewDockerfiles } from "./preview";
 import { addStudioProject } from "./projects";
@@ -106,6 +120,80 @@ const checkRoute = createRoute({
   responses: { 200: jsonResponse(studioCheck, "What the check found."), 401: denied, 403: refused },
 });
 
+const GITHUB_KEYS = `${SETTINGS}/github-keys`;
+const keyPath = studioGithubKeyPath;
+
+const githubKeysRoute = createRoute({
+  method: "get",
+  path: GITHUB_KEYS,
+  tags,
+  description: "The Studio's GitHub keys, one per account or organization, without their tokens.",
+  responses: { 200: jsonResponse(studioGithubKeyList, "The keys."), 401: denied, 403: refused },
+});
+
+const addGithubKeyRoute = createRoute({
+  method: "post",
+  path: GITHUB_KEYS,
+  tags,
+  description:
+    "Adds a GitHub token for every repository of one account or organization. The panel uses it to copy a project whose repository that owner holds, and to pass its agent's git on to GitHub. It is sealed and never sent back.",
+  request: { body: jsonBody(addStudioGithubKeyRequest) },
+  responses: {
+    201: jsonResponse(studioGithubKey, "The key."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    409: blocked,
+  },
+});
+
+const replaceGithubKeyRoute = createRoute({
+  method: "put",
+  path: `${GITHUB_KEYS}/{key}`,
+  tags,
+  description: "Gives a key a new token, for the same owner.",
+  request: { params: keyPath, body: jsonBody(replaceStudioGithubKeyRequest) },
+  responses: {
+    200: jsonResponse(studioGithubKey, "The key."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    404: missing,
+  },
+});
+
+const removeGithubKeyRoute = createRoute({
+  method: "delete",
+  path: `${GITHUB_KEYS}/{key}`,
+  tags,
+  description:
+    "Removes a key. The owner's repositories fall back on the agent server's GITHUB_TOKEN secret, when it reaches them.",
+  request: { params: keyPath },
+  responses: {
+    200: jsonResponse(deletedStudioGithubKey, "Removed."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    404: missing,
+  },
+});
+
+const checkGithubKeyRoute = createRoute({
+  method: "post",
+  path: `${GITHUB_KEYS}/{key}/check`,
+  tags,
+  description:
+    "Asks GitHub about the key's token: whose it is, when it expires, and how many private repositories of the owner it reads.",
+  request: { params: keyPath },
+  responses: {
+    200: jsonResponse(studioGithubKeyCheck, "What GitHub said."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    404: missing,
+  },
+});
+
 const modelsRoute = createRoute({
   method: "get",
   path: "/api/v1/studio/models",
@@ -138,8 +226,9 @@ const addProjectRoute = createRoute({
   tags,
   description:
     "Adds a GitHub project to the Studio: copies it into the projects folder from inside the agent server's container, " +
-    "with the agent server's GITHUB_TOKEN secret, makes its preview in the agent server's project, links the two, " +
-    "and starts the preview's first deployment. The token never leaves the agent server's container.",
+    "with the Studio's GitHub key for the repository's owner when each project has an agent server of its own, or else " +
+    "the agent server's GITHUB_TOKEN secret, makes its preview, links the two, and starts the preview's first " +
+    "deployment. No token is written, printed or sent back.",
   request: { body: jsonBody(addStudioProjectRequest) },
   responses: {
     201: jsonResponse(studioAppDetail, "The project, linked to the Studio."),
@@ -528,6 +617,28 @@ export const feature: Feature = {
       });
       return c.json(saved, 200);
     });
+
+    app.openapi(githubKeysRoute, (c) => c.json({ keys: listGithubKeys(deps) }, 200));
+    app.openapi(addGithubKeyRoute, (c) =>
+      c.json(addGithubKey(deps, c.req.valid("json"), actorOf(requirePrincipal(c))), 201),
+    );
+    app.openapi(replaceGithubKeyRoute, (c) =>
+      c.json(
+        replaceGithubKey(
+          deps,
+          c.req.valid("param").key,
+          c.req.valid("json").token,
+          actorOf(requirePrincipal(c)),
+        ),
+        200,
+      ),
+    );
+    app.openapi(removeGithubKeyRoute, (c) =>
+      c.json(removeGithubKey(deps, c.req.valid("param").key, actorOf(requirePrincipal(c))), 200),
+    );
+    app.openapi(checkGithubKeyRoute, async (c) =>
+      c.json(await checkGithubKey(deps, c.req.valid("param").key), 200),
+    );
 
     app.openapi(checkRoute, async (c) => {
       requireSessionPrincipal(c);

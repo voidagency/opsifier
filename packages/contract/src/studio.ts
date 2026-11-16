@@ -284,3 +284,67 @@ const conversationId = z
 
 export const studioConversationPath = servicePath.extend({ conversation: conversationId });
 export const studioEventsQuery = z.object({ after: conversationId.optional() });
+
+/** A GitHub account or organization, as it appears in github.com/<owner>/<repository>. */
+export const githubOwner = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/, "A GitHub account or organization name");
+
+/** A GitHub token as GitHub writes them: a fine-grained one starts with github_pat_. */
+export const githubTokenValue = z
+  .string()
+  .trim()
+  .min(20, "A GitHub token is longer than that")
+  .max(255, "Must be at most 255 characters")
+  .regex(/^[A-Za-z0-9_]+$/, "A GitHub token holds letters, digits and underscores only");
+
+/**
+ * One of the Studio's GitHub keys: a token for every repository of one account or organization, which
+ * the panel uses for a project whose repository that owner holds. The token itself is never sent back.
+ */
+export const studioGithubKey = z.object({
+  id: z.string(),
+  owner: z.string(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+  /**
+   * What the last check found: whether GitHub took the token, whose it is, when it expires, and when it
+   * was checked. Null until a check says, and again once the token is replaced.
+   */
+  valid: z.boolean().nullable(),
+  login: z.string().nullable(),
+  expiresAt: z.iso.datetime().nullable(),
+  checkedAt: z.iso.datetime().nullable(),
+});
+export type StudioGithubKey = z.infer<typeof studioGithubKey>;
+
+/** GET /api/v1/settings/studio/github-keys */
+export const studioGithubKeyList = z.object({ keys: z.array(studioGithubKey) });
+export type StudioGithubKeyList = z.infer<typeof studioGithubKeyList>;
+
+/** POST /api/v1/settings/studio/github-keys: one key per owner. */
+export const addStudioGithubKeyRequest = z.strictObject({ owner: githubOwner, token: githubTokenValue });
+export type AddStudioGithubKeyRequest = z.infer<typeof addStudioGithubKeyRequest>;
+
+/** PUT /api/v1/settings/studio/github-keys/{key}: a new token for the same owner. */
+export const replaceStudioGithubKeyRequest = z.strictObject({ token: githubTokenValue });
+export type ReplaceStudioGithubKeyRequest = z.infer<typeof replaceStudioGithubKeyRequest>;
+
+export const studioGithubKeyPath = z.object({ key: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, "Invalid id") });
+
+/** DELETE /api/v1/settings/studio/github-keys/{key} */
+export const deletedStudioGithubKey = z.object({ id: z.string() });
+
+/**
+ * POST /api/v1/settings/studio/github-keys/{key}/check: what GitHub says of the token. `repositories`
+ * counts the private repositories of the owner it reads, when GitHub says.
+ */
+export const studioGithubKeyCheck = z.object({
+  ok: z.boolean(),
+  login: z.string().nullable(),
+  expiresAt: z.iso.datetime().nullable(),
+  repositories: z.number().int().min(0).nullable(),
+  message: z.string().nullable(),
+});
+export type StudioGithubKeyCheck = z.infer<typeof studioGithubKeyCheck>;

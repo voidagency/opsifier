@@ -11,6 +11,7 @@ import { qualifiedName } from "../services/compile";
 import { findService } from "../services/repo";
 import { requireService } from "../services/service";
 import { OWN_PREVIEW, requireModel, requirePanelUrl } from "./agents";
+import { githubKeyFor, hasGithubKeyFor } from "./github-keys";
 import { createOwnProject, deployOwnProject, inspectFolder, requireNoCredentials } from "./own-project";
 import { inspectorEnv, PREVIEW_RESOURCES, previewDockerfile } from "./preview";
 import * as repo from "./repo";
@@ -91,9 +92,10 @@ export function projectsHostDir(deps: AppDeps, agent: StudioAgent & { projectsDi
 }
 
 /**
- * Runs in the agent server's container. Reads the agent server's key there, and with it the GitHub
- * token it keeps as a secret, then copies the repository with a credential helper that reads the
- * token from the environment: the token is never written, printed or sent back. A folder that
+ * Runs in the agent server's container. Takes the GitHub token the panel hands it on standard input, a
+ * Studio key, or else reads the agent server's key there and with it the GitHub token it keeps as a
+ * secret, then copies the repository with a credential helper that reads the token from the
+ * environment: the token is never written, printed or sent back. A folder that
  * already holds a copy of the same repository is kept, so that adding a project again goes on from
  * where it stopped. The request comes on standard input.
  */
@@ -110,19 +112,20 @@ if not key and request.get("keyFile"):
             key = handle.read().strip()
     except OSError:
         key = None
-token = ""
+token = request.get("token") or ""
 headers = {"X-Session-API-Key": key} if key else {}
-try:
-    secret = urllib.request.Request(request["agentUrl"] + "/api/settings/secrets/" + request["secret"], headers=headers)
-    with urllib.request.urlopen(secret, timeout=20) as answer:
-        token = answer.read().decode().strip()
-    if token.startswith('"'):
-        token = json.loads(token)
-except urllib.error.HTTPError as error:
-    if error.code in (401, 403):
-        done({"ok": False, "code": "refused"})
-except Exception:
-    done({"ok": False, "code": "unreachable"})
+if not token:
+    try:
+        secret = urllib.request.Request(request["agentUrl"] + "/api/settings/secrets/" + request["secret"], headers=headers)
+        with urllib.request.urlopen(secret, timeout=20) as answer:
+            token = answer.read().decode().strip()
+        if token.startswith('"'):
+            token = json.loads(token)
+    except urllib.error.HTTPError as error:
+        if error.code in (401, 403):
+            done({"ok": False, "code": "refused"})
+    except Exception:
+        done({"ok": False, "code": "unreachable"})
 helper = '!f() { test "$1" = get && echo username=x-access-token && echo "password=$GITHUB_TOKEN"; }; f'
 env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GITHUB_TOKEN=token)
 def clean(text):
@@ -196,19 +199,50 @@ export function readCloneResult(output: string): CloneResult | null {
   }
 }
 
+/** Why GitHub kept a repository out of the copy, and what lets it in, as things stand on this server. */
+function unreachableMessage(
+  deps: Pick<AppDeps, "db">,
+  slug: string,
+  tried: { own: boolean; keyRefused: boolean; token: boolean },
+): string {
+  const owner = slug.split("/", 1)[0];
+  if (tried.keyRefused) {
+    return `Neither the Studio's GitHub key for ${owner} nor the agent server's token reaches ${slug}. Give the key's token access to the repository on GitHub, with Contents in read and write, or check its address.`;
+  }
+  if (!tried.own) {
+    // The keys serve projects with an agent server of their own: one for this owner is not used here.
+    const unused = hasGithubKeyFor(deps, slug)
+      ? ` The Studio's GitHub key for ${owner} serves projects with an agent server of their own only.`
+      : "";
+    return tried.token
+      ? `The agent server's GitHub token does not reach ${slug}. Give that token access to the repository, with Contents in read and write, or check its address.${unused}`
+      : `GitHub did not let the agent server read ${slug}, and the agent server has no ${GITHUB_SECRET} secret. Give it one with Contents in read and write on the repository.${unused}`;
+  }
+  return tried.token
+    ? `The agent server's GitHub token does not reach ${slug}. Add a GitHub key for ${owner} in the Studio's settings, or give that token access to the repository, with Contents in read and write.`
+    : `GitHub did not let the agent server read ${slug}, and the Studio has no GitHub key for ${owner}. Add one in the Studio's settings, with Contents in read and write on the repository.`;
+}
+
 async function cloneInAgent(
   deps: AppDeps,
   agent: StudioAgent,
   repository: GithubRepository,
   dir: string,
   branch: string | undefined,
+  own: boolean,
+  keyRefused = false,
 ): Promise<Extract<CloneResult, { ok: true }>> {
+  // The Studio's key for the repository's owner goes on standard input, never on a command line. It
+  // serves projects with an agent server of their own only: on the shared one, the agents push with
+  // the agent server's token, and the key would sit in the container they all run in.
+  const key = own && !keyRefused ? githubKeyFor(deps, repository.slug) : null;
   const input = JSON.stringify({
     agentUrl: agent.url,
     keyFile: agent.keyFile,
     secret: GITHUB_SECRET,
     url: repository.url,
     dir,
+    ...(key === null ? {} : { token: key }),
     ...(branch === undefined ? {} : { branch }),
   });
   let outcome: Awaited<ReturnType<typeof runInDatabase>>;
@@ -238,6 +272,10 @@ async function cloneInAgent(
   if (result.ok) {
     return result;
   }
+  if (key !== null && result.code === "no_access") {
+    // A key narrower than the agent server's token must not keep the owner's other repositories out.
+    return cloneInAgent(deps, agent, repository, dir, branch, own, true);
+  }
   switch (result.code) {
     case "exists":
       throw conflict(
@@ -248,9 +286,7 @@ async function cloneInAgent(
       throw new AppError(
         422,
         "studio_repository_unreachable",
-        result.token
-          ? `The agent server's GitHub token does not reach ${repository.slug}. Add the repository to that token, with Contents in read and write, or check its address.`
-          : `GitHub did not let the agent server read ${repository.slug}, and the agent server has no ${GITHUB_SECRET} secret. Add a GitHub token there, with Contents in read and write on the repository.`,
+        unreachableMessage(deps, repository.slug, { own, keyRefused, token: result.token }),
       );
     case "branch":
       throw new AppError(422, "studio_branch_missing", `${repository.slug} has no branch by that name.`);
@@ -314,7 +350,7 @@ export async function addStudioProject(
     requirePanelUrl(deps);
   }
 
-  const copy = await cloneInAgent(deps, agent, repository, workspaceDir, request.branch);
+  const copy = await cloneInAgent(deps, agent, repository, workspaceDir, request.branch, own);
   // No package.json, or no Vite in it: there is no development server the preview knows how to run.
   if (!copy.vite) {
     throw new AppError(

@@ -196,7 +196,7 @@
     "studio_projects_unset": "Réglez d'abord le dossier des projets, dans les réglages du Studio.",
     "studio_projects_unmounted": "Le service du serveur d'agent n'a aucun dossier du serveur monté sur le dossier des projets. Ajoutez-en un dans son onglet Stockage.",
     "studio_repository_invalid": "Indiquez un dépôt GitHub : son adresse, comme https://github.com/owner/name, ou owner/name.",
-    "studio_repository_unreachable": "Le jeton GitHub du serveur d'agent n'a pas accès à ce dépôt. Ajoutez le dépôt à ce jeton, avec Contents en lecture et écriture, ou vérifiez son adresse.",
+    "studio_repository_unreachable": "GitHub n'a pas laissé le Studio lire ce dépôt. Vérifiez son adresse, puis le jeton qui doit l'ouvrir, avec Contents en lecture et écriture : la clé GitHub du Studio pour son propriétaire, pour un projet qui a son propre serveur d'agent, ou sinon le secret GITHUB_TOKEN du serveur d'agent.",
     "studio_branch_missing": "Le dépôt n'a pas de branche de ce nom.",
     "studio_project_exists": "Ce projet existe déjà : ouvrez-le dans le Studio, ou reliez son aperçu.",
     "studio_project_unsupported": "Ce projet n'utilise pas Vite, le seul serveur de développement que les aperçus du Studio font tourner pour l'instant.",
@@ -219,7 +219,10 @@
     "studio_project_isolating": "Ce projet est déjà en train de recevoir son propre agent.",
     "studio_preview_not_movable": "Cet aperçu n'est pas un de ceux que le Studio sait refaire (un projet Vite) : il n'est donc pas déplacé. Placez-le dans un projet Opsifier à lui, puis donnez-lui son agent.",
     "studio_agent_name_taken": "Tous les noms possibles pour un serveur d'agent dans ce projet sont pris.",
-    "studio_project_busy": "Du travail est encore en cours sur ce projet. Attendez qu'il se termine, puis réessayez."
+    "studio_project_busy": "Du travail est encore en cours sur ce projet. Attendez qu'il se termine, puis réessayez.",
+    "studio_github_key_exists": "Le Studio a déjà une clé pour ce propriétaire : donnez-lui plutôt un nouveau jeton.",
+    "too_many_github_keys": "Le Studio a atteint le nombre maximal de clés GitHub.",
+    "studio_github_keys_unreadable": "Les clés GitHub du Studio ne peuvent pas être lues sur ce serveur : rien n'a été modifié."
   },
   "retention": {
     "removed": "Supprimé",

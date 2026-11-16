@@ -6,6 +6,7 @@ import { errorMessage, useForm } from "../../lib/forms";
 import { Button, ErrorState, Field, FormBanner, Input, Select, Skeleton, Switch, toast } from "../../ui";
 import { projectsQuery } from "../projects/api";
 import { studioApi, studioKey, studioOverviewQuery, studioSettingsQuery } from "./api";
+import { GithubKeysSection } from "./GithubKeys";
 
 const DEFAULT_URL = "http://127.0.0.1:18000";
 const DEFAULT_KEY_FILE = "/home/openhands/.openhands/agent-canvas/api-key.txt";
@@ -29,6 +30,7 @@ export function StudioSettingsPage() {
       </div>
       <SettingsForm settings={data} />
       {data.enabled && data.agentPerProject && <IsolateSection />}
+      {data.enabled && <GithubKeysSection ownAgents={data.agentPerProject} />}
     </div>
   );
 }

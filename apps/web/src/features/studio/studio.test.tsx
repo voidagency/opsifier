@@ -226,7 +226,7 @@ describe("the Studio's list", () => {
     fireEvent.change(await screen.findByLabelText("Repository"), { target: { value: "x/y" } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
 
-    expect(await screen.findByText(/does not reach this repository/)).toBeTruthy();
+    expect(await screen.findByText(/did not let the Studio read this repository/)).toBeTruthy();
   });
 
   it("asks for the projects folder before projects can be added", async () => {
@@ -921,6 +921,51 @@ describe("the Studio's settings", () => {
           ?.agentPerProject,
       ).toBe(true),
     );
+  });
+
+  it("adds a GitHub key for an organization, and never shows a token back", async () => {
+    const on = { ...settings, enabled: true, agentPerProject: true };
+    const key = {
+      id: "k1",
+      owner: "voidagency",
+      createdAt: "2026-11-16T20:00:00Z",
+      updatedAt: "2026-11-16T20:00:00Z",
+      login: null,
+      valid: null,
+      expiresAt: null,
+      checkedAt: null,
+    };
+    const server = installFakeServer(
+      base({
+        "GET /settings/studio": on,
+        "GET /studio": { ...(base()["GET /studio"] as object), agentPerProject: true },
+        "GET /settings/studio/github-keys": { keys: [] },
+        "POST /settings/studio/github-keys": key,
+      }),
+    );
+    renderApp("/settings/server/studio");
+
+    expect(await screen.findByText(/No key yet/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Add a key" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Owner"), { target: { value: "voidagency" } });
+    fireEvent.change(within(dialog).getByLabelText("Token"), {
+      target: { value: "github_pat_11AAAAAAA0voidagency0token" },
+    });
+    server.set({ "GET /settings/studio/github-keys": { keys: [key] } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+
+    await waitFor(() =>
+      expect(
+        server.calls.find((call) => call.method === "POST" && call.path === "/settings/studio/github-keys")
+          ?.body,
+      ).toEqual({
+        owner: "voidagency",
+        token: "github_pat_11AAAAAAA0voidagency0token",
+      }),
+    );
+    expect(await screen.findByText("voidagency")).toBeTruthy();
+    expect(screen.queryByText(/github_pat_/)).toBeNull();
   });
 
   it("gives the projects still on the shared agent server their own, and says which could not move", async () => {

@@ -110,7 +110,8 @@
     },
     "studio.add-project": "Projet ajouté au Studio",
     "studio.share": "Projet du Studio partagé",
-    "studio.remove": "Projet retiré du Studio"
+    "studio.remove": "Projet retiré du Studio",
+    "studio.github-key": "Clé GitHub du Studio modifiée"
   },
   "healthLabel": "Actions récentes par résultat",
   "noMatch": "Aucune entrée affichée n'a ce résultat.",

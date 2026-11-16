@@ -70,6 +70,16 @@ function installFakeAgents() {
     conversations: new Map<string, { service: string; started: Raw; status: string }>(),
     seeded: new Map<string, string>(),
     folders: new Map<string, Raw>(),
+    /** What the copy answers; GitHub lets every token in unless a test says otherwise. */
+    clone: (_request: Raw): Raw => ({
+      ok: true,
+      reused: false,
+      uid: 10001,
+      gid: 10001,
+      branch: "main",
+      manifest: true,
+      vite: true,
+    }),
   };
   let sequence = 0;
   const ok = (body: unknown, status = 200) => ({ status, text: JSON.stringify(body) });
@@ -153,10 +163,7 @@ function installFakeAgents() {
           return { output: `opsifier-studio-seed ${said}\nopsifier-ok\n`, exitCode: 0 };
         }
         case "clone":
-          return {
-            output: `opsifier-studio-clone ${JSON.stringify({ ok: true, reused: false, uid: 10001, gid: 10001, branch: "main", manifest: true, vite: true })}\n`,
-            exitCode: 0,
-          };
+          return { output: `opsifier-studio-clone ${JSON.stringify(state.clone(request))}\n`, exitCode: 0 };
         default: {
           const calls = request.calls as { method: string; path: string; body?: unknown }[];
           const answers = calls.map((one) => answer(service, one));
@@ -691,6 +698,30 @@ describe("the git relay of a project's agent server", () => {
     expect(sent.get("cookie")).toBeNull();
   });
 
+  it("uses the Studio's GitHub key for the repository's owner, before the agent server's token", async () => {
+    const keyToken = "github_pat_33CCCCCCC0the0owners0own0studio0key";
+    expect(
+      (await api("/settings/studio/github-keys", "POST", { owner: "mehdinajeddine", token: keyToken }))
+        .status,
+    ).toBe(201);
+    const { path, token } = await relayOf();
+    const fetched = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("001e# service=git-upload-pack\n", { status: 200 }));
+
+    await context.app.request(`${PANEL}${path}/info/refs?service=git-upload-pack`, {
+      headers: { authorization: basic(token) },
+    });
+
+    const sent = new Headers(fetched.mock.calls[0]?.[1]?.headers);
+    expect(sent.get("authorization")).toBe(
+      `Basic ${Buffer.from(`x-access-token:${keyToken}`).toString("base64")}`,
+    );
+    // The copy, when the project was added, got the same key on its standard input.
+    const clone = agents.execs.find((exec) => exec.script === "clone");
+    expect(clone?.input.token).toBe(keyToken);
+  });
+
   it("asks anything else to sign in, and sends nothing to GitHub", async () => {
     const { path, token } = await relayOf();
     const fetched = vi.spyOn(globalThis, "fetch");
@@ -749,7 +780,106 @@ describe("the git relay of a project's agent server", () => {
       headers: { authorization: basic(token) },
     });
     expect(refused.status).toBe(403);
-    expect(await refused.text()).toContain("add the repository to that token");
+    expect(await refused.text()).toContain(
+      "add a GitHub key for mehdinajeddine in the Studio's settings, with access to this repository",
+    );
+  });
+
+  it("falls back on the agent server's token when GitHub refuses the key, and keeps to it a while", async () => {
+    const keyToken = "github_pat_44DDDDDDD0a0key0for0other0repositories";
+    expect(
+      (await api("/settings/studio/github-keys", "POST", { owner: "mehdinajeddine", token: keyToken }))
+        .status,
+    ).toBe(201);
+    const { path, token } = await relayOf();
+    const withKey = `Basic ${Buffer.from(`x-access-token:${keyToken}`).toString("base64")}`;
+    const sent: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const key = new Headers(init?.headers).get("authorization") === withKey;
+      sent.push(key ? "key" : "agent server");
+      return key
+        ? new Response("Repository not found.", { status: 404 })
+        : new Response("001e# service=git-upload-pack\n", { status: 200 });
+    });
+    const sentWith = () => [...sent];
+    const refs = () =>
+      context.app.request(`${PANEL}${path}/info/refs?service=git-upload-pack`, {
+        headers: { authorization: basic(token) },
+      });
+
+    expect((await refs()).status).toBe(200);
+    expect(sentWith()).toEqual(["key", "agent server"]);
+
+    // The rest of the exchange, and the next ones for a while, go with the agent server's token at once.
+    const pack = await context.app.request(`${PANEL}${path}/git-upload-pack`, {
+      method: "POST",
+      headers: { authorization: basic(token), "content-type": "application/x-git-upload-pack-request" },
+      body: "0000",
+    });
+    expect(pack.status).toBe(200);
+    expect((await refs()).status).toBe(200);
+    expect(sentWith()).toEqual(["key", "agent server", "agent server", "agent server"]);
+
+    context.advance(10 * 60 * 1000 + 1);
+    expect((await refs()).status).toBe(200);
+    expect(sentWith().slice(4)).toEqual(["key", "agent server"]);
+  });
+});
+
+describe("the Studio's GitHub keys, when a project is copied", () => {
+  const KEY = "github_pat_55EEEEEEE0the0owners0narrow0studio0key";
+  const addKey = async () =>
+    expect(
+      (await api("/settings/studio/github-keys", "POST", { owner: "mehdinajeddine", token: KEY })).status,
+    ).toBe(201);
+  const noAccess = (token: boolean): Raw => ({ ok: false, code: "no_access", token });
+
+  it("copies with the agent server's token what GitHub refuses the key", async () => {
+    await addKey();
+    agents.clone = (request) =>
+      request.token === undefined
+        ? { ok: true, reused: false, uid: 10001, gid: 10001, branch: "main", manifest: true, vite: true }
+        : noAccess(true);
+
+    await addOwnProject();
+
+    const clones = agents.execs.filter((exec) => exec.script === "clone");
+    expect(clones.map((exec) => exec.input.token ?? null)).toEqual([KEY, null]);
+  });
+
+  it("says which token to change when neither reaches the repository", async () => {
+    await addKey();
+    agents.clone = () => noAccess(true);
+    await prepareModel();
+    await saveSettings({ agentPerProject: true });
+
+    const refused = await api("/studio/projects", "POST", { repository: REPOSITORY });
+
+    expect(refused.status).toBe(422);
+    expect(apiErrorOf(refused).code).toBe("studio_repository_unreachable");
+    expect(apiErrorOf(refused).message).toContain(
+      "Neither the Studio's GitHub key for mehdinajeddine nor the agent server's token",
+    );
+  });
+
+  it("are left out of a copy the shared agent server makes, which says so when GitHub refuses it", async () => {
+    await addKey();
+    await prepareModel();
+    await saveSettings();
+
+    expect((await api("/studio/projects", "POST", { repository: REPOSITORY })).status).toBe(201);
+    const clone = agents.execs.find((exec) => exec.script === "clone");
+    expect(clone?.service).toBe("lovable_openhands");
+    expect(clone?.input.token).toBeUndefined();
+
+    agents.clone = () => noAccess(true);
+    const refused = await api("/studio/projects", "POST", {
+      repository: "https://github.com/mehdinajeddine/private-site",
+    });
+    expect(refused.status).toBe(422);
+    expect(apiErrorOf(refused).message).toContain(
+      "The Studio's GitHub key for mehdinajeddine serves projects with an agent server of their own only.",
+    );
   });
 });
 

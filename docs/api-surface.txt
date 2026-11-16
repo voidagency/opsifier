@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 47
+# documented-changes: 48
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -5176,6 +5176,65 @@ POST /api/v1/settings/studio/check
   200 version!: null|string
   401
   403
+GET /api/v1/settings/studio/github-keys
+  200 keys![].checkedAt!: null|string
+  200 keys![].createdAt!: string
+  200 keys![].expiresAt!: null|string
+  200 keys![].id!: string
+  200 keys![].login!: null|string
+  200 keys![].owner!: string
+  200 keys![].updatedAt!: string
+  200 keys![].valid!: boolean|null
+  401
+  403
+POST /api/v1/settings/studio/github-keys
+  201 checkedAt!: null|string
+  201 createdAt!: string
+  201 expiresAt!: null|string
+  201 id!: string
+  201 login!: null|string
+  201 owner!: string
+  201 updatedAt!: string
+  201 valid!: boolean|null
+  400
+  401
+  403
+  409
+  body owner!: string
+  body token!: string
+DELETE /api/v1/settings/studio/github-keys/{key}
+  200 id!: string
+  400
+  401
+  403
+  404
+  path key!: string
+PUT /api/v1/settings/studio/github-keys/{key}
+  200 checkedAt!: null|string
+  200 createdAt!: string
+  200 expiresAt!: null|string
+  200 id!: string
+  200 login!: null|string
+  200 owner!: string
+  200 updatedAt!: string
+  200 valid!: boolean|null
+  400
+  401
+  403
+  404
+  body token!: string
+  path key!: string
+POST /api/v1/settings/studio/github-keys/{key}/check
+  200 expiresAt!: null|string
+  200 login!: null|string
+  200 message!: null|string
+  200 ok!: boolean
+  200 repositories!: integer|null
+  400
+  401
+  403
+  404
+  path key!: string
 GET /api/v1/settings/two-factor
   200 accountsWithout!: integer
   200 canChange!: boolean

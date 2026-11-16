@@ -3,6 +3,7 @@ import type { AppDeps } from "../../core/context";
 import { findServiceById } from "../services/repo";
 import { callAgent } from "./agent";
 import { GIT_RELAY_PREFIX, gitTokenMatches } from "./agents";
+import { githubKeyFor, hasGithubKeyFor } from "./github-keys";
 import { GITHUB_SECRET } from "./projects";
 import * as repo from "./repo";
 import { readStudioSettings } from "./settings";
@@ -45,11 +46,16 @@ export function basicPassword(header: string | undefined): string | null {
   return colon === -1 ? null : decoded.slice(colon + 1);
 }
 
+/** Repositories whose Studio key GitHub refused lately: their git goes with the agent server's token. */
+const keyRefusedUntil = new Map<string, number>();
+const KEY_REFUSED_MS = 10 * 60 * 1000;
+
 const tokens = new Map<string, { value: string; until: number }>();
 
 /** For tests: the next request reads the token again. */
 export function forgetGithubToken(): void {
   tokens.clear();
+  keyRefusedUntil.clear();
 }
 
 /**
@@ -120,17 +126,29 @@ export async function relayGit(deps: AppDeps, request: Request, path: string): P
   if (!settings.enabled || settings.agent === null) {
     return plain(503, "The Studio is turned off.");
   }
-  let github: string | null;
-  try {
-    github = await githubToken(deps, settings.agent);
-  } catch {
-    return plain(502, "The Studio's agent server could not be reached for its GitHub token.");
+  // The Studio's key for the repository's owner first, unless GitHub refused it lately; the agent
+  // server's own token otherwise, or when GitHub refuses the key.
+  const repository = app.repository;
+  let key = githubKeyFor(deps, repository);
+  if (key !== null && (keyRefusedUntil.get(repository.toLowerCase()) ?? 0) > deps.now()) {
+    key = null;
   }
-  if (github === null) {
-    return plain(502, `The Studio's agent server has no ${GITHUB_SECRET} secret.`);
+  const modelToken = async (): Promise<string | null> => {
+    try {
+      return await githubToken(deps, settings.agent as StudioAgent);
+    } catch {
+      return null;
+    }
+  };
+  const first = key ?? (await modelToken());
+  if (first === null) {
+    return plain(
+      502,
+      `The Studio has no GitHub key for ${repository.split("/", 1)[0]}, and its agent server no ${GITHUB_SECRET} secret it can give.`,
+    );
   }
 
-  const upstream = new URL(`https://github.com/${app.repository}.git/${action}`);
+  const upstream = new URL(`https://github.com/${repository}.git/${action}`);
   if (action === "info/refs") {
     upstream.searchParams.set("service", service);
   }
@@ -141,26 +159,48 @@ export async function relayGit(deps: AppDeps, request: Request, path: string): P
       headers.set(name, value);
     }
   }
-  headers.set("authorization", `Basic ${Buffer.from(`x-access-token:${github}`).toString("base64")}`);
-  let answer: Response;
-  try {
-    answer = await fetch(upstream, {
-      method: request.method,
-      headers,
-      body: request.method === "POST" ? request.body : undefined,
-      redirect: "manual",
-      // A push streams on as it is sent, never held whole in memory.
-      duplex: "half",
-    } as RequestInit);
-  } catch {
+  const ask = async (github: string): Promise<Response | null> => {
+    const sent = new Headers(headers);
+    sent.set("authorization", `Basic ${Buffer.from(`x-access-token:${github}`).toString("base64")}`);
+    try {
+      return await fetch(upstream, {
+        method: request.method,
+        headers: sent,
+        body: request.method === "POST" ? request.body : undefined,
+        redirect: "manual",
+        // A push streams on as it is sent, never held whole in memory.
+        duplex: "half",
+      } as RequestInit);
+    } catch {
+      return null;
+    }
+  };
+  const refusedBy = (answer: Response) =>
+    answer.status === 401 || answer.status === 403 || answer.status === 404;
+
+  let answer = await ask(first);
+  // A key narrower than the agent server's token must not cut the owner's other repositories off.
+  // Only the first request of an exchange is tried again: it sends nothing, so it can be.
+  if (answer !== null && key !== null && action === "info/refs" && refusedBy(answer)) {
+    const fallback = await modelToken();
+    if (fallback !== null && fallback !== key) {
+      await answer.body?.cancel();
+      keyRefusedUntil.set(repository.toLowerCase(), deps.now() + KEY_REFUSED_MS);
+      answer = await ask(fallback);
+    }
+  }
+  if (answer === null) {
     return plain(502, "GitHub could not be reached.");
   }
-  if (answer.status === 401 || answer.status === 403 || answer.status === 404) {
+  if (refusedBy(answer)) {
     // GitHub refused the token for this repository. A 401 would have git ask for a password again.
     await answer.body?.cancel();
+    const owner = repository.split("/", 1)[0];
     return plain(
       403,
-      `GitHub refused the Studio's token for ${app.repository}: add the repository to that token.`,
+      hasGithubKeyFor(deps, repository)
+        ? `GitHub refused the Studio's tokens for ${repository}: on GitHub, give the Studio's key for ${owner} access to this repository.`
+        : `GitHub refused the Studio's token for ${repository}: add a GitHub key for ${owner} in the Studio's settings, with access to this repository.`,
     );
   }
   if (action === "git-receive-pack" && answer.ok) {

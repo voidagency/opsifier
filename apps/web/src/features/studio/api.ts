@@ -1,6 +1,8 @@
 import {
+  type AddStudioGithubKeyRequest,
   type AddStudioProjectRequest,
   actionEntry,
+  deletedStudioGithubKey,
   type LinkStudioAppRequest,
   type SetStudioMembersRequest,
   type StudioApp,
@@ -10,6 +12,9 @@ import {
   studioCheck,
   studioConversation,
   studioEventPage,
+  studioGithubKey,
+  studioGithubKeyCheck,
+  studioGithubKeyList,
   studioIsolateAll,
   studioIsolated,
   studioMembers,
@@ -31,6 +36,11 @@ export const studioAppName = (app: Pick<StudioApp, "workspaceDir" | "service">):
 const appPath = (project: string, service: string) => `/projects/${project}/services/${service}/studio`;
 const conversationPath = (project: string, service: string, id: string) =>
   `${appPath(project, service)}/conversations/${id}`;
+
+export const studioGithubKeysQuery = queryOptions({
+  queryKey: [...studioKey, "github-keys"] as const,
+  queryFn: ({ signal }) => api.get("/settings/studio/github-keys", { schema: studioGithubKeyList, signal }),
+});
 
 export const studioOverviewQuery = queryOptions({
   queryKey: [...studioKey, "overview"] as const,
@@ -81,6 +91,14 @@ export const studioApi = {
     api.put(appPath(project, service), { body, schema: studioAppDetail }),
   unlink: (project: string, service: string) =>
     api.delete(appPath(project, service), { schema: unlinkedStudioApp }),
+  addGithubKey: (body: AddStudioGithubKeyRequest) =>
+    api.post("/settings/studio/github-keys", { body, schema: studioGithubKey }),
+  replaceGithubKey: (id: string, token: string) =>
+    api.put(`/settings/studio/github-keys/${id}`, { body: { token }, schema: studioGithubKey }),
+  removeGithubKey: (id: string) =>
+    api.delete(`/settings/studio/github-keys/${id}`, { schema: deletedStudioGithubKey }),
+  checkGithubKey: (id: string) =>
+    api.post(`/settings/studio/github-keys/${id}/check`, { schema: studioGithubKeyCheck }),
   /** Takes the project out, with what the Studio made for it. Its folder stays. */
   remove: (project: string, service: string, confirm: string) =>
     api.post(`${appPath(project, service)}/remove`, { body: { confirm }, schema: actionEntry }),
