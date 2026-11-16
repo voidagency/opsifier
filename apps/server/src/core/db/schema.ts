@@ -55,7 +55,7 @@ export const users = sqliteTable(
      * A member's role in every project, those created later included. Each project gets the stronger
      * of this and its own row in `project_members`. Null for none, and always for an administrator.
      */
-    allProjectsRole: text("all_projects_role", { enum: ["viewer", "operator"] }),
+    allProjectsRole: text("all_projects_role", { enum: ["viewer", "operator", "maintainer"] }),
     /** Set while the account may not sign in. Its rights are kept, ready for when it comes back. */
     deactivatedAt: millis("deactivated_at"),
     createdAt: millis("created_at").notNull(),
@@ -136,14 +136,14 @@ export const projectMembers = sqliteTable(
     projectName: text("project_name")
       .notNull()
       .references(() => projects.name, { onDelete: "cascade" }),
-    role: text("role", { enum: ["viewer", "operator"] }).notNull(),
+    role: text("role", { enum: ["viewer", "operator", "maintainer"] }).notNull(),
     createdAt: millis("created_at").notNull(),
     updatedAt: millis("updated_at").notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.userId, table.projectName] }),
     index("project_members_project_idx").on(table.projectName),
-    check("project_members_role_check", sql`${table.role} IN ('viewer', 'operator')`),
+    check("project_members_role_check", sql`${table.role} IN ('viewer', 'operator', 'maintainer')`),
   ],
 );
 
@@ -161,7 +161,7 @@ export const invitations = sqliteTable(
     /** What a member will reach, checked again against the projects that exist when it is accepted. */
     projects: text("projects", { mode: "json" }).$type<ProjectGrant[]>().notNull(),
     /** The role a member will hold in every project, those created later included. */
-    allProjectsRole: text("all_projects_role", { enum: ["viewer", "operator"] }),
+    allProjectsRole: text("all_projects_role", { enum: ["viewer", "operator", "maintainer"] }),
     /** SHA-256 of the current link's token. Sending the invitation again replaces it. */
     tokenHash: text("token_hash").notNull().unique(),
     invitedBy: text("invited_by")

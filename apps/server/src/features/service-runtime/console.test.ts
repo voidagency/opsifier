@@ -15,7 +15,8 @@ import {
   TEST_ORIGIN,
   type TestContext,
 } from "../../testing/harness";
-import { consoleCommand } from "./console";
+import { putSetting } from "../system/repo";
+import { consoleCommand, reachesServer } from "./console";
 
 const SERVICE = "/api/v1/projects/shop/services/web";
 
@@ -122,13 +123,22 @@ async function connect(query: string) {
   return { socket, ...received };
 }
 
-async function addMember(): Promise<string> {
+/** Gives a member added by `addMember` a role of its own in the shop project. */
+function grant(role: "viewer" | "operator" | "maintainer", userId = "member-1"): void {
+  const now = new Date();
+  context.deps.db
+    .insert(projectMembers)
+    .values({ userId, projectName: "shop", role, createdAt: now, updatedAt: now })
+    .run();
+}
+
+async function addMember(id = "member-1", email = "member@example.com"): Promise<string> {
   const now = new Date();
   context.deps.db
     .insert(users)
     .values({
-      id: "member-1",
-      email: "member@example.com",
+      id,
+      email,
       passwordHash: await hashPassword("a password for the member"),
       role: "member",
       createdAt: now,
@@ -136,7 +146,7 @@ async function addMember(): Promise<string> {
     })
     .run();
   const { token } = insertSession(context.deps.db, {
-    userId: "member-1",
+    userId: id,
     persistent: false,
     secure: false,
     ip: null,
@@ -287,11 +297,120 @@ describe("authentication at upgrade", () => {
     expect(await outcome(socket)).toBe(403);
   });
 
-  it("refuses anyone who isn't an administrator", async () => {
+  it("refuses a member below maintainer, and finds nothing for one outside the project", async () => {
     const task = await runningTask();
+    const member = await addMember();
 
-    expect(await outcome(open(`task=${task.id}&program=sh`, { Cookie: await addMember() }))).toBe(403);
+    expect(await outcome(open(`task=${task.id}&program=sh`, { Cookie: member }))).toBe(404);
+    grant("operator");
+    expect(await outcome(open(`task=${task.id}&program=sh`, { Cookie: member }))).toBe(403);
     expect(context.docker.execs).toHaveLength(0);
+  });
+
+  it("lets a maintainer of the project in, and puts the session in the activity log under their name", async () => {
+    const task = await runningTask();
+    const member = await addMember();
+    grant("maintainer");
+
+    const socket = open(`task=${task.id}&program=sh`, { Cookie: member });
+    const received = collect(socket);
+    expect(await outcome(socket)).toBe(101);
+    await until(() => received.frames.some((frame) => frame.t === "ready"));
+
+    expect(context.docker.execs).toHaveLength(1);
+    const { body } = await api<{ items: ActionEntry[] }>("/api/v1/actions?type=service.console");
+    expect(body.items[0]).toMatchObject({ projectName: "shop", actorEmail: "member@example.com" });
+  });
+
+  it("keeps a maintainer out of a task still holding a host path that left the settings", async () => {
+    await api(`${SERVICE}/storage/mounts`, "POST", {
+      type: "bind",
+      hostPath: "/srv/shared",
+      mountPath: "/mnt/bind",
+    });
+    await run(`${SERVICE}/deploy`);
+    const holding = async () => {
+      for (const task of await context.docker.listTasks({ service: "shop_web" })) {
+        const access = await context.docker.taskAccess(task.id);
+        if (task.state === "running" && access?.binds.includes("/srv/shared")) {
+          return task;
+        }
+      }
+      return undefined;
+    };
+    await until(() => {
+      context.docker.advance(1);
+      return true;
+    });
+    let task = await holding();
+    for (let attempt = 0; task === undefined && attempt < 500; attempt += 1) {
+      context.docker.advance(1);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      task = await holding();
+    }
+    expect(task).toBeDefined();
+    const member = await addMember();
+    grant("maintainer");
+    // An operator's right: taking the mount out of the settings, which deploys nothing.
+    expect((await api(`${SERVICE}/storage/mounts/0`, "DELETE", undefined, member)).status).toBe(200);
+
+    const info = await api<ConsoleInfo>(`${SERVICE}/console`, "GET", undefined, member);
+    expect(info.status).toBe(200);
+    expect(info.body.tasks.map((offered) => offered.id)).not.toContain(task?.id);
+
+    const socket = open(`task=${task?.id}&program=sh`, { Cookie: member });
+    const received = collect(socket);
+    expect(await outcome(socket)).toBe(101);
+    await closed(socket);
+    expect(received.frames.find((frame) => frame.t === "error")?.message).toContain("only an administrator");
+    expect(context.docker.execs).toHaveLength(0);
+  });
+
+  it("keeps the last consoles for administrators", async () => {
+    const task = await runningTask();
+    const maintainers = await Promise.all(
+      [1, 2, 3, 4].map(async (n) => {
+        const cookie = await addMember(`maintainer-${n}`, `m${n}@example.com`);
+        grant("maintainer", `maintainer-${n}`);
+        return cookie;
+      }),
+    );
+    for (const cookie of maintainers.slice(0, 3)) {
+      for (let session = 0; session < 4; session += 1) {
+        const socket = open(`task=${task.id}&program=sh`, { Cookie: cookie });
+        expect(await outcome(socket)).toBe(101);
+      }
+    }
+
+    expect(await outcome(open(`task=${task.id}&program=sh`, { Cookie: maintainers[3] as string }))).toBe(429);
+    expect(await outcome(open(`task=${task.id}&program=sh`))).toBe(101);
+  });
+
+  it("refuses anyone, administrators included, until two-factor sign-in is on when the panel requires it", async () => {
+    const task = await runningTask();
+    const member = await addMember();
+    grant("maintainer");
+    putSetting(context.deps.db, "two_factor_policy", { required: true }, new Date());
+
+    expect(await outcome(open(`task=${task.id}&program=sh`, { Cookie: member }))).toBe(403);
+    expect(await outcome(open(`task=${task.id}&program=sh`))).toBe(403);
+    expect(context.docker.execs).toHaveLength(0);
+  });
+
+  it("keeps a maintainer out of a service that reaches the server", async () => {
+    const task = await runningTask();
+    const member = await addMember();
+    grant("maintainer");
+    await api(`${SERVICE}/storage/mounts`, "POST", {
+      type: "bind",
+      hostPath: "/srv/shared",
+      mountPath: "/mnt/bind",
+    });
+
+    expect(await outcome(open(`task=${task.id}&program=sh`, { Cookie: member }))).toBe(403);
+    expect(context.docker.execs).toHaveLength(0);
+    // An administrator still may.
+    expect(await outcome(open(`task=${task.id}&program=sh`))).toBe(101);
   });
 
   it.each([
@@ -726,20 +845,41 @@ describe("the console's information", () => {
     });
   });
 
-  it("is for administrators only", async () => {
+  it("is for administrators and the project's maintainers", async () => {
     const cookie = await addMember();
     // A member who can't see the project finds nothing at all.
     expect((await api(`${SERVICE}/console`, "GET", undefined, cookie)).status).toBe(404);
 
-    const now = new Date();
-    context.deps.db
-      .insert(projectMembers)
-      .values({ userId: "member-1", projectName: "shop", role: "operator", createdAt: now, updatedAt: now })
-      .run();
+    grant("operator");
     const result = await api(`${SERVICE}/console`, "GET", undefined, cookie);
-
     expect(result.status).toBe(403);
-    expect(apiErrorOf(result).code).toBe("admin_required");
+    expect(apiErrorOf(result).code).toBe("maintainer_required");
+
+    context.deps.db.delete(projectMembers).run();
+    grant("maintainer");
+    expect((await api(`${SERVICE}/console`, "GET", undefined, cookie)).status).toBe(200);
+  });
+
+  it.each([
+    ["a path on the host", { kind: "mount" }],
+    ["an added capability", { kind: "capability" }],
+  ])("is an administrator's alone in a service with %s", async (_label, { kind }) => {
+    const cookie = await addMember();
+    grant("maintainer");
+    if (kind === "mount") {
+      await api(`${SERVICE}/storage/mounts`, "POST", {
+        type: "bind",
+        hostPath: "/srv/shared",
+        mountPath: "/mnt/bind",
+      });
+    } else {
+      await api(`${SERVICE}/advanced/deploy`, "PUT", { capAdd: ["NET_ADMIN"] });
+    }
+
+    const result = await api(`${SERVICE}/console`, "GET", undefined, cookie);
+    expect(result.status).toBe(403);
+    expect(apiErrorOf(result).code).toBe("console_reaches_server");
+    expect((await api(`${SERVICE}/console`)).status).toBe(200);
   });
 
   it("answers 404 for a service that doesn't exist", async () => {
@@ -883,5 +1023,39 @@ describe("a program's own arguments", () => {
       label: "/bin/sh",
     });
     expect(consoleCommand({ ...query, script: "x" }, "a; b").argv).toEqual(["/bin/sh", "-c", "a; b"]);
+  });
+});
+
+describe("the server's own shell", () => {
+  it("waits for two-factor sign-in when the panel requires it, as the routes do", async () => {
+    expect(await outcome(open("", {}, "/api/v1/terminal/host"))).toBe(101);
+
+    putSetting(context.deps.db, "two_factor_policy", { required: true }, new Date());
+    expect(await outcome(open("", {}, "/api/v1/terminal/host"))).toBe(403);
+  });
+});
+
+describe("what keeps a maintainer's console out of a service", () => {
+  const record = (spec: Record<string, unknown>) =>
+    ({ spec: { compose: null, mounts: [], deploy: { capAdd: [] }, ...spec } }) as unknown as Parameters<
+      typeof reachesServer
+    >[0];
+
+  it("is a path on the host or an added capability, never a volume", () => {
+    expect(reachesServer(record({}))).toBe(false);
+    expect(reachesServer(record({ mounts: [{ type: "volume", name: "data", mountPath: "/data" }] }))).toBe(
+      false,
+    );
+    expect(reachesServer(record({ mounts: [{ type: "bind", hostPath: "/srv/x", mountPath: "/x" }] }))).toBe(
+      true,
+    );
+    expect(reachesServer(record({ deploy: { capAdd: ["NET_ADMIN"] } }))).toBe(true);
+  });
+
+  it("is a stack whose access to the server someone confirmed", () => {
+    const compose = { acknowledgedHash: null, acknowledgedAccess: null };
+    expect(reachesServer(record({ compose }))).toBe(false);
+    expect(reachesServer(record({ compose: { ...compose, acknowledgedHash: "abc" } }))).toBe(true);
+    expect(reachesServer(record({ compose: { ...compose, acknowledgedAccess: "abc" } }))).toBe(true);
   });
 });

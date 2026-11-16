@@ -81,7 +81,7 @@
     "noTasks": "Nothing is running yet. Start the service to open a console.",
     "noShell": "This container has no shell to open.",
     "notRunning": "Start the service to open a console",
-    "adminOnly": "Only an administrator can open a console",
+    "adminOnly": "Only an administrator or a maintainer of this project can open a console",
     "disconnect": "Disconnect",
     "ended": "Session ended.",
     "endedWithCode": "Session ended with code {{code}}.",

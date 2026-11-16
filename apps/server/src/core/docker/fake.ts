@@ -36,6 +36,7 @@ import {
   type SwarmInfo,
   type SwarmInitOptions,
   type SwarmServiceSpec,
+  type TaskAccess,
   type TaskInfo,
   type TaskState,
   type TaskStats,
@@ -86,6 +87,8 @@ function imageRepository(ref: string): string {
 interface FakeTask extends TaskInfo {
   /** Set while the task is being replaced or removed. */
   stopping: boolean;
+  /** What its container was given, from the service's spec when the task was made. */
+  access: TaskAccess;
 }
 
 /** One exec session, so tests can see what was run and whether it was closed. */
@@ -394,6 +397,17 @@ export class FakeDriver implements DockerDriver {
     for (const listener of service.listeners) {
       listener();
     }
+  }
+
+  async taskAccess(taskId: string): Promise<TaskAccess | null> {
+    this.check("taskAccess");
+    for (const service of this.services.values()) {
+      const task = service.tasks.find((candidate) => candidate.id === taskId);
+      if (task !== undefined) {
+        return { binds: [...task.access.binds], capabilityAdd: [...task.access.capabilityAdd] };
+      }
+    }
+    return null;
   }
 
   async listTasks(filter: { service?: string } = {}): Promise<TaskInfo[]> {
@@ -1115,6 +1129,7 @@ export class FakeDriver implements DockerDriver {
         createdAt: now,
         updatedAt: now,
         stopping: false,
+        access: taskAccessOf(service.spec),
         ...(nanoCpus > 0 ? { cpuLimitCores: nanoCpus / 1e9 } : {}),
       });
     }
@@ -1228,6 +1243,19 @@ function toServiceInfo(service: FakeService): ServiceInfo {
 }
 
 function toTaskInfo(task: FakeTask): TaskInfo {
-  const { stopping: _stopping, ...info } = task;
+  const { stopping: _stopping, access: _access, ...info } = task;
   return info;
+}
+
+function taskAccessOf(spec: SwarmServiceSpec): TaskAccess {
+  const container = spec.TaskTemplate.ContainerSpec as {
+    Mounts?: Array<{ Type?: string; Source?: string }>;
+    CapabilityAdd?: string[];
+  };
+  return {
+    binds: (container.Mounts ?? []).flatMap((mount) =>
+      mount.Type === "bind" && mount.Source !== undefined ? [mount.Source] : [],
+    ),
+    capabilityAdd: [...(container.CapabilityAdd ?? [])],
+  };
 }

@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import {
   type ConsoleInfo,
   type ConsoleProgram,
@@ -15,8 +16,9 @@ import { type RawData, WebSocket } from "ws";
 import type { Principal } from "../../core/auth";
 import type { AppDeps } from "../../core/context";
 import { actions } from "../../core/db/schema";
-import type { ExecOptions, ExecSession } from "../../core/docker";
+import type { ExecOptions, ExecSession, TaskAccess } from "../../core/docker";
 import type { SocketAdmission, SocketRoute } from "../../core/realtime";
+import { meetsLevel, membershipsOf } from "../access/rules";
 import { composeProject } from "../compose/names";
 import { composeConsoleTasks, isComposeTarget } from "../compose/runtime";
 import {
@@ -26,6 +28,8 @@ import {
   hasActiveRun,
 } from "../service-tabs/scripts/run";
 import { qualifiedName } from "../services/compile";
+import { findService, type ServiceRecord } from "../services/repo";
+import { needsTwoFactorSetup } from "../two-factor-policy/service";
 import {
   type ConsoleSessionRow,
   forgetConsoleSession,
@@ -42,6 +46,8 @@ const PATH_PREFIX = "/api/v1/terminal/";
 export const MAX_TERMINAL_FRAME_BYTES = 64 * 1024;
 const MAX_SESSIONS_PER_USER = 4;
 export const MAX_SESSIONS = 16;
+/** Kept for administrators, so the project's maintainers can never take every console during an incident. */
+export const ADMIN_RESERVED_SESSIONS = 4;
 
 /** Output held for a slow browser. Above the high mark nothing more is read from the program. */
 const HIGH_WATER_BYTES = 512 * 1024;
@@ -77,6 +83,79 @@ const refuse = (status: number, code: string, message: string): SocketAdmission 
   message,
 });
 
+const TWO_FACTOR_FIRST = "This panel requires two-factor sign-in: turn it on for this account first.";
+
+export interface ConsoleRefusal {
+  status: 403 | 404;
+  code: string;
+  message: string;
+}
+
+/**
+ * Whether a service reaches the server through something only an administrator can give it: a path on
+ * the host, an added capability, or a Compose file whose access to the host someone confirmed. A shell
+ * in it reaches the server too, so it stays an administrator's.
+ */
+export function reachesServer(record: Pick<ServiceRecord, "spec">): boolean {
+  const { compose, mounts, deploy } = record.spec;
+  if (compose !== null) {
+    return compose.acknowledgedHash !== null || compose.acknowledgedAccess !== null;
+  }
+  return mounts.some((mount) => mount.type === "bind") || deploy.capAdd.length > 0;
+}
+
+/** The service's own files, which the panel binds into it itself, one by one. */
+const ownFilesOf = (deps: Pick<AppDeps, "config">, target: ServiceRef): string =>
+  join(deps.config.dataDir, "projects", target.projectName, target.serviceName, "files");
+
+/**
+ * Whether a running task reaches the server, judged on what its container was given when it was made,
+ * which outlives a mount or a capability taken out of the service's settings until the next deploy:
+ * a host path other than the service's own files, or an added capability.
+ */
+export function taskReachesServer(access: TaskAccess, ownFiles: string): boolean {
+  return access.capabilityAdd.length > 0 || access.binds.some((source) => !source.startsWith(`${ownFiles}/`));
+}
+
+const CONSOLE_REACHES_SERVER =
+  "This service reaches the server through a path on the host, an added capability or a confirmed Compose file, so only an administrator can open a console in it.";
+
+/**
+ * Who may open a console in a service: an administrator, in any service, and a maintainer of its
+ * project, in a service that does not reach the server. Null when this account may. A project out of
+ * reach answers as a missing one; a missing service is left to the caller, which says so the same way
+ * to everyone.
+ */
+export function consoleRefusal(
+  deps: Pick<AppDeps, "db">,
+  user: Parameters<typeof membershipsOf>[1] & Parameters<typeof needsTwoFactorSetup>[1] & { role: string },
+  target: ServiceRef,
+): ConsoleRefusal | null {
+  // A socket never passes the HTTP routes' check, so the console asks it itself.
+  if (needsTwoFactorSetup(deps.db, user)) {
+    return { status: 403, code: "two_factor_setup_required", message: TWO_FACTOR_FIRST };
+  }
+  if (user.role === "admin") {
+    return null;
+  }
+  const role = membershipsOf(deps.db, user).get(target.projectName) ?? null;
+  if (role === null) {
+    return { status: 404, code: "not_found", message: "Not found." };
+  }
+  if (!meetsLevel(role, "maintainer")) {
+    return {
+      status: 403,
+      code: "maintainer_required",
+      message: "Only an administrator or a maintainer of this project can open a console.",
+    };
+  }
+  const record = findService(deps.db, target.projectName, target.serviceName);
+  if (record !== undefined && reachesServer(record)) {
+    return { status: 403, code: "console_reaches_server", message: CONSOLE_REACHES_SERVER };
+  }
+  return null;
+}
+
 function parseTerminalPath(path: string): ServiceRef | null {
   const [project, service, ...rest] = path.slice(PATH_PREFIX.length).split("/");
   if (
@@ -95,8 +174,23 @@ type SessionPlace = Pick<ExecOptions, "taskId" | "containerId">;
  * Where a session may run. The driver holds a task to its service. A stack's children have no tasks,
  * and the daemon would exec into any container it is named, so this one is checked against the stack.
  */
-async function sessionPlace(deps: AppDeps, target: ServiceRef, task: string): Promise<SessionPlace> {
+async function sessionPlace(
+  deps: AppDeps,
+  target: ServiceRef,
+  task: string,
+  guarded: boolean,
+): Promise<SessionPlace> {
   if (!isComposeTarget(deps, target)) {
+    if (guarded) {
+      // The settings say what the next deploy gives; the task says what this shell would hold.
+      const access = await deps.docker.taskAccess(task);
+      if (access === null) {
+        throw new Error("This task is not running.");
+      }
+      if (taskReachesServer(access, ownFilesOf(deps, target))) {
+        throw new Error(CONSOLE_REACHES_SERVER);
+      }
+    }
     return { taskId: task };
   }
   const children = await deps.docker.listComposeContainers(composeProject(target));
@@ -115,6 +209,8 @@ interface SessionInput {
   actorEmail: string;
   /** Set when this session runs a saved script, which holds it to the same rules as any run of it. */
   script?: ScriptSpec;
+  /** A maintainer's session, held to a task that does not reach the server. */
+  guarded: boolean;
   onClosed: () => void;
 }
 
@@ -169,7 +265,7 @@ class TerminalSession {
     const { deps, target, query } = this.input;
     try {
       const service = qualifiedName(target.projectName, target.serviceName);
-      const place = await sessionPlace(deps, target, query.task);
+      const place = await sessionPlace(deps, target, query.task, this.input.guarded);
       const command = await this.availableCommand(service, place);
       if (this.disposed) {
         return;
@@ -435,7 +531,10 @@ export interface TerminalRoute extends SocketRoute {
   openSessions(): number;
 }
 
-/** `/api/v1/terminal/<project>/<service>`: authenticated by the hub, then restricted to administrators. */
+/**
+ * `/api/v1/terminal/<project>/<service>`: authenticated by the hub, then open to administrators and to
+ * the maintainers of the project, as `consoleRefusal` says.
+ */
 export function createTerminalRoute(deps: AppDeps): TerminalRoute {
   const perUser = new Map<string, number>();
   let total = 0;
@@ -467,12 +566,13 @@ export function createTerminalRoute(deps: AppDeps): TerminalRoute {
       principal: Extract<Principal, { kind: "session" }>;
     }): SocketAdmission {
       const { user } = principal;
-      if (user.role !== "admin") {
-        return refuse(403, "admin_required", "Only an administrator can open a console.");
-      }
       const target = parseTerminalPath(url.pathname);
       if (target === null) {
         return refuse(404, "not_found", "Not found.");
+      }
+      const refusal = consoleRefusal(deps, user, target);
+      if (refusal !== null) {
+        return refuse(refusal.status, refusal.code, refusal.message);
       }
       const query = terminalQuery.safeParse(Object.fromEntries(url.searchParams));
       if (!query.success) {
@@ -495,7 +595,8 @@ export function createTerminalRoute(deps: AppDeps): TerminalRoute {
           );
         }
       }
-      if (total >= MAX_SESSIONS || (perUser.get(user.id) ?? 0) >= MAX_SESSIONS_PER_USER) {
+      const ceiling = user.role === "admin" ? MAX_SESSIONS : MAX_SESSIONS - ADMIN_RESERVED_SESSIONS;
+      if (total >= ceiling || (perUser.get(user.id) ?? 0) >= MAX_SESSIONS_PER_USER) {
         return refuse(429, "too_many_sessions", "Too many consoles are open. Close one first.");
       }
 
@@ -512,6 +613,7 @@ export function createTerminalRoute(deps: AppDeps): TerminalRoute {
             command,
             actorEmail: user.email,
             script,
+            guarded: user.role !== "admin",
             onClosed: () => closed(user.id),
           }).start();
         },
@@ -620,7 +722,12 @@ function shellProbe(deps: AppDeps, service: string) {
 }
 
 /** What the console dialog offers: what is running right now, the shells in it and the saved scripts. */
-export async function getConsoleInfo(deps: AppDeps, target: ServiceRef): Promise<ConsoleInfo> {
+/** What the console can open. `guarded` leaves out, for a maintainer, the tasks that reach the server. */
+export async function getConsoleInfo(
+  deps: AppDeps,
+  target: ServiceRef,
+  guarded = false,
+): Promise<ConsoleInfo> {
   const name = qualifiedName(target.projectName, target.serviceName);
   const programsOf = shellProbe(deps, name);
   if (isComposeTarget(deps, target)) {
@@ -635,11 +742,23 @@ export async function getConsoleInfo(deps: AppDeps, target: ServiceRef): Promise
       scripts: [],
     };
   }
-  const tasks = await deps.docker.listTasks({ service: name });
+  const running = (await deps.docker.listTasks({ service: name })).filter(
+    (task) => task.state === "running" && task.desiredState === "running",
+  );
+  const ownFiles = ownFilesOf(deps, target);
+  const offered = guarded
+    ? (
+        await Promise.all(
+          running.map(async (task) => {
+            const access = await deps.docker.taskAccess(task.id);
+            return access !== null && !taskReachesServer(access, ownFiles) ? [task] : [];
+          }),
+        )
+      ).flat()
+    : running;
   return {
     tasks: await Promise.all(
-      tasks
-        .filter((task) => task.state === "running" && task.desiredState === "running")
+      offered
         .sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0))
         .map(async (task) => ({
           id: task.id,

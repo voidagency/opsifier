@@ -71,7 +71,11 @@ describe("a project's access", () => {
     expect(section.getByText("Every project, as an administrator")).toBeTruthy();
     // A role in every project is changed on the account, not here.
     expect(section.getByText("Operator in every project, set on the Users page")).toBeTruthy();
-    expect(section.queryByRole("combobox", { name: "Role of ops@example.com in shop" })).toBeNull();
+    // It can still be raised here, but not taken away.
+    expect(section.getByRole("combobox", { name: "Role of ops@example.com in shop" }).textContent).toBe(
+      "Operator",
+    );
+    expect(section.queryByRole("button", { name: "Remove the access of ops@example.com" })).toBeNull();
     expect(section.getByRole("combobox", { name: "Role of own@example.com in shop" }).textContent).toBe(
       "Operator",
     );

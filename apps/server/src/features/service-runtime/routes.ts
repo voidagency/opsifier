@@ -5,7 +5,7 @@ import type { Feature } from "../../core/context";
 import { forbidden, notFound } from "../../core/errors";
 import { errorResponse, jsonResponse } from "../../core/openapi";
 import { isComposeTarget, searchComposeLogs } from "../compose/runtime";
-import { createTerminalRoute, endAbandonedConsoles, getConsoleInfo } from "./console";
+import { consoleRefusal, createTerminalRoute, endAbandonedConsoles, getConsoleInfo } from "./console";
 import { createLogsProvider, searchServiceLogs } from "./logs";
 import { createMetricsProvider } from "./metrics";
 import { type ServiceRef, serviceExists } from "./repo";
@@ -17,14 +17,17 @@ const PATH = "/api/v1/projects/{project}/services/{service}";
 const tags = ["Service runtime"];
 const invalid = errorResponse("The request failed validation.");
 const denied = errorResponse("Not signed in.");
-const refused = errorResponse("Only an administrator can do this.");
+const refused = errorResponse(
+  "Only an administrator, or a maintainer of the project in a service that does not reach the server.",
+);
 const missing = errorResponse("No such service.");
 
 const consoleRoute = createRoute({
   method: "get",
   path: `${PATH}/console`,
   tags,
-  description: "What the console can open. The terminal itself is a WebSocket at /api/v1/terminal/.",
+  description:
+    "What the console can open. The terminal itself is a WebSocket at /api/v1/terminal/. Open to administrators, and to the maintainers of the project in a service that does not reach the server.",
   request: { params: servicePath },
   responses: {
     200: jsonResponse(consoleInfo, "Running tasks, programs and scripts."),
@@ -70,14 +73,16 @@ export const feature: Feature = {
     deps.realtime.provide(createMetricsProvider(deps));
 
     app.openapi(consoleRoute, async (c) => {
-      if (requirePrincipal(c).user.role !== "admin") {
-        throw forbidden("admin_required", "Only an administrator can open a console.");
-      }
       const service = target(c.req.valid("param"));
+      const refusal = consoleRefusal(deps, requirePrincipal(c).user, service);
+      if (refusal !== null) {
+        throw refusal.status === 404 ? notFound() : forbidden(refusal.code, refusal.message);
+      }
       if (!serviceExists(deps.db, service)) {
         throw notFound("This service does not exist.");
       }
-      return c.json(await getConsoleInfo(deps, service), 200);
+      const guarded = requirePrincipal(c).user.role !== "admin";
+      return c.json(await getConsoleInfo(deps, service, guarded), 200);
     });
 
     app.openapi(searchRoute, async (c) => {

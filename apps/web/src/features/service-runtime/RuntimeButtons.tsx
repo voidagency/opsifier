@@ -2,7 +2,7 @@ import { ScrollText, SquareTerminal } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Tooltip } from "../../ui";
-import { useCurrentUser } from "../auth/session";
+import { useProjectRole } from "../auth/identity";
 import { ConsoleDialog } from "./ConsoleDialog";
 import { LogsFullscreen } from "./LogsPanel";
 
@@ -32,12 +32,15 @@ interface ConsoleButtonProps extends RuntimeButtonProps {
   running: boolean;
 }
 
-/** Opens a console in a task of a service, of any type. Administrators only: the server enforces it. */
+/**
+ * Opens a console in a task of a service, of any type. For administrators and the project's maintainers:
+ * the server enforces it, and keeps a maintainer out of a service that reaches the server.
+ */
 export function ConsoleButton({ project, service, running }: ConsoleButtonProps) {
   const { t } = useTranslation("service-runtime");
-  const user = useCurrentUser();
+  const role = useProjectRole(project);
   const [open, setOpen] = useState(false);
-  const allowed = user?.role === "admin";
+  const allowed = role === "admin" || role === "maintainer";
   const hint = !allowed ? t("console.adminOnly") : running ? t("console.open") : t("console.notRunning");
 
   return (

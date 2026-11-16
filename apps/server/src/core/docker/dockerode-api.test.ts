@@ -125,3 +125,39 @@ describe("listTasks", () => {
     expect(tasks[0]).toMatchObject({ id: "t1", serviceName: "shop_web", state: "running" });
   });
 });
+
+describe("taskAccess", () => {
+  it("reads the host paths bound into a task and the capabilities added to it", async () => {
+    respond = (_request, response) =>
+      json(response, 200, {
+        ID: "t1",
+        ServiceID: "s1",
+        DesiredState: "running",
+        CreatedAt: "2026-01-01T00:00:00Z",
+        UpdatedAt: "2026-01-01T00:00:00Z",
+        Spec: {
+          ContainerSpec: {
+            Image: "nginx",
+            Mounts: [
+              { Type: "bind", Source: "/srv/shared", Target: "/data" },
+              { Type: "volume", Source: "shop_web_data", Target: "/var/data" },
+            ],
+            CapabilityAdd: ["NET_ADMIN"],
+          },
+        },
+        Status: { State: "running" },
+      });
+
+    await expect(driver.taskAccess("t1")).resolves.toEqual({
+      binds: ["/srv/shared"],
+      capabilityAdd: ["NET_ADMIN"],
+    });
+    expect(requests).toEqual([expect.stringMatching(/^GET \/tasks\/t1/)]);
+  });
+
+  it("answers null for a task Docker does not know", async () => {
+    respond = (_request, response) => json(response, 404, { message: "task not found" });
+
+    await expect(driver.taskAccess("gone")).resolves.toBeNull();
+  });
+});

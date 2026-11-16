@@ -172,6 +172,7 @@ const CHANGES_SOMETHING: Readonly<Record<Exclude<keyof DockerDriver, "kind">, bo
   updateService: true,
   removeService: true,
   listTasks: false,
+  taskAccess: false,
   serviceLogs: false,
   containerLogs: false,
   execAttach: true,

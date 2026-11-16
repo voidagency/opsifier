@@ -251,7 +251,7 @@ opsifier users invite ada@example.com --channel <id>        # the panel e-mails 
 opsifier users invite ada@example.com --admin
 opsifier users invite ada@example.com --all-projects operator
 opsifier users set ada@example.com --role admin
-opsifier users set ada@example.com --all-projects viewer    # or operator, or none
+opsifier users set ada@example.com --all-projects viewer    # or operator, maintainer, or none
 opsifier users deactivate ada@example.com                   # its sessions and keys stop at once
 opsifier users activate ada@example.com
 ```

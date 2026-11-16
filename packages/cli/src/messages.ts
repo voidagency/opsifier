@@ -418,7 +418,8 @@ const en = {
   "flag.web": "Sign in as a person, approved in a browser: what account commands need",
   "flag.admin": "Invite as administrators",
   "flag.role": "admin or member",
-  "flag.allProjects": "A role in every project, those created later included: viewer, operator or none",
+  "flag.allProjects":
+    "A role in every project, those created later included: viewer, operator, maintainer or none",
   "flag.channel": "The e-mail channel that sends the invitations. Without it, the links are printed",
   "login.web.open":
     "Open this link in a browser where you are signed in to the panel, and check that it shows {code}:\n  {link}\nWaiting for the approval…",
@@ -448,12 +449,12 @@ const en = {
   "users.outcome.already_invited": "{email}: already invited.",
   "users.activated": "{email} can sign in again.",
   "users.deactivated": "{email} is deactivated: its sessions and keys stopped working.",
-  "usage.allProjects": "--all-projects takes viewer, operator or none.",
+  "usage.allProjects": "--all-projects takes viewer, operator, maintainer or none.",
   "usage.role": "--role takes admin or member.",
   "usage.inviteEmails": "Name at least one address: opsifier users invite <email>…",
   "usage.usersEmail": "Name the account: opsifier users {verb} <email>",
   "usage.usersSetNothing":
-    "Say what changes: --role admin|member, --all-projects viewer|operator|none, or both.",
+    "Say what changes: --role admin|member, --all-projects viewer|operator|maintainer|none, or both.",
   "usage.usersVerb": "Use opsifier users, or users invite, set, deactivate or activate.",
   "logout.sessionEnded": "The session for {panel} has ended on the panel.",
 } as const;
@@ -891,7 +892,8 @@ const fr: Record<MessageKey, string> = {
   "flag.web": "Se connecter en tant que personne, approuvé dans un navigateur : ce que demandent les comptes",
   "flag.admin": "Inviter comme administrateurs",
   "flag.role": "admin ou member",
-  "flag.allProjects": "Un rôle dans chaque projet, y compris ceux créés plus tard : viewer, operator ou none",
+  "flag.allProjects":
+    "Un rôle dans chaque projet, y compris ceux créés plus tard : viewer, operator, maintainer ou none",
   "flag.channel": "Le canal e-mail qui envoie les invitations. Sans lui, les liens sont affichés",
   "login.web.open":
     "Ouvrez ce lien dans un navigateur connecté au panneau, et vérifiez qu'il affiche {code} :\n  {link}\nEn attente de l'approbation…",
@@ -921,12 +923,12 @@ const fr: Record<MessageKey, string> = {
   "users.outcome.already_invited": "{email} : déjà invité.",
   "users.activated": "{email} peut de nouveau se connecter.",
   "users.deactivated": "{email} est désactivé : ses sessions et ses clés ne fonctionnent plus.",
-  "usage.allProjects": "--all-projects prend viewer, operator ou none.",
+  "usage.allProjects": "--all-projects prend viewer, operator, maintainer ou none.",
   "usage.role": "--role prend admin ou member.",
   "usage.inviteEmails": "Donnez au moins une adresse : opsifier users invite <email>…",
   "usage.usersEmail": "Nommez le compte : opsifier users {verb} <email>",
   "usage.usersSetNothing":
-    "Dites ce qui change : --role admin|member, --all-projects viewer|operator|none, ou les deux.",
+    "Dites ce qui change : --role admin|member, --all-projects viewer|operator|maintainer|none, ou les deux.",
   "usage.usersVerb": "Utilisez opsifier users, ou users invite, set, deactivate ou activate.",
   "logout.sessionEnded": "La session de {panel} a pris fin côté panneau.",
 };

@@ -32,7 +32,7 @@ export interface LivePanel {
   /** A signed-in member with these project roles. Returns its session cookie. */
   createMember(
     email: string,
-    grants: Array<{ project: string; role: "viewer" | "operator" }>,
+    grants: Array<{ project: string; role: "viewer" | "operator" | "maintainer" }>,
   ): Promise<string>;
   /** Deploys `shop/web` and waits for it, so that it has tasks and logs. */
   deploy(project: string, service: string): Promise<ActionEntry>;

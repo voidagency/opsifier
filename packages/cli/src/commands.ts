@@ -347,8 +347,8 @@ export const COMMANDS: readonly Command[] = [
     args: "[invite <email>… | set <email> | deactivate <email> | activate <email>]",
     verbs: ["invite", "set", "deactivate", "activate"],
     more: [
-      "users invite ada@example.com [--admin] [--all-projects viewer|operator] [--channel <id>]",
-      "users set ada@example.com [--role admin|member] [--all-projects viewer|operator|none]",
+      "users invite ada@example.com [--admin] [--all-projects viewer|operator|maintainer] [--channel <id>]",
+      "users set ada@example.com [--role admin|member] [--all-projects viewer|operator|maintainer|none]",
       "users deactivate ada@example.com",
     ],
     options: {

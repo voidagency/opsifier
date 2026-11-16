@@ -62,7 +62,7 @@ function api<T = unknown>(method: string, path: string, cookie: string | undefin
 
 async function createMember(
   email: string,
-  projects: Array<{ project: string; role: "viewer" | "operator" }> = [],
+  projects: Array<{ project: string; role: "viewer" | "operator" | "maintainer" }> = [],
   role: "member" | "admin" = "member",
 ): Promise<{ user: PanelUser; cookie: string }> {
   const created = await api<PanelUser>("POST", "/api/v1/users", admin, {
@@ -1183,6 +1183,14 @@ describe("realtime topics", () => {
     expect(guard.allow(user.id, serviceLogsTopic("secret", "web"))).toBe(false);
   });
 
+  it("lets a maintainer follow the logs of their projects, as an operator does", async () => {
+    const { user } = await createMember("mt@example.com", [{ project: "shop", role: "maintainer" }]);
+    const guard = createTopicGuard(context.deps);
+
+    expect(guard.allow(user.id, serviceLogsTopic("shop", "web"))).toBe(true);
+    expect(guard.allow(user.id, serviceLogsTopic("secret", "web"))).toBe(false);
+  });
+
   it("stops streaming to someone who no longer reaches the project, on a socket already open", async () => {
     const { user } = await createMember("o@example.com", [{ project: "shop", role: "operator" }]);
     const guard = createTopicGuard(context.deps);
@@ -1208,7 +1216,7 @@ describe("who reaches a project", () => {
   const setMember = (
     project: string,
     user: string,
-    role: "viewer" | "operator" | null,
+    role: "viewer" | "operator" | "maintainer" | null,
     cookie: string | undefined = admin,
   ) => api<ProjectMemberList>("PUT", `/api/v1/projects/${project}/members/${user}`, cookie, { role });
 
@@ -1305,6 +1313,29 @@ describe("who reaches a project", () => {
     expect((await api("GET", "/api/v1/projects/secret", again.cookie)).status).toBe(401);
   });
 
+  it("gives a maintainer the console of the project and nothing an administrator keeps", async () => {
+    const { user, cookie } = await createMember("mt@example.com", [{ project: "shop", role: "operator" }]);
+    const console = "/api/v1/projects/shop/services/web/console";
+    const refused = await api("GET", console, cookie);
+    expect(refused.status).toBe(403);
+    expect(apiErrorOf(refused).code).toBe("maintainer_required");
+
+    const raised = await setMember("shop", user.id, "maintainer");
+    expect(raised.body.members.find((member) => member.id === user.id)).toMatchObject({
+      role: "maintainer",
+      grant: "maintainer",
+    });
+    // Still an operator's work, and none of the administrator's.
+    expect((await api("GET", "/api/v1/projects/shop/services/web/environment", cookie)).status).toBe(200);
+    expect((await membersOf("shop", cookie)).status).toBe(403);
+    expect((await api("DELETE", "/api/v1/projects/shop", cookie)).status).toBe(403);
+    expect((await api("GET", "/api/v1/projects/secret", cookie)).status).toBe(404);
+
+    // Back to operator is a lower role: sessions end, as for any.
+    expect((await setMember("shop", user.id, "operator")).status).toBe(200);
+    expect((await api("GET", "/api/v1/projects/shop", cookie)).status).toBe(401);
+  });
+
   it("changes nothing, and ends nothing, when the role is already the one asked for", async () => {
     const { user, cookie } = await createMember("same@example.com", [{ project: "shop", role: "operator" }]);
     expect((await setMember("shop", user.id, "operator")).status).toBe(200);
@@ -1375,6 +1406,16 @@ describe("the policy table", () => {
       level: "operator",
     });
     expect(requirementFor("POST", "/api/v1/projects/shop/services/web")).toMatchObject({ level: "operator" });
+  });
+
+  it("opens a service's console to a maintainer of the project", () => {
+    expect(requirementFor("GET", "/api/v1/projects/shop/services/web/console")).toEqual({
+      kind: "project",
+      project: "shop",
+      level: "maintainer",
+      session: false,
+    });
+    expect(requirementFor("DELETE", "/api/v1/projects/shop")).toMatchObject({ level: "admin" });
   });
 
   it("leaves who reaches a project to an administrator at a browser", () => {

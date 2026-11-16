@@ -35,6 +35,11 @@ export interface DockerDriver {
   removeService(name: string): Promise<void>;
 
   listTasks(filter?: { service?: string }): Promise<TaskInfo[]>;
+  /**
+   * What one task's container was given beyond its own volumes, as the task was made: it keeps that
+   * however the service changes later. Null when Docker knows no task by this id.
+   */
+  taskAccess(taskId: string): Promise<TaskAccess | null>;
 
   /** Yields lines until the logs end, the service goes away or `signal` aborts. */
   serviceLogs(name: string, options?: LogOptions): AsyncIterable<LogLine>;
@@ -263,6 +268,13 @@ export type TaskState =
   | "rejected"
   | "remove"
   | "orphaned";
+
+export interface TaskAccess {
+  /** The host paths bound into the container. */
+  binds: string[];
+  /** The Linux capabilities added to it. */
+  capabilityAdd: string[];
+}
 
 export interface TaskInfo {
   id: string;

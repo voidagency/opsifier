@@ -1,3 +1,4 @@
+import type { ProjectRole } from "@opsifier/contract";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { DbHandle } from "../../core/db";
 import {
@@ -53,7 +54,7 @@ export function membershipsOfProject(db: DbHandle, project: string): MembershipR
 export function replaceMemberships(
   db: DbHandle,
   userId: string,
-  grants: ReadonlyArray<{ project: string; role: "viewer" | "operator" }>,
+  grants: ReadonlyArray<{ project: string; role: ProjectRole }>,
   now: Date,
 ): void {
   db.delete(projectMembers).where(eq(projectMembers.userId, userId)).run();

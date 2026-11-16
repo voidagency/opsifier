@@ -35,8 +35,8 @@ function session<T = unknown>(method: string, path: string, cookie: string, body
 
 async function member(
   email: string,
-  grants: Array<{ project: string; role: "viewer" | "operator" }>,
-  allProjects: "viewer" | "operator" | null = null,
+  grants: Array<{ project: string; role: "viewer" | "operator" | "maintainer" }>,
+  allProjects: "viewer" | "operator" | "maintainer" | null = null,
 ) {
   const created = await session<PanelUser>("POST", "/api/v1/users", admin, {
     email,
@@ -132,6 +132,25 @@ describe("GET /api/v1/auth/identity", () => {
     expect(inProjects("GET", `${SERVICE}/logs/search`)).toEqual(["shop"]);
     expect(inProjects("DELETE", "/api/v1/projects/{project}")).toBeUndefined();
     expect(body.allProjects).toBeNull();
+  });
+
+  it("names a maintainer, and the console in that project only", async () => {
+    const cookie = await member("mt@example.com", [
+      { project: "shop", role: "maintainer" },
+      { project: "secret", role: "operator" },
+    ]);
+    const { body } = await identityOf(await keyOf(cookie, { level: "read" }));
+
+    expect(body.projects).toEqual(
+      expect.arrayContaining([
+        { name: "shop", role: "maintainer" },
+        { name: "secret", role: "operator" },
+      ]),
+    );
+    const console = body.operations.find(
+      (operation) => operation.method === "GET" && operation.path === `${SERVICE}/console`,
+    );
+    expect(console?.projects).toEqual(["shop"]);
   });
 
   it("counts a member's role in every project, and says it reaches the projects to come", async () => {

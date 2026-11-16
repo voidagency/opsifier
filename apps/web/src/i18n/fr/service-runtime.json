@@ -81,7 +81,7 @@
     "noTasks": "Rien ne tourne pour l'instant. Démarrez le service pour ouvrir une console.",
     "noShell": "Ce conteneur n'a aucun shell à ouvrir.",
     "notRunning": "Démarrez le service pour ouvrir une console",
-    "adminOnly": "Seul un administrateur peut ouvrir une console",
+    "adminOnly": "Seuls un administrateur et les mainteneurs de ce projet peuvent ouvrir une console",
     "disconnect": "Déconnecter",
     "ended": "Session terminée.",
     "endedWithCode": "Session terminée avec le code {{code}}.",

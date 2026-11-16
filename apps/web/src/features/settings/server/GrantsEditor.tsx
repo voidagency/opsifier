@@ -1,9 +1,19 @@
-import { effectiveProjectRole, type ProjectGrant, type ProjectRole, type UserRole } from "@opsifier/contract";
+import {
+  effectiveProjectRole,
+  type ProjectGrant,
+  type ProjectRole,
+  projectRoleRank,
+  projectRoles,
+  type UserRole,
+} from "@opsifier/contract";
 import { useQuery } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Checkbox, Select } from "../../../ui";
 import { projectsQuery } from "../../projects/api";
+
+/** The strongest role: held in every project, there is nothing left to give project by project. */
+const STRONGEST: ProjectRole = projectRoles[projectRoles.length - 1] ?? "maintainer";
 
 /** What a member reaches, in a form both an account and an invitation have. */
 export interface MemberReach {
@@ -21,22 +31,28 @@ export function reachSummary(reach: MemberReach, t: TFunction): string {
     return t("users.projectCount", { count: reach.projects.length });
   }
   const everywhere = t("users.everyProjectAs", { role: t(`users.roles.${reach.allProjects}`) });
-  const raised =
-    reach.allProjects === "viewer" ? reach.projects.filter((grant) => grant.role === "operator").length : 0;
-  return raised === 0 ? everywhere : `${everywhere} · ${t("users.operatorIn", { count: raised })}`;
+  const floor = projectRoleRank(reach.allProjects);
+  const raised = reach.projects.filter((grant) => projectRoleRank(grant.role) > floor).length;
+  return raised === 0 ? everywhere : `${everywhere} · ${t("users.raisedIn", { count: raised })}`;
 }
 
-/** A choice of project role, one width wherever it stands so the menus line up. */
+/**
+ * A choice of project role, one width wherever it stands so the menus line up. `atLeast` leaves out
+ * the roles below one the member holds anyway, which would change nothing.
+ */
 export function RoleSelect({
   label,
   value,
   onChange,
+  atLeast = null,
 }: {
   label: string;
   value: ProjectRole;
   onChange: (role: ProjectRole) => void;
+  atLeast?: ProjectRole | null;
 }) {
   const { t } = useTranslation("settings-access");
+  const floor = projectRoleRank(atLeast);
   return (
     // The width lives on a wrapper: a control is as wide as what holds it.
     <div className="w-32 shrink-0">
@@ -45,10 +61,9 @@ export function RoleSelect({
         value={value}
         onValueChange={(next) => onChange(next as ProjectRole)}
         className="h-7 text-xs"
-        options={[
-          { value: "viewer", label: t("users.roles.viewer") },
-          { value: "operator", label: t("users.roles.operator") },
-        ]}
+        options={projectRoles
+          .filter((role) => projectRoleRank(role) >= floor)
+          .map((role) => ({ value: role, label: t(`users.roles.${role}`) }))}
       />
     </div>
   );
@@ -93,15 +108,17 @@ export function GrantsEditor({
           <RoleSelect label={t("users.allProjectsRole")} value={allProjects} onChange={onAllProjectsChange} />
         )}
       </div>
-      {allProjects === "operator" ? (
+      {allProjects === STRONGEST ? (
         // Nothing is stronger, so there is nothing to choose project by project. The list comes back,
         // as it was, when the box is unticked.
-        <p className="text-sm text-muted">{t("users.allOperator")}</p>
+        <p className="text-sm text-muted">{t("users.allMaintainer")}</p>
       ) : projects.length === 0 ? (
         <p className="text-sm text-muted">{t("users.noProjects")}</p>
-      ) : allProjects === "viewer" ? (
+      ) : allProjects !== null ? (
         <>
-          <p className="text-xs text-muted">{t("users.raiseHint")}</p>
+          <p className="text-xs text-muted">
+            {t("users.raiseHint", { role: t(`users.roles.${allProjects}`) })}
+          </p>
           <ul className="grid max-h-56 gap-1 overflow-y-auto">
             {projects.map((project) => (
               <li key={project} className="flex items-center justify-between gap-3 py-0.5">
@@ -109,8 +126,11 @@ export function GrantsEditor({
                 <RoleSelect
                   label={t("users.projectRole", { project })}
                   value={effectiveProjectRole(allProjects, ownRole(project)) ?? allProjects}
-                  // Viewer is what every project has already, so only a raise is kept.
-                  onChange={(role) => setRole(project, role === "operator" ? "operator" : null)}
+                  atLeast={allProjects}
+                  // What every project has already needs no role of its own, so only a raise is kept.
+                  onChange={(role) =>
+                    setRole(project, projectRoleRank(role) > projectRoleRank(allProjects) ? role : null)
+                  }
                 />
               </li>
             ))}

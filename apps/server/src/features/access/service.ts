@@ -9,7 +9,13 @@ import type {
   ProjectRole,
   UpdateUserRequest,
 } from "@opsifier/contract";
-import { createApiKeyRequest, effectiveProjectRole, projectGrant, userRole } from "@opsifier/contract";
+import {
+  createApiKeyRequest,
+  effectiveProjectRole,
+  projectGrant,
+  projectRoleRank,
+  userRole,
+} from "@opsifier/contract";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
 import {
@@ -100,8 +106,9 @@ const reachOf = (role: string, allProjects: ProjectRole | null, grants: readonly
 const roleWithin = (reach: Reach, project: string) =>
   effectiveProjectRole(reach.allProjects, reach.grants.get(project));
 
-const RANK = { none: 0, viewer: 1, operator: 2 } as const;
-const rankOf = (role: ProjectRole | null) => RANK[role ?? "none"];
+const rankOf = (role: ProjectRole | null) => projectRoleRank(role);
+/** At least an operator: what reading a deployment token took. */
+const operates = (role: ProjectRole | null) => projectRoleRank(role) >= projectRoleRank("operator");
 
 /**
  * A change takes rights away when it ends an administrator role, lowers the role in every project
@@ -128,12 +135,12 @@ function lostTriggerReach(before: Reach, after: Reach): (project: string) => boo
     return () => false;
   }
   return (project) =>
-    (before.role === "admin" || roleWithin(before, project) === "operator") &&
-    roleWithin(after, project) !== "operator";
+    (before.role === "admin" || operates(roleWithin(before, project))) &&
+    !operates(roleWithin(after, project));
 }
 
-function grantsOf(deps: AppDeps, userId: string): Map<string, "viewer" | "operator"> {
-  const grants = new Map<string, "viewer" | "operator">();
+function grantsOf(deps: AppDeps, userId: string): Map<string, ProjectRole> {
+  const grants = new Map<string, ProjectRole>();
   for (const row of repo.allMemberships(deps.db)) {
     if (row.userId === userId) {
       grants.set(row.projectName, projectGrant.shape.role.parse(row.role));
@@ -461,7 +468,7 @@ export function deletePanelUser(deps: AppDeps, actor: SessionPrincipal, id: stri
       revokeTriggersOfAccount(
         tx,
         id,
-        (project) => wasAdmin || roleWithin(reach, project) === "operator",
+        (project) => wasAdmin || operates(roleWithin(reach, project)),
         new Date(deps.now()),
       );
       repo.deleteUserRow(tx, id);

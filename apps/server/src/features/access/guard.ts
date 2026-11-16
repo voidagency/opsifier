@@ -44,7 +44,12 @@ function requireLevel(
   if (!meetsLevel(role, requirement.level)) {
     throw requirement.level === "admin"
       ? forbidden("admin_required", "Only an administrator can do this.")
-      : forbidden("forbidden", "You don't have access to this.");
+      : requirement.level === "maintainer"
+        ? forbidden(
+            "maintainer_required",
+            "Only an administrator or a maintainer of this project can do this.",
+          )
+        : forbidden("forbidden", "You don't have access to this.");
   }
   assertWriteAllowed(access, method);
 }
@@ -235,14 +240,16 @@ export function createTopicGuard(deps: Pick<AppDeps, "db">): TopicGuard {
     }
     const logs = prefixed(topic, serviceLogsTopic("", "").replace("/", ""));
     if (logs !== null) {
-      return logs[0] !== undefined && roleFor(user, logs[0]) === "operator";
+      const role = logs[0] === undefined ? null : roleFor(user, logs[0]);
+      return role !== null && meetsLevel(role, "operator");
     }
     if (topic.startsWith("action:")) {
       const action = findAction(deps.db, topic.slice("action:".length));
+      const role = action?.projectName == null ? null : roleFor(user, action.projectName);
       return (
         action !== undefined &&
-        action.projectName !== null &&
-        roleFor(user, action.projectName) === "operator" &&
+        role !== null &&
+        meetsLevel(role, "operator") &&
         belongsToCurrent(deps.db, action)
       );
     }

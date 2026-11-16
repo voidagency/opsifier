@@ -201,7 +201,7 @@ export async function signInMember(
   app: ApiApp,
   admin: string,
   email: string,
-  projects: Array<{ project: string; role: "viewer" | "operator" }>,
+  projects: Array<{ project: string; role: "viewer" | "operator" | "maintainer" }>,
 ): Promise<string> {
   await call(app, "/api/v1/users", {
     method: "POST",

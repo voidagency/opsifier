@@ -4,7 +4,7 @@
  * of being open because someone forgot a check. Handlers still filter what they list.
  */
 
-export type ProjectLevel = "viewer" | "operator" | "admin";
+export type ProjectLevel = "viewer" | "operator" | "maintainer" | "admin";
 
 export type Requirement =
   /** Public routes, and lists whose handlers filter by project access. */
@@ -83,7 +83,8 @@ function projectRequirement(method: string, project: string, rest: readonly stri
     return { kind: "project", project, level: "admin", session: true };
   }
   if (rest[2] === "console") {
-    return { kind: "project", project, level: "admin", session: false };
+    // A shell in the project's services: a maintainer of the project, or an administrator.
+    return { kind: "project", project, level: "maintainer", session: false };
   }
   if (rest[2] === "studio") {
     return studioRequirement(method, project, rest);

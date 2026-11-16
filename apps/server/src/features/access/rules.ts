@@ -7,7 +7,7 @@ import type { ProjectLevel } from "./policy";
 
 export type ProjectAccessRole = ProjectRole | "admin";
 
-const LEVEL_RANK: Record<ProjectLevel, number> = { viewer: 1, operator: 2, admin: 3 };
+const LEVEL_RANK: Record<ProjectLevel, number> = { viewer: 1, operator: 2, maintainer: 3, admin: 4 };
 
 /** The projects one caller reaches, and how far. Computed fresh for every request. */
 export interface Access {

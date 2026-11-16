@@ -68,13 +68,13 @@ describe("a role in every project", () => {
     renderApp("/settings/server/users");
 
     expect(await screen.findByText(/^Operator in every project/)).toBeTruthy();
-    expect(screen.getByText(/^Viewer in every project · operator in 2 projects/)).toBeTruthy();
+    expect(screen.getByText(/^Viewer in every project · a stronger role in 2 projects/)).toBeTruthy();
     expect(screen.getByText(/^1 project/)).toBeTruthy();
   });
 
-  it("makes a member an operator in every project, with the box above the list", async () => {
+  it("makes a member a maintainer in every project, with the box above the list", async () => {
     const sam = member("sam@example.com", { projects: [{ project: "shop", role: "viewer" }] });
-    const server = page([sam], { [`PUT /users/${sam.id}`]: { ...sam, allProjects: "operator" } });
+    const server = page([sam], { [`PUT /users/${sam.id}`]: { ...sam, allProjects: "maintainer" } });
     renderApp("/settings/server/users");
 
     const dialog = await editMember();
@@ -90,6 +90,9 @@ describe("a role in every project", () => {
     fireEvent.click(box);
     expect(dialog.getByRole("combobox", { name: "Role in every project" }).textContent).toBe("Viewer");
     await choose(dialog, "Role in every project", "Operator");
+    // An operator everywhere can still be a maintainer in one project.
+    expect(dialog.getByRole("combobox", { name: "Role in shop" }).textContent).toBe("Operator");
+    await choose(dialog, "Role in every project", "Maintainer");
 
     expect(await dialog.findByText(/nothing to choose project by project/)).toBeTruthy();
     expect(dialog.queryByRole("combobox", { name: "Role in shop" })).toBeNull();
@@ -99,9 +102,9 @@ describe("a role in every project", () => {
       expect(server.calls.find((call) => call.method === "PUT")?.body).toEqual({
         email: "sam@example.com",
         role: "member",
-        // Kept for when the box is unticked: it adds nothing while the member is an operator everywhere.
+        // Kept for when the box is unticked: it adds nothing while the member is a maintainer everywhere.
         projects: [{ project: "shop", role: "viewer" }],
-        allProjects: "operator",
+        allProjects: "maintainer",
         hostAdmin: false,
       }),
     );

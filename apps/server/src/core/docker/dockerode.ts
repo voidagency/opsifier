@@ -42,6 +42,7 @@ import {
   type SwarmInitOptions,
   type SwarmServiceSpec,
   type SwarmState,
+  type TaskAccess,
   type TaskInfo,
   type TaskState,
   type TaskStats,
@@ -96,7 +97,14 @@ interface RawTask {
   DesiredState: TaskState;
   CreatedAt: string;
   UpdatedAt: string;
-  Spec: { ContainerSpec?: { Image?: string }; Resources?: { Limits?: { NanoCPUs?: number } } };
+  Spec: {
+    ContainerSpec?: {
+      Image?: string;
+      Mounts?: Array<{ Type?: string; Source?: string }>;
+      CapabilityAdd?: string[] | null;
+    };
+    Resources?: { Limits?: { NanoCPUs?: number } };
+  };
   Status: { State: TaskState; Message?: string; Err?: string; ContainerStatus?: { ContainerID?: string } };
 }
 
@@ -282,6 +290,16 @@ function toTaskInfo(raw: RawTask, serviceNames: ReadonlyMap<string, string>): Ta
     createdAt: raw.CreatedAt,
     updatedAt: raw.UpdatedAt,
     ...(nanoCpus > 0 ? { cpuLimitCores: nanoCpus / 1e9 } : {}),
+  };
+}
+
+function toTaskAccess(raw: RawTask): TaskAccess {
+  const container = raw.Spec.ContainerSpec;
+  return {
+    binds: (container?.Mounts ?? [])
+      .filter((mount) => mount.Type === "bind" && typeof mount.Source === "string")
+      .map((mount) => mount.Source as string),
+    capabilityAdd: container?.CapabilityAdd ?? [],
   };
 }
 
@@ -595,6 +613,12 @@ export class DockerodeDriver implements DockerDriver {
       return (tasks as RawTask[]).map((task) => toTaskInfo(task, names));
     });
     return tasks ?? [];
+  }
+
+  async taskAccess(taskId: string): Promise<TaskAccess | null> {
+    return this.orNull("inspect task", async () =>
+      toTaskAccess((await this.docker.getTask(taskId).inspect()) as RawTask),
+    );
   }
 
   async *serviceLogs(name: string, options: LogOptions = {}): AsyncGenerator<LogLine> {

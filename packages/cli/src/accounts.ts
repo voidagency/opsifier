@@ -1,6 +1,6 @@
 import { hostname } from "node:os";
 import { ClientError, type Connection, connectionFromEnv, type PanelApi } from "@opsifier/client";
-import type { PanelUser } from "@opsifier/contract";
+import { type PanelUser, type ProjectRole, projectRoles } from "@opsifier/contract";
 import { readCredentials, writeCredentials } from "./credentials";
 import { renderTable } from "./format";
 import type { CommandContext, CommandResult } from "./shared";
@@ -78,9 +78,9 @@ async function personApi(context: CommandContext): Promise<PanelApi> {
   return context.connect(sessionConnection(panel, session.token)).api;
 }
 
-const ALL_PROJECTS = ["viewer", "operator", "none"] as const;
+const ALL_PROJECTS = [...projectRoles, "none"] as const;
 
-function allProjectsFlag(context: CommandContext): "viewer" | "operator" | null | undefined {
+function allProjectsFlag(context: CommandContext): ProjectRole | null | undefined {
   const value = context.flags["all-projects"];
   if (value === undefined) {
     return undefined;
@@ -88,7 +88,7 @@ function allProjectsFlag(context: CommandContext): "viewer" | "operator" | null 
   if (typeof value !== "string" || !(ALL_PROJECTS as readonly string[]).includes(value)) {
     throw usage(context.t("usage.allProjects"));
   }
-  return value === "none" ? null : (value as "viewer" | "operator");
+  return value === "none" ? null : (value as ProjectRole);
 }
 
 function roleFlag(context: CommandContext): "admin" | "member" | undefined {

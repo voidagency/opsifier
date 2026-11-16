@@ -18,6 +18,7 @@ import { releasesKept } from "../releases/service";
 import { rewriteAllRoutes } from "../service-tabs/domains/changes";
 import { getSetting, putSetting } from "../system/repo";
 import { detectServerIp, SERVER_IP_KEY } from "../system/service";
+import { needsTwoFactorSetup } from "../two-factor-policy/service";
 import { directorySize, helperImage, PANEL_SERVICE } from "./disk";
 import { readDockerEngine } from "./docker-admin";
 import { proxyStatus } from "./proxy";
@@ -460,6 +461,14 @@ export function createHostConsoleRoute(deps: AppDeps): SocketRoute {
     admit({ principal }): SocketAdmission {
       if (!holdsHostAdmin(principal.user)) {
         return refuse(403, "host_admin_required", HOST_ADMIN_ONLY);
+      }
+      // A socket never passes the HTTP routes' check, so the shell asks it itself.
+      if (needsTwoFactorSetup(deps.db, principal.user)) {
+        return refuse(
+          403,
+          "two_factor_setup_required",
+          "This panel requires two-factor sign-in: turn it on for this account first.",
+        );
       }
       return {
         allowed: true,

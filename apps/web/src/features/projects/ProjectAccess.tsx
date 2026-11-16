@@ -1,4 +1,11 @@
-import { effectiveProjectRole, type ProjectMember, type ProjectRole } from "@opsifier/contract";
+import {
+  effectiveProjectRole,
+  type ProjectMember,
+  type ProjectMemberRole,
+  type ProjectRole,
+  projectRoleRank,
+  projectRoles,
+} from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
 import { Trash2, UserPlus } from "lucide-react";
@@ -25,8 +32,10 @@ import { usersQuery } from "../settings/server/api";
 import { RoleSelect } from "../settings/server/GrantsEditor";
 import { projectMembersQuery, projectsApi } from "./api";
 
-const RANK = { none: 0, viewer: 1, operator: 2, admin: 3 } as const;
-const rankOf = (role: keyof typeof RANK | null) => RANK[role ?? "none"];
+/** An administrator stands above every role a project gives. */
+const rankOf = (role: ProjectMemberRole | null) =>
+  role === "admin" ? projectRoles.length + 1 : projectRoleRank(role);
+const STRONGEST: ProjectRole = projectRoles[projectRoles.length - 1] ?? "maintainer";
 
 /** A change that would leave a member with less than it has here, waiting for a confirmation. */
 interface Lowering {
@@ -62,8 +71,9 @@ function MemberRow({
 }) {
   const { t } = useTranslation(["projects", "settings-access"]);
   const roleName = (role: ProjectRole) => t(`settings-access:users.roles.${role}`);
-  // An administrator, or an operator in every project, has nothing a project can add or take away.
-  const settable = !member.administrator && member.allProjects !== "operator" && member.role !== "admin";
+  // An administrator, or a member with the strongest role in every project, has nothing a project can
+  // add or take away.
+  const settable = !member.administrator && member.allProjects !== STRONGEST && member.role !== "admin";
   return (
     <li className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-b py-2.5 last:border-b-0 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
       <Pictogram name="user" size={20} />
@@ -79,7 +89,7 @@ function MemberRow({
               {t(member.owner ? "settings-access:users.roles.owner" : "settings-access:users.roles.admin")}
             </Badge>
           ) : (
-            !settable && <Badge>{roleName(member.role === "admin" ? "operator" : member.role)}</Badge>
+            !settable && <Badge>{roleName(member.role === "admin" ? STRONGEST : member.role)}</Badge>
           )}
         </p>
         <p className="mt-0.5 text-xs text-muted">{originOf(member, roleName, t)}</p>
@@ -89,6 +99,7 @@ function MemberRow({
           <RoleSelect
             label={t("settings.access.roleOf", { email: member.email, project })}
             value={member.role}
+            atLeast={member.allProjects}
             // What every project gives already needs no role of the project's own.
             onChange={(role) => onChange(role === member.allProjects ? null : role)}
           />

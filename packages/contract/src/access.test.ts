@@ -5,6 +5,7 @@ import {
   panelUser,
   projectMember,
   projectMemberPath,
+  projectRoleRank,
   setProjectMemberRequest,
   updateUserRequest,
 } from "./access";
@@ -21,6 +22,19 @@ describe("a role in every project", () => {
     expect(effectiveProjectRole("viewer", "operator")).toBe("operator");
     expect(effectiveProjectRole("operator", "viewer")).toBe("operator");
     expect(effectiveProjectRole("operator", null)).toBe("operator");
+    expect(effectiveProjectRole("viewer", "maintainer")).toBe("maintainer");
+    expect(effectiveProjectRole("maintainer", "operator")).toBe("maintainer");
+    expect(effectiveProjectRole(null, "maintainer")).toBe("maintainer");
+  });
+
+  it("ranks the roles from viewer to maintainer", () => {
+    expect([null, "viewer", "operator", "maintainer"].map((role) => projectRoleRank(role as never))).toEqual([
+      0, 1, 2, 3,
+    ]);
+    expect(setProjectMemberRequest.parse({ role: "maintainer" }).role).toBe("maintainer");
+    expect(
+      createUserRequest.parse({ email: "ann@example.com", password, allProjects: "maintainer" }).allProjects,
+    ).toBe("maintainer");
   });
 
   it("is a project role or none, and none unless someone asks for one", () => {

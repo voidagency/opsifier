@@ -2,9 +2,18 @@ import { z } from "zod";
 import { passwordMaxLength, userRole } from "./auth";
 import { projectName } from "./common";
 
-/** What someone may do inside one project they were given access to. */
-export const projectRole = z.enum(["viewer", "operator"]);
+/**
+ * What someone may do inside one project they were given access to, weakest first. A viewer reads the
+ * inventory and the state of things, an operator also configures and deploys, and a maintainer also
+ * opens a console in the project's services.
+ */
+export const projectRoles = ["viewer", "operator", "maintainer"] as const;
+export const projectRole = z.enum(projectRoles);
 export type ProjectRole = z.infer<typeof projectRole>;
+
+/** How strong a role is: 0 for none, then one step per role. */
+export const projectRoleRank = (role: ProjectRole | null | undefined): number =>
+  role === null || role === undefined ? 0 : projectRoles.indexOf(role) + 1;
 
 export const projectGrant = z.strictObject({ project: projectName, role: projectRole });
 export type ProjectGrant = z.infer<typeof projectGrant>;
@@ -24,10 +33,7 @@ export function effectiveProjectRole(
   allProjects: ProjectRole | null,
   own: ProjectRole | null | undefined,
 ): ProjectRole | null {
-  if (allProjects === "operator" || own === "operator") {
-    return "operator";
-  }
-  return allProjects ?? own ?? null;
+  return projectRoleRank(own) > projectRoleRank(allProjects) ? (own ?? null) : allProjects;
 }
 
 /** An account's sign-in address. */
@@ -105,7 +111,7 @@ export const updateUserRequest = z.strictObject({
 export type UpdateUserRequest = z.infer<typeof updateUserRequest>;
 
 /** What an account can do in one project: a member's role there, or `admin` for an administrator. */
-export const projectMemberRole = z.enum(["viewer", "operator", "admin"]);
+export const projectMemberRole = z.enum([...projectRoles, "admin"]);
 export type ProjectMemberRole = z.infer<typeof projectMemberRole>;
 
 /** One account that reaches a project, as an administrator sees it from that project. */

@@ -599,15 +599,23 @@ describe("the console", () => {
     expect((await screen.findAllByText("Start the service to open a console")).length).toBeGreaterThan(0);
   });
 
-  it("can't be opened by someone who isn't an administrator", async () => {
-    installFakeServer(
-      base({
-        "GET /auth/session": {
-          status: "signed-in",
-          user: { id: "u2", email: "member@example.com", role: "member", twoFactorEnabled: false },
-        },
-      }),
-    );
+  const asMember = (role: "operator" | "maintainer") =>
+    base({
+      "GET /auth/session": {
+        status: "signed-in",
+        user: { id: "u2", email: "member@example.com", role: "member", twoFactorEnabled: false },
+      },
+      "GET /auth/identity": {
+        user: { id: "u2", email: "member@example.com", role: "member" },
+        credential: { kind: "session" },
+        projects: [{ name: "shop", role }],
+        allProjects: null,
+        operations: [],
+      },
+    });
+
+  it("can't be opened by an operator of the project", async () => {
+    installFakeServer(asMember("operator"));
     renderApp("/projects/shop/app/web");
 
     const button = await screen.findByRole("button", { name: "Console" });
@@ -615,9 +623,20 @@ describe("the console", () => {
     fireEvent.click(button);
     expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.focus(button);
-    expect((await screen.findAllByText("Only an administrator can open a console")).length).toBeGreaterThan(
-      0,
-    );
+    expect(
+      (await screen.findAllByText("Only an administrator or a maintainer of this project can open a console"))
+        .length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("opens for a maintainer of the project", async () => {
+    installFakeServer(asMember("maintainer"));
+    renderApp("/projects/shop/app/web");
+
+    const button = await screen.findByRole("button", { name: "Console" });
+    await waitFor(() => expect(button.getAttribute("aria-disabled")).not.toBe("true"));
+    fireEvent.click(button);
+    expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 });
 

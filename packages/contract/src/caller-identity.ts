@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { allProjectsRole, apiKeyLevel } from "./access";
+import { allProjectsRole, apiKeyLevel, projectRoles } from "./access";
 import { userRole } from "./auth";
 
 /** What the caller holds in one project. An administrator holds `admin` in whichever projects it reaches. */
-export const callerProjectRole = z.enum(["viewer", "operator", "admin"]);
+export const callerProjectRole = z.enum([...projectRoles, "admin"]);
 export type CallerProjectRole = z.infer<typeof callerProjectRole>;
 
 export const callerOperation = z.object({

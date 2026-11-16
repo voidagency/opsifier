@@ -95,6 +95,11 @@ describe("accounts from the command line", () => {
     const users = await panel.session<UserList>("GET", "/api/v1/users");
     expect(users.body.users.find((user) => user.email === "ada@example.com")?.allProjects).toBe("operator");
 
+    const raised = await run(["users", "set", "ada@example.com", "--all-projects", "maintainer", "--json"]);
+    expect(raised.code).toBe(0);
+    const after = await panel.session<UserList>("GET", "/api/v1/users");
+    expect(after.body.users.find((user) => user.email === "ada@example.com")?.allProjects).toBe("maintainer");
+
     const off = await run(["users", "deactivate", "ada@example.com", "--json"]);
     expect(off.code).toBe(0);
     expect((JSON.parse(off.stdout) as { active: boolean }).active).toBe(false);
