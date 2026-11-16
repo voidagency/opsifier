@@ -1,0 +1,36 @@
+/* The documentation in the site's own type and colours: navy ink, amber accents. */
+:root {
+  --sl-font: "Poppins", system-ui, sans-serif;
+  --sl-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --sl-color-accent-low: #3a2c12;
+  --sl-color-accent: #e3a33a;
+  --sl-color-accent-high: #f6dcae;
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #eef1f7;
+  --sl-color-gray-2: #c8d0e0;
+  --sl-color-gray-3: #b4bed2;
+  --sl-color-gray-4: #8592ac;
+  --sl-color-gray-5: #2b3c63;
+  --sl-color-gray-6: #16264a;
+  --sl-color-black: #0f1b36;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #fbecd2;
+  --sl-color-accent: #9a6614;
+  --sl-color-accent-high: #4d3309;
+  --sl-color-white: #16264a;
+  --sl-color-gray-1: #16264a;
+  --sl-color-gray-2: #2b3c63;
+  --sl-color-gray-3: #5b6781;
+  --sl-color-gray-4: #8592ac;
+  --sl-color-gray-5: #dfe3ec;
+  --sl-color-gray-6: #eef1f7;
+  --sl-color-gray-7: #f6f7fa;
+  --sl-color-black: #ffffff;
+}
+
+.site-title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}

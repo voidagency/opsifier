@@ -29,6 +29,12 @@ export function findService(db: DbHandle, project: string, name: string): Servic
   return row === undefined ? undefined : toRecord(row);
 }
 
+/** A service by the identifier it keeps through a rename. */
+export function findServiceById(db: DbHandle, id: string): ServiceRecord | undefined {
+  const row = db.select().from(services).where(eq(services.id, id)).get();
+  return row === undefined ? undefined : toRecord(row);
+}
+
 /** All services, or those of one project, in name order. */
 export function listServiceRecords(db: DbHandle, project?: string): ServiceRecord[] {
   return db

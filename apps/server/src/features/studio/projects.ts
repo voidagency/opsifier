@@ -10,14 +10,15 @@ import { createFromDefinition } from "../service-definition/service";
 import { qualifiedName } from "../services/compile";
 import { findService } from "../services/repo";
 import { requireService } from "../services/service";
-import { previewDockerfile } from "./preview";
+import { OWN_PREVIEW, requireModel, requirePanelUrl } from "./agents";
+import { createOwnProject, deployOwnProject, inspectFolder, requireNoCredentials } from "./own-project";
+import { PREVIEW_RESOURCES, previewDockerfile } from "./preview";
+import * as repo from "./repo";
 import { getStudioApp, linkStudioApp } from "./service";
 import { readStudioSettings } from "./settings";
 
 /** The agent server's secret that holds the GitHub token, as OpenHands names it. */
 export const GITHUB_SECRET = "GITHUB_TOKEN";
-/** What a preview may use: a development server installs and rebuilds a whole project. */
-const PREVIEW_RESOURCES = { memoryReservation: 0, memoryLimit: 3072, cpuReservation: 0, cpuLimit: 2 };
 /** Copying a large repository takes a while. */
 const CLONE_TIMEOUT_MS = 300_000;
 const CLONE_PREFIX = "opsifier-studio-clone ";
@@ -268,8 +269,10 @@ async function cloneInAgent(
 
 /**
  * Adds a GitHub project to the Studio: copies it into the projects folder from inside the agent
- * server's container, makes its preview next to the agent server, and links the two. The preview's
- * first deployment installs the project's dependencies; the Studio starts it again when it is opened.
+ * server's container, makes its preview next to the agent server, and links the two. When each
+ * project has an agent server of its own, the preview and that agent server go in an Opsifier
+ * project of their own instead. The preview's first deployment installs the project's dependencies;
+ * the Studio starts it again when it is opened.
  */
 export async function addStudioProject(
   deps: AppDeps,
@@ -293,8 +296,8 @@ export async function addStudioProject(
   const repository = parseRepository(request.repository);
   const folder = folderName(repository);
   const service = previewName(agent.project, folder);
-  const target = { projectName: agent.project, serviceName: service };
-  if (findService(deps.db, agent.project, service) !== undefined) {
+  const own = settings.agentPerProject;
+  if (!own && findService(deps.db, agent.project, service) !== undefined) {
     throw conflict(
       "studio_project_exists",
       `${agent.project}/${service} already exists: link it from the Studio, or remove it first.`,
@@ -302,6 +305,14 @@ export async function addStudioProject(
   }
   const hostDir = posix.join(projectsHostDir(deps, { ...agent, projectsDir }), folder);
   const workspaceDir = posix.join(projectsDir, folder);
+  if (repo.listLinkedApps(deps.db).some((app) => app.workspaceDir === workspaceDir)) {
+    throw conflict("studio_project_exists", `The Studio has a project on ${workspaceDir} already.`);
+  }
+  // Checked before anything is copied: what each project's own agent server needs.
+  const model = own ? requireModel(deps, settings) : null;
+  if (own) {
+    requirePanelUrl(deps);
+  }
 
   const copy = await cloneInAgent(deps, agent, repository, workspaceDir, request.branch);
   // No package.json, or no Vite in it: there is no development server the preview knows how to run.
@@ -313,6 +324,45 @@ export async function addStudioProject(
     );
   }
 
+  if (model !== null) {
+    // A copy reused as it was may carry a credential in its git settings, which its agent would read.
+    requireNoCredentials(await inspectFolder(deps, model, workspaceDir), workspaceDir);
+    const created = await createOwnProject(deps, {
+      model,
+      folder,
+      hostDir,
+      workspaceDir,
+      slug: repository.slug,
+      origin: repository.url,
+      preview: { kind: "vite", uid: copy.uid, gid: copy.gid },
+      access,
+      actorEmail,
+      isAdmin,
+    });
+    const ownTarget = { projectName: created.project, serviceName: OWN_PREVIEW };
+    await linkStudioApp(deps, ownTarget, { workspaceDir });
+    repo.setAppAgent(
+      deps.db,
+      created.preview.id,
+      {
+        agentServiceId: created.agent.id,
+        repository: created.repository,
+        gitTokenHash: created.gitTokenHash,
+      },
+      new Date(deps.now()),
+    );
+    // Linked first, so that the preview never answers without the Studio's sign-in.
+    deployOwnProject(deps, created, actorEmail);
+    deps.actions.record({
+      type: "studio.add-project",
+      title: `Add ${repository.slug} to the Studio, with an agent server of its own`,
+      ...ownTarget,
+      actorEmail,
+    });
+    return getStudioApp(deps, ownTarget);
+  }
+
+  const target = { projectName: agent.project, serviceName: service };
   const panel = getPanelDomainSettings(deps).url;
   await createFromDefinition(
     deps,

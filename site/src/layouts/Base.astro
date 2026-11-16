@@ -71,7 +71,7 @@ const structured = {
         "Two-factor sign-in, project roles and API keys",
         "A command-line client and an MCP server",
       ],
-      installUrl: `${REPOSITORY}/blob/main/docs/INSTALL.md`,
+      installUrl: new URL("/docs/install/", Astro.site).href,
       downloadUrl: `${REPOSITORY}/pkgs/container/opsifier`,
       releaseNotes: `${REPOSITORY}/releases`,
     },
@@ -145,6 +145,7 @@ const structured = {
         <nav aria-label={t.nav.label}>
           <a class="hide-s" href={`${home}#runs`}>{t.nav.what}</a>
           <a class="hide-s" href={`${home}#status`}>{t.nav.status}</a>
+          <a href="/docs/" hreflang="en">{t.nav.docs}</a>
           <a href={REPOSITORY} rel="noopener">{t.nav.github}</a>
           {
             otherPath !== null && (
@@ -163,6 +164,7 @@ const structured = {
         <ul>
           <li><a href={`${home}#runs`}>{t.nav.what}</a></li>
           <li><a href={`${home}#status`}>{t.nav.status}</a></li>
+          <li><a href="/docs/" hreflang="en">{t.nav.docs}</a></li>
           <li><a href={REPOSITORY} rel="noopener">{t.nav.github}</a></li>
           <li><a href={`${REPOSITORY}/blob/main/LICENSE`} rel="noopener">{t.footer.license}</a></li>
           <li><a href={REPORT_VULNERABILITY} rel="noopener">{t.footer.vulnerability}</a></li>

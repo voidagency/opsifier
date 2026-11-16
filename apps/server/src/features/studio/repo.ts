@@ -1,6 +1,14 @@
+import { deployActionType } from "@opsifier/contract";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { DbHandle } from "../../core/db";
-import { services, studioApps, studioConversations, studioMembers, users } from "../../core/db/schema";
+import {
+  actions,
+  services,
+  studioApps,
+  studioConversations,
+  studioMembers,
+  users,
+} from "../../core/db/schema";
 
 export type StudioAppRow = typeof studioApps.$inferSelect;
 export type StudioConversationRow = typeof studioConversations.$inferSelect;
@@ -16,6 +24,9 @@ export function listLinkedApps(db: DbHandle): LinkedApp[] {
     .select({
       serviceId: studioApps.serviceId,
       workspaceDir: studioApps.workspaceDir,
+      agentServiceId: studioApps.agentServiceId,
+      repository: studioApps.repository,
+      gitTokenHash: studioApps.gitTokenHash,
       createdAt: studioApps.createdAt,
       updatedAt: studioApps.updatedAt,
       projectName: services.projectName,
@@ -36,6 +47,33 @@ export function saveApp(db: DbHandle, serviceId: string, workspaceDir: string, n
     .values({ serviceId, workspaceDir, createdAt: now, updatedAt: now })
     .onConflictDoUpdate({ target: studioApps.serviceId, set: { workspaceDir, updatedAt: now } })
     .run();
+}
+
+/** A project's own agent server, and how it reaches its repository through the panel. */
+export function setAppAgent(
+  db: DbHandle,
+  serviceId: string,
+  agent: Pick<StudioAppRow, "agentServiceId" | "repository" | "gitTokenHash">,
+  now: Date,
+): void {
+  db.update(studioApps)
+    .set({ ...agent, updatedAt: now })
+    .where(eq(studioApps.serviceId, serviceId))
+    .run();
+}
+
+/**
+ * The project's link, conversations and accounts move to another preview, when the project moves
+ * to an Opsifier project of its own. Several statements: the caller runs it in a transaction.
+ */
+export function moveApp(db: DbHandle, from: string, to: StudioAppRow): void {
+  db.insert(studioApps).values(to).run();
+  db.update(studioConversations)
+    .set({ serviceId: to.serviceId })
+    .where(eq(studioConversations.serviceId, from))
+    .run();
+  db.update(studioMembers).set({ serviceId: to.serviceId }).where(eq(studioMembers.serviceId, from)).run();
+  db.delete(studioApps).where(eq(studioApps.serviceId, from)).run();
 }
 
 /** The conversations go with it: the agent server keeps their content. */
@@ -127,4 +165,21 @@ export function appsSharedWith(db: DbHandle, userId: string): Set<string> {
       .all()
       .map((row) => row.serviceId),
   );
+}
+
+/** Whether the service's last deployment failed: the Studio does not ask for another by itself. */
+export function lastDeployFailed(db: DbHandle, projectName: string, serviceName: string): boolean {
+  const last = db
+    .select({ status: actions.status })
+    .from(actions)
+    .where(
+      and(
+        eq(actions.projectName, projectName),
+        eq(actions.serviceName, serviceName),
+        eq(actions.type, deployActionType),
+      ),
+    )
+    .orderBy(desc(actions.seq))
+    .get();
+  return last?.status === "failed";
 }

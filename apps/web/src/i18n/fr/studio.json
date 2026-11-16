@@ -24,7 +24,8 @@
     "openNamed": "Ouvrir {{name}} dans le Studio",
     "emptyNoFolder": "Réglez le dossier des projets dans les réglages du Studio pour ajouter des projets depuis GitHub, ou reliez un service qui montre déjà l'aperçu d'un projet.",
     "memberEmptyTitle": "Aucun projet partagé avec vous pour l'instant",
-    "memberEmptyDescription": "Dès qu'un administrateur vous partage un projet, il apparaît ici : ouvrez-le pour parler à l'agent et le voir en direct."
+    "memberEmptyDescription": "Dès qu'un administrateur vous partage un projet, il apparaît ici : ouvrez-le pour parler à l'agent et le voir en direct.",
+    "agentMissing": "Attend son propre agent"
   },
   "link": {
     "action": "Relier un projet",
@@ -54,7 +55,11 @@
     "you": "Vous",
     "agent": "Agent",
     "sending": "Envoi…",
-    "latest": "Derniers messages"
+    "latest": "Derniers messages",
+    "readOnly": "Cette conversation a eu lieu avec l'agent partagé par tous les projets. Le projet a maintenant son propre agent : commencez une nouvelle conversation pour continuer.",
+    "readOnlyAction": "Nouvelle conversation",
+    "agentStarting": "L'agent du projet démarre…",
+    "agentAsleep": "L'agent du projet est en veille. Envoyez un message, ou rouvrez le projet, pour le réveiller."
   },
   "composer": {
     "label": "Message à l'agent",
@@ -123,7 +128,16 @@
     "projectsDir": "Dossier des projets",
     "projectsDirHint": "Où vont les projets dans le conteneur du serveur d'agent, par exemple /projects. Ce doit être un dossier du serveur monté dans ce service, depuis son onglet Stockage : chaque projet ajouté y est copié, et son aperçu monte le même dossier.",
     "previewSignIn": "Aperçus derrière la connexion au panneau",
-    "previewSignInHint": "Chaque aperçu demande le compte du panneau au lieu du mot de passe que le serveur partage entre tous les sites : seuls entrent les administrateurs du serveur et les comptes avec qui son projet est partagé. Le panneau et les aperçus doivent partager un domaine, comme panel.example.com et les *.example.com des aperçus, pour que l'aperçu s'ouvre dans le Studio."
+    "previewSignInHint": "Chaque aperçu demande le compte du panneau au lieu du mot de passe que le serveur partage entre tous les sites : seuls entrent les administrateurs du serveur et les comptes avec qui son projet est partagé. Le panneau et les aperçus doivent partager un domaine, comme panel.example.com et les *.example.com des aperçus, pour que l'aperçu s'ouvre dans le Studio.",
+    "agentPerProject": "Un agent par projet",
+    "agentPerProjectHint": "Chaque projet a son propre serveur d'agent, dans un projet Opsifier à lui avec son aperçu : il ne voit que le dossier de son projet, ne joint aucun autre service et n'a aucun jeton GitHub, puisque le panneau passe son git à son dépôt. Il démarre quand le projet est ouvert et s'arrête quand personne ne s'en sert. Le service ci-dessus devient le modèle copié pour chacun : son image, ses réglages et ses modèles, jamais ses secrets.",
+    "isolateTitle": "Projets encore sur l'agent partagé",
+    "isolateDescription_one": "{{count}} projet travaille encore avec l'agent partagé et attend le sien. Ses conversations passées restent lisibles, et son aperçu actuel est arrêté et gardé en place, à supprimer par vos soins.",
+    "isolateDescription_other": "{{count}} projets travaillent encore avec l'agent partagé et attendent le leur. Leurs conversations passées restent lisibles, et leurs aperçus actuels sont arrêtés et gardés en place, à supprimer par vos soins.",
+    "isolateAction": "Donner à chaque projet son agent",
+    "isolateDone_one": "{{count}} projet a maintenant son propre agent.",
+    "isolateDone_other": "{{count}} projets ont maintenant leur propre agent.",
+    "isolateFailed": "{{project}}/{{service}} : {{message}}"
   },
   "actions": {
     "command": "A lancé",

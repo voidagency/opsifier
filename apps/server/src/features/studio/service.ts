@@ -1,6 +1,7 @@
 import type {
   LinkStudioAppRequest,
   StudioAgent,
+  StudioAgentMode,
   StudioApp,
   StudioAppDetail,
   StudioCheck,
@@ -15,11 +16,21 @@ import type { AppDeps } from "../../core/context";
 import { AppError, badRequest, conflict, notFound, serviceUnavailable } from "../../core/errors";
 import { findUserById } from "../access/repo";
 import { listDomainRows, primaryUrl } from "../service-tabs/domains/service";
-import { enqueueStart } from "../services/lifecycle";
-import { findService, type ServiceRecord } from "../services/repo";
+import { findService, findServiceById, type ServiceRecord } from "../services/repo";
 import { requireService, type ServiceTarget, writeProxyConfig } from "../services/service";
 import { indexActiveActions, type LiveState, readLiveState, summarize } from "../services/status";
 import { AGENT_KEY_PLACEHOLDER, callAgent, expectJson } from "./agent";
+import {
+  agentModeOf,
+  awakeOwnAgent,
+  ensureOwnAgent,
+  ownAgentOf,
+  probeOwnAgent,
+  requireModel,
+  requirePanelUrl,
+  startOwnAgent,
+  wakeService,
+} from "./agents";
 import { toStudioEvents, toStudioStatus } from "./events";
 import { conversationModel, toStudioModels } from "./models";
 import { PREVIEW_PORT } from "./preview";
@@ -35,6 +46,7 @@ export function studioContext(
   agent: StudioAgent,
   target: ServiceTarget,
   workspaceDir: string,
+  own = false,
 ): string {
   const rows = listDomainRows(deps.db, target);
   const port = (rows.find((row) => row.isPrimary) ?? rows[0])?.port ?? PREVIEW_PORT;
@@ -65,16 +77,7 @@ export function studioContext(
     "in the preview at a phone's width and at a desktop's, with screenshots when you can take them. When",
     "anything is off, fix it and look again, and answer only once it is right, saying what you checked.",
     "",
-    "The folder is a copy of the project's Git repository. Before a change, run",
-    "`GITHUB_TOKEN=$GITHUB_TOKEN git pull --rebase --autostash`. When a change works, look at `git status`,",
-    "commit only the files you meant to change, with a clear message, and run",
-    "`GITHUB_TOKEN=$GITHUB_TOKEN git push`, unless the user asks for a branch, a pull request or not to push",
-    "yet. Never force push, and never rewrite commits that are pushed. The GITHUB_TOKEN secret is set only",
-    "for a command that names it. Never put a token in an address, a file, a commit or a message, never",
-    "change git's credential settings, and never ask the user for a token or a password. If GitHub refuses",
-    "a pull or a push (403 or 404), tell the user that the agent server's GitHub token does not cover this",
-    "repository, and stop there. Install packages with the package manager whose lockfile the project",
-    "has, and never create another lockfile.",
+    ...(own ? OWN_GIT_RULES : SHARED_GIT_RULES),
     "",
     "When a message holds a <selected_element> block, the user pointed at that element in the preview: it is",
     "the element to change. Find it in the code from its text, its classes and the React components it names.",
@@ -83,6 +86,32 @@ export function studioContext(
     "</OPSIFIER_STUDIO>",
   ].join("\n");
 }
+
+const SHARED_GIT_RULES = [
+  "The folder is a copy of the project's Git repository. Before a change, run",
+  "`GITHUB_TOKEN=$GITHUB_TOKEN git pull --rebase --autostash`. When a change works, look at `git status`,",
+  "commit only the files you meant to change, with a clear message, and run",
+  "`GITHUB_TOKEN=$GITHUB_TOKEN git push`, unless the user asks for a branch, a pull request or not to push",
+  "yet. Never force push, and never rewrite commits that are pushed. The GITHUB_TOKEN secret is set only",
+  "for a command that names it. Never put a token in an address, a file, a commit or a message, never",
+  "change git's credential settings, and never ask the user for a token or a password. If GitHub refuses",
+  "a pull or a push (403 or 404), tell the user that the agent server's GitHub token does not cover this",
+  "repository, and stop there. Install packages with the package manager whose lockfile the project",
+  "has, and never create another lockfile.",
+];
+
+/** A project's own agent server has no token: the Studio passes its git to GitHub for this repository. */
+const OWN_GIT_RULES = [
+  "The folder is a copy of the project's Git repository, and the only one you can reach. Before a change,",
+  "run `git pull --rebase --autostash`. When a change works, look at `git status`, commit only the files",
+  "you meant to change, with a clear message, and run `git push`, unless the user asks for a branch, a",
+  "pull request or not to push yet. Never force push, and never rewrite commits that are pushed. The",
+  "Studio passes your pulls and pushes to GitHub for this repository: there is no token to use or to ask",
+  "for. Never change git's settings, its remotes or its credential settings, and never ask the user for a",
+  "token or a password. If GitHub refuses a pull or a push (403), tell the user that the Studio's GitHub",
+  "token does not cover this repository, and stop there. Install packages with the package manager whose",
+  "lockfile the project has, and never create another lockfile.",
+];
 
 /** One page of events at a time: a busy agent's backlog arrives over several polls. */
 const EVENT_PAGE_SIZE = 100;
@@ -113,12 +142,14 @@ function requireAgent(deps: Pick<AppDeps, "db">): StudioAgent {
   return settings.agent;
 }
 
-const toConversation = (row: repo.StudioConversationRow): StudioConversation => ({
+/** A conversation, which can only be read when it ran on the shared agent server of a project that has its own now. */
+const toConversation = (row: repo.StudioConversationRow, mode: StudioAgentMode): StudioConversation => ({
   id: row.id,
   title: row.title,
   createdBy: row.createdBy,
   createdAt: row.createdAt.toISOString(),
   updatedAt: row.updatedAt.toISOString(),
+  readOnly: mode !== "shared" && row.sharedAgent,
 });
 
 function appView(
@@ -128,14 +159,19 @@ function appView(
   live: LiveState,
   active: ReturnType<typeof indexActiveActions>,
 ): StudioApp {
+  const mode = agentModeOf(deps, readStudioSettings(deps), app);
   const last = repo.listConversations(deps.db, app.serviceId)[0];
+  const agent =
+    mode === "own" && app.agentServiceId !== null ? findServiceById(deps.db, app.agentServiceId) : undefined;
   return {
     project: record.projectName,
     service: record.name,
     workspaceDir: app.workspaceDir,
     previewUrl: primaryUrl(deps.db, { projectName: record.projectName, serviceName: record.name }),
     previewStatus: summarize(deps, record, live, active).status,
-    lastConversation: last === undefined ? null : toConversation(last),
+    agentMode: mode,
+    agentStatus: agent === undefined ? null : summarize(deps, agent, live, active).status,
+    lastConversation: last === undefined ? null : toConversation(last, mode),
   };
 }
 
@@ -155,14 +191,57 @@ function requireConversation(
   deps: Pick<AppDeps, "db">,
   target: ServiceTarget,
   id: string,
-): repo.StudioConversationRow & { workspaceDir: string } {
+): repo.StudioConversationRow & { workspaceDir: string; app: repo.StudioAppRow } {
   const { app } = requireLinked(deps, target);
   const row = repo.findConversation(deps.db, app.serviceId, id);
   if (row === undefined) {
     throw notFound("This service has no such Studio conversation.");
   }
-  return { ...row, workspaceDir: app.workspaceDir };
+  return { ...row, workspaceDir: app.workspaceDir, app };
 }
+
+/**
+ * The agent server that holds a conversation: the shared one, or the project's own. To send to it, a
+ * stopped own one is started, and the caller is told to try again in a moment; to read from it, one
+ * that is not running is left as it is, and the caller is told so.
+ */
+async function conversationAgent(
+  deps: AppDeps,
+  row: repo.StudioConversationRow & { app: repo.StudioAppRow },
+  actorEmail: string | undefined,
+  wake: boolean,
+): Promise<StudioAgent> {
+  const shared = requireAgent(deps);
+  if (row.sharedAgent) {
+    return shared;
+  }
+  const record =
+    row.app.agentServiceId === null ? undefined : findServiceById(deps.db, row.app.agentServiceId);
+  if (record === undefined) {
+    throw conflict(
+      "studio_project_agent_missing",
+      "The project's own agent server is gone: an administrator gives the project one again from the Studio's settings.",
+    );
+  }
+  if (!wake) {
+    return awakeOwnAgent(deps, shared, record);
+  }
+  if (await startOwnAgent(deps, record, actorEmail)) {
+    throw conflict(
+      "studio_agent_starting",
+      "The project's agent server is starting: try again in a few seconds.",
+    );
+  }
+  const agent = ownAgentOf(shared, record);
+  await probeOwnAgent(deps, agent);
+  return agent;
+}
+
+const readOnlyConversation = () =>
+  conflict(
+    "studio_conversation_read_only",
+    "This conversation ran on the agent server shared by every project, and the project has its own now: start a new conversation.",
+  );
 
 export function getStudioSettings(deps: Pick<AppDeps, "db">): StudioSettings {
   return readStudioSettings(deps);
@@ -176,6 +255,18 @@ export async function saveStudioSettings(deps: AppDeps, settings: StudioSettings
     throw badRequest("studio_agent_unknown", "There is no such service.", {
       agent: "There is no such service",
     });
+  }
+  if (settings.agentPerProject) {
+    // Each project's agent server is copied from the one named here: refused now if it cannot be.
+    try {
+      requireModel(deps, { ...settings, enabled: true });
+      requirePanelUrl(deps);
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw badRequest(error.code, error.message, { agentPerProject: error.message });
+      }
+      throw error;
+    }
   }
   const signInBefore = readStudioSettings(deps).previewSignIn;
   const saved = writeStudioSettings(deps, settings);
@@ -191,7 +282,7 @@ export async function saveStudioSettings(deps: AppDeps, settings: StudioSettings
  * Writes a preview's routes again, so that they ask for the panel's sign-in or stop asking: the
  * proxy's guard decides from the settings and the link as each file is written.
  */
-async function rewriteRoutes(deps: AppDeps, target: ServiceTarget): Promise<void> {
+export async function rewriteRoutes(deps: AppDeps, target: ServiceTarget): Promise<void> {
   const record = findService(deps.db, target.projectName, target.serviceName);
   if (record === undefined) {
     return;
@@ -246,6 +337,7 @@ export async function getStudioOverview(
     enabled: settings.enabled,
     agentConfigured: settings.agent !== null,
     canAddProjects: sharedWith === null && settings.enabled && (settings.agent?.projectsDir ?? null) !== null,
+    agentPerProject: settings.agentPerProject,
     apps,
   };
 }
@@ -296,25 +388,25 @@ export async function startStudioPreview(
   deps: AppDeps,
   target: ServiceTarget,
   actorEmail: string | undefined,
-): Promise<{ started: boolean }> {
-  requireLinked(deps, target);
-  try {
-    await enqueueStart(deps, target, actorEmail);
-    return { started: true };
-  } catch (error) {
-    if (error instanceof AppError && error.code === "service_running") {
-      return { started: false };
-    }
-    throw error;
-  }
+): Promise<{ started: boolean; agentStarted: boolean }> {
+  const { record, app } = requireLinked(deps, target);
+  const started = await wakeService(deps, record, actorEmail);
+  const settings = readStudioSettings(deps);
+  const agent =
+    agentModeOf(deps, settings, app) === "own" && app.agentServiceId !== null
+      ? findServiceById(deps.db, app.agentServiceId)
+      : undefined;
+  const agentStarted = agent === undefined ? false : await startOwnAgent(deps, agent, actorEmail);
+  return { started, agentStarted };
 }
 
 export async function getStudioApp(deps: AppDeps, target: ServiceTarget): Promise<StudioAppDetail> {
   const { record, app } = requireLinked(deps, target);
   const live = await readLiveState(deps);
+  const mode = agentModeOf(deps, readStudioSettings(deps), app);
   return {
     ...appView(deps, record, app, live, indexActiveActions(deps)),
-    conversations: repo.listConversations(deps.db, app.serviceId).map(toConversation),
+    conversations: repo.listConversations(deps.db, app.serviceId).map((row) => toConversation(row, mode)),
   };
 }
 
@@ -359,8 +451,18 @@ export async function startStudioConversation(
   message: StudioMessage,
   actorEmail: string | undefined,
 ): Promise<StudioConversation> {
-  const agent = requireAgent(deps);
+  const shared = requireAgent(deps);
   const { app } = requireLinked(deps, target);
+  const settings = readStudioSettings(deps);
+  const mode = agentModeOf(deps, settings, app);
+  if (mode === "missing") {
+    throw conflict(
+      "studio_project_agent_missing",
+      "This project waits for an agent server of its own: an administrator gives it one from the Studio's settings.",
+    );
+  }
+  const agent =
+    mode === "own" ? await ensureOwnAgent(deps, requireModel(deps, settings), app, actorEmail) : shared;
 
   const setup = await callAgent(deps, agent, [
     { method: "GET", path: "/api/agent-profiles" },
@@ -392,7 +494,7 @@ export async function startStudioConversation(
       body: {
         agent_profile_id: profileId,
         agent_launch_additions: {
-          system_message_suffix_append: studioContext(deps, agent, target, app.workspaceDir),
+          system_message_suffix_append: studioContext(deps, agent, target, app.workspaceDir, mode === "own"),
           ...(message.model === undefined ? {} : { llm_profile_ref: message.model }),
         },
         workspace: { working_dir: app.workspaceDir, kind: "LocalWorkspace" },
@@ -426,6 +528,7 @@ export async function startStudioConversation(
     serviceId: app.serviceId,
     title: isRecord(conversation) ? stringOrNull(conversation.title) : null,
     createdBy: actorEmail ?? null,
+    sharedAgent: mode === "shared",
     createdAt: now,
     updatedAt: now,
   };
@@ -437,7 +540,7 @@ export async function startStudioConversation(
     serviceName: target.serviceName,
     actorEmail,
   });
-  return toConversation(row);
+  return toConversation(row, mode);
 }
 
 export async function sendStudioMessage(
@@ -445,9 +548,14 @@ export async function sendStudioMessage(
   target: ServiceTarget,
   id: string,
   message: StudioMessage,
+  actorEmail?: string,
 ): Promise<StudioConversation> {
-  const agent = requireAgent(deps);
   const row = requireConversation(deps, target, id);
+  const mode = agentModeOf(deps, readStudioSettings(deps), row.app);
+  if (mode !== "shared" && row.sharedAgent) {
+    throw readOnlyConversation();
+  }
+  const agent = await conversationAgent(deps, row, actorEmail, true);
   const { keyFound, replies } = await callAgent(deps, agent, [
     {
       method: "POST",
@@ -458,7 +566,7 @@ export async function sendStudioMessage(
   expectJson(replies[0], keyFound);
   const updatedAt = new Date(deps.now());
   repo.updateConversation(deps.db, id, { updatedAt });
-  return toConversation({ ...row, updatedAt });
+  return toConversation({ ...row, updatedAt }, mode);
 }
 
 export async function stopStudioConversation(
@@ -466,13 +574,24 @@ export async function stopStudioConversation(
   target: ServiceTarget,
   id: string,
 ): Promise<StudioConversation> {
-  const agent = requireAgent(deps);
+  const shared = requireAgent(deps);
   const row = requireConversation(deps, target, id);
+  const mode = agentModeOf(deps, readStudioSettings(deps), row.app);
+  const own =
+    row.sharedAgent || row.app.agentServiceId === null
+      ? undefined
+      : findServiceById(deps.db, row.app.agentServiceId);
+  // A project's own agent server that is gone or stopped has nothing at work to stop; the shared
+  // one is never asked about a conversation it does not hold.
+  if (!row.sharedAgent && (own === undefined || own.spec.stopped || own.deployed === null)) {
+    return toConversation(row, mode);
+  }
+  const agent = own === undefined ? shared : ownAgentOf(shared, own);
   const { keyFound, replies } = await callAgent(deps, agent, [
     { method: "POST", path: `/api/conversations/${id}/pause` },
   ]);
   expectJson(replies[0], keyFound);
-  return toConversation(row);
+  return toConversation(row, mode);
 }
 
 /** The events after `after`, with the conversation's status and title. */
@@ -481,9 +600,10 @@ export async function getStudioEvents(
   target: ServiceTarget,
   id: string,
   after: string | undefined,
+  actorEmail?: string,
 ): Promise<StudioEventPage> {
-  const agent = requireAgent(deps);
   const row = requireConversation(deps, target, id);
+  const agent = await conversationAgent(deps, row, actorEmail, false);
   const query = new URLSearchParams({ limit: String(EVENT_PAGE_SIZE), sort_order: "TIMESTAMP" });
   if (after !== undefined) {
     // The page starts with the event it is given, which the caller already has.

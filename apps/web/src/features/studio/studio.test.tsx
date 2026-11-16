@@ -23,6 +23,7 @@ const conversation = {
   createdBy: "admin@example.com",
   createdAt: "2026-11-15T12:00:00.000Z",
   updatedAt: "2026-11-15T12:05:00.000Z",
+  readOnly: false,
 };
 
 const app = (overrides: Partial<StudioApp> = {}): StudioApp => ({
@@ -31,6 +32,8 @@ const app = (overrides: Partial<StudioApp> = {}): StudioApp => ({
   workspaceDir: "/projects/cd-studio",
   previewUrl: "https://lovable-cd-studio-preview.app.example.com",
   previewStatus: "running",
+  agentMode: "shared",
+  agentStatus: null,
   lastConversation: conversation,
   ...overrides,
 });
@@ -100,7 +103,13 @@ const page = (overrides: Partial<StudioEventPage> = {}): StudioEventPage => ({
 
 const base = (extra: FakeRoute = {}): FakeRoute => ({
   "GET /projects": { projects: [] },
-  "GET /studio": { enabled: true, agentConfigured: true, canAddProjects: false, apps: [app()] },
+  "GET /studio": {
+    enabled: true,
+    agentConfigured: true,
+    canAddProjects: false,
+    agentPerProject: false,
+    apps: [app()],
+  },
   [`GET ${APP}`]: detail(),
   [`GET ${APP}/conversations/${CONVERSATION}/events`]: page(),
   "GET /studio/models": { active: "qwen-rtx", models: [QWEN] },
@@ -108,11 +117,28 @@ const base = (extra: FakeRoute = {}): FakeRoute => ({
 });
 
 describe("the Studio's list", () => {
+  it("says which projects wait for an agent server of their own", async () => {
+    installFakeServer(
+      base({
+        "GET /studio": {
+          enabled: true,
+          agentConfigured: true,
+          canAddProjects: false,
+          agentPerProject: true,
+          apps: [app({ agentMode: "missing" })],
+        },
+      }),
+    );
+    renderApp("/studio");
+
+    expect(await screen.findByText("Waiting for its own agent")).toBeTruthy();
+  });
+
   it("shows the linked projects and opens one", async () => {
     installFakeServer(base());
     const rendered = renderApp("/studio");
 
-    const open = await screen.findByRole("link", { name: "Open cd-studio-preview in the Studio" });
+    const open = await screen.findByRole("link", { name: "Open cd-studio in the Studio" });
     expect(screen.getByText(/Titre de la page d'accueil/)).toBeTruthy();
     fireEvent.click(open);
 
@@ -121,7 +147,15 @@ describe("the Studio's list", () => {
 
   it("says how to turn it on while it is off", async () => {
     installFakeServer(
-      base({ "GET /studio": { enabled: false, agentConfigured: false, canAddProjects: false, apps: [] } }),
+      base({
+        "GET /studio": {
+          enabled: false,
+          agentConfigured: false,
+          canAddProjects: false,
+          agentPerProject: false,
+          apps: [],
+        },
+      }),
     );
     renderApp("/studio");
 
@@ -140,7 +174,13 @@ describe("the Studio's list", () => {
     });
     const server = installFakeServer(
       base({
-        "GET /studio": { enabled: true, agentConfigured: true, canAddProjects: true, apps: [app()] },
+        "GET /studio": {
+          enabled: true,
+          agentConfigured: true,
+          canAddProjects: true,
+          agentPerProject: false,
+          apps: [app()],
+        },
         "POST /studio/projects": added,
         "GET /projects/lovable/services/un-mot-par-jour-landing-preview/studio": added,
       }),
@@ -164,7 +204,13 @@ describe("the Studio's list", () => {
   it("says what the agent server's token needs when it does not reach the repository", async () => {
     installFakeServer(
       base({
-        "GET /studio": { enabled: true, agentConfigured: true, canAddProjects: true, apps: [] },
+        "GET /studio": {
+          enabled: true,
+          agentConfigured: true,
+          canAddProjects: true,
+          agentPerProject: false,
+          apps: [],
+        },
         "POST /studio/projects": withStatus(422, {
           error: {
             code: "studio_repository_unreachable",
@@ -185,7 +231,15 @@ describe("the Studio's list", () => {
 
   it("asks for the projects folder before projects can be added", async () => {
     installFakeServer(
-      base({ "GET /studio": { enabled: true, agentConfigured: true, canAddProjects: false, apps: [] } }),
+      base({
+        "GET /studio": {
+          enabled: true,
+          agentConfigured: true,
+          canAddProjects: false,
+          agentPerProject: false,
+          apps: [],
+        },
+      }),
     );
     renderApp("/studio");
 
@@ -197,7 +251,13 @@ describe("the Studio's list", () => {
     installFakeServer(
       base({
         "GET /auth/session": { status: "signed-in", user: { ...SIGNED_IN.user, role: "member" } },
-        "GET /studio": { enabled: true, agentConfigured: true, canAddProjects: false, apps: [] },
+        "GET /studio": {
+          enabled: true,
+          agentConfigured: true,
+          canAddProjects: false,
+          agentPerProject: false,
+          apps: [],
+        },
       }),
     );
     renderApp("/studio");
@@ -213,7 +273,7 @@ describe("the Studio's list", () => {
     );
     renderApp("/studio");
 
-    expect(await screen.findByRole("link", { name: "Open cd-studio-preview in the Studio" })).toBeTruthy();
+    expect(await screen.findByRole("link", { name: "Open cd-studio in the Studio" })).toBeTruthy();
     expect((await screen.findAllByRole("link", { name: "Studio" })).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Link a project" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Add a project" })).toBeNull();
@@ -534,6 +594,47 @@ describe("a Studio project", () => {
     );
   });
 
+  it("keeps a conversation of the shared agent server for reading, once the project has its own", async () => {
+    installFakeServer(
+      base({
+        [`GET ${APP}`]: detail({
+          agentMode: "own",
+          agentStatus: "running",
+          conversations: [{ ...conversation, readOnly: true }],
+        }),
+      }),
+    );
+    renderApp(`/studio/lovable/cd-studio-preview?c=${CONVERSATION}`);
+
+    expect(await screen.findByText(/happened with the agent shared by every project/)).toBeTruthy();
+    expect(screen.queryByLabelText("Message to the agent")).toBeNull();
+  });
+
+  it("says the project's agent server is starting while a first message waits for it", async () => {
+    const server = installFakeServer(
+      base({
+        [`GET ${APP}`]: detail({
+          agentMode: "own",
+          agentStatus: "stopped",
+          conversations: [],
+          lastConversation: null,
+        }),
+        [`POST ${APP}/conversations`]: withStatus(409, {
+          error: { code: "studio_agent_starting", message: "The project's agent server is starting." },
+        }),
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    fireEvent.change(await screen.findByLabelText("Message to the agent"), {
+      target: { value: "Ajoute un bouton" },
+    });
+    fireEvent.keyDown(screen.getByLabelText("Message to the agent"), { key: "Enter" });
+
+    expect(await screen.findByText("The project's agent is starting…")).toBeTruthy();
+    expect(server.calls.filter((call) => call.method === "POST").length).toBeGreaterThanOrEqual(1);
+  });
+
   it("starts a new conversation with its first message", async () => {
     const started = { ...conversation, id: "c0ffee00-0000-4000-8000-000000000002", title: null };
     const server = installFakeServer(
@@ -549,7 +650,7 @@ describe("a Studio project", () => {
     );
     const rendered = renderApp("/studio/lovable/cd-studio-preview");
 
-    expect(await screen.findByText("What should change in cd-studio-preview?")).toBeTruthy();
+    expect(await screen.findByText("What should change in cd-studio?")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Message to the agent"), {
       target: { value: "Ajoute un bouton" },
     });
@@ -615,7 +716,7 @@ describe("a Studio project", () => {
     const server = installFakeServer(
       base({
         [`GET ${APP}`]: detail({ previewStatus: "stopped" }),
-        [`POST ${APP}/preview/start`]: { started: true },
+        [`POST ${APP}/preview/start`]: { started: true, agentStarted: false },
       }),
     );
     renderApp("/studio/lovable/cd-studio-preview");
@@ -641,7 +742,52 @@ describe("the Studio's settings", () => {
       projectsDir: null,
     },
     previewSignIn: false,
+    agentPerProject: false,
   };
+
+  it("turns on an agent server for each project", async () => {
+    const server = installFakeServer(
+      base({ "GET /settings/studio": settings, "PUT /settings/studio": settings }),
+    );
+    renderApp("/settings/server/studio");
+
+    fireEvent.click(await screen.findByRole("switch", { name: "One agent per project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(
+        (server.calls.find((call) => call.method === "PUT")?.body as typeof settings | undefined)
+          ?.agentPerProject,
+      ).toBe(true),
+    );
+  });
+
+  it("gives the projects still on the shared agent server their own, and says which could not move", async () => {
+    const on = { ...settings, enabled: true, agentPerProject: true };
+    const server = installFakeServer(
+      base({
+        "GET /settings/studio": on,
+        "GET /studio": {
+          enabled: true,
+          agentConfigured: true,
+          canAddProjects: true,
+          agentPerProject: true,
+          apps: [app({ agentMode: "missing" })],
+        },
+        "POST /studio/isolate": {
+          isolated: [],
+          failed: [{ project: "lovable", service: "cd-studio-preview", message: "Its folder is elsewhere." }],
+        },
+      }),
+    );
+    renderApp("/settings/server/studio");
+
+    expect(await screen.findByText(/1 project still works with the shared agent/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Give each project its own agent" }));
+
+    expect(await screen.findByText("lovable/cd-studio-preview: Its folder is elsewhere.")).toBeTruthy();
+    expect(server.calls.some((call) => call.method === "POST" && call.path === "/studio/isolate")).toBe(true);
+  });
 
   it("turns the Studio on, keeping its agent server", async () => {
     const server = installFakeServer(

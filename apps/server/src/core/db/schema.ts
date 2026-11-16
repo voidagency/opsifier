@@ -789,6 +789,15 @@ export const studioApps = sqliteTable("studio_apps", {
     .primaryKey()
     .references(() => services.id, { onDelete: "cascade" }),
   workspaceDir: text("workspace_dir").notNull(),
+  /**
+   * The project's own agent server, when each project has one: a service in the project's own
+   * Opsifier project, next to its preview. Null on the shared agent server.
+   */
+  agentServiceId: text("agent_service_id").references(() => services.id, { onDelete: "set null" }),
+  /** The GitHub repository, owner/name, that the project's own agent reaches through the panel. */
+  repository: text("repository"),
+  /** The hash of the credential the project's own agent pulls and pushes through the panel with. */
+  gitTokenHash: text("git_token_hash"),
   createdAt: millis("created_at").notNull(),
   updatedAt: millis("updated_at").notNull(),
 });
@@ -804,6 +813,8 @@ export const studioConversations = sqliteTable(
       .references(() => studioApps.serviceId, { onDelete: "cascade" }),
     title: text("title"),
     createdBy: text("created_by"),
+    /** It lives with the agent server shared by every project, not with the project's own. */
+    sharedAgent: integer("shared_agent", { mode: "boolean" }).notNull().default(true),
     createdAt: millis("created_at").notNull(),
     updatedAt: millis("updated_at").notNull(),
   },

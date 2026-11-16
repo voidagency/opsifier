@@ -25,15 +25,21 @@ A server only calls home if it asks for an `opsifier.dev` address: the request, 
 
 ## Docs
 
+The documentation is published at https://opsifier.com/docs/, from the repository's `docs/` folder.
+
+- [Overview](https://opsifier.com/docs/): what the guides cover
+- [Install on a server](https://opsifier.com/docs/install/): requirements, the one-line installer, its options, and what to do after it
+- [Deploy your first app](https://opsifier.com/docs/first-app/): a project, an app from an image or a repository, its domain, and going back to an earlier version
+- [Run a database](https://opsifier.com/docs/databases/): Postgres, MySQL, MariaDB, MongoDB and Redis, their credentials, a public port, web admin tools and new versions
+- [Domains and HTTPS](https://opsifier.com/docs/domains/): default addresses, your own domains, certificates, paths, wildcards and destinations outside the panel
+- [Back up databases and whole servers](https://opsifier.com/docs/backups/): destinations, schedules, retention, downloads, restores and rebuilding a server
+- [Builders](https://opsifier.com/docs/builders/): how source code becomes an image, builder by builder
+- [Studio](https://opsifier.com/docs/studio/): changing a project by talking to an agent, with a live preview
+- [Command line](https://opsifier.com/docs/cli/): the `opsifier` command, its output for scripts and its exit codes
+- [MCP server](https://opsifier.com/docs/mcp/): connecting an AI agent to a panel, its tools and its confirmations
+- [API](https://opsifier.com/docs/api/): API keys, roles, errors and the OpenAPI document
+- [Architecture](https://opsifier.com/docs/architecture/): how the panel is built, decision by decision
 - [README](https://raw.githubusercontent.com/voidagency/opsifier/main/README.md): what works today, how to install it, and a short FAQ
-- [Install on a server](https://raw.githubusercontent.com/voidagency/opsifier/main/docs/INSTALL.md): requirements, the one-line installer, its options, and what to do after it
-- [Deploy your first app](https://raw.githubusercontent.com/voidagency/opsifier/main/docs/FIRST-APP.md): a project, an app from an image or a repository, its domain, and going back to an earlier version
-- [Back up databases to S3-compatible storage](https://raw.githubusercontent.com/voidagency/opsifier/main/docs/BACKUPS.md): destinations, schedules, retention, downloads and restores
-- [Builders](https://raw.githubusercontent.com/voidagency/opsifier/main/docs/BUILDERS.md): how source code becomes an image, builder by builder
-- [Command line](https://raw.githubusercontent.com/voidagency/opsifier/main/docs/CLI.md): the `opsifier` command, its output for scripts and its exit codes
-- [MCP server](https://raw.githubusercontent.com/voidagency/opsifier/main/docs/MCP.md): connecting an AI agent to a panel, its tools and its confirmations
-- [API](https://raw.githubusercontent.com/voidagency/opsifier/main/docs/API.md): API keys, roles, errors and the OpenAPI document
-- [Architecture](https://raw.githubusercontent.com/voidagency/opsifier/main/docs/ARCHITECTURE.md): how the panel is built, decision by decision
 
 ## Project
 

@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 41
+# documented-changes: 42
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -3970,14 +3970,18 @@ DELETE /api/v1/projects/{project}/services/{service}/studio
   path project!: string
   path service!: string
 GET /api/v1/projects/{project}/services/{service}/studio
+  200 agentMode!: enum(missing|own|shared)
+  200 agentStatus!: enum(failing|null|running|starting|stopped|undeployed|unknown)
   200 conversations![].createdAt!: string
   200 conversations![].createdBy!: null|string
   200 conversations![].id!: string
+  200 conversations![].readOnly!: boolean
   200 conversations![].title!: null|string
   200 conversations![].updatedAt!: string
   200 lastConversation!.createdAt!: string
   200 lastConversation!.createdBy!: null|string
   200 lastConversation!.id!: string
+  200 lastConversation!.readOnly!: boolean
   200 lastConversation!.title!: null|string
   200 lastConversation!.updatedAt!: string
   200 previewStatus!: enum(failing|running|starting|stopped|undeployed|unknown)
@@ -3992,14 +3996,18 @@ GET /api/v1/projects/{project}/services/{service}/studio
   path project!: string
   path service!: string
 PUT /api/v1/projects/{project}/services/{service}/studio
+  200 agentMode!: enum(missing|own|shared)
+  200 agentStatus!: enum(failing|null|running|starting|stopped|undeployed|unknown)
   200 conversations![].createdAt!: string
   200 conversations![].createdBy!: null|string
   200 conversations![].id!: string
+  200 conversations![].readOnly!: boolean
   200 conversations![].title!: null|string
   200 conversations![].updatedAt!: string
   200 lastConversation!.createdAt!: string
   200 lastConversation!.createdBy!: null|string
   200 lastConversation!.id!: string
+  200 lastConversation!.readOnly!: boolean
   200 lastConversation!.title!: null|string
   200 lastConversation!.updatedAt!: string
   200 previewStatus!: enum(failing|running|starting|stopped|undeployed|unknown)
@@ -4019,6 +4027,7 @@ POST /api/v1/projects/{project}/services/{service}/studio/conversations
   201 createdAt!: string
   201 createdBy!: null|string
   201 id!: string
+  201 readOnly!: boolean
   201 title!: null|string
   201 updatedAt!: string
   400
@@ -4071,6 +4080,7 @@ POST /api/v1/projects/{project}/services/{service}/studio/conversations/{convers
   200 createdAt!: string
   200 createdBy!: null|string
   200 id!: string
+  200 readOnly!: boolean
   200 title!: null|string
   200 updatedAt!: string
   400
@@ -4089,6 +4099,7 @@ POST /api/v1/projects/{project}/services/{service}/studio/conversations/{convers
   200 createdAt!: string
   200 createdBy!: null|string
   200 id!: string
+  200 readOnly!: boolean
   200 title!: null|string
   200 updatedAt!: string
   400
@@ -4098,6 +4109,17 @@ POST /api/v1/projects/{project}/services/{service}/studio/conversations/{convers
   409
   503
   path conversation!: string
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/studio/isolate
+  200 project!: string
+  200 service!: string
+  400
+  401
+  403
+  404
+  409
+  503
   path project!: string
   path service!: string
 GET /api/v1/projects/{project}/services/{service}/studio/members
@@ -4122,6 +4144,7 @@ PUT /api/v1/projects/{project}/services/{service}/studio/members
   path project!: string
   path service!: string
 POST /api/v1/projects/{project}/services/{service}/studio/preview/start
+  200 agentStarted!: boolean
   200 started!: boolean
   400
   401
@@ -5098,6 +5121,7 @@ GET /api/v1/settings/studio
   200 agent!.projectsDir: null|string
   200 agent!.service!: string
   200 agent!.url!: string
+  200 agentPerProject: boolean
   200 enabled!: boolean
   200 previewSignIn: boolean
   401
@@ -5108,6 +5132,7 @@ PUT /api/v1/settings/studio
   200 agent!.projectsDir: null|string
   200 agent!.service!: string
   200 agent!.url!: string
+  200 agentPerProject: boolean
   200 enabled!: boolean
   200 previewSignIn: boolean
   400
@@ -5118,6 +5143,7 @@ PUT /api/v1/settings/studio
   body agent!.projectsDir: null|string
   body agent!.service!: string
   body agent!.url!: string
+  body agentPerProject: boolean
   body enabled!: boolean
   body previewSignIn: boolean
 POST /api/v1/settings/studio/check
@@ -5384,9 +5410,13 @@ POST /api/v1/storage-providers/{id}/disconnect
   path id!: string
 GET /api/v1/studio
   200 agentConfigured!: boolean
+  200 agentPerProject!: boolean
+  200 apps![].agentMode!: enum(missing|own|shared)
+  200 apps![].agentStatus!: enum(failing|null|running|starting|stopped|undeployed|unknown)
   200 apps![].lastConversation!.createdAt!: string
   200 apps![].lastConversation!.createdBy!: null|string
   200 apps![].lastConversation!.id!: string
+  200 apps![].lastConversation!.readOnly!: boolean
   200 apps![].lastConversation!.title!: null|string
   200 apps![].lastConversation!.updatedAt!: string
   200 apps![].previewStatus!: enum(failing|running|starting|stopped|undeployed|unknown)
@@ -5398,6 +5428,17 @@ GET /api/v1/studio
   200 enabled!: boolean
   401
   403
+POST /api/v1/studio/isolate
+  200 failed![].message!: string
+  200 failed![].project!: string
+  200 failed![].service!: string
+  200 isolated![].from!.project!: string
+  200 isolated![].from!.service!: string
+  200 isolated![].to!.project!: string
+  200 isolated![].to!.service!: string
+  401
+  403
+  409
 GET /api/v1/studio/models
   200 active!: null|string
   200 models![].host!: null|string
@@ -5409,14 +5450,18 @@ GET /api/v1/studio/models
   409
   503
 POST /api/v1/studio/projects
+  201 agentMode!: enum(missing|own|shared)
+  201 agentStatus!: enum(failing|null|running|starting|stopped|undeployed|unknown)
   201 conversations![].createdAt!: string
   201 conversations![].createdBy!: null|string
   201 conversations![].id!: string
+  201 conversations![].readOnly!: boolean
   201 conversations![].title!: null|string
   201 conversations![].updatedAt!: string
   201 lastConversation!.createdAt!: string
   201 lastConversation!.createdBy!: null|string
   201 lastConversation!.id!: string
+  201 lastConversation!.readOnly!: boolean
   201 lastConversation!.title!: null|string
   201 lastConversation!.updatedAt!: string
   201 previewStatus!: enum(failing|running|starting|stopped|undeployed|unknown)

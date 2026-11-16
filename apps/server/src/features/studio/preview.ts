@@ -79,3 +79,6 @@ export function previewDockerfile(user: { uid: number; gid: number }): string {
 
 /** The port the preview's development server listens on, in its container. */
 export const PREVIEW_PORT = 80;
+
+/** What a preview may use: a development server installs and rebuilds a whole project. */
+export const PREVIEW_RESOURCES = { memoryReservation: 0, memoryLimit: 3072, cpuReservation: 0, cpuLimit: 2 };

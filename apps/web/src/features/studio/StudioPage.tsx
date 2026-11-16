@@ -22,7 +22,7 @@ import {
 } from "../../ui";
 import { useCurrentUser } from "../auth/session";
 import { projectsQuery } from "../projects/api";
-import { studioApi, studioKey, studioOverviewQuery } from "./api";
+import { studioApi, studioAppName, studioKey, studioOverviewQuery } from "./api";
 
 type LampState = "running" | "stopped" | "progress" | "failed" | "unknown";
 const lampOf: Record<ServiceStatus, LampState> = {
@@ -140,11 +140,17 @@ export function StudioPage() {
 function AppRow({ app }: { app: StudioApp }) {
   const { t } = useTranslation(["studio", "common"]);
   const last = app.lastConversation;
+  const name = studioAppName(app);
   return (
     <li className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 border-b py-3 last:border-b-0">
       <Lamp state={lampOf[app.previewStatus]} size="xs" label={t(`preview.status.${app.previewStatus}`)} />
       <span className="grid min-w-0 gap-0.5">
-        <span className="truncate font-medium">{app.service}</span>
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2">
+          <span className="truncate font-medium">{name}</span>
+          {app.agentMode === "missing" && (
+            <span className="rounded-sm border px-1.5 text-xs text-muted">{t("list.agentMissing")}</span>
+          )}
+        </span>
         <span className="truncate text-xs text-muted">
           {last === null
             ? t("list.noConversation", { project: app.project })
@@ -160,7 +166,7 @@ function AppRow({ app }: { app: StudioApp }) {
         params={{ project: app.project, service: app.service }}
         search={{}}
         className={buttonClass("secondary", "sm")}
-        aria-label={t("list.openNamed", { name: app.service })}
+        aria-label={t("list.openNamed", { name })}
       >
         {t("list.open")}
       </Link>

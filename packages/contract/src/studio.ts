@@ -39,6 +39,13 @@ export const studioSettings = z.object({
    * accounts each project is shared with, instead of the password the server's gate shares.
    */
   previewSignIn: z.boolean().default(false),
+  /**
+   * Each project gets an agent server of its own, in an Opsifier project of its own with its preview:
+   * it sees its project's folder and nothing else, reaches its preview and no other service, and has
+   * no GitHub token. The service named in `agent` becomes the model each one is copied from: its
+   * image, its settings and its models, never its secrets.
+   */
+  agentPerProject: z.boolean().default(false),
 });
 export type StudioSettings = z.infer<typeof studioSettings>;
 
@@ -70,8 +77,20 @@ export const studioConversation = z.object({
   createdBy: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /**
+   * It ran on the shared agent server, and the project has had its own since: it can be read, and a
+   * new conversation goes on with the project's own agent.
+   */
+  readOnly: z.boolean(),
 });
 export type StudioConversation = z.infer<typeof studioConversation>;
+
+/**
+ * Which agent server works on a project: the one shared by every project, the project's own, or none
+ * yet, when each project gets its own and this one is still waiting for it.
+ */
+export const studioAgentMode = z.enum(["shared", "own", "missing"]);
+export type StudioAgentMode = z.infer<typeof studioAgentMode>;
 
 /** A service linked to the Studio: its live preview, and the folder the agent works in. */
 export const studioApp = z.object({
@@ -81,6 +100,9 @@ export const studioApp = z.object({
   workspaceDir: z.string(),
   previewUrl: z.string().nullable(),
   previewStatus: serviceStatus,
+  agentMode: studioAgentMode,
+  /** The state of the project's own agent server, when it has one. */
+  agentStatus: serviceStatus.nullable(),
   lastConversation: studioConversation.nullable(),
 });
 export type StudioApp = z.infer<typeof studioApp>;
@@ -91,9 +113,22 @@ export const studioOverview = z.object({
   agentConfigured: z.boolean(),
   /** Whether a GitHub project can be added: the Studio knows where projects go. */
   canAddProjects: z.boolean(),
+  /** Whether each project works with an agent server of its own. */
+  agentPerProject: z.boolean(),
   apps: z.array(studioApp),
 });
 export type StudioOverview = z.infer<typeof studioOverview>;
+
+/** Where a project and its preview are, once it has an agent server of its own. */
+export const studioIsolated = z.object({ project: z.string(), service: z.string() });
+export type StudioIsolated = z.infer<typeof studioIsolated>;
+
+/** POST /api/v1/studio/isolate: every project still on the shared agent server gets its own. */
+export const studioIsolateAll = z.object({
+  isolated: z.array(z.object({ from: studioIsolated, to: studioIsolated })),
+  failed: z.array(studioIsolated.extend({ message: z.string() })),
+});
+export type StudioIsolateAll = z.infer<typeof studioIsolateAll>;
 
 /** GET and PUT /api/v1/projects/{project}/services/{service}/studio */
 export const studioAppDetail = studioApp.extend({ conversations: z.array(studioConversation) });
@@ -137,8 +172,11 @@ export const setStudioMembersRequest = z.object({
 });
 export type SetStudioMembersRequest = z.infer<typeof setStudioMembersRequest>;
 
-/** POST .../studio/preview/start: whether a start was asked for; false when it runs already. */
-export const studioPreviewStart = z.object({ started: z.boolean() });
+/**
+ * POST .../studio/preview/start: whether a start was asked for; false when it runs already. A project
+ * with an agent server of its own has it started too.
+ */
+export const studioPreviewStart = z.object({ started: z.boolean(), agentStarted: z.boolean() });
 
 /** An image pasted into a message, sent inline. The panel's request size limit applies to the whole message. */
 export const studioImage = z

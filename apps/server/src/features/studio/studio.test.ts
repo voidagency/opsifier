@@ -235,16 +235,18 @@ describe("the Studio's settings", () => {
       enabled: false,
       agent: null,
       previewSignIn: false,
+      agentPerProject: false,
     });
 
     const saved = await enable();
 
     expect(saved.status).toBe(200);
-    expect(saved.body).toEqual({ enabled: true, agent: AGENT, previewSignIn: false });
+    expect(saved.body).toEqual({ enabled: true, agent: AGENT, previewSignIn: false, agentPerProject: false });
     expect((await api<StudioSettings>("/settings/studio")).body).toEqual({
       enabled: true,
       agent: AGENT,
       previewSignIn: false,
+      agentPerProject: false,
     });
     const actions = await api<ActionPage>("/actions?limit=20");
     expect(actions.body.items.some((action) => action.type === "studio.settings")).toBe(true);

@@ -27,6 +27,7 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { ApiError } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/forms";
 import {
@@ -42,7 +43,7 @@ import {
   toast,
 } from "../../ui";
 import { useCurrentUser } from "../auth/session";
-import { studioApi, studioAppQuery, studioKey, studioModelsQuery } from "./api";
+import { studioApi, studioAppName, studioAppQuery, studioKey, studioModelsQuery } from "./api";
 import { type ChatItem, changedFiles, type StudioActionEvent, toChatItems, userMessageCount } from "./chat";
 import { imageToDataUrl } from "./images";
 import { PreviewPane } from "./PreviewPane";
@@ -144,6 +145,42 @@ export function WorkspacePage() {
   );
 }
 
+/** How long a project's own agent server may take to start before a message gives up on it. */
+const AGENT_START_WAIT_MS = 180_000;
+const AGENT_START_RETRY_MS = 4_000;
+
+/** Thrown when the page that sent a message is gone before the agent server was ready. */
+class LeftPage extends Error {}
+
+/**
+ * Runs `request`, waiting while the project's own agent server starts: it answers that it is starting
+ * until it can take the request. Gives up once `alive` says the page is gone.
+ */
+async function whenAgentReady<T>(
+  request: () => Promise<T>,
+  onWaiting: (waiting: boolean) => void,
+  alive: () => boolean,
+): Promise<T> {
+  const until = Date.now() + AGENT_START_WAIT_MS;
+  for (;;) {
+    try {
+      const result = await request();
+      onWaiting(false);
+      return result;
+    } catch (reason) {
+      if (!(reason instanceof ApiError) || reason.code !== "studio_agent_starting" || Date.now() > until) {
+        onWaiting(false);
+        throw reason;
+      }
+      onWaiting(true);
+      await new Promise((resolve) => setTimeout(resolve, AGENT_START_RETRY_MS));
+      if (!alive()) {
+        throw new LeftPage();
+      }
+    }
+  }
+}
+
 function ConversationPane({
   app,
   conversationId,
@@ -166,7 +203,19 @@ function ConversationPane({
   const [stopping, setStopping] = useState(false);
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<PendingMessage | null>(null);
+  const [agentStarting, setAgentStarting] = useState(false);
+  // Whether this pane is still shown: a message waiting for the agent server stops once it is not.
+  const alive = useRef(true);
+  useEffect(
+    () => () => {
+      alive.current = false;
+    },
+    [],
+  );
   const admin = useCurrentUser()?.role === "admin";
+  const name = studioAppName(app);
+  // A conversation that ran on the shared agent server, in a project that has its own now: read only.
+  const readOnly = app.conversations.find((one) => one.id === conversationId)?.readOnly === true;
   const [sharing, setSharing] = useState(false);
   const models = useQuery({ ...studioModelsQuery, enabled: conversationId === null });
   const [chosenModel, setChosenModel] = useState<string | null>(null);
@@ -201,22 +250,37 @@ function ConversationPane({
     });
     try {
       if (conversationId === null) {
-        const started = await studioApi.start(app.project, app.service, {
-          text: full,
-          images,
-          ...(chosenModel === null ? {} : { model: chosenModel }),
-        });
+        const started = await whenAgentReady(
+          () =>
+            studioApi.start(app.project, app.service, {
+              text: full,
+              images,
+              ...(chosenModel === null ? {} : { model: chosenModel }),
+            }),
+          setAgentStarting,
+          () => alive.current,
+        );
         await queryClient.invalidateQueries({ queryKey: [...studioKey, "apps", app.project, app.service] });
-        // The message follows into the conversation it started.
+        // The message follows into the conversation it started, unless the page was left meanwhile.
+        if (!alive.current) {
+          return false;
+        }
         setPending((current) => (current === null ? null : { ...current, conversationId: started.id }));
         onSelect(started.id);
       } else {
-        await studioApi.send(app.project, app.service, conversationId, { text: full, images });
+        await whenAgentReady(
+          () => studioApi.send(app.project, app.service, conversationId, { text: full, images }),
+          setAgentStarting,
+          () => alive.current,
+        );
         conversation.refresh();
       }
       onClearElement();
       return true;
     } catch (reason) {
+      if (reason instanceof LeftPage) {
+        return false;
+      }
       setPending(null);
       toast.error(errorMessage(reason, t));
       return false;
@@ -265,7 +329,7 @@ function ConversationPane({
         <Link to="/studio" className={buttonClass("ghost", "icon-sm")} aria-label={t("back")}>
           <ArrowLeft aria-hidden="true" className="size-4" />
         </Link>
-        <h1 className="min-w-0 flex-1 truncate font-medium">{app.service}</h1>
+        <h1 className="min-w-0 flex-1 truncate font-medium">{name}</h1>
         {options.length > 0 && conversationId !== null && (
           <Select
             aria-label={t("conversation.pick")}
@@ -334,13 +398,24 @@ function ConversationPane({
         pending={pending !== null && pending.conversationId === conversationId ? pending : null}
       />
 
-      {conversation.error !== null && (
-        <p role="alert" className="border-t px-3 py-2 text-xs text-bad wrap-anywhere">
-          {errorMessage(conversation.error, t)}
+      {conversation.error !== null &&
+        (conversation.error instanceof ApiError && conversation.error.code === "studio_agent_asleep" ? (
+          <p role="status" className="border-t px-3 py-2 text-xs text-muted">
+            {t("conversation.agentAsleep")}
+          </p>
+        ) : (
+          <p role="alert" className="border-t px-3 py-2 text-xs text-bad wrap-anywhere">
+            {errorMessage(conversation.error, t)}
+          </p>
+        ))}
+
+      {agentStarting && (
+        <p role="status" className="border-t px-3 py-2 text-xs text-muted">
+          {t("conversation.agentStarting")}
         </p>
       )}
 
-      {suggestions.length > 0 && (
+      {!readOnly && suggestions.length > 0 && (
         <ul aria-label={t("suggestions.label")} className="flex flex-wrap gap-1.5 px-3 pt-2.5">
           {suggestions.map((suggestion) => (
             <li key={suggestion} className="min-w-0 max-w-full">
@@ -362,16 +437,30 @@ function ConversationPane({
         <ShareDialog project={app.project} service={app.service} onClose={() => setSharing(false)} />
       )}
 
-      <Composer
-        firstMessage={conversationId === null}
-        sending={sending}
-        busy={busy}
-        stopping={stopping}
-        element={element}
-        onClearElement={onClearElement}
-        onSend={send}
-        onStop={stop}
-      />
+      {readOnly ? (
+        <div className="grid gap-2 border-t px-3 py-3 text-sm">
+          <p className="text-muted">{t("conversation.readOnly")}</p>
+          <Link
+            to="/studio/$project/$service"
+            params={{ project: app.project, service: app.service }}
+            search={{ c: "new" }}
+            className={cn(buttonClass("primary", "sm"), "justify-self-start")}
+          >
+            {t("conversation.readOnlyAction")}
+          </Link>
+        </div>
+      ) : (
+        <Composer
+          firstMessage={conversationId === null}
+          sending={sending}
+          busy={busy}
+          stopping={stopping}
+          element={element}
+          onClearElement={onClearElement}
+          onSend={send}
+          onStop={stop}
+        />
+      )}
     </section>
   );
 }
@@ -469,7 +558,9 @@ function EventList({
         <div ref={content} className="grid grid-cols-1 gap-4">
           {isEmpty ? (
             <div className="grid gap-2 py-6 text-sm text-muted">
-              <p className="font-medium text-ink">{t("conversation.emptyTitle", { name: app.service })}</p>
+              <p className="font-medium text-ink">
+                {t("conversation.emptyTitle", { name: studioAppName(app) })}
+              </p>
               <p>{t("conversation.emptyDescription")}</p>
             </div>
           ) : conversationId !== null && !loaded && pending === null ? (

@@ -10,6 +10,8 @@ import {
   studioConversationPath,
   studioEventPage,
   studioEventsQuery,
+  studioIsolateAll,
+  studioIsolated,
   studioMembers,
   studioMessageRequest,
   studioModels,
@@ -25,7 +27,10 @@ import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
 import { requestAccess } from "../access/guard";
 import { getPanelDomainSettings } from "../server/settings";
 import { needsTwoFactorSetup } from "../two-factor-policy/service";
+import { GIT_RELAY_PREFIX, startIdleAgentSweeper } from "./agents";
+import { isolateAllStudioApps, isolateStudioApp } from "./isolate";
 import { addStudioProject } from "./projects";
+import { isRelayPath, relayGit } from "./relay";
 import {
   checkStudioAgent,
   getStudioApp,
@@ -173,6 +178,41 @@ const setMembersRoute = createRoute({
     401: denied,
     403: refused,
     404: missing,
+  },
+});
+
+const isolateRoute = createRoute({
+  method: "post",
+  path: `${APP}/isolate`,
+  tags,
+  description:
+    "Gives the project an agent server of its own: an Opsifier project of its own, `studio-<folder>`, with a preview on the same folder and an agent server copied from the Studio's, which sees that folder only and reaches GitHub through the panel. " +
+    "The project's link, conversations and accounts move to the new preview; the old preview stays where it is. Nothing is deployed until the project is opened.",
+  request: { params: servicePath },
+  responses: {
+    200: jsonResponse(studioIsolated, "Where the project's preview is now."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    404: missing,
+    409: errorResponse(
+      "Each project does not get its own agent server, the project has one already, or its folder is not a GitHub copy inside the projects folder.",
+    ),
+    503: unreachable,
+  },
+});
+
+const isolateAllRoute = createRoute({
+  method: "post",
+  path: "/api/v1/studio/isolate",
+  tags,
+  description:
+    "Gives every project still on the shared agent server an agent server of its own, one after the other.",
+  responses: {
+    200: jsonResponse(studioIsolateAll, "The projects moved, and those that could not be."),
+    401: denied,
+    403: refused,
+    409: blocked,
   },
 });
 
@@ -335,11 +375,27 @@ const EXPIRED = signInPage(
   "Rechargez la page de l'aperçu pour vous connecter de nouveau. Reload the preview to sign in again.",
 );
 
+let stopSweeper: (() => void) | undefined;
+
 export const feature: Feature = {
   // The hop of a preview's sign-in sends someone signed out to the panel's page that signs them in.
   publicPaths: [PREVIEW_SIGNIN_HOP],
+  // Each project's agent server signs in to its git relay with its own token, and pushes stream.
+  isPublicPath: isRelayPath,
+  readsOwnBearer: isRelayPath,
+  readsOwnBody: isRelayPath,
+  ready(deps) {
+    stopSweeper = startIdleAgentSweeper(deps);
+  },
+  shutdown() {
+    stopSweeper?.();
+    stopSweeper = undefined;
+  },
   register(app, deps) {
     const signIn = new PreviewSignIn(deps.secrets, deps.now);
+
+    // From a project's own agent server: its git, passed to its repository with the panel's token.
+    app.on(["GET", "POST"], `${GIT_RELAY_PREFIX}/*`, (c) => relayGit(deps, c.req.raw, c.req.path));
 
     // On the panel, from a browser: a code for a preview the person signed in may open, and back to it.
     app.get(PREVIEW_SIGNIN_HOP, (c) => {
@@ -471,6 +527,33 @@ export const feature: Feature = {
       ),
     );
 
+    app.openapi(isolateRoute, async (c) => {
+      const principal = requirePrincipal(c);
+      return c.json(
+        await isolateStudioApp(
+          deps,
+          target(c.req.valid("param")),
+          requestAccess(deps, c),
+          actorOf(principal),
+          principal.user.role === "admin",
+        ),
+        200,
+      );
+    });
+
+    app.openapi(isolateAllRoute, async (c) => {
+      const principal = requireSessionPrincipal(c);
+      return c.json(
+        await isolateAllStudioApps(
+          deps,
+          requestAccess(deps, c),
+          actorOf(principal),
+          principal.user.role === "admin",
+        ),
+        200,
+      );
+    });
+
     app.openapi(startPreviewRoute, async (c) =>
       c.json(await startStudioPreview(deps, target(c.req.valid("param")), actorOf(requirePrincipal(c))), 200),
     );
@@ -526,7 +609,13 @@ export const feature: Feature = {
     app.openapi(eventsRoute, async (c) => {
       const params = c.req.valid("param");
       return c.json(
-        await getStudioEvents(deps, target(params), params.conversation, c.req.valid("query").after),
+        await getStudioEvents(
+          deps,
+          target(params),
+          params.conversation,
+          c.req.valid("query").after,
+          actorOf(requirePrincipal(c)),
+        ),
         200,
       );
     });
@@ -534,7 +623,13 @@ export const feature: Feature = {
     app.openapi(messageRoute, async (c) => {
       const params = c.req.valid("param");
       return c.json(
-        await sendStudioMessage(deps, target(params), params.conversation, c.req.valid("json")),
+        await sendStudioMessage(
+          deps,
+          target(params),
+          params.conversation,
+          c.req.valid("json"),
+          actorOf(requirePrincipal(c)),
+        ),
         200,
       );
     });

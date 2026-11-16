@@ -72,11 +72,33 @@ With **Previews behind the panel's sign-in** on, in the Studio's settings, each 
 - The agent reaches the preview inside the server, by its service's name, which the sign-in does not stand in front of.
 - For the preview to open inside the Studio, the panel and the previews must share a domain, as `panel.example.com` and the previews' `*.example.com` do: a browser only sends a frame its cookies within one site.
 
+## One agent per project
+
+With **One agent per project** on, in the Studio's settings, each project gets an agent server of its own:
+
+- **Its own Opsifier project.** A project added to the Studio goes in `studio-<folder>`, with two services, `preview` and `agent`. Their network keeps them away from every other project's services: the agent reaches its preview, at `http://preview`, and nothing else on the server.
+- **Its own folder.** The agent server mounts the project's folder, and no other folder of the server.
+- **No GitHub token.** The agent's `git pull` and `git push` go to the panel, at `/api/v1/studio/git/<project>.git`, with a token that opens that address only. The panel passes them on to the project's repository with the `GITHUB_TOKEN` secret of the agent server named in the settings, which never leaves it. Each push is recorded as a `studio.push` Action.
+- **A copy of the model.** The agent server named in the settings becomes the model. Each project's is built from the same image or Dockerfile, with the same deployment settings, fresh volumes of the same names, 4 GB of memory and 2 CPUs. It gets none of the model's variables, which may hold secrets, and makes its own key in its key file. The model's settings, model profiles and agent profile, with the key their stored keys are encrypted with, are copied in before each new conversation whenever they have changed, and the first copy restarts the new agent server once so that it reads that key; the model's secrets are never copied. Everything in those settings goes to every project, MCP servers and their keys included: keep there only what every project may use. A project's agent can read a model profile's API key, since it calls the model with it.
+- **Up while someone works on it.** Opening the project, or sending a message, starts its agent server and its preview, deploying them the first time; reading a conversation does not. An agent server nobody has sent anything to for 45 minutes, with no conversation at work, is stopped. A first deployment that failed is not tried again by the Studio: an administrator deploys the service again once its logs say why.
+
+Turning it on is refused until the model can be copied: its settings in a volume (the one that holds its key file, or the one at `~/.openhands`), its key in a key file, an image or a Dockerfile for its source, a projects folder, and an address for the panel, which each agent reaches it at.
+
+### Moving the projects already in the Studio
+
+The projects linked before stay on the shared agent server and wait for their own: a new conversation on one of them is refused until it has it. **Give each project its own agent**, in the Studio's settings, moves each one:
+
+1. an Opsifier project of its own, with a preview on the same folder (the Studio's own preview for a Vite project, a copy of the old one otherwise) and its agent server;
+2. the project's link, conversations and accounts, which move to the new preview;
+3. nothing deployed yet: both services start the first time the project is opened.
+
+The conversations held by the shared agent server are paused, and can still be read, not continued: a new conversation goes on with the project's own agent. The old preview is stopped and stays where it was, out of the Studio, for an administrator to remove: still running, it would show the project's folder without the Studio's sign-in. A project whose folder is not under the projects folder, is not a copy of a GitHub repository, or holds a credential in its git settings (a user or token in a remote's address, an extra header), cannot move, and the Studio says why.
+
 ## How it works
 
 - **The panel reaches the agent server from inside its container.** For each request it runs a short Python script in the agent server's container, which calls the server on 127.0.0.1 and returns its answer. The agent server needs no domain, and it shares no network with the panel.
 - **The panel never holds the agent server's key.** The script reads it inside the container, from `SESSION_API_KEY`, `OH_SESSION_API_KEYS_0` or the key file. A conversation needs the key to look up the agent server's own secrets, such as a GitHub token: the panel sends a stand-in, and the script puts the key in its place.
-- **A conversation starts the way the agent server's own interface starts one:** with its active agent profile and its instructions, the project's folder as the workspace, and its secrets looked up by name. The Studio adds what the agent needs to know about the project: its folder, the preview's addresses, from the agent's container and for the user, never to start a development server of its own, to pull before a change and push once it works, with the `GITHUB_TOKEN` secret, and to check each change on screen, at a phone's and at a desktop's width, before it answers.
+- **A conversation starts the way the agent server's own interface starts one:** with its active agent profile and its instructions, the project's folder as the workspace, and its secrets looked up by name. The Studio adds what the agent needs to know about the project: its folder, the preview's addresses, from the agent's container and for the user, never to start a development server of its own, to pull before a change and push once it works, with the `GITHUB_TOKEN` secret or, with one agent per project, through the panel, and to check each change on screen, at a phone's and at a desktop's width, before it answers.
 - **The agent server keeps what was said.** The panel keeps which conversations belong to which project, and who started each. Taking a project out of the Studio, or deleting its service, forgets them in the panel; the agent server keeps them.
 - **Opening a project starts its preview** when it is stopped, as opening a project in a hosted builder would.
 - **Each conversation says which model it works with**, and whether what it is sent stays on private addresses, such as a model served on your own machines, or goes to an outside provider. When the agent server has several model profiles, a new conversation can start with any of them.
@@ -123,7 +145,8 @@ The agent ends each answer with two or three requests you might send next, which
 
 - On a server whose role asks for a password before every site, and with the previews' sign-in off, a browser asks for that password again for each preview's address, and it cannot ask inside the Studio's frame. Open the preview once in its own tab with **Open the preview in a new tab**, sign in, and reload the Studio, or put the previews behind the panel's sign-in.
 - The agent's hidden reasoning, the output of its commands and its screenshots stay in the agent server: the Studio shows what it writes, its steps and its plan.
+- With one agent per project, each agent server that runs takes about 700 MB of memory at rest, and its first deployment builds the model's image again, from the build cache when the server has one.
 
 ## API
 
-`GET` and `PUT /api/v1/settings/studio` and `POST /api/v1/settings/studio/check` for the settings, `GET /api/v1/studio` for the linked projects, `POST /api/v1/studio/projects` to add a GitHub project, `GET /api/v1/studio/preview-signin` for the hop of a preview's sign-in, and under `/api/v1/projects/{project}/services/{service}/studio`: the link (`GET`, `PUT`, `DELETE`), `GET` and `PUT .../members` for who it is shared with, `POST .../preview/start`, `POST .../conversations` to start one, and `GET .../conversations/{conversation}/events`, `POST .../messages` and `POST .../stop` for a conversation. See [API.md](API.md).
+`GET` and `PUT /api/v1/settings/studio` and `POST /api/v1/settings/studio/check` for the settings, `GET /api/v1/studio` for the linked projects, `POST /api/v1/studio/projects` to add a GitHub project, `POST /api/v1/studio/isolate` to give every project still on the shared agent server its own, `GET /api/v1/studio/preview-signin` for the hop of a preview's sign-in, `/api/v1/studio/git/{project}.git` for the git of each project's own agent server, and under `/api/v1/projects/{project}/services/{service}/studio`: the link (`GET`, `PUT`, `DELETE`), `GET` and `PUT .../members` for who it is shared with, `POST .../isolate` to give it an agent server of its own, `POST .../preview/start`, `POST .../conversations` to start one, and `GET .../conversations/{conversation}/events`, `POST .../messages` and `POST .../stop` for a conversation. See [API.md](API.md).

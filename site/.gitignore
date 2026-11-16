@@ -2,3 +2,5 @@ node_modules/
 dist/
 .astro/
 .shots/
+# Written from ../docs by scripts/sync-docs.mjs before each build.
+src/content/docs/docs/

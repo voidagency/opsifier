@@ -24,7 +24,8 @@
     "openNamed": "Open {{name}} in the Studio",
     "emptyNoFolder": "Set the projects folder in the Studio's settings to add projects from GitHub, or link a service that already shows a project's preview.",
     "memberEmptyTitle": "No project shared with you yet",
-    "memberEmptyDescription": "Once an administrator shares a project with you, it shows here: open it to talk to the agent and see it live."
+    "memberEmptyDescription": "Once an administrator shares a project with you, it shows here: open it to talk to the agent and see it live.",
+    "agentMissing": "Waiting for its own agent"
   },
   "link": {
     "action": "Link a project",
@@ -54,7 +55,11 @@
     "you": "You",
     "agent": "Agent",
     "sending": "Sending…",
-    "latest": "Latest messages"
+    "latest": "Latest messages",
+    "readOnly": "This conversation happened with the agent shared by every project. The project has its own agent now: start a new conversation to go on.",
+    "readOnlyAction": "New conversation",
+    "agentStarting": "The project's agent is starting…",
+    "agentAsleep": "The project's agent is resting. Send a message, or open the project again, to wake it."
   },
   "composer": {
     "label": "Message to the agent",
@@ -123,7 +128,16 @@
     "projectsDir": "Projects folder",
     "projectsDirHint": "Where projects go in the agent server's container, such as /projects. It must be a folder of the server mounted in that service, from its Storage tab: each project added is copied there, and its preview mounts the same folder.",
     "previewSignIn": "Previews behind the panel's sign-in",
-    "previewSignInHint": "Each preview asks for the panel's own account instead of the password the server shares with every site: the server's administrators and the accounts its project is shared with get in, nobody else. The panel and the previews should share a domain, as panel.example.com and the previews' *.example.com do, for the preview to open inside the Studio."
+    "previewSignInHint": "Each preview asks for the panel's own account instead of the password the server shares with every site: the server's administrators and the accounts its project is shared with get in, nobody else. The panel and the previews should share a domain, as panel.example.com and the previews' *.example.com do, for the preview to open inside the Studio.",
+    "agentPerProject": "One agent per project",
+    "agentPerProjectHint": "Each project gets its own agent server, in an Opsifier project of its own with its preview: it sees only its project's folder, reaches no other service, and holds no GitHub token, since the panel passes its git to its repository. It starts when the project is opened and stops when nobody uses it. The service above becomes the model each one is copied from: its image, settings and models, never its secrets.",
+    "isolateTitle": "Projects still on the shared agent",
+    "isolateDescription_one": "{{count}} project still works with the shared agent, and waits for its own. Its conversations so far stay readable, and its preview so far is stopped and kept where it is, for you to remove.",
+    "isolateDescription_other": "{{count}} projects still work with the shared agent, and wait for their own. Their conversations so far stay readable, and their previews so far are stopped and kept where they are, for you to remove.",
+    "isolateAction": "Give each project its own agent",
+    "isolateDone_one": "{{count}} project has its own agent now.",
+    "isolateDone_other": "{{count}} projects have their own agent now.",
+    "isolateFailed": "{{project}}/{{service}}: {{message}}"
   },
   "actions": {
     "command": "Ran",

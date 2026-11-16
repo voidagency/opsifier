@@ -2,3 +2,4 @@ User-agent: *
 Allow: /
 
 Sitemap: https://opsifier.com/sitemap.xml
+Sitemap: https://opsifier.com/sitemap-index.xml

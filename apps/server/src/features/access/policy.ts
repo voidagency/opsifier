@@ -177,6 +177,10 @@ export function requirementFor(method: string, path: string): Requirement {
       if (second === "preview-signin" && isSafeMethod(method)) {
         return OPEN;
       }
+      // Each project's agent server reaches its git relay with a token of its own, never an account.
+      if (second === "git") {
+        return OWN_CREDENTIAL;
+      }
       return (second === undefined || second === "models") && isSafeMethod(method) ? OPEN : ADMIN;
     case "projects":
       if (second === undefined) {

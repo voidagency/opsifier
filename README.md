@@ -104,8 +104,12 @@ A server only calls home if you ask for an address. That is the request, then a 
 
 ## Documentation
 
+The guides below are also published, with search, at [opsifier.com/docs](https://opsifier.com/docs/).
+
 - [Install on a server](docs/INSTALL.md): requirements, the installer and its options, and the first steps after it.
 - [Deploy your first app](docs/FIRST-APP.md): a project, an app from an image or a repository, its domain, and going back to an earlier version.
+- [Run a database](docs/DATABASES.md): Postgres, MySQL, MariaDB, MongoDB and Redis, their credentials, a public port and new versions.
+- [Domains and HTTPS](docs/DOMAINS.md): default addresses, your own domains, certificates, paths and wildcards.
 - [Back up databases and whole servers](docs/BACKUPS.md): destinations, schedules, retention, downloads, restores, and rebuilding a server from its backup.
 - [Builders](docs/BUILDERS.md): how source code becomes an image.
 - [Command line](docs/CLI.md) and [MCP server](docs/MCP.md): the panel from a terminal, a script or an AI agent.

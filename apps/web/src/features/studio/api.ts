@@ -2,12 +2,15 @@ import {
   type AddStudioProjectRequest,
   type LinkStudioAppRequest,
   type SetStudioMembersRequest,
+  type StudioApp,
   type StudioMessageRequest,
   type StudioSettings,
   studioAppDetail,
   studioCheck,
   studioConversation,
   studioEventPage,
+  studioIsolateAll,
+  studioIsolated,
   studioMembers,
   studioModels,
   studioOverview,
@@ -19,6 +22,10 @@ import { queryOptions } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 
 export const studioKey = ["studio"] as const;
+
+/** A Studio project's name: its folder's, the same wherever its preview lives. */
+export const studioAppName = (app: Pick<StudioApp, "workspaceDir" | "service">): string =>
+  app.workspaceDir.split("/").filter(Boolean).at(-1) ?? app.service;
 
 const appPath = (project: string, service: string) => `/projects/${project}/services/${service}/studio`;
 const conversationPath = (project: string, service: string, id: string) =>
@@ -64,6 +71,9 @@ export const studioApi = {
     api.post("/studio/projects", { body, schema: studioAppDetail }),
   setMembers: (project: string, service: string, body: SetStudioMembersRequest) =>
     api.put(`${appPath(project, service)}/members`, { body, schema: studioMembers }),
+  isolate: (project: string, service: string) =>
+    api.post(`${appPath(project, service)}/isolate`, { schema: studioIsolated }),
+  isolateAll: () => api.post("/studio/isolate", { schema: studioIsolateAll }),
   startPreview: (project: string, service: string) =>
     api.post(`${appPath(project, service)}/preview/start`, { schema: studioPreviewStart }),
   link: (project: string, service: string, body: LinkStudioAppRequest) =>
