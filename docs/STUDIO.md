@@ -121,8 +121,7 @@ const loader = `\n{ const script = document.createElement("script"); script.src 
 export const studioInspector = () => ({
   name: "opsifier-studio-inspector",
   apply: "serve",
-  transform: (code, module) =>
-    /vite\/dist\/client\/client\.mjs/.test(module) ? code + loader : undefined,
+  transform: (code, module) => (/vite\/dist\/client\/client\.mjs/.test(module) ? code + loader : undefined),
 });
 ```
 

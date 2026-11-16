@@ -833,7 +833,8 @@ describe("a Studio project", () => {
           body: {
             error: {
               code: "studio_deploy_failed",
-              message: "lovable/cd-studio-preview could not be deployed: an administrator looks at its last deployment.",
+              message:
+                "lovable/cd-studio-preview could not be deployed: an administrator looks at its last deployment.",
             },
           },
         },
