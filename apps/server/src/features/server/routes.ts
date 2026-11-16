@@ -48,6 +48,7 @@ import {
 import { listSwarmNodes } from "./nodes";
 import {
   closeProxyDashboard,
+  enqueueProxyMove,
   enqueueProxyRestart,
   getCustomConfig,
   getDashboardStatus,
@@ -334,6 +335,7 @@ export const feature: Feature = {
     // Features boot in name order, and on a first boot nothing has worked out the address yet.
     await ensureServerIp(deps);
     await writePanelRoutes(deps);
+    await enqueueProxyMove(deps);
     concludeRestarts(deps);
     await finishInterruptedReboots(deps);
     if (deps.config.environment !== "test") {

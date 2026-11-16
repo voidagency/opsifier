@@ -25,7 +25,7 @@ The installer:
 1. Checks the system, the processor, the memory and the ports, and stops before its first change if something is missing.
 2. Adds Docker when it is not there, and starts it.
 3. Downloads the panel's image, `ghcr.io/voidagency/opsifier`, and runs its `setup` command with the Docker socket and `/var/lib/opsifier` mounted.
-4. Initializes Swarm, creates the `opsifier` overlay network, and starts two Swarm services: `opsifier`, the panel, published on port 3000, and `opsifier-traefik`, the proxy, published on ports 80 and 443.
+4. Initializes Swarm, creates the `opsifier` overlay network, and starts the panel as the Swarm service `opsifier`, published on port 3000, and the proxy as the container `opsifier-traefik`, published on ports 80 and 443. The proxy joins each project's network while it runs, so creating or removing a project never interrupts the sites already served.
 
 It ends like this:
 

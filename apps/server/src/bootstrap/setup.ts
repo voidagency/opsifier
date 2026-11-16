@@ -18,6 +18,7 @@ import {
   DockerDriverError,
   engineProblems,
   type NetworkInfo,
+  type PlainContainerSpec,
   type ServiceInfo,
   type SwarmInfo,
   type SwarmServiceSpec,
@@ -27,7 +28,16 @@ import { addressChallengeEnv } from "../features/opsifier-address/proxy-env";
 import type { AddressForProxy, SetupAddress } from "./address";
 import { LOCK_FILE, readRecord, SETUP_RUN_LABEL, SetupLedger } from "./ledger";
 import {
+  createProxy,
+  moveProxyOffSwarm,
+  PROXY_CONTAINER,
+  type ProxyTiming,
+  proxySpecOf,
+  replaceProxy,
+} from "./proxy-container";
+import {
   converge,
+  convergeProxy,
   HTTP_PORT,
   HTTPS_PORT,
   MANAGED_LABEL,
@@ -37,7 +47,7 @@ import {
   PROXY_SWARM_SERVICE,
   panelEnv,
   panelServiceSpec,
-  proxyServiceSpec,
+  proxyContainerSpec,
   SHARED_NETWORK,
 } from "./specs";
 
@@ -69,6 +79,8 @@ export interface SetupTiming {
   lockStaleMs: number;
   /** The most the address step may take, whatever it is doing. An install never waits longer on it. */
   addressMs: number;
+  /** How long a new proxy has to stay up before setup counts on it. */
+  proxySettleMs: number;
 }
 
 const DEFAULT_TIMING: SetupTiming = {
@@ -77,6 +89,7 @@ const DEFAULT_TIMING: SetupTiming = {
   tokenWaitMs: 30_000,
   lockStaleMs: 2 * 60_000,
   addressMs: 12_000,
+  proxySettleMs: 5_000,
 };
 
 export interface SetupDeps {
@@ -150,6 +163,12 @@ async function assertNothingInTheWay(options: SetupOptions, deps: SetupDeps): Pr
         `A service named "${name}" already exists and was not created by Opsifier. Remove it, or pass --force to replace it. Nothing has been changed.`,
       );
     }
+  }
+  const container = await deps.docker.inspectPlainContainer(PROXY_CONTAINER);
+  if (container !== null && container.labels[MANAGED_LABEL] !== "true") {
+    throw new SetupError(
+      `A container named "${PROXY_CONTAINER}" already exists and was not created by Opsifier. Remove it, or pass --force to replace it. Nothing has been changed.`,
+    );
   }
   const network = await deps.docker.inspectNetwork(SHARED_NETWORK);
   if (network !== null && (network.driver !== "overlay" || !network.attachable)) {
@@ -350,6 +369,101 @@ async function ensureService(
   changed.push(`updated ${name}`);
 }
 
+const proxyTiming = (deps: Pick<SetupDeps, "timing">): Partial<ProxyTiming> => {
+  const timing = { ...DEFAULT_TIMING, ...deps.timing };
+  return { pollMs: timing.pollMs, freeMs: timing.startupMs, settleMs: timing.proxySettleMs };
+};
+
+/**
+ * Brings the proxy to where it needs to be: a container of ours, on the shared network, with its folder,
+ * ports and the settings setup gives it. One that runs as the Swarm service of earlier versions moves to
+ * a container first. A proxy of ours is only replaced when something it needs is missing, so a second
+ * run restarts nothing; anything else named like it needs an explicit --force.
+ */
+async function ensureProxy(
+  wanted: PlainContainerSpec,
+  env: Record<string, string> | undefined,
+  network: NetworkInfo,
+  deps: SetupDeps,
+  changed: string[],
+  ledger: SetupLedger,
+): Promise<void> {
+  const legacy = await deps.docker.inspectService(PROXY_SWARM_SERVICE);
+  if (legacy !== null && !isOwned(legacy)) {
+    deps.log(`Replacing the service "${PROXY_SWARM_SERVICE}" (--force)`);
+    await deps.docker.removeService(PROXY_SWARM_SERVICE);
+    await waitForGone(PROXY_SWARM_SERVICE, deps);
+  } else if (legacy !== null) {
+    deps.log("Moving the proxy from its Swarm service to a container");
+    await moveProxyOffSwarm(deps.docker, deps.log, proxyTiming(deps));
+    changed.push(`moved ${PROXY_CONTAINER} out of Swarm`);
+  }
+
+  let existing = await deps.docker.inspectPlainContainer(PROXY_CONTAINER);
+  if (existing !== null && existing.labels[MANAGED_LABEL] !== "true") {
+    deps.log(`Replacing the container "${PROXY_CONTAINER}" (--force)`);
+    await deps.docker.stopContainer(PROXY_CONTAINER);
+    await deps.docker.removeContainer(existing.id);
+    existing = null;
+  }
+
+  if (existing === null) {
+    deps.log(`Creating the container "${PROXY_CONTAINER}"`);
+    const entry = ledger.intend({ kind: "container", name: PROXY_CONTAINER, id: null });
+    await createProxy(
+      deps.docker,
+      { ...wanted, labels: { ...wanted.labels, [SETUP_RUN_LABEL]: ledger.runId } },
+      deps.log,
+      proxyTiming(deps),
+    );
+    const created = await deps.docker.inspectPlainContainer(PROXY_CONTAINER);
+    if (created !== null) {
+      ledger.made(entry, { id: created.id });
+    }
+    changed.push(`created ${PROXY_CONTAINER}`);
+    return;
+  }
+
+  const current = proxySpecOf(existing);
+  const onShared = existing.networks.some((on) => on.id === network.id || on.name === network.name);
+  const converged = convergeProxy(
+    { ...current, networks: onShared ? current.networks : [...current.networks, network.name] },
+    wanted,
+    env,
+  );
+  if (JSON.stringify(converged) !== JSON.stringify(current)) {
+    deps.log(`Updating the container "${PROXY_CONTAINER}"`);
+    await replaceProxy(deps.docker, () => converged, deps.log, proxyTiming(deps));
+    changed.push(`updated ${PROXY_CONTAINER}`);
+    return;
+  }
+  if (existing.state !== "running") {
+    deps.log(`Starting the container "${PROXY_CONTAINER}"`);
+    await deps.docker.startContainer(PROXY_CONTAINER);
+    return;
+  }
+  deps.log(`The container "${PROXY_CONTAINER}" is already configured`);
+}
+
+/** The proxy is running once its container is: Docker's restart policy keeps it so. */
+async function waitForProxy(deps: SetupDeps): Promise<void> {
+  const timing = { ...DEFAULT_TIMING, ...deps.timing };
+  const deadline = Date.now() + timing.startupMs;
+  let last = "";
+  while (Date.now() < deadline) {
+    const proxy = await deps.docker.inspectPlainContainer(PROXY_CONTAINER).catch(() => null);
+    if (proxy?.state === "running") {
+      return;
+    }
+    last =
+      proxy === null
+        ? "missing"
+        : `${proxy.state}${proxy.exitCode === null ? "" : `, exit code ${proxy.exitCode}`}`;
+    await sleep(timing.pollMs);
+  }
+  throw new SetupError(`The proxy did not start in time. Last state: ${last || "unknown"}.`);
+}
+
 export async function waitForGone(name: string, deps: Pick<SetupDeps, "docker" | "timing">): Promise<void> {
   const timing = { ...DEFAULT_TIMING, ...deps.timing };
   const deadline = Date.now() + timing.startupMs;
@@ -480,15 +594,18 @@ export async function runSetup(options: SetupOptions, deps: SetupDeps): Promise<
 
     await assertDockerUsable(deps);
     const swarmBefore = await deps.docker.swarmInfo();
-    let proxyBefore: ServiceInfo | null = null;
+    let proxyBefore = false;
     let panelBefore: ServiceInfo | null = null;
     if (swarmBefore.state === "active" && swarmBefore.isManager) {
       await assertNothingInTheWay(options, deps);
-      [proxyBefore, panelBefore] = await Promise.all([
+      const [legacyProxy, proxyContainer, panel] = await Promise.all([
         deps.docker.inspectService(PROXY_SWARM_SERVICE),
+        deps.docker.inspectPlainContainer(PROXY_CONTAINER),
         deps.docker.inspectService(PANEL_SWARM_SERVICE),
       ]);
-      await assertPortsAvailable(deps, proxyBefore !== null, panelBefore !== null);
+      proxyBefore = legacyProxy !== null || proxyContainer?.state === "running";
+      panelBefore = panel;
+      await assertPortsAvailable(deps, proxyBefore, panelBefore !== null);
     }
 
     ledger = SetupLedger.begin(deps.dataDir, options.image);
@@ -507,11 +624,11 @@ export async function runSetup(options: SetupOptions, deps: SetupDeps): Promise<
 
     ledger.phase("proxy");
     await pullProxyImage(deps, ledger);
-    await ensureService(
-      proxyServiceSpec({
+    await ensureProxy(
+      proxyContainerSpec({
         dataDir: deps.dataDir,
         image: PROXY_IMAGE,
-        networkId: network.id,
+        networkId: network.name,
         addressChallenge: address?.challenge,
       }),
       address === null ? undefined : addressChallengeEnv(`${deps.dataDir}/traefik`, null, address.challenge),
@@ -534,7 +651,7 @@ export async function runSetup(options: SetupOptions, deps: SetupDeps): Promise<
 
     ledger.phase("waiting");
     deps.log("Waiting for the proxy and the panel to start");
-    await waitForRunning(PROXY_SWARM_SERVICE, deps);
+    await waitForProxy(deps);
     await waitForRunning(PANEL_SWARM_SERVICE, deps);
     const token = existsSync(deps.setupTokenFile) || panelBefore === null ? await waitForToken(deps) : null;
 

@@ -1,13 +1,22 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { isDatabaseEngine } from "@opsifier/contract";
+import {
+  connectProxyNow,
+  disconnectProxyNow,
+  LEGACY_PROXY_SERVICE,
+  serializeProxyChange,
+} from "../../bootstrap/proxy-container";
 import type { AppDeps } from "../../core/context";
 import { type DockerDriver, DockerDriverError, type NetworkInfo, type ServiceInfo } from "../../core/docker";
 import { conflict } from "../../core/errors";
 import { projectNetworkName, projectProxyNetworkName, SHARED_NETWORK } from "../services/compile";
 import { listProjects } from "./repo";
 
-/** The Swarm service the installer creates to run Traefik. */
-export const PROXY_SERVICE = "opsifier-traefik";
+/**
+ * The Swarm service earlier versions ran Traefik as. The panel moves it to a plain container when it
+ * starts; until that has worked, it changes the service's networks as before.
+ */
+export const PROXY_SERVICE = LEGACY_PROXY_SERVICE;
 
 /** Said by every refusal at a project's boundary, because it is the part someone can act on. */
 export const SUPPORTED_WAY =
@@ -60,86 +69,86 @@ const attachments = (service: ServiceInfo): ProxyNetworks => service.spec.TaskTe
 const isAttachedTo = (attachment: ProxyNetworks[number], network: Pick<NetworkInfo, "id" | "name">) =>
   attachment.Target === network.id || attachment.Target === network.name;
 
-/** One change at a time per Docker: each one reads the proxy's network list and writes it back. */
-const proxyChanges = new WeakMap<DockerDriver, Promise<unknown>>();
-
-function serializeProxyChange<T>(docker: DockerDriver, change: () => Promise<T>): Promise<T> {
-  const next = (proxyChanges.get(docker) ?? Promise.resolve()).catch(() => undefined).then(change);
-  proxyChanges.set(
-    docker,
-    next.catch(() => undefined),
-  );
-  return next;
-}
-
 /**
- * Rewrites the proxy's network list and updates the service only if it changed. Attachments to
- * networks that no longer exist are dropped first, because Docker refuses any update that keeps one.
+ * Rewrites the network list of a proxy still run as a Swarm service, and updates the service only if it
+ * changed, which restarts it. Attachments to networks that no longer exist are dropped first, because
+ * Docker refuses any update that keeps one. Call it inside `serializeProxyChange`.
  */
-function changeProxyNetworks(
+async function changeProxyServiceNetworks(
   docker: DockerDriver,
   change: (attached: ProxyNetworks) => ProxyNetworks,
 ): Promise<void> {
-  return serializeProxyChange(docker, async () => {
-    const proxy = await docker.inspectService(PROXY_SERVICE);
-    if (proxy === null) {
-      return;
-    }
-    const existing = await docker.listNetworks();
-    const current = attachments(proxy);
-    const live = current.filter((attachment) =>
-      existing.some((network) => isAttachedTo(attachment, network)),
-    );
-    const next = change(live);
-    const unchanged =
-      next.length === current.length &&
-      next.every((attachment, index) => attachment.Target === current[index]?.Target);
-    if (!unchanged) {
-      await docker.updateService(PROXY_SERVICE, {
-        ...proxy.spec,
-        TaskTemplate: { ...proxy.spec.TaskTemplate, Networks: next },
-      });
-    }
-  });
+  const proxy = await docker.inspectService(PROXY_SERVICE);
+  if (proxy === null) {
+    return;
+  }
+  const existing = await docker.listNetworks();
+  const current = attachments(proxy);
+  const live = current.filter((attachment) => existing.some((network) => isAttachedTo(attachment, network)));
+  const next = change(live);
+  const unchanged =
+    next.length === current.length &&
+    next.every((attachment, index) => attachment.Target === current[index]?.Target);
+  if (!unchanged) {
+    await docker.updateService(PROXY_SERVICE, {
+      ...proxy.spec,
+      TaskTemplate: { ...proxy.spec.TaskTemplate, Networks: next },
+    });
+  }
 }
 
-/** Puts the proxy on these networks, in one change, unless it is already on them or is not installed. */
+/**
+ * Puts the proxy on these networks unless it is already on them or is not installed. Its container joins
+ * them while it runs, which no site notices; a proxy still run as a Swarm service is restarted, once for
+ * them all.
+ */
 export function joinProxyToNetworks(
   docker: DockerDriver,
   networks: readonly NetworkInfo[],
   log: (line: string) => void,
 ): Promise<void> {
-  return changeProxyNetworks(docker, (attached) => {
-    const missing = networks.filter(
-      (network) => !attached.some((attachment) => isAttachedTo(attachment, network)),
-    );
-    for (const { name } of missing) {
-      log(`Connecting the proxy to ${name}`);
+  return serializeProxyChange(docker, async () => {
+    if (await connectProxyNow(docker, networks, log)) {
+      return;
     }
-    return missing.length === 0 ? attached : [...attached, ...missing.map(({ id }) => ({ Target: id }))];
+    await changeProxyServiceNetworks(docker, (attached) => {
+      const missing = networks.filter(
+        (network) => !attached.some((attachment) => isAttachedTo(attachment, network)),
+      );
+      for (const { name } of missing) {
+        log(`Connecting the proxy to ${name}`);
+      }
+      return missing.length === 0 ? attached : [...attached, ...missing.map(({ id }) => ({ Target: id }))];
+    });
   });
 }
 
+/** Takes the proxy off these networks, which has to come before removing them. */
 function detachProxyFromNetworks(
   docker: DockerDriver,
   networks: readonly NetworkInfo[],
   log: (line: string) => void,
 ): Promise<void> {
-  return changeProxyNetworks(docker, (attached) =>
-    attached.filter((attachment) => {
-      const network = networks.find((candidate) => isAttachedTo(attachment, candidate));
-      if (network !== undefined) {
-        log(`Disconnecting the proxy from ${network.name}`);
-      }
-      return network === undefined;
-    }),
-  );
+  return serializeProxyChange(docker, async () => {
+    if (await disconnectProxyNow(docker, networks, log)) {
+      return;
+    }
+    await changeProxyServiceNetworks(docker, (attached) =>
+      attached.filter((attachment) => {
+        const network = networks.find((candidate) => isAttachedTo(attachment, candidate));
+        if (network !== undefined) {
+          log(`Disconnecting the proxy from ${network.name}`);
+        }
+        return network === undefined;
+      }),
+    );
+  });
 }
 
 /**
  * Both networks of a project, with the proxy on the one that is meant for it. Every other project's
- * proxy network comes along, because each change to the proxy's networks restarts it: a server
- * moving to proxy networks takes that once, at its first deployment, and not once per project.
+ * proxy network comes along: it costs the proxy's container nothing, and a proxy still run as a Swarm
+ * service restarts once for them all, at its first deployment, rather than once per project.
  */
 export async function prepareRoutedNetworks(
   deps: Pick<AppDeps, "docker" | "db">,

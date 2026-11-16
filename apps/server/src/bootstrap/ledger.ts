@@ -22,6 +22,7 @@ export type Created =
   | { kind: "swarm"; nodeId: string | null }
   | { kind: "network"; name: string; id: string | null }
   | { kind: "service"; name: string; id: string | null }
+  | { kind: "container"; name: string; id: string | null }
   | { kind: "image"; ref: string }
   | { kind: "address" };
 
@@ -57,7 +58,7 @@ function sameThing(a: Created, b: Created): boolean {
   if (a.kind !== b.kind) {
     return false;
   }
-  if (a.kind === "service" && b.kind === "service") {
+  if ((a.kind === "service" && b.kind === "service") || (a.kind === "container" && b.kind === "container")) {
     return a.name === b.name;
   }
   if (a.kind === "network" && b.kind === "network") {

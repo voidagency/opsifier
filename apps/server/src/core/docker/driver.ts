@@ -101,6 +101,26 @@ export interface DockerDriver {
   removeImage(id: string): Promise<void>;
   /** Removing a container that does not exist is not an error. */
   removeContainer(id: string): Promise<void>;
+  /**
+   * Creates, without starting it, a container the panel runs itself outside Swarm: the proxy. Docker
+   * restarts it by its restart policy, and it keeps the networks it joined across restarts, panel or no
+   * panel. Returns its id.
+   */
+  createPlainContainer(spec: PlainContainerSpec): Promise<string>;
+  /** Null when no container has that name or id. */
+  inspectPlainContainer(nameOrId: string): Promise<PlainContainerInfo | null>;
+  startContainer(nameOrId: string): Promise<void>;
+  /** Stopping a container that is not running is not an error. */
+  stopContainer(nameOrId: string, options?: { timeoutSeconds?: number }): Promise<void>;
+  renameContainer(nameOrId: string, name: string): Promise<void>;
+  /**
+   * Joins a container to an attachable network while it runs, with no restart. Already on it is not an
+   * error. Swarm keeps the attachment as a task of its own, and refuses to remove the network until the
+   * container leaves it.
+   */
+  connectNetwork(network: string, container: string): Promise<void>;
+  /** Takes a container off a network while it runs. Not on it is not an error. */
+  disconnectNetwork(network: string, container: string): Promise<void>;
   /** Removes these build cache records and returns how many bytes that freed. */
   removeBuildCache(ids: readonly string[]): Promise<number>;
   /** Runs a one-off helper container to the end and returns what it printed. */
@@ -482,6 +502,47 @@ export interface ContainerInfo {
   ports?: Array<{ protocol: "tcp" | "udp"; port: number }>;
 }
 
+/** A container the panel runs itself, outside Swarm. */
+export interface PlainContainerSpec {
+  name: string;
+  image: string;
+  env: string[];
+  labels: Record<string, string>;
+  /** Host folders bound into it. */
+  binds: Array<{ source: string; target: string }>;
+  /** Host ports it publishes, each to the same port inside it, over TCP. */
+  ports: number[];
+  /**
+   * The networks it joins before it first starts. It is created on Docker's default bridge, which
+   * carries its published ports: a Swarm network as its main one would keep it from starting whenever
+   * nothing else holds that network on this node, as after a reboot.
+   */
+  networks: string[];
+  /** How long it gets to stop before Docker kills it. */
+  stopTimeoutSeconds: number;
+}
+
+export interface PlainContainerInfo {
+  id: string;
+  /** Without the leading slash. */
+  name: string;
+  image: string;
+  /** created, running, restarting, paused, exited or dead. */
+  state: string;
+  /** Null while it has never exited. */
+  exitCode: number | null;
+  /** Null for a container that never started. */
+  startedAt: string | null;
+  /** How many times Docker restarted it by its restart policy. */
+  restartCount: number;
+  env: string[];
+  labels: Record<string, string>;
+  binds: Array<{ source: string; target: string }>;
+  ports: number[];
+  /** The networks it is on. */
+  networks: Array<{ id: string; name: string }>;
+}
+
 /** A container Docker Compose started: what a stack's state is read from. */
 export interface ComposeContainerInfo {
   id: string;
@@ -552,6 +613,8 @@ export class DockerUnsupportedError extends DockerDriverError {
 const SERVICE_NAME = /^[a-zA-Z0-9](?:[a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])?$/;
 const NETWORK_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/;
 const VOLUME_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,254}$/;
+/** A container's name or id. */
+const CONTAINER_REF = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const IMAGE_REFERENCE =
   /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?(?::[0-9]{1,5})?\/)?[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*(?:\/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*(?::[\w][\w.-]{0,127})?(?:@sha256:[a-f0-9]{64})?$/;
 
@@ -564,6 +627,7 @@ function assertMatches(pattern: RegExp, value: string, what: string): void {
 export const assertServiceName = (name: string): void => assertMatches(SERVICE_NAME, name, "service name");
 export const assertNetworkName = (name: string): void => assertMatches(NETWORK_NAME, name, "network name");
 export const assertVolumeName = (name: string): void => assertMatches(VOLUME_NAME, name, "volume name");
+export const assertContainerRef = (ref: string): void => assertMatches(CONTAINER_REF, ref, "container");
 
 export function assertImageReference(ref: string): void {
   assertMatches(IMAGE_REFERENCE, ref, "image reference");

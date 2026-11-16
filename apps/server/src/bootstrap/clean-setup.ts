@@ -1,7 +1,13 @@
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { type DockerDriver, DockerDriverError, type NetworkInfo, type ServiceInfo } from "../core/docker";
+import {
+  type DockerDriver,
+  DockerDriverError,
+  type NetworkInfo,
+  type PlainContainerInfo,
+  type ServiceInfo,
+} from "../core/docker";
 import type { Created, SetupRecord } from "./ledger";
 import { dataDirEntries, LOCK_FILE, readRecord, SETUP_RUN_LABEL, STATE_FILE } from "./ledger";
 import { acquireLock, SetupError, type SetupTiming, waitForGone } from "./setup";
@@ -48,6 +54,12 @@ interface Plan {
 
 const ownsService = (service: ServiceInfo, entry: Extract<Created, { kind: "service" }>, runId: string) =>
   service.spec.Labels?.[SETUP_RUN_LABEL] === runId && (entry.id === null || entry.id === service.id);
+
+const ownsContainer = (
+  container: PlainContainerInfo,
+  entry: Extract<Created, { kind: "container" }>,
+  runId: string,
+) => container.labels[SETUP_RUN_LABEL] === runId && (entry.id === null || entry.id === container.id);
 
 const ownsNetwork = (network: NetworkInfo, entry: Extract<Created, { kind: "network" }>, runId: string) =>
   network.labels[SETUP_RUN_LABEL] === runId && (entry.id === null || entry.id === network.id);
@@ -142,6 +154,25 @@ async function planCleanup(deps: CleanSetupDeps, record: SetupRecord): Promise<P
       } else if (service !== null) {
         takenOver = true;
         kept.push(`the service "${entry.name}": it is not the one this setup made`);
+      }
+    }
+  }
+
+  // The proxy's container holds the shared network until it has gone.
+  for (const entry of created) {
+    if (entry.kind === "container") {
+      const container = await deps.docker.inspectPlainContainer(entry.name);
+      if (container !== null && ownsContainer(container, entry, record.runId)) {
+        steps.push({
+          what: `the container "${entry.name}"`,
+          run: async () => {
+            await deps.docker.stopContainer(container.id, { timeoutSeconds: 5 });
+            await deps.docker.removeContainer(container.id);
+          },
+        });
+      } else if (container !== null) {
+        takenOver = true;
+        kept.push(`the container "${entry.name}": it is not the one this setup made`);
       }
     }
   }

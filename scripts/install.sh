@@ -124,9 +124,15 @@ is_our_service() {
     [ "$(docker service inspect "$1" --format '{{index .Spec.Labels "opsifier.managed"}}' 2>/dev/null)" = "true" ]
 }
 
+# True when a container of this name exists and was created by setup: the proxy runs as one.
+is_our_container() {
+  command -v docker >/dev/null 2>&1 &&
+    [ "$(docker container inspect "$1" --format '{{index .Config.Labels "opsifier.managed"}}' 2>/dev/null)" = "true" ]
+}
+
 check_ports() {
   local ports=()
-  is_our_service opsifier-traefik || ports+=(80 443)
+  is_our_container opsifier-traefik || is_our_service opsifier-traefik || ports+=(80 443)
   is_our_service opsifier || ports+=(3000)
   if [ "${#ports[@]}" -eq 0 ]; then
     say "Ports: already in use by Opsifier"

@@ -3,6 +3,7 @@ import { isIP } from "node:net";
 import type { Duplex, Readable } from "node:stream";
 import Dockerode from "dockerode";
 import {
+  assertContainerRef,
   assertImageReference,
   assertNetworkName,
   assertServiceName,
@@ -34,6 +35,8 @@ import {
   type NodeAvailability,
   type NodeInfo,
   type NodeState,
+  type PlainContainerInfo,
+  type PlainContainerSpec,
   type PullOptions,
   type RegistryOptions,
   type ServiceInfo,
@@ -200,6 +203,20 @@ interface RawDiskUsage {
   }>;
 }
 
+/** The parts of `GET /containers/{id}/json` a plain container is read from. */
+interface RawContainerDetail {
+  Id: string;
+  Name?: string;
+  RestartCount?: number;
+  State?: { Status?: string; ExitCode?: number; StartedAt?: string };
+  Config?: { Image?: string; Env?: string[] | null; Labels?: Record<string, string> | null };
+  HostConfig?: {
+    Mounts?: Array<{ Type?: string; Source: string; Target: string }> | null;
+    PortBindings?: Record<string, unknown> | null;
+  };
+  NetworkSettings?: { Networks?: Record<string, { NetworkID?: string }> | null };
+}
+
 interface DockerApiError {
   statusCode?: number;
   reason?: string;
@@ -251,6 +268,11 @@ function toDriverError(what: string, error: unknown): DockerDriverError {
     apiError.message ??
     "unknown error";
   return new DockerDriverError(`${what}: ${detail}`, apiError.statusCode, { cause: error });
+}
+
+/** What Docker said, whichever way the client reports it. */
+function messageOf(error: unknown): string {
+  return (error as DockerApiError).json?.message ?? (error as DockerApiError).message ?? "";
 }
 
 function isNotFound(error: unknown): boolean {
@@ -1070,6 +1092,133 @@ export class DockerodeDriver implements DockerDriver {
     await this.ignoringNotFound("remove container", () =>
       this.docker.getContainer(id).remove({ force: false, v: false }),
     );
+  }
+
+  async createPlainContainer(spec: PlainContainerSpec): Promise<string> {
+    assertContainerRef(spec.name);
+    assertImageReference(spec.image);
+    for (const network of spec.networks) {
+      assertNetworkName(network);
+    }
+    const id = await this.call("create container", async () => {
+      const published = (port: number) => `${port}/tcp`;
+      const container = await this.docker.createContainer({
+        name: spec.name,
+        Image: spec.image,
+        Env: [...spec.env],
+        Labels: { ...spec.labels },
+        ExposedPorts: Object.fromEntries(spec.ports.map((port) => [published(port), {}])),
+        StopTimeout: spec.stopTimeoutSeconds,
+        HostConfig: {
+          Mounts: spec.binds.map(({ source, target }) => ({ Type: "bind", Source: source, Target: target })),
+          PortBindings: Object.fromEntries(
+            spec.ports.map((port) => [published(port), [{ HostPort: String(port) }]]),
+          ),
+          RestartPolicy: { Name: "unless-stopped", MaximumRetryCount: 0 },
+        },
+      });
+      return container.id;
+    });
+    try {
+      for (const network of spec.networks) {
+        await this.connectNetwork(network, id);
+      }
+    } catch (error) {
+      // Half a proxy is worse than none: the next attempt starts from nothing.
+      await this.removeContainer(id).catch(() => undefined);
+      throw error;
+    }
+    return id;
+  }
+
+  async inspectPlainContainer(nameOrId: string): Promise<PlainContainerInfo | null> {
+    assertContainerRef(nameOrId);
+    return this.orNull("inspect container", async () => {
+      const raw = (await this.docker.getContainer(nameOrId).inspect()) as unknown as RawContainerDetail;
+      const status = raw.State?.Status ?? "";
+      const started = raw.State?.StartedAt ?? "";
+      return {
+        id: raw.Id,
+        name: (raw.Name ?? "").replace(/^\//, ""),
+        image: raw.Config?.Image ?? "",
+        state: status,
+        exitCode: status === "exited" || status === "dead" ? (raw.State?.ExitCode ?? null) : null,
+        // Docker writes the zero time for a container that never started.
+        startedAt: started === "" || started.startsWith("0001-") ? null : started,
+        restartCount: raw.RestartCount ?? 0,
+        env: raw.Config?.Env ?? [],
+        labels: raw.Config?.Labels ?? {},
+        binds: (raw.HostConfig?.Mounts ?? [])
+          .filter((mount) => mount.Type === "bind")
+          .map((mount) => ({ source: mount.Source, target: mount.Target })),
+        ports: Object.keys(raw.HostConfig?.PortBindings ?? {})
+          .map((key) => Number(key.split("/", 1)[0]))
+          .filter((port) => Number.isInteger(port)),
+        networks: Object.entries(raw.NetworkSettings?.Networks ?? {}).map(([name, network]) => ({
+          name,
+          id: network.NetworkID ?? "",
+        })),
+      };
+    });
+  }
+
+  async startContainer(nameOrId: string): Promise<void> {
+    assertContainerRef(nameOrId);
+    try {
+      await this.docker.getContainer(nameOrId).start();
+    } catch (error) {
+      // 304: it was running already.
+      if ((error as DockerApiError).statusCode !== 304) {
+        throw toDriverError("start container", error);
+      }
+    }
+  }
+
+  async stopContainer(nameOrId: string, options: { timeoutSeconds?: number } = {}): Promise<void> {
+    assertContainerRef(nameOrId);
+    try {
+      await this.docker
+        .getContainer(nameOrId)
+        .stop(options.timeoutSeconds === undefined ? {} : { t: options.timeoutSeconds });
+    } catch (error) {
+      // 304: it was not running. 404: it has gone.
+      const status = (error as DockerApiError).statusCode;
+      if (status !== 304 && status !== 404) {
+        throw toDriverError("stop container", error);
+      }
+    }
+  }
+
+  async renameContainer(nameOrId: string, name: string): Promise<void> {
+    assertContainerRef(nameOrId);
+    assertContainerRef(name);
+    await this.call("rename container", () => this.docker.getContainer(nameOrId).rename({ name }));
+  }
+
+  async connectNetwork(network: string, container: string): Promise<void> {
+    assertNetworkName(network);
+    assertContainerRef(container);
+    try {
+      await this.docker.getNetwork(network).connect({ Container: container });
+    } catch (error) {
+      // Docker answers 403 « endpoint with name … already exists in network … » for one already on it.
+      if (!/already exists in network/i.test(messageOf(error))) {
+        throw toDriverError("connect network", error);
+      }
+    }
+  }
+
+  async disconnectNetwork(network: string, container: string): Promise<void> {
+    assertNetworkName(network);
+    assertContainerRef(container);
+    try {
+      await this.docker.getNetwork(network).disconnect({ Container: container, Force: false });
+    } catch (error) {
+      // 404 for a container or network that has gone; « … is not connected to network … » for one not on it.
+      if (!isNotFound(error) && !/is not connected to( the)? network/i.test(messageOf(error))) {
+        throw toDriverError("disconnect network", error);
+      }
+    }
   }
 
   async removeLeftoverHelpers(): Promise<number> {

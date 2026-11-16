@@ -9,6 +9,7 @@ import type {
 import { parseEnvText } from "@opsifier/contract";
 import { compareSync, hashSync } from "bcryptjs";
 import { parse as parseYaml } from "yaml";
+import { moveProxyOffSwarm, PROXY_CONTAINER, replaceProxy } from "../../bootstrap/proxy-container";
 import type { ActionContext, ActionRow } from "../../core/actions";
 import type { AppDeps } from "../../core/context";
 import type { SwarmServiceSpec } from "../../core/docker";
@@ -188,11 +189,17 @@ async function writeCustomFile(deps: AppDeps): Promise<void> {
 const traefikDir = (deps: AppDeps) => `${deps.config.dataDir}/traefik`;
 
 /** Where the proxy's task sees the panel's traefik folder, which is mounted under its own path. */
-function mountedTraefikDir(deps: AppDeps, spec: SwarmServiceSpec): string {
+/** Where the proxy sees the panel's Traefik folder: the same path, unless it was bound elsewhere. */
+function mountedTraefikDir(deps: AppDeps, binds: ReadonlyArray<{ source?: string; target: string }>): string {
   const host = traefikDir(deps);
-  const mount = spec.TaskTemplate.ContainerSpec.Mounts?.find((candidate) => candidate.Source === host);
-  return mount?.Target ?? host;
+  return binds.find((candidate) => candidate.source === host)?.target ?? host;
 }
+
+const serviceBinds = (spec: SwarmServiceSpec) =>
+  (spec.TaskTemplate.ContainerSpec.Mounts ?? []).map((mount) => ({
+    source: mount.Source,
+    target: mount.Target,
+  }));
 
 /**
  * Traefik's static configuration, as environment variables: file, arguments and environment are
@@ -243,14 +250,23 @@ export function renderProxyEnv(input: {
 }
 
 export async function proxyStatus(deps: AppDeps): Promise<ProxyState> {
+  let container: Awaited<ReturnType<AppDeps["docker"]["inspectPlainContainer"]>>;
   let service: Awaited<ReturnType<AppDeps["docker"]["inspectService"]>>;
   try {
-    service = await deps.docker.inspectService(PROXY_SERVICE);
+    container = await deps.docker.inspectPlainContainer(PROXY_CONTAINER);
+    service = container === null ? await deps.docker.inspectService(PROXY_SERVICE) : null;
   } catch (error) {
     if (error instanceof DockerDriverError) {
       return "unknown";
     }
     throw error;
+  }
+  if (container !== null) {
+    // Docker brings it back by itself: one it is restarting, or that keeps stopping, is failing.
+    if (container.state === "running") {
+      return "running";
+    }
+    return container.state === "created" ? "starting" : "failing";
   }
   if (service === null) {
     return "missing";
@@ -268,7 +284,45 @@ export async function proxyStatus(deps: AppDeps): Promise<ProxyState> {
     : "starting";
 }
 
-/** Rewrites the proxy's configuration and restarts it through its Swarm update counter. */
+/** The proxy is watched like a deployment: polled often enough that a switch is not drawn out by it. */
+const proxyTiming = (deps: Pick<AppDeps, "rollout">) => ({
+  pollMs: Math.min(deps.rollout.pollMs, 250),
+  settleMs: deps.rollout.stableMs,
+  freeMs: deps.rollout.timeoutMs,
+});
+
+/**
+ * Moves a proxy still run as the Swarm service of earlier versions to its own container, once, in the
+ * background: the sites stop answering for the few seconds of the switch, and the service comes back as
+ * it was if the container does not stay up. From then on, a project joins the proxy without restarting it.
+ */
+export async function enqueueProxyMove(deps: AppDeps): Promise<void> {
+  let legacy: Awaited<ReturnType<AppDeps["docker"]["inspectService"]>>;
+  try {
+    legacy = await deps.docker.inspectService(PROXY_SERVICE);
+  } catch (error) {
+    if (error instanceof DockerDriverError) {
+      deps.logger.warn({ err: error }, "Could not tell whether the proxy still runs as a Swarm service");
+      return;
+    }
+    throw error;
+  }
+  if (legacy === null) {
+    return;
+  }
+  deps.actions.enqueue({
+    type: "proxy.move",
+    title: "Move the proxy out of Swarm, so that projects join it without restarting it",
+    run: async (ctx) => {
+      await moveProxyOffSwarm(deps.docker, (line) => ctx.log(line), proxyTiming(deps));
+    },
+  });
+}
+
+/**
+ * Rewrites the proxy's configuration and restarts it: its container is replaced by one with the new
+ * settings, or a proxy still run as a Swarm service through its update counter.
+ */
 export function enqueueProxyRestart(
   deps: AppDeps,
   actorEmail: string | undefined,
@@ -283,14 +337,18 @@ export function enqueueProxyRestart(
 }
 
 async function applyProxy(deps: AppDeps, ctx: ActionContext): Promise<void> {
-  const proxy = await deps.docker.inspectService(PROXY_SERVICE);
-  if (proxy === null) {
+  const container = await deps.docker.inspectPlainContainer(PROXY_CONTAINER);
+  const proxy = container === null ? await deps.docker.inspectService(PROXY_SERVICE) : null;
+  if (container === null && proxy === null) {
     throw conflict("proxy_missing", "The proxy service is not installed on this server.");
   }
   const settings = readSettings(deps);
   await writeCustomFile(deps);
 
-  const directory = mountedTraefikDir(deps, proxy.spec);
+  const directory = mountedTraefikDir(
+    deps,
+    container?.binds ?? (proxy === null ? [] : serviceBinds(proxy.spec)),
+  );
   ctx.log("Applying the proxy's configuration");
   const env = renderProxyEnv({
     directory,
@@ -308,12 +366,25 @@ async function applyProxy(deps: AppDeps, ctx: ActionContext): Promise<void> {
     ctx.log("Closed the proxy dashboard");
   }
 
-  const { Args: _args, ...container } = proxy.spec.TaskTemplate.ContainerSpec;
+  if (container !== null) {
+    ctx.log("Replacing the proxy's container: the sites stop answering for a few seconds");
+    await replaceProxy(
+      deps.docker,
+      (spec) => ({ ...spec, env }),
+      (line) => ctx.log(line),
+      proxyTiming(deps),
+    );
+    return;
+  }
+  if (proxy === null) {
+    return;
+  }
+  const { Args: _args, ...current } = proxy.spec.TaskTemplate.ContainerSpec;
   await deps.docker.updateService(PROXY_SERVICE, {
     ...proxy.spec,
     TaskTemplate: {
       ...proxy.spec.TaskTemplate,
-      ContainerSpec: { ...container, Env: env },
+      ContainerSpec: { ...current, Env: env },
       ForceUpdate: (proxy.spec.TaskTemplate.ForceUpdate ?? 0) + 1,
     },
   });

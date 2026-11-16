@@ -7,6 +7,8 @@ export interface ExecPlan {
   command: string[];
   env?: string[];
   stdin?: string;
+  /** Runs in this container instead of a task of the service, as for the proxy's own. */
+  containerId?: string;
 }
 
 export interface ExecOutcome {
@@ -43,6 +45,7 @@ export async function runInDatabase(
     command: plan.command,
     env: plan.env,
     tty: false,
+    ...(plan.containerId === undefined ? {} : { containerId: plan.containerId }),
   });
 
   const parser = new DockerLogParser();

@@ -1,5 +1,6 @@
 import type { ComposeDetail, CreateDatabaseRequest, ServiceDetail } from "@opsifier/contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PROXY_CONTAINER } from "../../bootstrap/proxy-container";
 import type { ComposeContainerInfo, SwarmServiceSpec } from "../../core/docker";
 import type { TestContext } from "../../testing/harness";
 import { type DatabaseTestContext, PROJECT, scriptExec, setupDatabaseTests } from "../databases/testing";
@@ -189,14 +190,20 @@ describe("what an upgrade does to what is already running", () => {
     await proxyAsBeforeTheUpgrade();
   });
 
-  it("changes nothing until the next deploy", async () => {
-    const proxy = await context.docker.inspectService(PROXY_SERVICE);
+  it("changes nothing until the next deploy, but moves the proxy to a container on the same networks", async () => {
+    const proxyOn = await networksOf(PROXY_SERVICE);
     const web = await context.docker.inspectService("shop_web");
     const db = await context.docker.inspectService("shop_db");
 
     await context.restart();
+    const { body } = await suite.api<{ items: Array<{ id: string; type: string }> }>("/actions?limit=50");
+    const move = body.items.find((item) => item.type === "proxy.move");
+    expect((await suite.waitFor(move?.id ?? "")).status).toBe("succeeded");
 
-    expect(await context.docker.inspectService(PROXY_SERVICE)).toEqual(proxy);
+    expect(await context.docker.inspectService(PROXY_SERVICE)).toBeNull();
+    const container = await context.docker.inspectPlainContainer(PROXY_CONTAINER);
+    expect(container?.state).toBe("running");
+    expect(container?.networks.map((network) => network.name).sort()).toEqual(proxyOn);
     expect(await context.docker.inspectService("shop_web")).toEqual(web);
     expect(await context.docker.inspectService("shop_db")).toEqual(db);
     expect(await context.docker.inspectNetwork("opsifier-shop_proxy")).toBeNull();

@@ -1,7 +1,8 @@
-import type { SwarmServiceSpec } from "../core/docker";
+import type { PlainContainerSpec, SwarmServiceSpec } from "../core/docker";
 import type { AddressChallenge } from "../features/opsifier-address/proxy-env";
 import { renderProxyEnv } from "../features/server/proxy";
 import { SHARED_NETWORK } from "../features/services/compile/names";
+import { PROXY_CONTAINER, PROXY_ROLE_LABEL, PROXY_STOP_SECONDS } from "./proxy-container";
 
 export const PANEL_SWARM_SERVICE = "opsifier";
 export const PROXY_SWARM_SERVICE = "opsifier-traefik";
@@ -61,7 +62,57 @@ export interface ProxyInputs extends ServiceInputs {
   addressChallenge?: AddressChallenge | null;
 }
 
-/** Traefik with no configuration of its own: its routes are the files the panel writes. */
+/**
+ * Traefik with no configuration of its own, as a plain container: its routes are the files the panel
+ * writes. It starts on the shared network, where it reaches the panel, and joins each project's own.
+ */
+export function proxyContainerSpec(input: ProxyInputs): PlainContainerSpec {
+  const directory = `${input.dataDir}/traefik`;
+  return {
+    name: PROXY_CONTAINER,
+    image: input.image,
+    env: renderProxyEnv({
+      directory,
+      email: null,
+      trustAll: false,
+      entries: [],
+      userEnv: "",
+      addressChallenge: input.addressChallenge,
+    }),
+    labels: { ...MANAGED_LABELS, [PROXY_ROLE_LABEL]: "proxy" },
+    binds: [{ source: directory, target: directory }],
+    ports: [HTTP_PORT, HTTPS_PORT],
+    networks: [input.networkId],
+    stopTimeoutSeconds: PROXY_STOP_SECONDS,
+  };
+}
+
+/** What setup needs of a proxy that is already there: its folder, its ports and these settings. */
+export function convergeProxy(
+  current: PlainContainerSpec,
+  wanted: PlainContainerSpec,
+  env: Record<string, string> | undefined,
+): PlainContainerSpec {
+  const merged =
+    env === undefined ? current.env : (withEnv({ Image: current.image, Env: current.env }, env).Env ?? []);
+  return {
+    ...current,
+    env: merged,
+    labels: { ...current.labels, ...MANAGED_LABELS },
+    binds: [
+      ...current.binds,
+      ...wanted.binds.filter(
+        (bind) =>
+          !current.binds.some(
+            (existing) => existing.source === bind.source && existing.target === bind.target,
+          ),
+      ),
+    ],
+    ports: [...current.ports, ...wanted.ports.filter((port) => !current.ports.includes(port))],
+  };
+}
+
+/** Traefik as the Swarm service of earlier versions. Only kept to describe servers set up by them. */
 export function proxyServiceSpec(input: ProxyInputs): SwarmServiceSpec {
   const directory = `${input.dataDir}/traefik`;
   return {

@@ -11,6 +11,7 @@ import { ADDRESS_SECRET_CONTEXT, readAddress, saveAddress } from "../features/op
 import { addressRegisteredSince, panelHasAccounts } from "./address";
 import { type CleanSetupDeps, runCleanSetup } from "./clean-setup";
 import { readRecord, SETUP_RUN_LABEL, STATE_FILE } from "./ledger";
+import { PROXY_CONTAINER } from "./proxy-container";
 import { runSetup, type SetupDeps } from "./setup";
 import { MANAGED_LABEL, PANEL_SWARM_SERVICE, PROXY_SWARM_SERVICE, panelServiceSpec } from "./specs";
 
@@ -46,7 +47,7 @@ async function setup(docker: FakeDriver, extra: Partial<SetupDeps> = {}) {
         dataDir,
         setupTokenFile: join(dataDir, "setup-token"),
         log: (line) => log.push(line),
-        timing: { pollMs: 1, startupMs: 2000, tokenWaitMs: 20, lockStaleMs: 60_000 },
+        timing: { pollMs: 1, startupMs: 2000, tokenWaitMs: 20, lockStaleMs: 60_000, proxySettleMs: 0 },
         isPortTaken: async () => false,
         ...extra,
       },
@@ -99,9 +100,9 @@ describe("what an interrupted setup leaves behind", () => {
       { kind: "network", name: "opsifier", id: (await docker.inspectNetwork("opsifier"))?.id },
       { kind: "image", ref: "traefik:3" },
       {
-        kind: "service",
-        name: PROXY_SWARM_SERVICE,
-        id: (await docker.inspectService(PROXY_SWARM_SERVICE))?.id,
+        kind: "container",
+        name: PROXY_CONTAINER,
+        id: (await docker.inspectPlainContainer(PROXY_CONTAINER))?.id,
       },
       { kind: "service", name: PANEL_SWARM_SERVICE, id: null },
     ]);
@@ -112,7 +113,7 @@ describe("what an interrupted setup leaves behind", () => {
     await interrupt(docker);
 
     const runId = readRecord(dataDir)?.runId;
-    expect((await docker.inspectService(PROXY_SWARM_SERVICE))?.spec.Labels?.[SETUP_RUN_LABEL]).toBe(runId);
+    expect((await docker.inspectPlainContainer(PROXY_CONTAINER))?.labels[SETUP_RUN_LABEL]).toBe(runId);
     expect((await docker.inspectNetwork("opsifier"))?.labels[SETUP_RUN_LABEL]).toBe(runId);
   });
 
@@ -123,7 +124,7 @@ describe("what an interrupted setup leaves behind", () => {
     const result = await clean(docker);
 
     expect(result.confirmed).toBe(true);
-    expect(await docker.inspectService(PROXY_SWARM_SERVICE)).toBeNull();
+    expect(await docker.inspectPlainContainer(PROXY_CONTAINER)).toBeNull();
     expect(await docker.inspectNetwork("opsifier")).toBeNull();
     expect((await docker.swarmInfo()).state).toBe("inactive");
     expect(await docker.inspectImage("traefik:3")).toBeNull();
@@ -140,13 +141,13 @@ describe("what an interrupted setup leaves behind", () => {
     expect(result.confirmed).toBe(false);
     expect(result.removed).toEqual(
       expect.arrayContaining([
-        `the service "${PROXY_SWARM_SERVICE}"`,
+        `the container "${PROXY_CONTAINER}"`,
         'the network "opsifier"',
         "the Swarm this setup started",
       ]),
     );
     expect(log.join("\n")).toContain("clean-setup --yes");
-    expect(await docker.inspectService(PROXY_SWARM_SERVICE)).not.toBeNull();
+    expect(await docker.inspectPlainContainer(PROXY_CONTAINER)).not.toBeNull();
     expect((await docker.swarmInfo()).state).toBe("active");
     expect(existsSync(stateFile())).toBe(true);
   });
@@ -167,7 +168,8 @@ describe("what an interrupted setup leaves behind", () => {
 
     await clean(docker);
 
-    expect(await docker.inspectService(PROXY_SWARM_SERVICE)).toBeNull();
+    expect(await docker.inspectService(PANEL_SWARM_SERVICE)).toBeNull();
+    expect(await docker.inspectPlainContainer(PROXY_CONTAINER)).toBeNull();
   });
 
   it("waits for a task's container to let go of the image it pulled", async () => {
@@ -226,7 +228,7 @@ describe("what an interrupted setup leaves behind", () => {
       clean(docker, true, { timing: { pollMs: 1, startupMs: 20, lockStaleMs: 60_000 } }),
     ).rejects.toThrow(/active endpoints/);
     expect(existsSync(stateFile())).toBe(true);
-    expect(await docker.inspectService(PROXY_SWARM_SERVICE)).toBeNull();
+    expect(await docker.inspectPlainContainer(PROXY_CONTAINER)).toBeNull();
 
     docker.removeNetwork = removeNetwork;
     await clean(docker);
@@ -262,7 +264,7 @@ describe("what was not this run's to remove", () => {
 
     expect((await docker.swarmInfo()).state).toBe("active");
     expect(await docker.inspectService("someone_else")).not.toBeNull();
-    expect(await docker.inspectService(PROXY_SWARM_SERVICE)).toBeNull();
+    expect(await docker.inspectPlainContainer(PROXY_CONTAINER)).toBeNull();
   });
 
   it("leaves a network it did not create", async () => {
@@ -275,7 +277,7 @@ describe("what was not this run's to remove", () => {
     expect(await docker.inspectNetwork("opsifier")).not.toBeNull();
   });
 
-  it("leaves a service of ours that an earlier, finished setup created", async () => {
+  it("leaves the proxy an earlier, finished setup created, moved out of Swarm or not", async () => {
     const docker = new FakeDriver({ tickMs: 1 });
     await docker.createService({
       ...panelServiceSpec({ dataDir, image: IMAGE, networkId: "n", trustedProxies: [] }),
@@ -285,23 +287,29 @@ describe("what was not this run's to remove", () => {
 
     await clean(docker);
 
-    expect((await docker.inspectService(PROXY_SWARM_SERVICE))?.spec.Labels?.[MANAGED_LABEL]).toBe("true");
+    expect((await docker.inspectPlainContainer(PROXY_CONTAINER))?.labels[MANAGED_LABEL]).toBe("true");
   });
 
   it("will not take something that has replaced what it made, or the files around it", async () => {
     const docker = new FakeDriver({ swarmActive: false, tickMs: 1 });
     await interrupt(docker);
-    await docker.removeService(PROXY_SWARM_SERVICE);
-    await docker.createService({
-      Name: PROXY_SWARM_SERVICE,
-      TaskTemplate: { ContainerSpec: { Image: "someone/elses:proxy" } },
-      Mode: { Replicated: { Replicas: 1 } },
+    await docker.stopContainer(PROXY_CONTAINER);
+    await docker.removeContainer(PROXY_CONTAINER);
+    await docker.createPlainContainer({
+      name: PROXY_CONTAINER,
+      image: "someone/elses:proxy",
+      env: [],
+      labels: {},
+      binds: [],
+      ports: [],
+      networks: [],
+      stopTimeoutSeconds: 1,
     });
 
     const result = await clean(docker);
 
-    expect(result.kept.join("\n")).toContain(`the service "${PROXY_SWARM_SERVICE}"`);
-    expect(await docker.inspectService(PROXY_SWARM_SERVICE)).not.toBeNull();
+    expect(result.kept.join("\n")).toContain(`the container "${PROXY_CONTAINER}"`);
+    expect(await docker.inspectPlainContainer(PROXY_CONTAINER)).not.toBeNull();
     expect(existsSync(join(dataDir, "traefik"))).toBe(true);
   });
 
@@ -338,7 +346,7 @@ describe("what was not this run's to remove", () => {
 
       expect((await docker.swarmInfo()).state, what).toBe("active");
       expect(result.kept.join("\n"), what).toContain("the Swarm this setup started");
-      expect(await docker.inspectService(PROXY_SWARM_SERVICE), what).toBeNull();
+      expect(await docker.inspectPlainContainer(PROXY_CONTAINER), what).toBeNull();
       rmSync(join(dataDir, STATE_FILE), { force: true });
     }
   });
@@ -381,7 +389,7 @@ describe("when there is nothing that is safe to remove", () => {
 
     await expect(clean(docker, true, { hasAccounts: () => true })).rejects.toThrow(/in use/);
 
-    expect(await docker.inspectService(PROXY_SWARM_SERVICE)).not.toBeNull();
+    expect(await docker.inspectPlainContainer(PROXY_CONTAINER)).not.toBeNull();
   });
 
   it("refuses when it can't tell whether anyone has", async () => {
@@ -396,7 +404,7 @@ describe("when there is nothing that is safe to remove", () => {
       }),
     ).rejects.toThrow(/nothing has been changed.*malformed/i);
 
-    expect(await docker.inspectService(PROXY_SWARM_SERVICE)).not.toBeNull();
+    expect(await docker.inspectPlainContainer(PROXY_CONTAINER)).not.toBeNull();
   });
 
   it("refuses a setup from before steps were recorded", async () => {
@@ -451,7 +459,7 @@ describe("a run picked up again", () => {
     expect(readRecord(dataDir)?.created?.map((entry) => entry.kind)).toEqual(["service"]);
     await clean(docker);
     // The proxy from the finished setup was never this run's.
-    expect(await docker.inspectService(PROXY_SWARM_SERVICE)).not.toBeNull();
+    expect(await docker.inspectPlainContainer(PROXY_CONTAINER)).not.toBeNull();
     expect((await docker.swarmInfo()).state).toBe("active");
   });
 });

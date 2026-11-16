@@ -2,11 +2,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { FakeDriver, type SwarmServiceSpec } from "../core/docker";
+import { FakeDriver, type NetworkInfo, type SwarmServiceSpec } from "../core/docker";
 import { FakeTools } from "../core/tools";
 import { readJournal, writeJournal } from "../features/panel-update/journal";
 import type { AddressForProxy, SetupAddress } from "./address";
 import { parseArgs } from "./cli";
+import { PROXY_CONTAINER } from "./proxy-container";
 import { runRollback } from "./rollback";
 import { runSetup, type SetupDeps, SetupError, type SetupOptions } from "./setup";
 import {
@@ -14,6 +15,7 @@ import {
   PANEL_SWARM_SERVICE,
   PROXY_SWARM_SERVICE,
   panelServiceSpec,
+  proxyContainerSpec,
   proxyServiceSpec,
 } from "./specs";
 
@@ -53,7 +55,14 @@ async function setup(
         dataDir,
         setupTokenFile: join(dataDir, "setup-token"),
         log: (line) => log.push(line),
-        timing: { pollMs: 1, startupMs: 2000, tokenWaitMs: 20, lockStaleMs: 60_000, ...extra.timing },
+        timing: {
+          pollMs: 1,
+          startupMs: 2000,
+          tokenWaitMs: 20,
+          lockStaleMs: 60_000,
+          proxySettleMs: 0,
+          ...extra.timing,
+        },
         isPortTaken: async () => false,
         address: extra.address,
       },
@@ -69,6 +78,8 @@ function writeToken(token = "a".repeat(43)): string {
 }
 
 const envOf = (spec: SwarmServiceSpec | undefined) => spec?.TaskTemplate.ContainerSpec.Env ?? [];
+const proxyEnv = async (docker: FakeDriver) =>
+  (await docker.inspectPlainContainer(PROXY_CONTAINER))?.env ?? [];
 
 describe("setup on a fresh server", () => {
   it("initializes Swarm, creates the network and starts both services", async () => {
@@ -81,15 +92,12 @@ describe("setup on a fresh server", () => {
     const network = await docker.inspectNetwork("opsifier");
     expect(network).toMatchObject({ driver: "overlay", attachable: true });
 
-    const proxy = await docker.inspectService(PROXY_SWARM_SERVICE);
-    expect(proxy?.spec.TaskTemplate.ContainerSpec.Image).toBe("traefik:3");
-    expect(proxy?.spec.EndpointSpec?.Ports).toEqual([
-      expect.objectContaining({ PublishedPort: 80, PublishMode: "host" }),
-      expect.objectContaining({ PublishedPort: 443, PublishMode: "host" }),
-    ]);
-    expect(proxy?.spec.TaskTemplate.ContainerSpec.Mounts).toEqual([
-      { Type: "bind", Source: `${dataDir}/traefik`, Target: `${dataDir}/traefik` },
-    ]);
+    // The proxy is a plain container, which joins project networks without restarting.
+    expect(await docker.inspectService(PROXY_SWARM_SERVICE)).toBeNull();
+    const proxy = await docker.inspectPlainContainer(PROXY_CONTAINER);
+    expect(proxy).toMatchObject({ image: "traefik:3", state: "running", ports: [80, 443] });
+    expect(proxy?.binds).toEqual([{ source: `${dataDir}/traefik`, target: `${dataDir}/traefik` }]);
+    expect(proxy?.networks.map((on) => on.name)).toEqual(["opsifier"]);
 
     const panel = await docker.inspectService(PANEL_SWARM_SERVICE);
     expect(panel?.spec.TaskTemplate.ContainerSpec.Image).toBe(IMAGE);
@@ -104,7 +112,7 @@ describe("setup on a fresh server", () => {
 
     expect(result.urls).toContain(`http://${(await docker.swarmInfo()).nodeAddr}:3000/setup?token=${token}`);
     expect(result.firstRun).toBe(true);
-    expect(result.changed).toEqual([`created ${PROXY_SWARM_SERVICE}`, `created ${PANEL_SWARM_SERVICE}`]);
+    expect(result.changed).toEqual([`created ${PROXY_CONTAINER}`, `created ${PANEL_SWARM_SERVICE}`]);
   });
 
   it("trusts forwarded headers from the overlay network's subnet", async () => {
@@ -125,9 +133,8 @@ describe("setup on a fresh server", () => {
 
     await setup(docker);
 
-    for (const name of [PANEL_SWARM_SERVICE, PROXY_SWARM_SERVICE]) {
-      expect((await docker.inspectService(name))?.spec.Labels?.[MANAGED_LABEL]).toBe("true");
-    }
+    expect((await docker.inspectService(PANEL_SWARM_SERVICE))?.spec.Labels?.[MANAGED_LABEL]).toBe("true");
+    expect((await docker.inspectPlainContainer(PROXY_CONTAINER))?.labels[MANAGED_LABEL]).toBe("true");
   });
 
   it("uses the address the people reach the server on, when told one", async () => {
@@ -175,7 +182,7 @@ describe("setup on a server that already has something", () => {
     await setup(docker);
     const [panelBefore, proxyBefore] = await Promise.all([
       docker.inspectService(PANEL_SWARM_SERVICE),
-      docker.inspectService(PROXY_SWARM_SERVICE),
+      docker.inspectPlainContainer(PROXY_CONTAINER),
     ]);
 
     const second = await setup(docker);
@@ -184,10 +191,11 @@ describe("setup on a server that already has something", () => {
     expect(second.urls[0]).toContain(token);
     const [panelAfter, proxyAfter] = await Promise.all([
       docker.inspectService(PANEL_SWARM_SERVICE),
-      docker.inspectService(PROXY_SWARM_SERVICE),
+      docker.inspectPlainContainer(PROXY_CONTAINER),
     ]);
     expect(panelAfter?.version).toBe(panelBefore?.version);
-    expect(proxyAfter?.version).toBe(proxyBefore?.version);
+    expect(proxyAfter?.id).toBe(proxyBefore?.id);
+    expect(proxyAfter?.startedAt).toBe(proxyBefore?.startedAt);
   });
 
   it("repairs a service of ours that lost what it needs, and keeps its image", async () => {
@@ -241,6 +249,7 @@ describe("setup on a server that already has something", () => {
       "someone/elses:panel",
     );
     expect(await docker.inspectService(PROXY_SWARM_SERVICE)).toBeNull();
+    expect(await docker.inspectPlainContainer(PROXY_CONTAINER)).toBeNull();
   });
 
   it("replaces such a service only with --force", async () => {
@@ -414,6 +423,42 @@ describe("setup on a server that already has something", () => {
   });
 });
 
+describe("setup on a server whose proxy is still a Swarm service", () => {
+  it("moves it to a container with its settings and networks, and runs nothing twice", async () => {
+    const docker = new FakeDriver({ tickMs: 1 });
+    writeToken();
+    const shared = (await docker.inspectNetwork("opsifier")) as NetworkInfo;
+    const project = await docker.createNetwork({
+      name: "opsifier-shop_proxy",
+      driver: "overlay",
+      attachable: true,
+    });
+    const legacy = proxyServiceSpec({ dataDir, image: "traefik:3", networkId: shared.id });
+    await docker.createService({
+      ...legacy,
+      TaskTemplate: {
+        ...legacy.TaskTemplate,
+        ContainerSpec: {
+          ...legacy.TaskTemplate.ContainerSpec,
+          Env: [...(legacy.TaskTemplate.ContainerSpec.Env ?? []), "OWNERS_OWN=kept"],
+        },
+        Networks: [{ Target: shared.id }, { Target: project.id }],
+      },
+    });
+    docker.advance(8);
+
+    const result = await setup(docker);
+
+    expect(result.changed).toContain(`moved ${PROXY_CONTAINER} out of Swarm`);
+    expect(await docker.inspectService(PROXY_SWARM_SERVICE)).toBeNull();
+    const proxy = await docker.inspectPlainContainer(PROXY_CONTAINER);
+    expect(proxy).toMatchObject({ state: "running", ports: [80, 443] });
+    expect(proxy?.networks.map((on) => on.name).sort()).toEqual(["opsifier", "opsifier-shop_proxy"]);
+    expect(proxy?.env).toContain("OWNERS_OWN=kept");
+    expect(log).toContain("Moving the proxy from its Swarm service to a container");
+  });
+});
+
 describe("the server's address", () => {
   const ADDRESS: AddressForProxy = {
     domain: "bcdfghjk.opsifier.dev",
@@ -431,7 +476,7 @@ describe("the server's address", () => {
 
     const result = await setup(docker, {}, { address: having(ADDRESS) });
 
-    const env = envOf((await docker.inspectService(PROXY_SWARM_SERVICE))?.spec);
+    const env = await proxyEnv(docker);
     expect(env).toEqual(
       expect.arrayContaining([
         "TRAEFIK_CERTIFICATESRESOLVERS_OPSIFIER_ACME_DNSCHALLENGE_PROVIDER=httpreq",
@@ -449,7 +494,7 @@ describe("the server's address", () => {
 
     await setup(docker, {}, { address: having(ADDRESS) });
 
-    expect(envOf((await docker.inspectService(PROXY_SWARM_SERVICE))?.spec)).toContain(
+    expect(await proxyEnv(docker)).toContain(
       "TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_HTTPCHALLENGE_ENTRYPOINT=web",
     );
   });
@@ -461,11 +506,7 @@ describe("the server's address", () => {
     const result = await setup(docker, { advertiseAddr: "203.0.113.7" }, { address: having(null) });
 
     expect(result.urls[1]).toContain(".sslip.io");
-    expect(
-      envOf((await docker.inspectService(PROXY_SWARM_SERVICE))?.spec).some((line) =>
-        line.startsWith("HTTPREQ_"),
-      ),
-    ).toBe(false);
+    expect((await proxyEnv(docker)).some((line) => line.startsWith("HTTPREQ_"))).toBe(false);
     expect(result.changed).toContain(`created ${PANEL_SWARM_SERVICE}`);
   });
 
@@ -520,12 +561,12 @@ describe("the server's address", () => {
     const docker = new FakeDriver({ swarmActive: false, tickMs: 1 });
     writeToken();
     await setup(docker, {}, { address: having(ADDRESS) });
-    const before = await docker.inspectService(PROXY_SWARM_SERVICE);
+    const before = await docker.inspectPlainContainer(PROXY_CONTAINER);
 
     const second = await setup(docker, {}, { address: having(ADDRESS) });
 
     expect(second.changed).toEqual([]);
-    expect((await docker.inspectService(PROXY_SWARM_SERVICE))?.version).toBe(before?.version);
+    expect((await docker.inspectPlainContainer(PROXY_CONTAINER))?.id).toBe(before?.id);
   });
 
   it("adds the resolver to a proxy from before there was an address", async () => {
@@ -535,10 +576,8 @@ describe("the server's address", () => {
 
     const second = await setup(docker, {}, { address: having(ADDRESS) });
 
-    expect(second.changed).toEqual([`updated ${PROXY_SWARM_SERVICE}`]);
-    expect(envOf((await docker.inspectService(PROXY_SWARM_SERVICE))?.spec)).toContain(
-      "HTTPREQ_USERNAME=bcdfghjk",
-    );
+    expect(second.changed).toEqual([`updated ${PROXY_CONTAINER}`]);
+    expect(await proxyEnv(docker)).toContain("HTTPREQ_USERNAME=bcdfghjk");
   });
 
   it("passes on a moved service, so the panel asks the same one", async () => {
@@ -595,15 +634,25 @@ describe("the installer", () => {
 describe("the service specs", () => {
   const inputs = { dataDir: "/var/lib/opsifier", image: IMAGE, networkId: "abc" };
 
-  it("runs both on a manager node, restarting whatever happens", () => {
-    for (const spec of [
-      proxyServiceSpec(inputs),
-      panelServiceSpec({ ...inputs, trustedProxies: ["10.0.1.0/24"] }),
-    ]) {
-      expect(spec.TaskTemplate.Placement?.Constraints).toEqual(["node.role==manager"]);
-      expect(spec.TaskTemplate.RestartPolicy?.Condition).toBe("any");
-      expect(spec.UpdateConfig).toMatchObject({ Order: "stop-first" });
-    }
+  it("runs the panel on a manager node, restarting whatever happens", () => {
+    const spec = panelServiceSpec({ ...inputs, trustedProxies: ["10.0.1.0/24"] });
+
+    expect(spec.TaskTemplate.Placement?.Constraints).toEqual(["node.role==manager"]);
+    expect(spec.TaskTemplate.RestartPolicy?.Condition).toBe("any");
+    expect(spec.UpdateConfig).toMatchObject({ Order: "stop-first" });
+  });
+
+  it("runs the proxy as a plain container on its ports, with its folder, starting on the shared network", () => {
+    const spec = proxyContainerSpec(inputs);
+
+    expect(spec).toMatchObject({
+      name: PROXY_CONTAINER,
+      image: IMAGE,
+      ports: [80, 443],
+      networks: ["abc"],
+      binds: [{ source: "/var/lib/opsifier/traefik", target: "/var/lib/opsifier/traefik" }],
+    });
+    expect(spec.labels[MANAGED_LABEL]).toBe("true");
   });
 
   it("lets the panel fall back to the version it replaced", () => {
@@ -614,7 +663,7 @@ describe("the service specs", () => {
   });
 
   it("gives Traefik its entry points and the panel's files as its only provider", () => {
-    const env = envOf(proxyServiceSpec(inputs));
+    const env = proxyContainerSpec(inputs).env;
 
     expect(env).toContain("TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80");
     expect(env).toContain("TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=:443");

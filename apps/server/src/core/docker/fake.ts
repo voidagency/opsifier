@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Duplex } from "node:stream";
 import {
+  assertContainerRef,
   assertImageReference,
   assertNetworkName,
   assertServiceName,
@@ -29,6 +30,8 @@ import {
   type LogOptions,
   type NetworkInfo,
   type NodeInfo,
+  type PlainContainerInfo,
+  type PlainContainerSpec,
   type PullOptions,
   type RegistryOptions,
   type ServiceInfo,
@@ -116,6 +119,19 @@ interface FakeService extends ServiceInfo, LogSource {
   tasks: FakeTask[];
 }
 
+/** A container the panel runs itself, outside Swarm. Its logs live with the containers' own. */
+interface FakePlainContainer {
+  id: string;
+  name: string;
+  spec: PlainContainerSpec;
+  state: "created" | "running" | "exited";
+  exitCode: number | null;
+  startedAt: string | null;
+  restartCount: number;
+  /** The names of the networks it is on. */
+  networks: Set<string>;
+}
+
 export interface FakeDriverOptions {
   /** How often tasks advance a state. */
   tickMs?: number;
@@ -166,6 +182,8 @@ export class FakeDriver implements DockerDriver {
   private builds = 0;
   private readonly failures = new Map<Operation, Error>();
   private readonly containerLogSources = new Map<string, LogSource>();
+  /** By id. */
+  private readonly plainContainers = new Map<string, FakePlainContainer>();
   /** How to end each helper with a terminal still attached. */
   private readonly openHelpers = new Set<() => void>();
   private timer: NodeJS.Timeout | undefined;
@@ -320,7 +338,18 @@ export class FakeDriver implements DockerDriver {
   async removeNetwork(name: string): Promise<void> {
     this.check("removeNetwork");
     assertNetworkName(name);
-    this.networks.delete(name);
+    const network = this.findNetwork(name);
+    if (network === undefined) {
+      return;
+    }
+    const user = [...this.plainContainers.values()].find((container) => container.networks.has(network.name));
+    if (user !== undefined) {
+      throw new DockerDriverError(
+        `rpc error: code = FailedPrecondition desc = network ${network.id} is in use by task of container ${user.name}`,
+        403,
+      );
+    }
+    this.networks.delete(network.name);
   }
 
   async listServices(): Promise<ServiceInfo[]> {
@@ -432,8 +461,12 @@ export class FakeDriver implements DockerDriver {
   async *containerLogs(id: string, options: LogOptions = {}): AsyncGenerator<LogLine> {
     this.check("containerLogs");
     const source = this.containerLogSource(id);
-    yield* this.readLogs(source, options, () =>
-      this.composeContainers.some((container) => container.id === id && container.state === "running"),
+    yield* this.readLogs(
+      source,
+      options,
+      () =>
+        this.composeContainers.some((container) => container.id === id && container.state === "running") ||
+        this.findPlainContainer(id)?.state === "running",
     );
   }
 
@@ -490,7 +523,10 @@ export class FakeDriver implements DockerDriver {
       if (running.length === 0) {
         throw new DockerDriverError(`No running task for service ${options.service}.`, 409);
       }
-    } else if (!this.composeContainers.some((container) => container.id === options.containerId)) {
+    } else if (
+      !this.composeContainers.some((container) => container.id === options.containerId) &&
+      this.findPlainContainer(options.containerId)?.state !== "running"
+    ) {
       throw new DockerDriverError(`No such container: ${options.containerId}.`, 404);
     }
 
@@ -856,6 +892,23 @@ export class FakeDriver implements DockerDriver {
 
   async containerStats(id: string, _options?: { signal?: AbortSignal }): Promise<TaskStats | null> {
     this.check("containerStats");
+    const plain = this.findPlainContainer(id);
+    if (plain !== undefined) {
+      return plain.state !== "running"
+        ? null
+        : {
+            taskId: plain.id,
+            slot: 1,
+            containerId: plain.id,
+            cpuPercent: 1.5,
+            cpuCapacityPercent: FAKE_CPU_CORES * 100,
+            memoryUsedBytes: 48 * 1024 * 1024,
+            memoryLimitBytes: null,
+            networkRxBytes: 4096,
+            networkTxBytes: 8192,
+            readAt: new Date().toISOString(),
+          };
+    }
     const container = this.composeContainers.find((candidate) => candidate.id === id);
     if (container === undefined || container.state !== "running") {
       return null;
@@ -991,7 +1044,21 @@ export class FakeDriver implements DockerDriver {
 
   async listContainers(_options?: { size?: boolean }): Promise<ContainerInfo[]> {
     this.check("listContainers");
-    return [...this.containers];
+    const plain = [...this.plainContainers.values()].map(
+      (container): ContainerInfo => ({
+        id: container.id,
+        name: container.name,
+        image: container.spec.image,
+        imageId: this.imageNames.get(container.spec.image) ?? container.spec.image,
+        state: container.state,
+        labels: { ...container.spec.labels },
+        sizeBytes: null,
+        ...(container.state === "running"
+          ? { ports: container.spec.ports.map((port) => ({ protocol: "tcp" as const, port })) }
+          : {}),
+      }),
+    );
+    return [...this.containers, ...plain];
   }
 
   /** What `removeImage` was asked to remove, in order, for tests. */
@@ -1021,12 +1088,210 @@ export class FakeDriver implements DockerDriver {
   }
 
   async removeContainer(id: string): Promise<void> {
+    const plain = this.findPlainContainer(id);
+    if (plain !== undefined) {
+      if (plain.state === "running") {
+        throw new DockerDriverError(
+          `You cannot remove a running container ${plain.id}. Stop the container before attempting removal.`,
+          409,
+        );
+      }
+      this.plainContainers.delete(plain.id);
+      return;
+    }
     const index = this.containers.findIndex((container) => container.id === id);
     if (index !== -1) {
       const freed = this.containers[index]?.sizeBytes ?? 0;
       this.containers.splice(index, 1);
       this.disk = { ...this.disk, containersBytes: Math.max(0, this.disk.containersBytes - freed) };
     }
+  }
+
+  async createPlainContainer(spec: PlainContainerSpec): Promise<string> {
+    this.check("createPlainContainer");
+    assertContainerRef(spec.name);
+    assertImageReference(spec.image);
+    if (this.findPlainContainer(spec.name) !== undefined) {
+      throw new DockerDriverError(`Conflict. The container name "/${spec.name}" is already in use.`, 409);
+    }
+    const joined = spec.networks.map((name) => {
+      const network = this.findNetwork(name);
+      if (network === undefined) {
+        throw new DockerDriverError(`network ${name} not found`, 404);
+      }
+      return network.name;
+    });
+    const id = randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", "");
+    this.plainContainers.set(id, {
+      id,
+      name: spec.name,
+      spec: {
+        ...spec,
+        env: [...spec.env],
+        labels: { ...spec.labels },
+        binds: [...spec.binds],
+        ports: [...spec.ports],
+      },
+      state: "created",
+      exitCode: null,
+      startedAt: null,
+      restartCount: 0,
+      networks: new Set(joined),
+    });
+    return id;
+  }
+
+  async inspectPlainContainer(nameOrId: string): Promise<PlainContainerInfo | null> {
+    this.check("inspectPlainContainer");
+    assertContainerRef(nameOrId);
+    const container = this.findPlainContainer(nameOrId);
+    if (container === undefined) {
+      return null;
+    }
+    return {
+      id: container.id,
+      name: container.name,
+      image: container.spec.image,
+      state: container.state,
+      exitCode: container.exitCode,
+      startedAt: container.startedAt,
+      restartCount: container.restartCount,
+      env: [...container.spec.env],
+      labels: { ...container.spec.labels },
+      binds: container.spec.binds.map((bind) => ({ ...bind })),
+      ports: [...container.spec.ports],
+      networks: [...container.networks].map((name) => ({ name, id: this.networks.get(name)?.id ?? "" })),
+    };
+  }
+
+  async startContainer(nameOrId: string): Promise<void> {
+    this.check("startContainer");
+    const container = this.requirePlainContainer(nameOrId);
+    if (container.state === "running") {
+      return;
+    }
+    for (const name of container.networks) {
+      if (!this.networks.has(name)) {
+        throw new DockerDriverError(`network ${name} not found`, 404);
+      }
+    }
+    const taken = container.spec.ports.find((port) => this.hostPortHolder(port) !== undefined);
+    if (taken !== undefined) {
+      throw new DockerDriverError(
+        `driver failed programming external connectivity on endpoint ${container.name}: Bind for 0.0.0.0:${taken} failed: port is already allocated`,
+        500,
+      );
+    }
+    container.state = "running";
+    container.exitCode = null;
+    container.startedAt = new Date().toISOString();
+    this.appendLog(this.containerLogSource(container.id), "stdout", `[fake] ${container.name} started`);
+  }
+
+  async stopContainer(nameOrId: string, _options: { timeoutSeconds?: number } = {}): Promise<void> {
+    this.check("stopContainer");
+    assertContainerRef(nameOrId);
+    const container = this.findPlainContainer(nameOrId);
+    if (container === undefined || container.state !== "running") {
+      return;
+    }
+    container.state = "exited";
+    container.exitCode = 0;
+    this.appendLog(this.containerLogSource(container.id), "stdout", `[fake] ${container.name} stopped`);
+  }
+
+  async renameContainer(nameOrId: string, name: string): Promise<void> {
+    this.check("renameContainer");
+    assertContainerRef(name);
+    const container = this.requirePlainContainer(nameOrId);
+    const other = this.findPlainContainer(name);
+    if (other !== undefined && other !== container) {
+      throw new DockerDriverError(`Conflict. The container name "/${name}" is already in use.`, 409);
+    }
+    container.name = name;
+  }
+
+  async connectNetwork(network: string, container: string): Promise<void> {
+    this.check("connectNetwork");
+    assertNetworkName(network);
+    const target = this.requirePlainContainer(container);
+    const found = this.findNetwork(network);
+    if (found === undefined) {
+      throw new DockerDriverError(`network ${network} not found`, 404);
+    }
+    if (!found.attachable) {
+      throw new DockerDriverError(
+        `Could not attach to network ${network}: network is not manually attachable`,
+        403,
+      );
+    }
+    target.networks.add(found.name);
+  }
+
+  async disconnectNetwork(network: string, container: string): Promise<void> {
+    this.check("disconnectNetwork");
+    assertNetworkName(network);
+    assertContainerRef(container);
+    const target = this.findPlainContainer(container);
+    const found = this.findNetwork(network);
+    if (target !== undefined && found !== undefined) {
+      target.networks.delete(found.name);
+    }
+  }
+
+  /** For tests: the proxy's process ends on its own, as a crash would end it. */
+  crashPlainContainer(nameOrId: string): void {
+    const container = this.requirePlainContainer(nameOrId);
+    container.state = "exited";
+    container.exitCode = 1;
+  }
+
+  private findPlainContainer(nameOrId: string): FakePlainContainer | undefined {
+    return (
+      this.plainContainers.get(nameOrId) ??
+      [...this.plainContainers.values()].find(
+        (container) =>
+          container.name === nameOrId || (nameOrId.length >= 12 && container.id.startsWith(nameOrId)),
+      )
+    );
+  }
+
+  private requirePlainContainer(nameOrId: string): FakePlainContainer {
+    assertContainerRef(nameOrId);
+    const container = this.findPlainContainer(nameOrId);
+    if (container === undefined) {
+      throw new DockerDriverError(`No such container: ${nameOrId}`, 404);
+    }
+    return container;
+  }
+
+  private findNetwork(nameOrId: string): NetworkInfo | undefined {
+    return (
+      this.networks.get(nameOrId) ?? [...this.networks.values()].find((network) => network.id === nameOrId)
+    );
+  }
+
+  /** Who publishes this host port right now: a running plain container, or a service's live task. */
+  private hostPortHolder(port: number): string | undefined {
+    for (const container of this.plainContainers.values()) {
+      if (container.state === "running" && container.spec.ports.includes(port)) {
+        return container.name;
+      }
+    }
+    for (const service of this.services.values()) {
+      const published = (service.spec.EndpointSpec?.Ports ?? []).some(
+        (entry) => entry.PublishMode === "host" && entry.PublishedPort === port,
+      );
+      const live = service.tasks.some(
+        (task) =>
+          task.desiredState === "running" &&
+          !["shutdown", "failed", "rejected", "remove"].includes(task.state),
+      );
+      if (published && live) {
+        return service.name;
+      }
+    }
+    return undefined;
   }
 
   async removeBuildCache(ids: readonly string[]): Promise<number> {
@@ -1206,7 +1471,11 @@ export class FakeDriver implements DockerDriver {
     task.updatedAt = new Date().toISOString();
   }
 
-  private containerLogSource(id: string): LogSource {
+  private containerLogSource(idOrName: string): LogSource {
+    // A plain container's logs are kept under its id, whichever way it is named.
+    const id = this.plainContainers.has(idOrName)
+      ? idOrName
+      : ([...this.plainContainers.values()].find((container) => container.name === idOrName)?.id ?? idOrName);
     let source = this.containerLogSources.get(id);
     if (source === undefined) {
       source = { logs: [], listeners: new Set() };

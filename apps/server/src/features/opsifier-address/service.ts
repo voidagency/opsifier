@@ -6,6 +6,7 @@ import type {
   RequestOpsifierAddressRequest,
 } from "@opsifier/contract";
 import { eq } from "drizzle-orm";
+import { PROXY_CONTAINER } from "../../bootstrap/proxy-container";
 import type { AppDeps } from "../../core/context";
 import { customDomains, domains } from "../../core/db/schema";
 import { AppError, conflict } from "../../core/errors";
@@ -177,13 +178,13 @@ async function refreshRoutes(deps: AppDeps): Promise<void> {
 
 /** What Traefik's environment says about the address, against what is stored now. */
 async function proxyIsCurrent(deps: AppDeps, wanted: string | null): Promise<boolean> {
-  const proxy = await deps.docker.inspectService(PROXY_SERVICE);
-  if (proxy === null) {
+  const container = await deps.docker.inspectPlainContainer(PROXY_CONTAINER);
+  const service = container === null ? await deps.docker.inspectService(PROXY_SERVICE) : null;
+  if (container === null && service === null) {
     return true;
   }
-  const entry = proxy.spec.TaskTemplate.ContainerSpec.Env?.find((line) =>
-    line.startsWith("HTTPREQ_USERNAME="),
-  );
+  const env = container?.env ?? service?.spec.TaskTemplate.ContainerSpec.Env ?? [];
+  const entry = env.find((line) => line.startsWith("HTTPREQ_USERNAME="));
   return (entry === undefined ? null : entry.slice("HTTPREQ_USERNAME=".length)) === wanted;
 }
 
