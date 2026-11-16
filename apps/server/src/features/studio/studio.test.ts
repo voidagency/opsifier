@@ -21,6 +21,7 @@ import {
   TEST_ORIGIN,
   type TestContext,
 } from "../../testing/harness";
+import { previewDockerfile } from "./preview";
 
 let context: TestContext;
 let cookie: string;
@@ -209,6 +210,18 @@ async function deployAgent(): Promise<void> {
 const enable = (agent: typeof AGENT | null = AGENT, enabled = true) =>
   api<StudioSettings>("/settings/studio", "PUT", { enabled, agent });
 const link = () => api<StudioAppDetail>(`${PREVIEW}/studio`, "PUT", { workspaceDir: "/projects/cd-studio" });
+
+/** Waits until no Action is queued or running. */
+async function settle(): Promise<void> {
+  for (let attempt = 0; attempt < 2000; attempt += 1) {
+    const page = await api<{ items: Array<{ status: string }> }>("/actions?limit=100");
+    if (page.body.items.every((action) => action.status !== "queued" && action.status !== "running")) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("The Actions did not finish");
+}
 const start = (text: string, images: string[] = []) =>
   api<StudioConversation>(`${PREVIEW}/studio/conversations`, "POST", { text, images });
 const events = (id: string, after?: string) =>
@@ -702,6 +715,43 @@ describe("a Studio preview behind the panel's sign-in", () => {
 
     await api("/settings/studio", "PUT", { enabled: true, agent: AGENT, previewSignIn: false });
 
+    expect(ROUTES()).not.toContain("forwardAuth");
+  });
+
+  it("never shows a preview the Studio made without its sign-in while deleting it", async () => {
+    await prepare();
+    // A preview the Studio made, as it writes them.
+    await api(`${PREVIEW}/source`, "PUT", {
+      type: "dockerfile",
+      dockerfile: previewDockerfile({ uid: 1000, gid: 1000 }),
+    });
+    const routesNow = () => {
+      try {
+        return ROUTES();
+      } catch {
+        return null;
+      }
+    };
+
+    const removed = await api(`${PREVIEW}/studio/remove`, "POST", { confirm: "cd-studio" });
+    expect(removed.status).toBe(202);
+    // Gone, or still behind the sign-in, which lets nobody in once the project is out of the Studio.
+    const meanwhile = routesNow();
+    expect(meanwhile === null || meanwhile.includes("forwardAuth")).toBe(true);
+    expect((await askedByTraefik("/")).status).not.toBe(200);
+
+    await settle();
+    expect(routesNow()).toBeNull();
+    expect((await api(PREVIEW)).status).toBe(404);
+  });
+
+  it("gives a site the Studio did not make its routes back, without the sign-in", async () => {
+    await prepare();
+
+    expect((await api(`${PREVIEW}/studio/remove`, "POST", { confirm: "cd-studio" })).status).toBe(202);
+    await settle();
+
+    expect((await api(PREVIEW)).status).toBe(200);
     expect(ROUTES()).not.toContain("forwardAuth");
   });
 });

@@ -12,7 +12,7 @@ import { findService } from "../services/repo";
 import { requireService } from "../services/service";
 import { OWN_PREVIEW, requireModel, requirePanelUrl } from "./agents";
 import { createOwnProject, deployOwnProject, inspectFolder, requireNoCredentials } from "./own-project";
-import { PREVIEW_RESOURCES, previewDockerfile } from "./preview";
+import { inspectorEnv, PREVIEW_RESOURCES, previewDockerfile } from "./preview";
 import * as repo from "./repo";
 import { getStudioApp, linkStudioApp } from "./service";
 import { readStudioSettings } from "./settings";
@@ -370,7 +370,7 @@ export async function addStudioProject(
     {
       name: service,
       source: { type: "dockerfile", dockerfile: previewDockerfile(copy) },
-      env: panel === null ? "" : `OPSIFIER_STUDIO_INSPECTOR_URL=${panel}/studio-inspector.js\n`,
+      env: inspectorEnv(panel),
       domains: [],
       mounts: [{ type: "bind", hostPath: hostDir, mountPath: "/app", acknowledgeRisk: false }],
       resources: PREVIEW_RESOURCES,

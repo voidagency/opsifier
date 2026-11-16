@@ -61,7 +61,11 @@ When the token does not reach the repository, the Studio says so, and adding it 
 1. Invite the person to the panel, from **Settings**, **Accounts**, as a member with no project: such an account reaches nothing on the server by itself.
 2. In the Studio, open the project and use **Share this project**: tick the accounts that may work on it.
 
-Each account a project is shared with sees it in the Studio, with its conversations, which everyone on the project shares, and its live preview, which it may start. It sees no other project, and no service, log, variable, terminal or setting of the server. Untick an account to take the project back.
+Each account a project is shared with sees it in the Studio, with its conversations, which everyone on the project shares, and its live preview, which it may start. It sees no other project, and no service, log, variable, terminal or setting of the server. An account that reaches no project of the panel opens on the Studio, without the panel's menu. Untick an account to take the project back.
+
+## Delete a project
+
+Next to **Open**, the Studio's list gives an administrator a link to the project's Opsifier project, with its services, logs and deployments. An administrator deletes a project from the same list, with the bin, and types its name to confirm. Its conversations and shares go, and so does what the Studio made for it: its own agent server, its preview, and the Opsifier project `studio-<folder>` that held them. Its folder stays on the server, with any work not pushed yet: adding the same repository again picks it up, under the same name. A service the Studio did not make, such as a site linked to it, stays, without the Studio's sign-in in front of it; only the agent server the Studio put next to it goes. A preview that goes stays behind the sign-in until it is gone, and each service goes through its own destruction, so nothing can be deployed alongside.
 
 ## Previews behind the panel's sign-in
 
@@ -79,8 +83,8 @@ With **One agent per project** on, in the Studio's settings, each project gets a
 - **Its own Opsifier project.** A project added to the Studio goes in `studio-<folder>`, with two services, `preview` and `agent`. Their network keeps them away from every other project's services: the agent reaches its preview, at `http://preview`, and nothing else on the server.
 - **Its own folder.** The agent server mounts the project's folder, and no other folder of the server.
 - **No GitHub token.** The agent's `git pull` and `git push` go to the panel, at `/api/v1/studio/git/<project>.git`, with a token that opens that address only. The panel passes them on to the project's repository with the `GITHUB_TOKEN` secret of the agent server named in the settings, which never leaves it. Each push is recorded as a `studio.push` Action.
-- **A copy of the model.** The agent server named in the settings becomes the model. Each project's is built from the same image or Dockerfile, with the same deployment settings, fresh volumes of the same names, 4 GB of memory and 2 CPUs. It gets none of the model's variables, which may hold secrets, and makes its own key in its key file. The model's settings, model profiles and agent profile, with the key their stored keys are encrypted with, are copied in before each new conversation whenever they have changed, and the first copy restarts the new agent server once so that it reads that key; the model's secrets are never copied. Everything in those settings goes to every project, MCP servers and their keys included: keep there only what every project may use. A project's agent can read a model profile's API key, since it calls the model with it.
-- **Up while someone works on it.** Opening the project, or sending a message, starts its agent server and its preview, deploying them the first time; reading a conversation does not. An agent server nobody has sent anything to for 45 minutes, with no conversation at work, is stopped. A first deployment that failed is not tried again by the Studio: an administrator deploys the service again once its logs say why.
+- **A copy of the model.** The agent server named in the settings becomes the model. Each project's is built from the same image or Dockerfile, with the same deployment settings, fresh volumes of the same names, 4 GB of memory and 2 CPUs. It gets none of the model's variables, which may hold secrets, and makes its own key in its key file. The model's settings, model profiles and agent profile, with the key their stored keys are encrypted with, are copied in before each new conversation whenever they have changed, without the model's standing instructions (`system_message_suffix`, `user_message_suffix`): written for the model's own place, they would send a project's agent to previews and folders it does not have, and the Studio tells each conversation what it needs. Instructions for one project belong in its repository. The first copy restarts the new agent server once so that it reads that key, and the model's secrets are never copied. Everything in those settings goes to every project, MCP servers and their keys included: keep there only what every project may use. A project's agent can read a model profile's API key, since it calls the model with it.
+- **Up while someone works on it.** Opening the project, or sending a message, starts its agent server and its preview, deploying them the first time, whoever opens it; reading a conversation does not. An agent server nobody has sent anything to for 45 minutes, with no conversation at work, is stopped. A first deployment that failed is not tried again by the Studio: an administrator deploys the service again once its logs say why.
 
 Turning it on is refused until the model can be copied: its settings in a volume (the one that holds its key file, or the one at `~/.openhands`), its key in a key file, an image or a Dockerfile for its source, a projects folder, and an address for the panel, which each agent reaches it at.
 
@@ -109,24 +113,20 @@ The conversations held by the shared agent server are paused, and can still be r
 
 The preview's toolbar shows the page at a desktop's, a tablet's or a phone's width, and gives the address of the page shown. When the preview's page loads the Studio's inspector, **Point at an element** outlines what the pointer is on, and a click joins that element to the next message: its tag, its text, its classes, a CSS selector, and the React components around it, which a development build of React keeps. The agent is told what the block means.
 
-The inspector is a small script the panel serves at `/studio-inspector.js`. A preview loads it however suits it; with Vite, a plugin can import it from Vite's client, which every page of a development server loads:
+The inspector is a small script the panel serves at `/studio-inspector.js`, which other sites may load. The page's browser loads it from the panel, which it reaches already since it shows the Studio, so a preview never fetches it and always has the panel's current one. A preview the Studio makes adds it to Vite's client, which every page of a development server loads; one made by hand can do the same:
 
 ```js
-// In a Vite config: the inspector, fetched once from the panel when the server starts.
-const source = await (await fetch("https://panel.example.com/studio-inspector.js")).text();
-// Vite's import analysis resolves the import by its name through this plugin; the browser then asks
-// for /@id/__x00__opsifier-studio-inspector, which comes back as `id`.
-const name = "virtual:opsifier-studio-inspector";
-const id = "\0opsifier-studio-inspector";
+// In a Vite config: every page asks the browser to load the inspector from the panel.
+const loader = `\n{ const script = document.createElement("script"); script.src = "https://panel.example.com/studio-inspector.js"; script.async = true; document.head.appendChild(script); }\n`;
 export const studioInspector = () => ({
   name: "opsifier-studio-inspector",
   apply: "serve",
-  resolveId: (module) => (module === name || module === id ? id : undefined),
-  load: (module) => (module === id ? source : undefined),
   transform: (code, module) =>
-    /vite\/dist\/client\/client\.mjs/.test(module) ? `${code}\nimport("${name}");` : undefined,
+    /vite\/dist\/client\/client\.mjs/.test(module) ? code + loader : undefined,
 });
 ```
+
+The panel writes each preview it made from its current template when it starts, so a project whose preview came from an earlier version builds the new one at its next deployment.
 
 The page and the Studio talk with `postMessage`. The Studio sends `{ source: "opsifier-studio", type: "ping" }` and `{ type: "inspect", on }`; the page answers `{ source: "opsifier-studio-preview", type: "ready", path }`, then `location`, `selected` with the element, and `inspect-ended`. The page listens to its parent frame only, and the Studio to its preview's address only.
 
@@ -149,4 +149,4 @@ The agent ends each answer with two or three requests you might send next, which
 
 ## API
 
-`GET` and `PUT /api/v1/settings/studio` and `POST /api/v1/settings/studio/check` for the settings, `GET /api/v1/studio` for the linked projects, `POST /api/v1/studio/projects` to add a GitHub project, `POST /api/v1/studio/isolate` to give every project still on the shared agent server its own, `GET /api/v1/studio/preview-signin` for the hop of a preview's sign-in, `/api/v1/studio/git/{project}.git` for the git of each project's own agent server, and under `/api/v1/projects/{project}/services/{service}/studio`: the link (`GET`, `PUT`, `DELETE`), `GET` and `PUT .../members` for who it is shared with, `POST .../isolate` to give it an agent server of its own, `POST .../preview/start`, `POST .../conversations` to start one, and `GET .../conversations/{conversation}/events`, `POST .../messages` and `POST .../stop` for a conversation. See [API.md](API.md).
+`GET` and `PUT /api/v1/settings/studio` and `POST /api/v1/settings/studio/check` for the settings, `GET /api/v1/studio` for the linked projects, `POST /api/v1/studio/projects` to add a GitHub project, `POST /api/v1/studio/isolate` to give every project still on the shared agent server its own, `GET /api/v1/studio/preview-signin` for the hop of a preview's sign-in, `/api/v1/studio/git/{project}.git` for the git of each project's own agent server, and under `/api/v1/projects/{project}/services/{service}/studio`: the link (`GET`, `PUT`, `DELETE`), `POST .../remove` to delete the project with what the Studio made for it, `GET` and `PUT .../members` for who it is shared with, `POST .../isolate` to give it an agent server of its own, `POST .../preview/start`, `POST .../conversations` to start one, and `GET .../conversations/{conversation}/events`, `POST .../messages` and `POST .../stop` for a conversation. See [API.md](API.md).

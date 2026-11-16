@@ -54,6 +54,8 @@ import { useConversation } from "./useConversation";
 const MAX_IMAGES = 4;
 /** How often the preview's state is read while it starts, and otherwise. */
 const STARTING_REFRESH_MS = 2000;
+/** The longest a start is waited for, a first build included. */
+const START_DEADLINE_MS = 10 * 60 * 1000;
 const IDLE_REFRESH_MS = 15_000;
 const STARTERS = ["design", "mobile", "texts"] as const;
 /** The message field grows with what is typed, up to this height, then scrolls. */
@@ -91,11 +93,31 @@ export function WorkspacePage() {
         : IDLE_REFRESH_MS,
   });
 
+  // A start ends once the preview runs, or once its start or first build is over without it running.
+  const sawStarting = useRef(false);
   useEffect(() => {
-    if (startRequested && data?.previewStatus === "running") {
+    const status = data?.previewStatus;
+    if (!startRequested) {
+      sawStarting.current = false;
+    } else if (status === "running") {
+      setStartRequested(false);
+    } else if (status === "starting") {
+      sawStarting.current = true;
+    } else if (
+      status === "failing" ||
+      (sawStarting.current && (status === "undeployed" || status === "stopped"))
+    ) {
       setStartRequested(false);
     }
   }, [startRequested, data?.previewStatus]);
+  // And never waits forever: a first build takes minutes, not more.
+  useEffect(() => {
+    if (!startRequested) {
+      return;
+    }
+    const deadline = setTimeout(() => setStartRequested(false), START_DEADLINE_MS);
+    return () => clearTimeout(deadline);
+  }, [startRequested]);
 
   if (isPending) {
     return <Skeleton className="m-6 h-[60vh]" />;
@@ -135,6 +157,7 @@ export function WorkspacePage() {
         app={data}
         startRequested={startRequested}
         onStartRequested={() => setStartRequested(true)}
+        onStartFailed={() => setStartRequested(false)}
         onSelected={(selection) => {
           setElement(selection);
           // On a phone, the element pointed at is the start of a message: back to the conversation.

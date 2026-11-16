@@ -22,7 +22,7 @@ import {
   ownProjectName,
   remoteAddresses,
 } from "./agents";
-import { PREVIEW_RESOURCES, previewDockerfile } from "./preview";
+import { inspectorEnv, PREVIEW_RESOURCES, previewDockerfile } from "./preview";
 
 const FOLDER_PREFIX = "opsifier-studio-folder ";
 const FOLDER_TIMEOUT_MS = 30_000;
@@ -184,7 +184,7 @@ export async function createOwnProject(deps: AppDeps, options: OwnProjectOptions
       {
         name: OWN_PREVIEW,
         source: { type: "dockerfile", dockerfile: previewDockerfile(options.preview) },
-        env: panel === null ? "" : `OPSIFIER_STUDIO_INSPECTOR_URL=${panel}/studio-inspector.js\n`,
+        env: inspectorEnv(panel),
         domains: [],
         mounts: [{ type: "bind", hostPath: options.hostDir, mountPath: "/app", acknowledgeRisk: false }],
         resources: PREVIEW_RESOURCES,

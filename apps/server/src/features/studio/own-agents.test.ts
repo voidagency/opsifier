@@ -573,6 +573,81 @@ describe("a project moved to an agent server of its own", () => {
   });
 });
 
+describe("taking a project out of the Studio", () => {
+  const REMOVE = `${ADDED}/preview/studio/remove`;
+
+  it("deletes what the Studio made for it, once its name is typed, and leaves its folder", async () => {
+    await addOwnProject();
+
+    const wrong = await api(REMOVE, "POST", { confirm: "studio-un-mot-par-jour-landing" });
+    expect(wrong.status).toBe(409);
+    expect(apiErrorOf(wrong).code).toBe("confirmation_mismatch");
+
+    const execsBefore = context.docker.execs.length;
+    const removed = await api<{ type: string }>(REMOVE, "POST", { confirm: "un-mot-par-jour-landing" });
+    expect(removed.status).toBe(202);
+    expect(removed.body.type).toBe("studio.remove");
+    await settle();
+
+    expect((await api<StudioOverview>("/studio")).body.apps).toEqual([]);
+    expect((await api(`${ADDED}/preview`)).status).toBe(404);
+    expect((await api(`${ADDED}/agent`)).status).toBe(404);
+    expect((await api("/projects/studio-un-mot-par-jour-landing")).status).toBe(404);
+    // The folder is not the panel's to delete: nothing ran in the model's container, which sees it.
+    const ran = context.docker.execs.slice(execsBefore).map((exec) => exec.options.service);
+    expect(ran).not.toContain("lovable_openhands");
+
+    // Added again, it comes back under the same name.
+    const again = await api<StudioAppDetail>("/studio/projects", "POST", { repository: REPOSITORY });
+    expect(again.status).toBe(201);
+    expect(again.body.project).toBe("studio-un-mot-par-jour-landing");
+  });
+
+  it("waits for work already running on the project, and changes nothing meanwhile", async () => {
+    await addOwnProject();
+    expect((await api(`${ADDED}/agent/deploy`, "POST")).status).toBe(202);
+
+    const refused = await api(REMOVE, "POST", { confirm: "un-mot-par-jour-landing" });
+
+    expect(refused.status).toBe(409);
+    expect(apiErrorOf(refused).code).toBe("studio_project_busy");
+    await settle();
+    expect((await api<StudioOverview>("/studio")).body.apps).toHaveLength(1);
+  });
+
+  it("deletes the agent it put next to a site, and nothing of the site", async () => {
+    await prepareModel();
+    await saveSettings();
+    await api("/projects", "POST", { name: "shop" });
+    await api("/projects/shop/services", "POST", { name: "web" });
+    await api("/projects/shop/services/web/source", "PUT", { image: "drupal:11" });
+    expect((await api("/projects/shop/services/web/deploy", "POST")).status).toBe(202);
+    await settle();
+    await api("/projects/shop/services/web/studio", "PUT", { workspaceDir: "/projects/shop" });
+    agents.folders.set("/projects/shop", {
+      exists: true,
+      origin: "https://github.com/acme/shop.git",
+      uid: 10001,
+      gid: 10001,
+      vite: false,
+      credentials: [],
+    });
+    await saveSettings({ agentPerProject: true });
+    expect((await api("/projects/shop/services/web/studio/isolate", "POST")).status).toBe(200);
+    await settle();
+
+    expect((await api("/projects/shop/services/web/studio/remove", "POST", { confirm: "shop" })).status).toBe(
+      202,
+    );
+    await settle();
+
+    expect((await api("/projects/shop/services/agent")).status).toBe(404);
+    expect((await api<{ stopped: boolean }>("/projects/shop/services/web")).body.stopped).toBe(false);
+    expect((await api("/projects/shop")).status).toBe(200);
+    expect((await api("/projects/shop/services/web/studio")).status).toBe(404);
+  });
+});
+
 describe("the git relay of a project's agent server", () => {
   const PANEL = "https://panel.example.com";
   const basic = (password: string) =>

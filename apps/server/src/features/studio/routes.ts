@@ -1,6 +1,8 @@
 import { createRoute } from "@hono/zod-openapi";
 import {
+  actionEntry,
   addStudioProjectRequest,
+  destroyRequest,
   linkStudioAppRequest,
   servicePath,
   setStudioMembersRequest,
@@ -21,6 +23,7 @@ import {
   unlinkedStudioApp,
 } from "@opsifier/contract";
 import { getCookie, setCookie } from "hono/cookie";
+import { toActionEntry } from "../../core/actions";
 import { requirePrincipal, requireSessionPrincipal } from "../../core/auth";
 import type { Feature } from "../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
@@ -29,8 +32,10 @@ import { getPanelDomainSettings } from "../server/settings";
 import { needsTwoFactorSetup } from "../two-factor-policy/service";
 import { GIT_RELAY_PREFIX, startIdleAgentSweeper } from "./agents";
 import { isolateAllStudioApps, isolateStudioApp } from "./isolate";
+import { refreshPreviewDockerfiles } from "./preview";
 import { addStudioProject } from "./projects";
 import { isRelayPath, relayGit } from "./relay";
+import { removeStudioProject } from "./remove";
 import {
   checkStudioAgent,
   getStudioApp,
@@ -263,6 +268,25 @@ const linkRoute = createRoute({
   },
 });
 
+const removeRoute = createRoute({
+  method: "post",
+  path: `${APP}/remove`,
+  tags,
+  description:
+    "Takes the project out of the Studio, with its conversations and shares, and deletes what the Studio made for it: " +
+    "its own agent server, its preview, and the Opsifier project that held them. A preview the Studio did not make stays, " +
+    "and so does the project's folder: adding the same repository again reuses it. Confirmed by the project's name.",
+  request: { params: servicePath, body: jsonBody(destroyRequest) },
+  responses: {
+    202: jsonResponse(actionEntry, "The Action that is doing the work."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    404: missing,
+    409: blocked,
+  },
+});
+
 const unlinkRoute = createRoute({
   method: "delete",
   path: APP,
@@ -385,6 +409,15 @@ export const feature: Feature = {
   readsOwnBearer: isRelayPath,
   readsOwnBody: isRelayPath,
   ready(deps) {
+    // Never in the way of the panel starting: a preview left as it was still builds what it says.
+    try {
+      refreshPreviewDockerfiles(deps);
+    } catch (error) {
+      deps.logger.warn(
+        { err: error },
+        "Could not bring Studio previews' Dockerfiles to the current template",
+      );
+    }
     stopSweeper = startIdleAgentSweeper(deps);
   },
   shutdown() {
@@ -583,6 +616,20 @@ export const feature: Feature = {
       });
       return c.json(linked, 200);
     });
+
+    app.openapi(removeRoute, async (c) =>
+      c.json(
+        toActionEntry(
+          await removeStudioProject(
+            deps,
+            target(c.req.valid("param")),
+            c.req.valid("json").confirm,
+            actorOf(requirePrincipal(c)),
+          ),
+        ),
+        202,
+      ),
+    );
 
     app.openapi(unlinkRoute, async (c) => {
       const params = c.req.valid("param");

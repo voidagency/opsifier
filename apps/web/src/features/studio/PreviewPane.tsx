@@ -79,12 +79,15 @@ export function PreviewPane({
   app,
   startRequested,
   onStartRequested,
+  onStartFailed,
   onSelected,
   className,
 }: {
   app: StudioAppDetail;
   startRequested: boolean;
   onStartRequested: () => void;
+  /** The start asked for came to nothing: no more waiting for it. */
+  onStartFailed: () => void;
   onSelected: (element: SelectedElement) => void;
   className?: string;
 }) {
@@ -96,7 +99,8 @@ export function PreviewPane({
   const [source, setSource] = useState(app.previewUrl);
   const [path, setPath] = useState(pathOf(app.previewUrl));
   const [address, setAddress] = useState(path);
-  const [editing, setEditing] = useState(false);
+  // Read by the frame's messages as they come: what someone is typing is not replaced under them.
+  const editing = useRef(false);
   const [inspectable, setInspectable] = useState(false);
   const [inspecting, setInspecting] = useState(false);
   const frame = useRef<HTMLIFrameElement>(null);
@@ -106,22 +110,27 @@ export function PreviewPane({
   const start = async () => {
     onStartRequested();
     try {
-      await studioApi.startPreview(app.project, app.service);
+      const answer = await studioApi.startPreview(app.project, app.service);
+      // Nothing was started, and nothing runs: there is nothing to wait for.
+      if (!answer.started && status !== "running") {
+        onStartFailed();
+      }
     } catch (reason) {
+      onStartFailed();
       toast.error(errorMessage(reason, t));
     }
   };
 
-  // Opening a project starts its preview, as opening it in Lovable would.
+  // Opening a project starts its preview, as opening it in Lovable would, and builds it the first time:
+  // whoever opens it may have no other way to, a designer least of all.
   // biome-ignore lint/correctness/useExhaustiveDependencies: starts once per visit, on the first stopped state.
   useEffect(() => {
-    if (!autoStarted.current && status === "stopped") {
+    if (!autoStarted.current && (status === "stopped" || status === "undeployed")) {
       autoStarted.current = true;
       void start();
     }
   }, [status]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `editing` is read fresh through the setter.
   useEffect(() => {
     const listen = (event: MessageEvent) => {
       const data = event.data as {
@@ -145,7 +154,7 @@ export function PreviewPane({
           setInspectable(true);
         }
         setPath(data.path);
-        setAddress((current) => (editing ? current : (data.path as string)));
+        setAddress((current) => (editing.current ? current : (data.path as string)));
       } else if (data.type === "selected") {
         const element = readSelected(data.element);
         setInspecting(false);
@@ -232,16 +241,31 @@ export function PreviewPane({
               className="min-w-[8rem] flex-1"
               onSubmit={(event) => {
                 event.preventDefault();
-                setEditing(false);
+                editing.current = false;
                 reload(address.trim() === "" ? "/" : address.trim());
               }}
             >
               <input
                 aria-label={t("preview.address")}
                 value={address}
-                onChange={(event) => setAddress(event.target.value)}
-                onFocus={() => setEditing(true)}
-                onBlur={() => setEditing(false)}
+                onChange={(event) => {
+                  // Typing again while the page reloads after Enter is typing all the same.
+                  editing.current = true;
+                  setAddress(event.target.value);
+                }}
+                onFocus={() => {
+                  editing.current = true;
+                }}
+                onBlur={() => {
+                  editing.current = false;
+                }}
+                onKeyDown={(event) => {
+                  // As in a browser's address bar: Escape puts back the address of the page shown.
+                  if (event.key === "Escape") {
+                    setAddress(path);
+                    event.currentTarget.blur();
+                  }
+                }}
                 spellCheck={false}
                 className="h-7 w-full rounded-sm border bg-raised px-2 font-mono text-xs text-ink"
               />
@@ -322,7 +346,7 @@ export function PreviewPane({
                       ? t("preview.undeployedDescription")
                       : t("preview.stoppedDescription")}
               </p>
-              {!waiting && status !== "running" && status !== "undeployed" && (
+              {!waiting && status !== "running" && (
                 <Button variant="primary" onClick={start}>
                   {t("preview.start")}
                 </Button>

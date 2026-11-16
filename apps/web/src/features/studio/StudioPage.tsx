@@ -1,13 +1,14 @@
 import type { ServiceStatus, StudioApp } from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Link2, Plus } from "lucide-react";
+import { Boxes, Link2, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { errorMessage, useForm } from "../../lib/forms";
 import {
   Button,
   buttonClass,
+  ConfirmDialog,
   Dialog,
   EmptyState,
   ErrorState,
@@ -18,6 +19,7 @@ import {
   PageHeader,
   Select,
   Skeleton,
+  Tooltip,
   toast,
 } from "../../ui";
 import { useCurrentUser } from "../auth/session";
@@ -139,8 +141,16 @@ export function StudioPage() {
 
 function AppRow({ app }: { app: StudioApp }) {
   const { t } = useTranslation(["studio", "common"]);
+  const admin = useCurrentUser()?.role === "admin";
+  const queryClient = useQueryClient();
+  const [removing, setRemoving] = useState(false);
   const last = app.lastConversation;
   const name = studioAppName(app);
+  const remove = async () => {
+    await studioApi.remove(app.project, app.service, name);
+    toast.success(t("remove.started", { name }));
+    await queryClient.invalidateQueries({ queryKey: studioKey });
+  };
   return (
     <li className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 border-b py-3 last:border-b-0">
       <Lamp state={lampOf[app.previewStatus]} size="xs" label={t(`preview.status.${app.previewStatus}`)} />
@@ -161,15 +171,53 @@ function AppRow({ app }: { app: StudioApp }) {
               })}
         </span>
       </span>
-      <Link
-        to="/studio/$project/$service"
-        params={{ project: app.project, service: app.service }}
-        search={{}}
-        className={buttonClass("secondary", "sm")}
-        aria-label={t("list.openNamed", { name })}
-      >
-        {t("list.open")}
-      </Link>
+      <span className="flex items-center gap-1">
+        <Link
+          to="/studio/$project/$service"
+          params={{ project: app.project, service: app.service }}
+          search={{}}
+          className={buttonClass("secondary", "sm")}
+          aria-label={t("list.openNamed", { name })}
+        >
+          {t("list.open")}
+        </Link>
+        {admin && (
+          // Where its preview and agent server live, with their logs, settings and deployments.
+          <Tooltip content={t("list.inOpsifier", { project: app.project })}>
+            <Link
+              to="/projects/$project"
+              params={{ project: app.project }}
+              className={buttonClass("ghost", "icon-sm")}
+              aria-label={t("list.inOpsifier", { project: app.project })}
+            >
+              <Boxes aria-hidden="true" className="size-4" />
+            </Link>
+          </Tooltip>
+        )}
+        {admin && (
+          <Tooltip content={t("remove.action", { name })}>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label={t("remove.action", { name })}
+              onClick={() => setRemoving(true)}
+            >
+              <Trash2 aria-hidden="true" className="size-4" />
+            </Button>
+          </Tooltip>
+        )}
+      </span>
+      {admin && (
+        <ConfirmDialog
+          open={removing}
+          onOpenChange={setRemoving}
+          title={t("remove.title", { name })}
+          description={t("remove.description")}
+          confirmLabel={t("remove.confirm")}
+          confirmText={name}
+          onConfirm={remove}
+        />
+      )}
     </li>
   );
 }

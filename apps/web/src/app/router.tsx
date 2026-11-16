@@ -44,6 +44,7 @@ import { SettingsLayout } from "../features/settings/SettingsLayout";
 import { KnownHostsPage } from "../features/settings/server/KnownHostsPage";
 import { StorageProvidersPage } from "../features/storage-providers/StorageProvidersPage";
 import { createStudioRoutes, createStudioSettingsRoute } from "../features/studio/routes";
+import { isStudioOnlyAccount } from "../features/studio/studioOnly";
 import { createInstallRoute } from "../features/templates/routes";
 import { isApiError } from "../lib/api";
 import { BootScreen, NotFoundPage, RootError } from "./RouteStates";
@@ -196,6 +197,12 @@ const overviewRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/",
   staticData: { crumb: "nav.overview" },
+  // Someone who only has the Studio, a designer, opens on it.
+  beforeLoad: async ({ context }) => {
+    if (await isStudioOnlyAccount(context.queryClient)) {
+      throw redirect({ to: "/studio", replace: true });
+    }
+  },
   component: OverviewPage,
 });
 

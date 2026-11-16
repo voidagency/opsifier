@@ -11,7 +11,7 @@ export type OperationRisk = "low" | "medium" | "high";
  * read, it can't be unread.
  */
 const DESTRUCTIVE_ENDING =
-  /\/(?:stop|restore|discard-earlier-copy|resolve|rollback|reboot|disconnect|rotate|reveal)$|\/docker\/cleanup\/[^/]+$|\/(?:panel|proxy)\/restart$|\/system\/update$/;
+  /\/(?:stop|restore|discard-earlier-copy|resolve|rollback|reboot|disconnect|rotate|reveal|remove)$|\/docker\/cleanup\/[^/]+$|\/(?:panel|proxy)\/restart$|\/system\/update$/;
 
 /** Reads that can return a secret: an environment, a credential. */
 const SENSITIVE_READ = /\/(?:env|environment|env-file|credentials|basic-auth)$/;

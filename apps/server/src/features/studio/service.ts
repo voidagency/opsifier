@@ -175,7 +175,7 @@ function appView(
   };
 }
 
-function requireLinked(
+export function requireLinked(
   deps: Pick<AppDeps, "db">,
   target: ServiceTarget,
 ): { record: ServiceRecord; app: repo.StudioAppRow } {

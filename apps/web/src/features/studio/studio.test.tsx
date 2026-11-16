@@ -280,6 +280,101 @@ describe("the Studio's list", () => {
   });
 });
 
+describe("taking a project out of the Studio", () => {
+  it("deletes a project once its name is typed, for an administrator", async () => {
+    const server = installFakeServer(
+      base({
+        [`POST ${APP}/remove`]: {
+          id: "a1",
+          type: "studio.remove",
+          title: "Take cd-studio out of the Studio",
+          status: "queued",
+          projectName: "lovable",
+          serviceName: "cd-studio-preview",
+          actorEmail: "admin@example.com",
+          origin: null,
+          originDetail: null,
+          hasLog: false,
+          logTruncated: false,
+          error: null,
+          phase: null,
+          createdAt: "2026-11-16T19:00:00Z",
+          startedAt: null,
+          finishedAt: null,
+        },
+      }),
+    );
+    renderApp("/studio");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete cd-studio" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/Its folder stays on the server/)).toBeTruthy();
+    const confirm = within(dialog).getByRole("button", { name: "Delete" });
+    expect(confirm.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "cd-studio" } });
+    fireEvent.click(confirm);
+
+    await waitFor(() =>
+      expect(
+        server.calls.find((call) => call.method === "POST" && call.path === `${APP}/remove`)?.body,
+      ).toEqual({
+        confirm: "cd-studio",
+      }),
+    );
+  });
+
+  it("leads an administrator to the project in Opsifier", async () => {
+    installFakeServer(base());
+    renderApp("/studio");
+
+    const link = await screen.findByRole("link", { name: "Open lovable in Opsifier" });
+    expect(link.getAttribute("href")).toBe("/projects/lovable");
+  });
+
+  it("is not offered to someone a project is shared with", async () => {
+    installFakeServer(
+      base({ "GET /auth/session": { status: "signed-in", user: { ...SIGNED_IN.user, role: "member" } } }),
+    );
+    renderApp("/studio");
+
+    expect(await screen.findByRole("link", { name: "Open cd-studio in the Studio" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Delete cd-studio" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Open lovable in Opsifier" })).toBeNull();
+  });
+});
+
+describe("someone who only has the Studio", () => {
+  const designer = (projects: Array<{ name: string; role: string }>) =>
+    base({
+      "GET /auth/session": { status: "signed-in", user: { ...SIGNED_IN.user, role: "member" } },
+      "GET /auth/identity": {
+        user: { id: SIGNED_IN.user.id, email: SIGNED_IN.user.email, role: "member" },
+        credential: { kind: "session" },
+        projects,
+        allProjects: null,
+        operations: [],
+      },
+    });
+
+  it("lands on the Studio, and sees no menu of the panel", async () => {
+    installFakeServer(designer([]));
+    const rendered = renderApp("/");
+
+    await waitFor(() => expect(rendered.location()).toBe("/studio"));
+    expect(await screen.findByRole("link", { name: "Open cd-studio in the Studio" })).toBeTruthy();
+    expect(screen.queryByRole("navigation", { name: "Primary" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Activity" })).toBeNull();
+  });
+
+  it("is not a member who also reaches projects of the panel", async () => {
+    installFakeServer(designer([{ name: "shop", role: "operator" }]));
+    const rendered = renderApp("/");
+
+    expect((await screen.findAllByRole("link", { name: "Activity" })).length).toBeGreaterThan(0);
+    expect(rendered.location()).toBe("/");
+  });
+});
+
 describe("a Studio project", () => {
   it("shows the conversation next to the live preview", async () => {
     installFakeServer(base());
@@ -710,6 +805,71 @@ describe("a Studio project", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stop" }));
 
     await waitFor(() => expect(server.calls.some((call) => call.path.endsWith("/stop"))).toBe(true));
+  });
+
+  it("builds a preview that never ran as the project opens, for whoever opens it", async () => {
+    const server = installFakeServer(
+      base({
+        [`GET ${APP}`]: detail({ previewStatus: "undeployed" }),
+        [`POST ${APP}/preview/start`]: { started: true, agentStarted: false },
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    await waitFor(() =>
+      expect(
+        server.calls.some((call) => call.method === "POST" && call.path === `${APP}/preview/start`),
+      ).toBe(true),
+    );
+    expect(await screen.findByText("The preview is starting")).toBeTruthy();
+  });
+
+  it("says why a preview did not start, and offers to start it again", async () => {
+    installFakeServer(
+      base({
+        [`GET ${APP}`]: detail({ previewStatus: "undeployed" }),
+        [`POST ${APP}/preview/start`]: {
+          __status: 409,
+          body: {
+            error: {
+              code: "studio_deploy_failed",
+              message: "lovable/cd-studio-preview could not be deployed: an administrator looks at its last deployment.",
+            },
+          },
+        },
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    expect((await screen.findAllByText(/could not be deployed/)).length).toBeGreaterThan(0);
+    expect(await screen.findByRole("button", { name: "Start the preview" })).toBeTruthy();
+    expect(screen.queryByText("The preview is starting")).toBeNull();
+  });
+
+  it("keeps the address being typed while the page moves, and Escape puts the page's back", async () => {
+    installFakeServer(base());
+    renderApp("/studio/lovable/cd-studio-preview");
+    const frame = (await screen.findByTitle("Live preview of cd-studio-preview")) as HTMLIFrameElement;
+    const fromPreview = (data: Record<string, unknown>) =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { source: "opsifier-studio-preview", ...data },
+          origin: "https://lovable-cd-studio-preview.app.example.com",
+          source: frame.contentWindow,
+        }),
+      );
+    const address = screen.getByRole("textbox", { name: "Address of the page shown" }) as HTMLInputElement;
+    fromPreview({ type: "ready", path: "/fr" });
+    await waitFor(() => expect(address.value).toBe("/fr"));
+
+    fireEvent.focus(address);
+    fireEvent.change(address, { target: { value: "/contact" } });
+    fromPreview({ type: "location", path: "/fr/offres" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(address.value).toBe("/contact");
+
+    fireEvent.keyDown(address, { key: "Escape" });
+    expect(address.value).toBe("/fr/offres");
   });
 
   it("starts a stopped preview as the project opens", async () => {

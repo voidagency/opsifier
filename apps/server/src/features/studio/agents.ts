@@ -31,6 +31,9 @@ import { readStudioSettings } from "./settings";
 export const OWN_PREVIEW = "preview";
 export const OWN_AGENT = "agent";
 const PROJECT_PREFIX = "studio-";
+
+/** Whether a project's name is one the Studio gives the projects it makes. */
+export const isStudioProjectName = (project: string): boolean => project.startsWith(PROJECT_PREFIX);
 /** The longest Opsifier project name. */
 const MAX_PROJECT = 40;
 /** An agent server runs a browser for its screenshots, next to the model's client. */
@@ -299,7 +302,11 @@ export async function createOwnAgent(deps: AppDeps, options: OwnAgentOptions): P
 }
 
 const SEED_PREFIX = "opsifier-studio-seed ";
-/** What a project's agent server copies of the model's settings. Its secrets stay where they are. */
+/**
+ * What a project's agent server copies of the model's settings. Its secrets stay where they are, and so
+ * do its standing instructions: written for the model's own place, they would send a project's agent
+ * to previews and folders it does not have. The Studio tells each conversation what it needs.
+ */
 const SEED_FILES = [
   "settings.json",
   "profiles",
@@ -314,12 +321,19 @@ const SEED_TIMEOUT_MS = 30_000;
 /**
  * Runs in the model's container: packs its settings, models and agent profiles, with the key their
  * stored keys are encrypted with, and a digest of them all, in base64 lines short enough to come back
- * whole. Lock files are left out.
+ * whole. Lock files are left out, and so are the standing instructions in its JSON files.
  */
 export const SEED_READ_SCRIPT = `
 import base64, hashlib, io, json, os, sys, tarfile
 request = json.load(sys.stdin)
 state = request["state"]
+STANDING = {"system_message_suffix", "user_message_suffix"}
+def without_standing(node):
+    if isinstance(node, dict):
+        return {key: without_standing(value) for key, value in node.items() if key not in STANDING}
+    if isinstance(node, list):
+        return [without_standing(value) for value in node]
+    return node
 digest = hashlib.sha256()
 buffer = io.BytesIO()
 with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
@@ -338,6 +352,11 @@ with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
             relative = os.path.relpath(full, state)
             with open(full, "rb") as handle:
                 data = handle.read()
+            if relative.endswith(".json"):
+                try:
+                    data = json.dumps(without_standing(json.loads(data)), indent=2).encode()
+                except ValueError:
+                    pass
             digest.update(relative.encode() + b"\\0" + data + b"\\0")
             info = tarfile.TarInfo(relative)
             info.size = len(data)

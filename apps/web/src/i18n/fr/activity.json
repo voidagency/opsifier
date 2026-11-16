@@ -109,7 +109,8 @@
       "conversation": "Conversation du Studio lancée"
     },
     "studio.add-project": "Projet ajouté au Studio",
-    "studio.share": "Projet du Studio partagé"
+    "studio.share": "Projet du Studio partagé",
+    "studio.remove": "Projet retiré du Studio"
   },
   "healthLabel": "Actions récentes par résultat",
   "noMatch": "Aucune entrée affichée n'a ce résultat.",

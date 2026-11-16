@@ -25,7 +25,8 @@
     "emptyNoFolder": "Réglez le dossier des projets dans les réglages du Studio pour ajouter des projets depuis GitHub, ou reliez un service qui montre déjà l'aperçu d'un projet.",
     "memberEmptyTitle": "Aucun projet partagé avec vous pour l'instant",
     "memberEmptyDescription": "Dès qu'un administrateur vous partage un projet, il apparaît ici : ouvrez-le pour parler à l'agent et le voir en direct.",
-    "agentMissing": "Attend son propre agent"
+    "agentMissing": "Attend son propre agent",
+    "inOpsifier": "Ouvrir {{project}} dans Opsifier"
   },
   "link": {
     "action": "Relier un projet",
@@ -91,7 +92,7 @@
     "startingDescription": "Cela prend en général une quinzaine de secondes.",
     "stoppedTitle": "L'aperçu est arrêté",
     "stoppedDescription": "Démarrez-le pour voir le projet ici.",
-    "undeployedDescription": "Son service n'a jamais été déployé : déployez-le une fois depuis sa page.",
+    "undeployedDescription": "Il n'a encore jamais tourné : son premier démarrage le construit, en une minute ou deux.",
     "noAddressTitle": "L'aperçu n'a pas d'adresse",
     "noAddressDescription": "Donnez un domaine à son service, puis revenez.",
     "start": "Démarrer l'aperçu",
@@ -211,5 +212,12 @@
     "save": "Enregistrer",
     "saved_one": "Partagé avec {{count}} compte",
     "saved_other": "Partagé avec {{count}} comptes"
+  },
+  "remove": {
+    "action": "Supprimer {{name}}",
+    "title": "Supprimer {{name}} du Studio ?",
+    "description": "Ses conversations, ses partages, son agent et son aperçu sont supprimés, avec le projet Opsifier que le Studio a créé pour lui. Son dossier reste sur le serveur, avec le travail non poussé : ajouter de nouveau le même dépôt le reprend. Un site relié au Studio reste en place, sans la connexion du Studio devant lui.",
+    "confirm": "Supprimer",
+    "started": "{{name}} est en cours de suppression"
   }
 }

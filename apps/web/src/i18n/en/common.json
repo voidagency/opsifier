@@ -218,7 +218,8 @@
     "studio_agent_key_file_required": "Name the agent server's key file in the Studio's settings: each project's agent makes its own key there.",
     "studio_project_isolating": "This project is being given its own agent already.",
     "studio_preview_not_movable": "This preview is not one the Studio knows how to make again (a Vite project), so it is not moved: move it to an Opsifier project of its own, then give it its agent.",
-    "studio_agent_name_taken": "Every name for an agent server in this project is taken."
+    "studio_agent_name_taken": "Every name for an agent server in this project is taken.",
+    "studio_project_busy": "Work is still running on this project. Wait for it to finish, then try again."
   },
   "retention": {
     "removed": "Removed",

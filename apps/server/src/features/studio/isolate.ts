@@ -198,7 +198,7 @@ async function isolate(deps: AppDeps, isolation: Isolation): Promise<StudioIsola
 }
 
 /** The shared agent server, which holds the GitHub token, stops working on the project's folder. */
-async function pauseShared(
+export async function pauseShared(
   deps: AppDeps,
   model: Model,
   conversations: readonly repo.StudioConversationRow[],

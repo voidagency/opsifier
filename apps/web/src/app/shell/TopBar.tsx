@@ -10,6 +10,7 @@ import { ServerPurposeIndicator } from "../../features/server-purpose/Protection
 import type { CrumbControlProps } from "../../features/services/Crumbs";
 import { serviceCounts } from "../../features/services/serviceState";
 import { studioOverviewQuery } from "../../features/studio/api";
+import { useStudioOnly } from "../../features/studio/studioOnly";
 import { cn } from "../../lib/cn";
 import {
   Kbd,
@@ -213,29 +214,42 @@ function ServerIpButton() {
 
 export function TopBar() {
   const { t } = useTranslation("shell");
+  // Someone who only has the Studio, a designer, sees the Studio and their own account, nothing else.
+  const studioOnly = useStudioOnly();
+  const panelUi = studioOnly === false;
   return (
     <header className="brand-bar z-30 shrink-0 border-b bg-bg">
       <div className="flex h-11 items-center gap-3 px-4 md:px-6 xl:grid xl:grid-cols-[minmax(0,1fr)_auto_auto] xl:gap-6 min-[106.25rem]:grid-cols-[minmax(0,1fr)_auto_minmax(max-content,1fr)]">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <Link to="/" aria-label={t("home")} className="flex shrink-0 items-center gap-2 rounded-sm">
+          <Link
+            to={studioOnly === true ? "/studio" : "/"}
+            aria-label={t("home")}
+            className="flex shrink-0 items-center gap-2 rounded-sm"
+          >
             <Mark />
             <span className="hidden font-semibold text-base tracking-[-0.005em] sm:block xl:hidden min-[90rem]:block">
               Opsifier
             </span>
           </Link>
-          <ServerHealth />
+          {panelUi && <ServerHealth />}
           <Breadcrumb />
         </div>
-        <PrimaryNav className="hidden xl:flex" />
+        {panelUi && <PrimaryNav className="hidden xl:flex" />}
         <div className="flex items-center justify-end gap-1">
-          <ServerPurposeIndicator />
-          <PaletteTrigger />
-          <ServerIpButton />
-          <PanelVersion />
+          {panelUi && (
+            <>
+              <ServerPurposeIndicator />
+              <PaletteTrigger />
+              <ServerIpButton />
+              <PanelVersion />
+            </>
+          )}
           <UserMenu />
         </div>
       </div>
-      <PrimaryNav className="flex overflow-x-auto border-t px-4 [scrollbar-width:none] md:px-6 xl:hidden" />
+      {panelUi && (
+        <PrimaryNav className="flex overflow-x-auto border-t px-4 [scrollbar-width:none] md:px-6 xl:hidden" />
+      )}
     </header>
   );
 }

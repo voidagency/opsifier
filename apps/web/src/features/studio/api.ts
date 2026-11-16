@@ -1,5 +1,6 @@
 import {
   type AddStudioProjectRequest,
+  actionEntry,
   type LinkStudioAppRequest,
   type SetStudioMembersRequest,
   type StudioApp,
@@ -80,6 +81,9 @@ export const studioApi = {
     api.put(appPath(project, service), { body, schema: studioAppDetail }),
   unlink: (project: string, service: string) =>
     api.delete(appPath(project, service), { schema: unlinkedStudioApp }),
+  /** Takes the project out, with what the Studio made for it. Its folder stays. */
+  remove: (project: string, service: string, confirm: string) =>
+    api.post(`${appPath(project, service)}/remove`, { body: { confirm }, schema: actionEntry }),
   start: (project: string, service: string, body: StudioMessageRequest) =>
     api.post(`${appPath(project, service)}/conversations`, { body, schema: studioConversation }),
   send: (project: string, service: string, id: string, body: StudioMessageRequest) =>

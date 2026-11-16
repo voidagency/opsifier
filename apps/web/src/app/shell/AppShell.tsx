@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { sessionQuery } from "../../features/auth/session";
 import { useLiveServiceData } from "../../features/services/api";
 import { usePlatformCommands } from "../../features/settings/usePlatformCommands";
+import { useStudioOnly } from "../../features/studio/studioOnly";
 import { setTwoFactorRequiredHandler } from "../../lib/api";
 import { realtime } from "../../lib/realtime";
 import { ActivityTape } from "./ActivityTape";
@@ -20,6 +21,8 @@ export function AppShell() {
   const main = useRef<HTMLElement>(null);
   // A Studio project takes the whole height, as a builder does: no activity bar under its conversation.
   const inStudioProject = /^\/studio\/[^/]+\/[^/]+/.test(pathname);
+  // Nor for someone who only has the Studio: the panel's activity is not theirs to follow.
+  const studioOnly = useStudioOnly();
   useAppCommands();
   usePlatformCommands();
   useLiveServiceData();
@@ -69,8 +72,8 @@ export function AppShell() {
       >
         <Outlet />
       </main>
-      {!inStudioProject && <ActivityTape />}
-      <CommandPalette />
+      {!inStudioProject && studioOnly === false && <ActivityTape />}
+      {studioOnly === false && <CommandPalette />}
     </div>
   );
 }

@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { previewDockerfile } from "./preview";
+import { previewDockerfile, refreshedDockerfile } from "./preview";
 import { folderName, parseRepository, previewName, readCloneResult } from "./projects";
 
 describe("a GitHub repository given to the Studio", () => {
@@ -63,10 +65,14 @@ describe("a Studio preview's Dockerfile", () => {
   });
 
   it("writes the Vite config with its escapes as they are", () => {
-    expect(text).toContain('const id = "\\0opsifier-studio-inspector";');
-    expect(text).toContain("/vite\\/dist\\/client\\/client\\.mjs/.test(module)");
-    expect(text).toContain('code + "\\nimport(" + JSON.stringify(name) + ");\\n"');
+    expect(text).toContain("/vite\\/dist\\/client\\/client\\.mjs/.test(module) ? code + loader : undefined");
+    expect(text).toContain('document.createElement(\\"script\\"); script.src = " +');
     expect(text).toContain("server: { allowedHosts: true }");
+  });
+
+  it("never fetches the inspector itself: the page's browser loads it from the panel", () => {
+    expect(text).not.toContain("fetch(");
+    expect(text).toContain("process.env.OPSIFIER_STUDIO_INSPECTOR_URL");
   });
 
   it("leaves the port to the container, and the lockfile alone", () => {
@@ -74,5 +80,28 @@ describe("a Studio preview's Dockerfile", () => {
     expect(text).toContain("ENV HOME=/tmp PORT=80");
     expect(text).toContain("bun install --no-save");
     expect(text.startsWith("# syntax=docker/dockerfile:1\n")).toBe(true);
+  });
+});
+
+describe("a preview's Dockerfile written by an earlier version", () => {
+  const current = previewDockerfile({ uid: 10001, gid: 10001 });
+  const earlier = readFileSync(join(import.meta.dirname, "fixtures", "preview-0.11.0.Dockerfile"), "utf8");
+
+  it("is written again from the current template, for the same user", () => {
+    expect(refreshedDockerfile(earlier)).toBe(current);
+    expect(refreshedDockerfile(earlier.replaceAll("10001:10001", "1000:1001"))).toBe(
+      previewDockerfile({ uid: 1000, gid: 1001 }),
+    );
+  });
+
+  it("is left alone when it is current, changed by hand, or not the panel's", () => {
+    expect(refreshedDockerfile(current)).toBeNull();
+    expect(
+      refreshedDockerfile(earlier.replace("WORKDIR /app", "RUN apt-get install -y make\nWORKDIR /app")),
+    ).toBeNull();
+    expect(refreshedDockerfile("FROM node:22\nUSER 1000:1000\n")).toBeNull();
+    expect(
+      refreshedDockerfile(earlier.replace("# Opsifier Studio preview. Made by the panel", "# Mine")),
+    ).toBeNull();
   });
 });

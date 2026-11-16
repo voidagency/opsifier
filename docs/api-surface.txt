@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 45
+# documented-changes: 47
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -4150,6 +4150,30 @@ POST /api/v1/projects/{project}/services/{service}/studio/preview/start
   401
   404
   409
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/studio/remove
+  202 actorEmail!: null|string
+  202 createdAt!: string
+  202 error!: null|string
+  202 finishedAt!: null|string
+  202 hasLog!: boolean
+  202 id!: string
+  202 origin: enum(api_key|session|system|trigger|webhook)
+  202 originDetail: null|string
+  202 phase: null|string
+  202 projectName!: null|string
+  202 serviceName!: null|string
+  202 startedAt!: null|string
+  202 status!: enum(cancelled|failed|queued|running|succeeded|uncertain)
+  202 title!: string
+  202 type!: string
+  400
+  401
+  403
+  404
+  409
+  body confirm!: string
   path project!: string
   path service!: string
 GET /api/v1/projects/{project}/templates

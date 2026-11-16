@@ -25,7 +25,8 @@
     "emptyNoFolder": "Set the projects folder in the Studio's settings to add projects from GitHub, or link a service that already shows a project's preview.",
     "memberEmptyTitle": "No project shared with you yet",
     "memberEmptyDescription": "Once an administrator shares a project with you, it shows here: open it to talk to the agent and see it live.",
-    "agentMissing": "Waiting for its own agent"
+    "agentMissing": "Waiting for its own agent",
+    "inOpsifier": "Open {{project}} in Opsifier"
   },
   "link": {
     "action": "Link a project",
@@ -91,7 +92,7 @@
     "startingDescription": "It usually takes about fifteen seconds.",
     "stoppedTitle": "The preview is stopped",
     "stoppedDescription": "Start it to see the project here.",
-    "undeployedDescription": "Its service has never been deployed: deploy it once from its page.",
+    "undeployedDescription": "It has never run: its first start builds it, which takes a minute or two.",
     "noAddressTitle": "The preview has no address",
     "noAddressDescription": "Give its service a domain, then come back.",
     "start": "Start the preview",
@@ -211,5 +212,12 @@
     "save": "Save",
     "saved_one": "Shared with {{count}} account",
     "saved_other": "Shared with {{count}} accounts"
+  },
+  "remove": {
+    "action": "Delete {{name}}",
+    "title": "Delete {{name}} from the Studio?",
+    "description": "Its conversations, its shares, its agent and its preview are deleted, with the Opsifier project the Studio made for it. Its folder stays on the server, with any work not pushed: adding the same repository again picks it up. A site linked to the Studio stays, without the Studio's sign-in in front of it.",
+    "confirm": "Delete",
+    "started": "{{name}} is being deleted"
   }
 }
