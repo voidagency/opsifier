@@ -214,7 +214,9 @@
     "studio_deploy_failed": "This service could not be deployed: an administrator looks at its last deployment, then deploys it again.",
     "studio_folder_credentials": "This project's git settings hold a credential: remove it, then try again. A project's own agent reaches GitHub through the panel only.",
     "studio_agent_key_file_required": "Name the agent server's key file in the Studio's settings: each project's agent makes its own key there.",
-    "studio_project_isolating": "This project is being given its own agent already."
+    "studio_project_isolating": "This project is being given its own agent already.",
+    "studio_preview_not_movable": "This preview is not one the Studio knows how to make again (a Vite project), so it is not moved: move it to an Opsifier project of its own, then give it its agent.",
+    "studio_agent_name_taken": "Every name for an agent server in this project is taken."
   },
   "retention": {
     "removed": "Removed",

@@ -214,7 +214,9 @@
     "studio_deploy_failed": "Ce service n'a pas pu être déployé : un administrateur regarde son dernier déploiement, puis le relance.",
     "studio_folder_credentials": "Les réglages Git de ce projet contiennent un identifiant : retirez-le, puis réessayez. L'agent d'un projet ne joint GitHub qu'en passant par le panneau.",
     "studio_agent_key_file_required": "Indiquez le fichier de clé du serveur d'agent dans les réglages du Studio : l'agent de chaque projet y crée sa propre clé.",
-    "studio_project_isolating": "Ce projet est déjà en train de recevoir son propre agent."
+    "studio_project_isolating": "Ce projet est déjà en train de recevoir son propre agent.",
+    "studio_preview_not_movable": "Cet aperçu n'est pas un de ceux que le Studio sait refaire (un projet Vite) : il n'est donc pas déplacé. Placez-le dans un projet Opsifier à lui, puis donnez-lui son agent.",
+    "studio_agent_name_taken": "Tous les noms possibles pour un serveur d'agent dans ce projet sont pris."
   },
   "retention": {
     "removed": "Supprimé",

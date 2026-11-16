@@ -10,8 +10,8 @@ import { getPanelDomainSettings } from "../server/settings";
 import { createFromDefinition } from "../service-definition/service";
 import { qualifiedName } from "../services/compile";
 import { enqueueDeploy } from "../services/lifecycle";
-import { deleteServiceRow, type ServiceRecord, saveServiceSpec } from "../services/repo";
-import { createService, requireService } from "../services/service";
+import { deleteServiceRow, type ServiceRecord } from "../services/repo";
+import { requireService } from "../services/service";
 import {
   createOwnAgent,
   hashGitToken,
@@ -143,11 +143,8 @@ export interface OwnProjectOptions {
   /** owner/name on GitHub, and the remote its copy knows it by. */
   slug: string;
   origin: string | null;
-  /**
-   * The preview: the Studio's own, for a Vite project, run as the agent server's user so that both
-   * write the same files; or, for anything else, a copy of the project's preview so far.
-   */
-  preview: { kind: "vite"; uid: number; gid: number } | { kind: "copy"; record: ServiceRecord };
+  /** The Studio's own preview, of a Vite project, run as the agent server's user so that both write the same files. */
+  preview: { kind: "vite"; uid: number; gid: number };
   access: Access;
   actorEmail: string | undefined;
   isAdmin: boolean;
@@ -180,45 +177,23 @@ export async function createOwnProject(deps: AppDeps, options: OwnProjectOptions
   await createProject(deps, { name: project }, options.actorEmail);
   try {
     const previewTarget = { projectName: project, serviceName: OWN_PREVIEW };
-    if (options.preview.kind === "vite") {
-      const panel = getPanelDomainSettings(deps).url;
-      await createFromDefinition(
-        deps,
-        project,
-        {
-          name: OWN_PREVIEW,
-          source: { type: "dockerfile", dockerfile: previewDockerfile(options.preview) },
-          env: panel === null ? "" : `OPSIFIER_STUDIO_INSPECTOR_URL=${panel}/studio-inspector.js\n`,
-          domains: [],
-          mounts: [{ type: "bind", hostPath: options.hostDir, mountPath: "/app", acknowledgeRisk: false }],
-          resources: PREVIEW_RESOURCES,
-          deploy: false,
-        },
-        options.access,
-        options.actorEmail,
-        options.isAdmin,
-      );
-    } else {
-      const old = options.preview.record;
-      await createService(deps, project, { name: OWN_PREVIEW, type: "app" }, options.actorEmail);
-      const fresh = requireService(deps, previewTarget);
-      saveServiceSpec(
-        deps.db,
-        project,
-        OWN_PREVIEW,
-        {
-          ...fresh.spec,
-          source: old.spec.source,
-          build: { ...fresh.spec.build, config: old.spec.build.config },
-          sealedEnv: old.spec.sealedEnv,
-          envInterpolation: old.spec.envInterpolation,
-          deploy: old.spec.deploy,
-          resources: old.spec.resources,
-          mounts: old.spec.mounts,
-        },
-        new Date(deps.now()),
-      );
-    }
+    const panel = getPanelDomainSettings(deps).url;
+    await createFromDefinition(
+      deps,
+      project,
+      {
+        name: OWN_PREVIEW,
+        source: { type: "dockerfile", dockerfile: previewDockerfile(options.preview) },
+        env: panel === null ? "" : `OPSIFIER_STUDIO_INSPECTOR_URL=${panel}/studio-inspector.js\n`,
+        domains: [],
+        mounts: [{ type: "bind", hostPath: options.hostDir, mountPath: "/app", acknowledgeRisk: false }],
+        resources: PREVIEW_RESOURCES,
+        deploy: false,
+      },
+      options.access,
+      options.actorEmail,
+      options.isAdmin,
+    );
     const preview = withId(requireService(deps, previewTarget));
 
     const token = newGitToken();

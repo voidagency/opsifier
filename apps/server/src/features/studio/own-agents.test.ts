@@ -461,6 +461,61 @@ describe("a project moved to an agent server of its own", () => {
     await settle();
   });
 
+  it("puts the agent next to a service that has an Opsifier project of its own, and moves or stops nothing", async () => {
+    await prepareModel();
+    await saveSettings();
+    await api("/projects", "POST", { name: "shop" });
+    await api("/projects/shop/services", "POST", { name: "web" });
+    await api("/projects/shop/services/web/source", "PUT", { image: "drupal:11" });
+    expect((await api("/projects/shop/services/web/deploy", "POST")).status).toBe(202);
+    await settle();
+    expect(
+      (await api("/projects/shop/services/web/studio", "PUT", { workspaceDir: "/projects/shop" })).status,
+    ).toBe(200);
+    agents.folders.set("/projects/shop", {
+      exists: true,
+      origin: "https://github.com/acme/shop.git",
+      uid: 10001,
+      gid: 10001,
+      vite: false,
+      credentials: [],
+    });
+    await saveSettings({ agentPerProject: true });
+
+    const isolated = await api<StudioIsolated>("/projects/shop/services/web/studio/isolate", "POST");
+
+    expect(isolated.status).toBe(200);
+    expect(isolated.body).toEqual({ project: "shop", service: "web" });
+    expect((await api<StudioAppDetail>("/projects/shop/services/web/studio")).body.agentMode).toBe("own");
+    const storage = await api<{ mounts: Raw[] }>("/projects/shop/services/agent/storage");
+    expect(storage.body.mounts).toContainEqual(
+      expect.objectContaining({ type: "bind", hostPath: "/srv/studio/shop", mountPath: "/projects/shop" }),
+    );
+    await settle();
+    expect((await api<{ stopped: boolean }>("/projects/shop/services/web")).body.stopped).toBe(false);
+    expect((await api("/projects/studio-shop")).status).toBe(404);
+  });
+
+  it("does not move a preview the Studio does not know how to make again", async () => {
+    await linkShared();
+    agents.folders.set("/projects/cd-studio", {
+      exists: true,
+      origin: "https://github.com/mehdinajeddine/cd-studio.git",
+      uid: 10001,
+      gid: 10001,
+      vite: false,
+      credentials: [],
+    });
+    await saveSettings({ agentPerProject: true });
+
+    const refused = await api(`${OLD}/studio/isolate`, "POST");
+
+    expect(refused.status).toBe(409);
+    expect(apiErrorOf(refused).code).toBe("studio_preview_not_movable");
+    expect((await api("/projects/studio-cd-studio")).status).toBe(404);
+    expect((await api<{ stopped: boolean }>(OLD)).body.stopped).toBe(false);
+  });
+
   it("refuses a folder whose git settings hold a credential, before making anything", async () => {
     await linkShared();
     agents.folders.set("/projects/cd-studio", {

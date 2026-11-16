@@ -5,16 +5,16 @@ import { AppError, conflict, notFound } from "../../core/errors";
 import { requireHostAccess } from "../access/guard";
 import type { Access } from "../access/rules";
 import { enqueueStop } from "../services/lifecycle";
-import { findService, findServiceById, listServiceRecords, type ServiceRecord } from "../services/repo";
+import { findService, findServiceById, type ServiceRecord } from "../services/repo";
 import { requireService, type ServiceTarget } from "../services/service";
 import { indexActiveActions } from "../services/status";
 import { callAgent } from "./agent";
 import {
   createOwnAgent,
+  freeAgentName,
   hashGitToken,
   type Model,
   newGitToken,
-  OWN_AGENT,
   OWN_PREVIEW,
   remoteAddresses,
   requireModel,
@@ -44,26 +44,20 @@ function folderOf(model: Model, workspaceDir: string): string {
 const hasOwnAgent = (deps: Pick<AppDeps, "db">, app: repo.StudioAppRow): boolean =>
   app.agentServiceId !== null && findServiceById(deps.db, app.agentServiceId) !== undefined;
 
-/** A preview the Studio made in a project of its own, which holds nothing but its preview and agent server. */
-function inOwnProject(deps: Pick<AppDeps, "db">, model: Model, record: ServiceRecord): boolean {
-  return (
-    record.name === OWN_PREVIEW &&
-    record.projectName !== model.agent.project &&
-    listServiceRecords(deps.db, record.projectName).every(
-      (service) => service.name === OWN_PREVIEW || service.name === OWN_AGENT,
-    )
-  );
-}
-
 /** The projects being given their own agent server: two requests for one would make two. */
 const isolating = new Set<string>();
 
 /**
- * Gives a Studio project an agent server of its own: its own Opsifier project, with a preview on the
- * same folder and the agent server, and the project's link, conversations and accounts move there.
- * Nothing is deployed yet: each project's services start when it is first opened. Its conversations
- * on the shared agent server are paused, and its preview so far is stopped, out of the Studio, for an
- * administrator to remove: still running, it would show the folder without the Studio's sign-in.
+ * Gives a Studio project an agent server of its own, by where its service lives:
+ * - in an Opsifier project other than the shared agent server's, the agent server goes next to it,
+ *   in that project, whose network is the project's own already: nothing moves, copies or stops;
+ * - in the shared agent server's project, among other projects' previews, a preview the Studio makes
+ *   (a Vite project) moves to an Opsifier project of its own, with the agent server; the project's
+ *   link, conversations and accounts move there, and the old preview is stopped, out of the Studio,
+ *   for an administrator to remove: still running, it would show the folder without the sign-in;
+ * - anything else there is refused: the Studio does not know how to make it again elsewhere.
+ * Nothing is deployed: each project's services start when it is first opened. Its conversations on
+ * the shared agent server, which holds the GitHub token, are paused.
  */
 export async function isolateStudioApp(
   deps: AppDeps,
@@ -132,14 +126,17 @@ async function isolate(deps: AppDeps, isolation: Isolation): Promise<StudioIsola
   const settings = readStudioSettings(deps);
   const now = new Date(deps.now());
 
-  // Its preview lives in a project of its own already, and only lost its agent server: a new one there.
-  if (
-    inOwnProject(deps, model, record) &&
-    findService(deps.db, record.projectName, OWN_AGENT) === undefined
-  ) {
+  const shared = repo
+    .listConversations(deps.db, app.serviceId)
+    .filter((conversation) => conversation.sharedAgent)
+    .slice(0, 20);
+
+  // Its service lives in an Opsifier project of its own: its agent server goes next to it.
+  if (record.projectName !== model.agent.project) {
     const token = newGitToken();
     const agent = await createOwnAgent(deps, {
       project: record.projectName,
+      name: freeAgentName(deps, record.projectName),
       model,
       hostDir,
       workspaceDir: app.workspaceDir,
@@ -154,8 +151,17 @@ async function isolate(deps: AppDeps, isolation: Isolation): Promise<StudioIsola
       { agentServiceId: agent.id, repository: slug, gitTokenHash: hashGitToken(token) },
       now,
     );
+    await pauseShared(deps, model, shared);
     recordIsolation(deps, record.projectName, actorEmail, target);
     return { project: record.projectName, service: record.name };
+  }
+
+  // Among other projects' previews: only a preview the Studio knows how to make moves.
+  if (!folder.vite) {
+    throw conflict(
+      "studio_preview_not_movable",
+      `${target.projectName}/${target.serviceName} is not the preview of a Vite project, which the Studio knows how to make again, so it is not moved: move it to an Opsifier project of its own, then give it its agent server.`,
+    );
   }
 
   const own = await createOwnProject(deps, {
@@ -165,15 +171,11 @@ async function isolate(deps: AppDeps, isolation: Isolation): Promise<StudioIsola
     workspaceDir: app.workspaceDir,
     slug,
     origin,
-    preview: folder.vite ? { kind: "vite", uid: folder.uid, gid: folder.gid } : { kind: "copy", record },
+    preview: { kind: "vite", uid: folder.uid, gid: folder.gid },
     access,
     actorEmail,
     isAdmin,
   });
-  const shared = repo
-    .listConversations(deps.db, app.serviceId)
-    .filter((conversation) => conversation.sharedAgent)
-    .slice(0, 20);
   deps.db.transaction((tx) =>
     repo.moveApp(tx, app.serviceId, {
       serviceId: own.preview.id,

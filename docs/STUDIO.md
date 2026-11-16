@@ -86,13 +86,13 @@ Turning it on is refused until the model can be copied: its settings in a volume
 
 ### Moving the projects already in the Studio
 
-The projects linked before stay on the shared agent server and wait for their own: a new conversation on one of them is refused until it has it. **Give each project its own agent**, in the Studio's settings, moves each one:
+The projects linked before stay on the shared agent server and wait for their own: a new conversation on one of them is refused until it has it. **Give each project its own agent**, in the Studio's settings, gives each one its agent server, by where its service lives:
 
-1. an Opsifier project of its own, with a preview on the same folder (the Studio's own preview for a Vite project, a copy of the old one otherwise) and its agent server;
-2. the project's link, conversations and accounts, which move to the new preview;
-3. nothing deployed yet: both services start the first time the project is opened.
+- **A service in an Opsifier project of its own**, such as a site with its database: the agent server goes next to it, in that project, whose network is the project's own already. Nothing of the service moves, is copied or stops; the agent reaches that project's services, and only them.
+- **A preview among other projects' previews**, in the agent server's own project: when it is a Vite project, the Studio makes the project an Opsifier project of its own, with a preview on the same folder and the agent server, and the project's link, conversations and accounts move there. Nothing is deployed until the project is opened. The old preview is stopped and stays where it was, out of the Studio, for an administrator to remove: still running, it would show the project's folder without the Studio's sign-in.
+- **Anything else in the agent server's project** is not moved, since the Studio does not know how to make it again: move it to an Opsifier project of its own first.
 
-The conversations held by the shared agent server are paused, and can still be read, not continued: a new conversation goes on with the project's own agent. The old preview is stopped and stays where it was, out of the Studio, for an administrator to remove: still running, it would show the project's folder without the Studio's sign-in. A project whose folder is not under the projects folder, is not a copy of a GitHub repository, or holds a credential in its git settings (a user or token in a remote's address, an extra header), cannot move, and the Studio says why.
+The conversations held by the shared agent server are paused, and can still be read, not continued: a new conversation goes on with the project's own agent. A project whose folder is not under the projects folder, is not a copy of a GitHub repository, or holds a credential in its git settings (a user or token in a remote's address, an extra header), cannot have its own agent, and the Studio says why.
 
 ## How it works
 

@@ -149,6 +149,20 @@ export function requirePanelUrl(deps: AppDeps): string {
   return url.replace(/\/+$/, "");
 }
 
+/** A free name for a project's agent server in an Opsifier project the Studio did not make. */
+export function freeAgentName(deps: Pick<AppDeps, "db">, project: string): string {
+  for (const name of [
+    OWN_AGENT,
+    "studio-agent",
+    ...Array.from({ length: 18 }, (_, index) => `studio-agent-${index + 2}`),
+  ]) {
+    if (findService(deps.db, project, name) === undefined) {
+      return name;
+    }
+  }
+  throw conflict("studio_agent_name_taken", `Every name for an agent server in ${project} is taken.`);
+}
+
 /** An Opsifier project's name for a Studio project, free on this server: `studio-<folder>`. */
 export function ownProjectName(deps: Pick<AppDeps, "db">, folder: string): string {
   const clean =
@@ -229,6 +243,8 @@ export function ownAgentEnv(
 
 export interface OwnAgentOptions {
   project: string;
+  /** The agent server's service name: `agent` in a project the Studio made, a free one elsewhere. */
+  name?: string;
   model: Model;
   /** The project's folder on the server, and where the agent server sees it. */
   hostDir: string;
@@ -248,8 +264,9 @@ export interface OwnAgentOptions {
 export async function createOwnAgent(deps: AppDeps, options: OwnAgentOptions): Promise<ServiceRecord> {
   const { model } = options;
   const panel = requirePanelUrl(deps);
-  const target = { projectName: options.project, serviceName: OWN_AGENT };
-  await createService(deps, options.project, { name: OWN_AGENT, type: "app" }, options.actorEmail);
+  const name = options.name ?? OWN_AGENT;
+  const target = { projectName: options.project, serviceName: name };
+  await createService(deps, options.project, { name, type: "app" }, options.actorEmail);
   // The panel talks to it from inside its container: nothing outside needs to reach it.
   for (const row of listDomainRows(deps.db, target)) {
     await deleteDomain(deps, target, row.id);
@@ -258,7 +275,7 @@ export async function createOwnAgent(deps: AppDeps, options: OwnAgentOptions): P
   saveServiceSpec(
     deps.db,
     options.project,
-    OWN_AGENT,
+    name,
     {
       ...fresh.spec,
       source: model.record.spec.source,
