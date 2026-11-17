@@ -1,23 +1,63 @@
 import type { ServiceStatus, StudioAppDetail, StudioRemark } from "@opsifier/contract";
+import { useQueryClient } from "@tanstack/react-query";
+import type { TFunction } from "i18next";
 import {
   ExternalLink,
+  GitBranch,
   Link2,
+  LoaderCircle,
   MessageSquareText,
   Monitor,
   MousePointerClick,
   RotateCw,
   Smartphone,
   Tablet,
+  X,
 } from "lucide-react";
 import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/forms";
 import { Button, buttonClass, Lamp, Tooltip, toast } from "../../ui";
-import { studioApi } from "./api";
+import { studioApi, studioAppQuery } from "./api";
 import { type Device, readSelected, type SelectedElement } from "./selection";
+import { type ProjectSync, useProjectSync } from "./useProjectSync";
 
 type LampState = "running" | "stopped" | "progress" | "failed" | "unknown";
+/** What opening the project found on GitHub, when it is worth saying. */
+function syncNotice(sync: ProjectSync, t: TFunction): string | null {
+  if (sync.failed) {
+    return t("preview.sync.failed");
+  }
+  const result = sync.result;
+  switch (result?.state) {
+    case undefined:
+    case "current":
+      return null;
+    case "updated": {
+      const brought = t("preview.sync.updated", { count: result.pulled, branch: result.branch });
+      return result.previewRestarted ? `${brought} ${t("preview.sync.restarting")}` : brought;
+    }
+    case "blocked":
+      return t("preview.sync.blocked", { count: result.behind, files: result.blocking.join(", ") });
+    case "diverged":
+      return t("preview.sync.diverged", { count: result.behind });
+    case "ahead":
+      return t("preview.sync.ahead", { count: result.ahead });
+    case "deferred":
+      return t("preview.sync.deferred", { count: result.behind });
+    case "unavailable":
+      // A folder that is no copy of a repository, or a project that waits for its own agent server,
+      // has nothing to bring in yet: nothing to say.
+      return result.reason === null || result.reason === "not_a_copy" || result.reason === "no_agent"
+        ? null
+        : t(`preview.sync.reasons.${result.reason}`, { branch: result.branch ?? "" });
+  }
+}
+
+/** How soon the preview's state is read again after it was started again for new packages. */
+const RESTART_CHECK_MS = 2_000;
+
 const lampOf: Record<ServiceStatus, LampState> = {
   running: "running",
   stopped: "stopped",
@@ -150,6 +190,26 @@ export function PreviewPane({
   const pendingFocus = useRef<string | null>(null);
   const autoStarted = useRef(false);
   const [box, size] = useSize<HTMLDivElement>();
+  const sync = useProjectSync(app.project, app.service);
+  const [noticeHidden, setNoticeHidden] = useState(false);
+  // A new answer is told, even after the last one was put away.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per answer.
+  useEffect(() => {
+    setNoticeHidden(false);
+  }, [sync.result, sync.failed]);
+  // New packages: the preview starts again to install them, which its lamp shows once read again.
+  const queryClient = useQueryClient();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per answer.
+  useEffect(() => {
+    if (!sync.result?.previewRestarted) {
+      return;
+    }
+    const later = setTimeout(() => {
+      void queryClient.invalidateQueries({ queryKey: studioAppQuery(app.project, app.service).queryKey });
+    }, RESTART_CHECK_MS);
+    return () => clearTimeout(later);
+  }, [sync.result]);
+  const notice = syncNotice(sync, t);
 
   const start = async () => {
     onStartRequested();
@@ -426,16 +486,54 @@ export function PreviewPane({
             </Tooltip>
           </>
         )}
+        <Tooltip
+          content={
+            sync.syncing
+              ? t("preview.sync.running")
+              : sync.result?.state === "current"
+                ? t("preview.sync.current", { branch: sync.result.branch })
+                : t("preview.sync.action")
+          }
+        >
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="ml-auto"
+            aria-label={t("preview.sync.action")}
+            aria-busy={sync.syncing}
+            disabled={sync.syncing}
+            onClick={sync.run}
+          >
+            {sync.syncing ? (
+              <LoaderCircle aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <GitBranch aria-hidden="true" className="size-4" />
+            )}
+          </Button>
+        </Tooltip>
         <Button
           size="sm"
           variant="secondary"
-          className="ml-auto"
           icon={<Link2 aria-hidden="true" className="size-3.5" />}
           onClick={onShare}
         >
           {t("preview.share")}
         </Button>
       </header>
+      {notice !== null && !noticeHidden && (
+        <div role="status" className="flex items-start gap-2 border-b bg-wash px-3 py-1.5 text-xs text-muted">
+          <GitBranch aria-hidden="true" className="mt-px size-3.5 shrink-0" />
+          <p className="min-w-0 flex-1">{notice}</p>
+          <button
+            type="button"
+            aria-label={t("preview.sync.dismiss")}
+            onClick={() => setNoticeHidden(true)}
+            className="shrink-0 rounded-sm text-muted hover:text-ink"
+          >
+            <X aria-hidden="true" className="size-3.5" />
+          </button>
+        </div>
+      )}
       {inspecting && (
         <p className="border-b bg-wash px-3 py-1.5 text-xs text-muted">{t("preview.inspecting")}</p>
       )}

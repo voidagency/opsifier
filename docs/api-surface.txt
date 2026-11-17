@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 50
+# documented-changes: 51
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -4287,6 +4287,23 @@ POST /api/v1/projects/{project}/services/{service}/studio/remove
   body confirm!: string
   path project!: string
   path service!: string
+POST /api/v1/projects/{project}/services/{service}/studio/sync
+  200 ahead!: integer
+  200 behind!: integer
+  200 blocking![]: string
+  200 branch!: null|string
+  200 changed!: integer
+  200 previewRestarted!: boolean
+  200 pulled!: integer
+  200 reason!: enum(agent_starting|agent_unavailable|busy|detached|failed|interrupted|no_access|no_agent|no_branch|not_a_copy|null)
+  200 state!: enum(ahead|blocked|current|deferred|diverged|unavailable|updated)
+  400
+  401
+  404
+  409
+  path project!: string
+  path service!: string
+  query force: enum(false|true)
 GET /api/v1/projects/{project}/templates
   200 installs![].category!: enum(automation|communication|data|development|documents|infrastructure|media|monitoring|productivity|security)
   200 installs![].components![].kind!: enum(app|compose|database)

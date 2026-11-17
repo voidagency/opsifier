@@ -178,6 +178,71 @@ export type SetStudioMembersRequest = z.infer<typeof setStudioMembersRequest>;
  */
 export const studioPreviewStart = z.object({ started: z.boolean(), agentStarted: z.boolean() });
 
+/**
+ * What bringing a project's folder up to date with its branch on GitHub found. `updated` brought
+ * changes in. Nothing else changes the folder: `blocked`, when files made here and not saved yet are
+ * in the way, ignored ones included; `diverged`, when changes saved here are not on GitHub yet, and
+ * GitHub has others, which the agent brings together at its next request; `ahead`, when only the
+ * folder has new changes; `deferred`, when the project's agent is at work, and gets GitHub's changes
+ * before its next one. `unavailable` could not ask GitHub, and says why.
+ */
+export const studioSyncState = z.enum([
+  "current",
+  "updated",
+  "blocked",
+  "diverged",
+  "ahead",
+  "deferred",
+  "unavailable",
+]);
+export type StudioSyncState = z.infer<typeof studioSyncState>;
+
+export const studioSyncReason = z.enum([
+  // The folder is not a copy of a repository.
+  "not_a_copy",
+  // The folder is on no branch.
+  "detached",
+  // Git is at work in the folder, the agent's most likely: it is over in a moment.
+  "busy",
+  // A merge or a rebase stopped halfway, or git left a lock behind: the agent finishes it.
+  "interrupted",
+  // The branch is not on GitHub.
+  "no_branch",
+  // GitHub refused the Studio's access, or does not know the repository.
+  "no_access",
+  // The project's agent server is starting: the update follows in a moment.
+  "agent_starting",
+  // The project waits for an agent server of its own.
+  "no_agent",
+  // The agent server does not answer the panel.
+  "agent_unavailable",
+  "failed",
+]);
+export type StudioSyncReason = z.infer<typeof studioSyncReason>;
+
+/** POST .../studio/sync?force=true asks GitHub again, rather than reuse an answer of the last seconds. */
+export const studioSyncQuery = z.object({ force: z.enum(["true", "false"]).default("false") });
+
+/** POST .../studio/sync. */
+export const studioSync = z.object({
+  state: studioSyncState,
+  branch: z.string().nullable(),
+  /** Changes brought in, as commits. */
+  pulled: z.number().int().nonnegative(),
+  /** Changes on GitHub the folder does not have. */
+  behind: z.number().int().nonnegative(),
+  /** Changes saved here that GitHub does not have. */
+  ahead: z.number().int().nonnegative(),
+  /** Files changed here and not saved yet. */
+  changed: z.number().int().nonnegative(),
+  /** A few of the files in the way of GitHub's changes. */
+  blocking: z.array(z.string()),
+  /** The changes brought new packages: the preview starts again to install them. */
+  previewRestarted: z.boolean(),
+  reason: studioSyncReason.nullable(),
+});
+export type StudioSync = z.infer<typeof studioSync>;
+
 /** An image pasted into a message, sent inline. The panel's request size limit applies to the whole message. */
 export const studioImage = z
   .string()

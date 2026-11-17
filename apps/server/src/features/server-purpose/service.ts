@@ -30,12 +30,11 @@ import {
 } from "../../core/proxy";
 import { auditRoutingFiles, type ProtectionPlan, protectRoutingFile } from "../services/compile/protection";
 import { findService, listServiceRecords } from "../services/repo";
+import { type GateRemembering, gateRemembering, gateTokens, gateUsersOf } from "./gate";
 import { type ProtectionState, readProtection, type StoredUser, saveProtection } from "./repo";
 
 /** Traefik checks this on every request, so it stays at bcrypt's usual cost. */
 const BCRYPT_COST = 10;
-const BCRYPT_HASH = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
-const SAFE_USERNAME = /^[A-Za-z0-9._@-]+$/;
 /** No letters that are easy to confuse, since people copy this out of a dialog. */
 const GENERATED_ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789";
 /** 32 characters of 5 bits each: 160 bits from a CSPRNG. */
@@ -54,13 +53,21 @@ function generatePassword(): string {
 const routingFileOf = ({ project, service }: { project: string; service: string }) =>
   `${project}__${service}.yaml`;
 
-function planFor(file: string, state: ProtectionState): ProtectionPlan {
+function planFor(file: string, state: ProtectionState, remembering: GateRemembering | null): ProtectionPlan {
+  const users = gateUsersOf(state);
+  // One moment for the whole file, so that all its routes take the same weeks.
+  const now = remembering?.now() ?? 0;
   return {
     enabled: isProtectedPurpose(state.purpose),
-    users: state.users
-      .filter((user) => SAFE_USERNAME.test(user.username) && BCRYPT_HASH.test(user.passwordHash))
-      .map((user) => `${user.username}:${user.passwordHash}`),
+    users,
     exemptions: state.allowlist.filter((entry) => routingFileOf(entry) === file),
+    remember:
+      remembering === null || users.length === 0
+        ? null
+        : {
+            address: remembering.address,
+            tokensFor: (host) => gateTokens(remembering.secrets, users, host, now),
+          },
   };
 }
 
@@ -68,9 +75,13 @@ function planFor(file: string, state: ProtectionState): ProtectionPlan {
  * What stands between the compilers and the proxy. It reads the state as each file is written, so
  * a route compiled before a change of purpose still lands under the purpose in force at that moment.
  */
-export function protectionGuard(db: DbHandle, now: () => number): ProxyGuard {
+export function protectionGuard(
+  db: DbHandle,
+  now: () => number,
+  remembering: GateRemembering | null = null,
+): ProxyGuard {
   return {
-    apply: (file, config) => protectRoutingFile(file, config, planFor(file, readProtection(db))),
+    apply: (file, config) => protectRoutingFile(file, config, planFor(file, readProtection(db), remembering)),
     forget(file) {
       const state = readProtection(db);
       const allowlist = state.allowlist.filter((entry) => routingFileOf(entry) !== file);
@@ -84,8 +95,9 @@ export function protectionGuard(db: DbHandle, now: () => number): ProxyGuard {
 /** Brings what is on disk in line with the stored purpose, at every start. */
 export async function reconcileProtection(deps: AppDeps): Promise<void> {
   const state = readProtection(deps.db);
+  const remembering = gateRemembering(deps);
   const failed = await deps.proxy.reconcile((file, config) =>
-    protectRoutingFile(file, config, planFor(file, state)),
+    protectRoutingFile(file, config, planFor(file, state, remembering)),
   );
   if (failed.length === 0) {
     return;
@@ -104,6 +116,38 @@ export async function reconcileProtection(deps: AppDeps): Promise<void> {
       error: "The routing file could not be read or rewritten.",
     });
   }
+}
+
+/** How often the routes are brought to the week's values of the gate's cookie. */
+const GATE_REFRESH_MS = 60 * 60 * 1000;
+
+/**
+ * Brings every route to this week's values of the gate's cookie. A file is written only when it
+ * changes, which is once a week. The state is read as each file is written, after any change under
+ * way has landed, so this never puts back users that were just taken off.
+ */
+export async function refreshGateCookies(deps: AppDeps): Promise<void> {
+  if (!isProtectedPurpose(readProtection(deps.db).purpose)) {
+    return;
+  }
+  const remembering = gateRemembering(deps);
+  const failed = await deps.proxy.reconcile((file, config) =>
+    protectRoutingFile(file, config, planFor(file, readProtection(deps.db), remembering)),
+  );
+  if (failed.length > 0) {
+    deps.logger.warn({ files: failed }, "Could not bring some routing files to this week's gate cookie");
+  }
+}
+
+/** Refreshes the gate's cookie values every hour, until the returned function is called. */
+export function startGateCookieRefresh(deps: AppDeps): () => void {
+  const timer = setInterval(() => {
+    refreshGateCookies(deps).catch((error: unknown) => {
+      deps.logger.warn({ err: error }, "Could not refresh the gate's cookie values");
+    });
+  }, GATE_REFRESH_MS);
+  timer.unref();
+  return () => clearInterval(timer);
 }
 
 function routeOwner(file: string): { project: string; service: string } {
@@ -157,7 +201,7 @@ export async function getServerPurposeState(deps: AppDeps): Promise<ServerPurpos
 function planChange(deps: AppDeps, before: ProtectionState, after: ProtectionState): RewritePlan {
   return {
     protecting: isProtectedPurpose(after.purpose) && !isProtectedPurpose(before.purpose),
-    render: (file, config) => protectRoutingFile(file, config, planFor(file, after)),
+    render: (file, config) => protectRoutingFile(file, config, planFor(file, after, gateRemembering(deps))),
     commit: () => saveProtection(deps.db, after, new Date(deps.now())),
     revert: () => saveProtection(deps.db, before, new Date(deps.now())),
   };

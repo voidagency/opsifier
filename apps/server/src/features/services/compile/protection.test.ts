@@ -4,8 +4,12 @@ import { BASE_FILE, renderBaseConfig } from "../../../core/proxy";
 import {
   auditRoutingFiles,
   EXEMPT_ROUTER_PREFIX,
+  GATE_CHECK_MIDDLEWARE,
   GATE_MIDDLEWARE,
+  GATE_STRIP_MIDDLEWARE,
   NOINDEX_MIDDLEWARE,
+  PASS_BASIC_ROUTER_PREFIX,
+  PASS_ROUTER_PREFIX,
   type ProtectionPlan,
   protectBaseConfig,
   protectRoutingFile,
@@ -13,6 +17,7 @@ import {
   ROBOTS_ROUTER_PREFIX,
   ROBOTS_TAG,
   ROBOTS_TXT_PATH,
+  soleHost,
   stripProtection,
 } from "./protection";
 
@@ -206,6 +211,221 @@ describe("protecting a service's routes", () => {
     expect(base.http.middlewares?.[GATE_MIDDLEWARE]).toMatchObject({
       basicAuth: { users: [expect.stringMatching(/^locked:\$2y\$10\$\*{53}$/)] },
     });
+  });
+});
+
+describe("the gate remembering a browser", () => {
+  const TOKENS = ["a".repeat(64), "b".repeat(64), "c".repeat(64)];
+  const asked: string[] = [];
+  const remembering: ProtectionPlan = {
+    ...on,
+    remember: {
+      address: "http://opsifier:3000/api/proxy-pages/gate",
+      tokensFor: (host) => {
+        asked.push(host);
+        return TOKENS;
+      },
+    },
+  };
+  const cookie = `HeaderRegexp(\`Cookie\`, \`(?:^|;\\s*)opsifier_gate=(?:${TOKENS.join("|")})(?:;|$)\`)`;
+  const basic = "HeaderRegexp(`Authorization`, `(?i)^basic\\b`)";
+  const twins = (routers: Record<string, unknown>) =>
+    Object.keys(routers).filter(
+      (name) => name.startsWith(PASS_ROUTER_PREFIX) || name.startsWith(PASS_BASIC_ROUTER_PREFIX),
+    );
+
+  it("has the panel check the password, and lets the gate's cookie through on two twin routes", () => {
+    const { http } = protect(appConfig(), remembering);
+
+    expect(http.routers["https-shop_web-0"]?.middlewares).toEqual([
+      NOINDEX_MIDDLEWARE,
+      GATE_CHECK_MIDDLEWARE,
+      GATE_STRIP_MIDDLEWARE,
+      "opsifier-error-bad-gateway",
+    ]);
+    // Without the gate's password, the request goes on as it came, a token of the site's own included.
+    expect(http.routers[`${PASS_ROUTER_PREFIX}https-shop_web-0`]).toEqual({
+      rule: `(${rule}) && ${cookie} && !${basic}`,
+      priority: rule.length + 1,
+      entryPoints: ["websecure"],
+      service: "shop_web-0",
+      middlewares: [NOINDEX_MIDDLEWARE, "opsifier-error-bad-gateway"],
+      tls,
+    });
+    // With it, the password is taken off before the site sees it.
+    expect(http.routers[`${PASS_BASIC_ROUTER_PREFIX}https-shop_web-0`]).toEqual({
+      rule: `(${rule}) && ${cookie} && ${basic}`,
+      priority: rule.length + 1,
+      entryPoints: ["websecure"],
+      service: "shop_web-0",
+      middlewares: [NOINDEX_MIDDLEWARE, GATE_STRIP_MIDDLEWARE, "opsifier-error-bad-gateway"],
+      tls,
+    });
+    // A route that sends to HTTPS asks nothing: it has no twin.
+    expect(http.routers["http-shop_web-0"]?.middlewares).toEqual([
+      NOINDEX_MIDDLEWARE,
+      "opsifier-redirect-https",
+      GATE_MIDDLEWARE,
+      "opsifier-error-bad-gateway",
+    ]);
+    expect(twins(http.routers)).toEqual([
+      `${PASS_ROUTER_PREFIX}https-shop_web-0`,
+      `${PASS_BASIC_ROUTER_PREFIX}https-shop_web-0`,
+    ]);
+  });
+
+  it("takes the values of the route's one host, as Traefik matches it", () => {
+    asked.length = 0;
+    protect(
+      { http: { routers: { r: { rule: "Host(`Shop.Example.test.`) && PathPrefix(`/`)", service: "s" } } } },
+      remembering,
+    );
+
+    expect(asked).toEqual(["shop.example.test"]);
+    expect(soleHost("Host(`a.example.test`) && (Path(`/api`) || PathPrefix(`/api/`))")).toBe(
+      "a.example.test",
+    );
+    expect(soleHost("PathPrefix(`/`) && Host(`a.example.test`)")).toBe("a.example.test");
+  });
+
+  it("defines the check and the stripping once, in the base file", () => {
+    const base = protectBaseConfig({ http: { routers: {} } }, remembering) as Routed;
+
+    expect(base.http.middlewares?.[GATE_CHECK_MIDDLEWARE]).toEqual({
+      forwardAuth: {
+        address: "http://opsifier:3000/api/proxy-pages/gate",
+        trustForwardHeader: false,
+        addAuthCookiesToResponse: ["opsifier_gate"],
+      },
+    });
+    expect(base.http.middlewares?.[GATE_STRIP_MIDDLEWARE]).toEqual({
+      headers: { customRequestHeaders: { Authorization: "" } },
+    });
+  });
+
+  it("stays just above its own route, even when that route has a priority of its own", () => {
+    const { http } = protect(
+      { http: { routers: { w: { rule, service: "s", priority: 7, entryPoints: ["websecure"] } } } },
+      remembering,
+    );
+
+    expect(http.routers[`${PASS_ROUTER_PREFIX}w`]?.priority).toBe(8);
+    expect(http.routers[`${PASS_BASIC_ROUTER_PREFIX}w`]?.priority).toBe(8);
+  });
+
+  it.each([
+    ["a domain with all its subdomains", "HostRegexp(`^[a-z0-9-]+\\.example\\.test$`) && PathPrefix(`/`)"],
+    ["two domains", "Host(`a.example.test`) || Host(`b.example.test`)"],
+    ["a host only on one side of an or", "Host(`a.example.test`) && Path(`/a`) || Path(`/b`)"],
+    ["a host it excludes", "!Host(`a.example.test`) && PathPrefix(`/`)"],
+    ["a second host further in", "Host(`a.example.test`) && (Host(`b.example.test`) || Path(`/`))"],
+    ["no host", "PathPrefix(`/`)"],
+    ["an unbalanced parenthesis", "Host(`a.example.test`)) || (PathPrefix(`/`)"],
+    ["a comment", "/* ( */ Host(`a.example.test`)) || (Path(`/`) /* ) */"],
+    ["double quotes", 'Host("a.example.test")'],
+    ["an address rather than a name", "Host(`203.0.113.7`)"],
+  ])("gives no twin to a rule with %s, which keeps Traefik's own gate", (_, odd) => {
+    const { http } = protect({ http: { routers: { r: { rule: odd, service: "s" } } } }, remembering);
+
+    expect(http.routers.r?.middlewares).toEqual([NOINDEX_MIDDLEWARE, GATE_MIDDLEWARE]);
+    expect(twins(http.routers)).toEqual([]);
+  });
+
+  it("gives no twin to a route written in Traefik's older rule syntax", () => {
+    const { http } = protect(
+      { http: { routers: { r: { rule, service: "s", ruleSyntax: "v2" } } } },
+      remembering,
+    );
+
+    expect(twins(http.routers)).toEqual([]);
+  });
+
+  it("gives no exemption to a rule that could end up wider in parentheses", () => {
+    const { http } = protect(
+      {
+        http: {
+          routers: { r: { rule: "Host(`a.example.test`)) || (Host(`b.example.test`)", service: "s" } },
+        },
+      },
+      { ...on, exemptions: [{ kind: "path", value: "/hooks" }] },
+    );
+
+    expect(Object.keys(http.routers).filter((name) => name.startsWith(EXEMPT_ROUTER_PREFIX))).toEqual([]);
+  });
+
+  it("leaves a route with users of its own, and a locked gate, as they were", () => {
+    const own = protect(
+      {
+        http: {
+          routers: { r: { rule, service: "s", middlewares: ["own-auth"], entryPoints: ["websecure"] } },
+          middlewares: { "own-auth": { basicAuth: { users: ["bob:$2y$10$own"] } } },
+        },
+      },
+      remembering,
+    );
+    expect(own.http.routers.r?.middlewares).toEqual([NOINDEX_MIDDLEWARE, `${GATE_MIDDLEWARE}-r`, "own-auth"]);
+    expect(twins(own.http.routers)).toEqual([]);
+
+    const locked = protect(appConfig(), { ...remembering, users: [] });
+    expect(locked.http.routers["https-shop_web-0"]?.middlewares).toContain(GATE_MIDDLEWARE);
+    expect(twins(locked.http.routers)).toEqual([]);
+
+    const odd = protect(appConfig(), {
+      ...remembering,
+      remember: { address: "x", tokensFor: () => [TOKENS[0] as string, "not-hex`)"] },
+    });
+    expect(twins(odd.http.routers)).toEqual([]);
+  });
+
+  it("is idempotent, strips back to the original, and counts as protected", () => {
+    const once = protectServiceConfig(appConfig(), remembering);
+
+    expect(protectServiceConfig(once, remembering)).toEqual(once);
+    expect(stripProtection(once)).toEqual(appConfig());
+    const audit = auditRoutingFiles(
+      [
+        { file: BASE_FILE, config: protectBaseConfig({ http: { routers: {} } }, remembering) },
+        { file: "shop__web.yaml", config: once },
+      ],
+      true,
+    );
+    expect(audit.domains).toEqual([
+      { host: HOST, path: "/", wildcard: false, file: "shop__web.yaml", protected: true },
+    ]);
+  });
+
+  it("counts a domain as open when a way past the gate is wider than its route", () => {
+    const base = { file: BASE_FILE, config: protectBaseConfig({ http: { routers: {} } }, remembering) };
+    const audited = (change: (routers: Record<string, { rule: string }>) => void) => {
+      const config = protectServiceConfig(appConfig(), {
+        ...remembering,
+        exemptions: [{ kind: "path", value: "/hooks" }],
+      }) as unknown as Routed;
+      change(config.http.routers);
+      return auditRoutingFiles([base, { file: "shop__web.yaml", config }], true).domains[0]?.protected;
+    };
+    const twin = `${PASS_ROUTER_PREFIX}https-shop_web-0`;
+    const exempt = `${EXEMPT_ROUTER_PREFIX}https-shop_web-0-0`;
+
+    expect(audited(() => {})).toBe(true);
+    // A twin that no longer asks for the cookie.
+    expect(
+      audited((routers) => {
+        (routers[twin] as { rule: string }).rule = `(${rule}) && !${basic}`;
+      }),
+    ).toBe(false);
+    // A twin whose route is gone.
+    expect(
+      audited((routers) => {
+        delete routers["https-shop_web-0"];
+      }),
+    ).toBe(false);
+    // An exemption wider than its route.
+    expect(
+      audited((routers) => {
+        (routers[exempt] as { rule: string }).rule = `(${rule}) || Path(\`/hooks\`)`;
+      }),
+    ).toBe(false);
   });
 });
 

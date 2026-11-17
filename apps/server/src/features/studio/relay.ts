@@ -3,8 +3,8 @@ import type { AppDeps } from "../../core/context";
 import { findServiceById } from "../services/repo";
 import { callAgent } from "./agent";
 import { GIT_RELAY_PREFIX, gitTokenMatches } from "./agents";
+import { GITHUB_SECRET } from "./git-scripts";
 import { githubKeyFor, hasGithubKeyFor } from "./github-keys";
-import { GITHUB_SECRET } from "./projects";
 import * as repo from "./repo";
 import { readStudioSettings } from "./settings";
 

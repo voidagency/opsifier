@@ -113,7 +113,35 @@
     "showPins": "Épingler les remarques sur l'aperçu",
     "hidePins": "Masquer les épingles des remarques",
     "pinsUnavailable": "Cet aperçu ne charge pas l'inspecteur du Studio : ses remarques ne peuvent pas y être épinglées",
-    "share": "Partager avec un client"
+    "share": "Partager avec un client",
+    "sync": {
+      "action": "Récupérer les changements de GitHub",
+      "running": "Récupération des changements de GitHub…",
+      "current": "À jour avec GitHub ({{branch}}). Cliquez pour vérifier à nouveau",
+      "updated_one": "{{count}} changement récupéré de GitHub ({{branch}}).",
+      "updated_other": "{{count}} changements récupérés de GitHub ({{branch}}).",
+      "restarting": "L'aperçu redémarre pour installer les nouveaux paquets.",
+      "blocked_one": "GitHub a {{count}} changement que ce dossier n'a pas, mais des fichiers faits ici sont sur son chemin ({{files}}). L'agent les réunira à sa prochaine demande.",
+      "blocked_other": "GitHub a {{count}} changements que ce dossier n'a pas, mais des fichiers faits ici sont sur leur chemin ({{files}}). L'agent les réunira à sa prochaine demande.",
+      "diverged_one": "Des changements faits ici ne sont pas encore sur GitHub, et GitHub en a {{count}} autre : l'agent les réunira à sa prochaine demande.",
+      "diverged_other": "Des changements faits ici ne sont pas encore sur GitHub, et GitHub en a {{count}} autres : l'agent les réunira à sa prochaine demande.",
+      "deferred_one": "L'agent est au travail : le nouveau changement de GitHub arrivera à sa prochaine demande, ou à la prochaine ouverture du projet.",
+      "deferred_other": "L'agent est au travail : les {{count}} nouveaux changements de GitHub arriveront à sa prochaine demande, ou à la prochaine ouverture du projet.",
+      "ahead_one": "{{count}} changement fait ici n'est pas encore sur GitHub.",
+      "ahead_other": "{{count}} changements faits ici ne sont pas encore sur GitHub.",
+      "failed": "Impossible de récupérer les changements de GitHub. Réessayez dans un instant.",
+      "dismiss": "Masquer ce message",
+      "reasons": {
+        "detached": "Le dossier du projet n'est sur aucune branche : rien n'a été récupéré de GitHub.",
+        "busy": "L'agent travaille dans le dossier du projet : réessayez dans un instant.",
+        "interrupted": "Une opération git est restée en suspens dans le dossier du projet : l'agent la terminera à sa prochaine demande.",
+        "no_branch": "La branche {{branch}} n'est pas sur GitHub.",
+        "no_access": "GitHub refuse au Studio l'accès à ce dépôt : un administrateur vérifie les accès du Studio à GitHub.",
+        "agent_starting": "Le serveur d'agents du projet démarre : les changements de GitHub arrivent dans un instant.",
+        "agent_unavailable": "Le serveur d'agents ne répond pas : les changements de GitHub n'ont pas été récupérés.",
+        "failed": "Impossible de récupérer les changements de GitHub. Réessayez dans un instant."
+      }
+    }
   },
   "settings": {
     "title": "Studio",

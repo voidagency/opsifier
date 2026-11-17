@@ -113,7 +113,35 @@
     "showPins": "Pin the remarks on the preview",
     "hidePins": "Hide the remarks' pins",
     "pinsUnavailable": "This preview does not load the Studio's inspector: its remarks can't be pinned on it",
-    "share": "Share with a client"
+    "share": "Share with a client",
+    "sync": {
+      "action": "Bring in the changes on GitHub",
+      "running": "Bringing in the changes on GitHub…",
+      "current": "Up to date with GitHub ({{branch}}). Click to check again",
+      "updated_one": "{{count}} change brought in from GitHub ({{branch}}).",
+      "updated_other": "{{count}} changes brought in from GitHub ({{branch}}).",
+      "restarting": "The preview starts again to install the new packages.",
+      "blocked_one": "GitHub has {{count}} change this folder does not, but files made here are in the way ({{files}}). The agent brings them together at its next request.",
+      "blocked_other": "GitHub has {{count}} changes this folder does not, but files made here are in the way ({{files}}). The agent brings them together at its next request.",
+      "diverged_one": "Changes made here are not on GitHub yet, and GitHub has {{count}} other: the agent brings them together at its next request.",
+      "diverged_other": "Changes made here are not on GitHub yet, and GitHub has {{count}} others: the agent brings them together at its next request.",
+      "deferred_one": "The agent is at work: GitHub's {{count}} new change comes in at its next request, or when the project opens again.",
+      "deferred_other": "The agent is at work: GitHub's {{count}} new changes come in at its next request, or when the project opens again.",
+      "ahead_one": "{{count}} change made here is not on GitHub yet.",
+      "ahead_other": "{{count}} changes made here are not on GitHub yet.",
+      "failed": "The changes on GitHub could not be brought in. Try again in a moment.",
+      "dismiss": "Hide this message",
+      "reasons": {
+        "detached": "The project's folder is on no branch: nothing was brought in from GitHub.",
+        "busy": "The agent is at work in the project's folder: try again in a moment.",
+        "interrupted": "A git operation stopped halfway in the project's folder: the agent finishes it at its next request.",
+        "no_branch": "The branch {{branch}} is not on GitHub.",
+        "no_access": "GitHub refuses the Studio access to this repository: an administrator checks the Studio's access to GitHub.",
+        "agent_starting": "The project's agent server is starting: the changes on GitHub come in a moment.",
+        "agent_unavailable": "The agent server does not answer: the changes on GitHub were not brought in.",
+        "failed": "The changes on GitHub could not be brought in. Try again in a moment."
+      }
+    }
   },
   "settings": {
     "title": "Studio",

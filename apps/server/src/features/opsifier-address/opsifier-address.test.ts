@@ -1001,8 +1001,19 @@ describe("on a server that isn't in production", () => {
 
     expect(router.tls).toEqual({ certResolver: ADDRESS_RESOLVER, domains: [{ main: WILDCARD }] });
     expect(router.middlewares[0]).toBe("opsifier-protect-noindex");
-    expect(router.middlewares).toContain("opsifier-protect-gate");
+    // The gate that remembers a browser: the panel checks the password, and the route's twins let its
+    // cookie through, with the same certificate.
+    expect(router.middlewares).toContain("opsifier-protect-remember-check");
     const routers = routingFile("shop__web.yaml").http.routers;
+    for (const twin of [
+      "opsifier-protect-pass-https-shop_web-0",
+      "opsifier-protect-passbasic-https-shop_web-0",
+    ]) {
+      expect(routers[twin]?.tls, twin).toEqual({
+        certResolver: ADDRESS_RESOLVER,
+        domains: [{ main: WILDCARD }],
+      });
+    }
     const robots = routers["opsifier-protect-robots-https-shop_web-0"];
     expect(robots.tls).toEqual({ certResolver: ADDRESS_RESOLVER, domains: [{ main: WILDCARD }] });
     expect(robots.rule).toContain(`Host(\`shop-web.${DOMAIN}\`)`);
@@ -1037,11 +1048,11 @@ describe("on a server that isn't in production", () => {
 
     await api("PUT", "/api/v1/server-purpose", { purpose: "production", confirm: body.confirmation });
     expect(httpsRouter().tls.certResolver).toBe(ADDRESS_RESOLVER);
-    expect(httpsRouter().middlewares ?? []).not.toContain("opsifier-protect-gate");
+    expect(httpsRouter().middlewares ?? []).not.toContain("opsifier-protect-remember-check");
 
     await api("PUT", "/api/v1/server-purpose", { purpose: "development" });
     expect(httpsRouter().tls.certResolver).toBe(ADDRESS_RESOLVER);
-    expect(httpsRouter().middlewares).toContain("opsifier-protect-gate");
+    expect(httpsRouter().middlewares).toContain("opsifier-protect-remember-check");
   });
 
   describe("the guard still fails closed", () => {

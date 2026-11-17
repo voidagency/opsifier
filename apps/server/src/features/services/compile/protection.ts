@@ -1,4 +1,4 @@
-import { isAllowlistIp, isAllowlistPath } from "@opsifier/contract";
+import { isAllowlistIp, isAllowlistPath, isValidHostname } from "@opsifier/contract";
 import {
   BASE_FILE,
   hostMatcher,
@@ -21,6 +21,20 @@ const RESERVED = "opsifier-protect-";
 
 export const NOINDEX_MIDDLEWARE = `${RESERVED}noindex`;
 export const GATE_MIDDLEWARE = `${RESERVED}gate`;
+/** The gate that remembers a browser: the panel checks the password, and gives the browser a cookie. */
+export const GATE_CHECK_MIDDLEWARE = `${RESERVED}remember-check`;
+/** The gate's password never reaches a site, whichever way the request got through. */
+export const GATE_STRIP_MIDDLEWARE = `${RESERVED}remember-strip`;
+/** A route's twin for a browser the gate remembers that sends no password: it reaches the site as sent. */
+export const PASS_ROUTER_PREFIX = `${RESERVED}pass-`;
+/** The same twin for a browser that still sends the gate's password, which is taken off on the way. */
+export const PASS_BASIC_ROUTER_PREFIX = `${RESERVED}passbasic-`;
+/** The cookie the gate remembers a browser by, on each site it got into. */
+export const GATE_COOKIE = "opsifier_gate";
+/** What a value of the cookie looks like: anything else is never written into a rule. */
+const GATE_TOKEN = /^[0-9a-f]{32,128}$/;
+/** A request that sends a password the way a browser sends the gate's. */
+const BASIC_MATCHER = "HeaderRegexp(`Authorization`, `(?i)^basic\\b`)";
 const ROBOTS_PATH_MIDDLEWARE = `${RESERVED}robots-path`;
 export const ROBOTS_ROUTER_PREFIX = `${RESERVED}robots-`;
 export const EXEMPT_ROUTER_PREFIX = `${RESERVED}exempt-`;
@@ -30,7 +44,7 @@ export const ROBOTS_TXT = "User-agent: *\nDisallow: /\n";
 /** Where the panel answers with the file above. Public, like the proxy's other pages. */
 export const ROBOTS_TXT_PATH = `${PROXY_PAGES_PREFIX}/robots.txt`;
 
-const REALM = "Protected server";
+export const REALM = "Protected server";
 /** Above any rule's own length, which is what Traefik ranks a route by. */
 const ROBOTS_PRIORITY = 1_000_000;
 /** One notch over the catch-all, and under every real route. */
@@ -51,6 +65,24 @@ export interface ProtectionPlan {
   /** `user:bcrypt` lines. With none, every route is locked: nobody gets through. */
   users: readonly string[];
   exemptions: readonly ProtectionExemption[];
+  /**
+   * The gate remembers a browser: where the panel checks the password, and the values its cookie may
+   * hold on one site, which change with the users and every week. Without it, Traefik asks for the
+   * password itself, and asks again for every request that comes without it.
+   */
+  remember?: GateRemember | null;
+}
+
+export interface GateRemember {
+  address: string;
+  /** The values the cookie may hold on this host, in lower case and without a final dot. */
+  tokensFor(host: string): readonly string[];
+}
+
+/** A plan's remembering, when it can work: someone can sign in. */
+function rememberOf(plan: ProtectionPlan): GateRemember | null {
+  const remember = plan.remember ?? null;
+  return remember !== null && plan.users.length > 0 ? remember : null;
 }
 
 interface Router extends Record<string, unknown> {
@@ -58,6 +90,81 @@ interface Router extends Record<string, unknown> {
   entryPoints?: string[];
   middlewares?: string[];
   priority?: number;
+  ruleSyntax?: string;
+}
+
+/** Outside its quoted values, a rule this module reasons about holds only these: no comment, no other quote. */
+const PLAIN_RULE_CHARACTER = /[A-Za-z0-9_\s(),&|!]/;
+
+/**
+ * A rule's parts joined by `&&` at its top level, read the way Traefik reads it; the whole rule as one
+ * part when an `||` sits there too. Null for a rule that can't be read for sure: one with an unbalanced
+ * parenthesis or backtick, a comment or another kind of quote. Put in parentheses, such a rule could
+ * close its group early, and what follows would then hold on its own.
+ */
+function conjunctsOf(rule: string): string[] | null {
+  const conjuncts: string[] = [];
+  let depth = 0;
+  let quoted = false;
+  let either = false;
+  let start = 0;
+  for (let index = 0; index < rule.length; index += 1) {
+    const character = rule.charAt(index);
+    if (character === "`") {
+      quoted = !quoted;
+      continue;
+    }
+    // Inside a value, Traefik takes everything as it is.
+    if (quoted) {
+      continue;
+    }
+    if (!PLAIN_RULE_CHARACTER.test(character)) {
+      return null;
+    }
+    if (character === "(" || character === ")") {
+      depth += character === "(" ? 1 : -1;
+      if (depth < 0) {
+        return null;
+      }
+      continue;
+    }
+    const pair = rule.slice(index, index + 2);
+    if (depth === 0 && (pair === "&&" || pair === "||")) {
+      if (pair === "&&") {
+        conjuncts.push(rule.slice(start, index).trim());
+        start = index + 2;
+      } else {
+        either = true;
+      }
+      index += 1;
+    }
+  }
+  if (quoted || depth !== 0) {
+    return null;
+  }
+  conjuncts.push(rule.slice(start).trim());
+  return either ? [rule.trim()] : conjuncts;
+}
+
+/** Whether a rule can be put in parentheses and given one more condition, and still mean what it says. */
+const isSoundRule = (rule: string): boolean => conjunctsOf(rule) !== null;
+
+const EXACT_HOST = /^Host\(`([^`]*)`\)$/;
+
+/**
+ * The one host a rule can ever match, when its form makes that certain: `Host()` stands at its top
+ * level, joined to the rest by `&&`, and nothing else in it names a host. Null for anything else, such
+ * as a domain and all its subdomains, or two domains on one route.
+ */
+export function soleHost(rule: string): string | null {
+  const conjuncts = conjunctsOf(rule);
+  if (conjuncts === null) {
+    return null;
+  }
+  const hosts = conjuncts.flatMap((part) => EXACT_HOST.exec(part)?.slice(1) ?? []);
+  const named = rule.replace(/`[^`]*`/g, "``").match(/host/gi)?.length ?? 0;
+  const host = hosts.length === 1 && named === 1 ? (hosts[0] as string).toLowerCase().replace(/\.$/, "") : "";
+  return isValidHostname(host) ? host : null;
 }
 
 interface HttpSection extends Record<string, unknown> {
@@ -161,13 +268,11 @@ function exemptionMatcher({ kind, value }: ProtectionExemption): string | null {
   return value.endsWith("/*") ? `PathPrefix(\`${value.slice(0, -1)}\`)` : `Path(\`${value}\`)`;
 }
 
-function gatedChain(chain: readonly string[], gate: string | null): string[] {
-  if (gate === null) {
-    return [NOINDEX_MIDDLEWARE, ...chain];
-  }
+function gatedChain(chain: readonly string[], gate: string | readonly string[] | null): string[] {
+  const gates = gate === null ? [] : typeof gate === "string" ? [gate] : gate;
   return chain[0] === REDIRECT_HTTPS_MIDDLEWARE
-    ? [NOINDEX_MIDDLEWARE, REDIRECT_HTTPS_MIDDLEWARE, gate, ...chain.slice(1)]
-    : [NOINDEX_MIDDLEWARE, gate, ...chain];
+    ? [NOINDEX_MIDDLEWARE, REDIRECT_HTTPS_MIDDLEWARE, ...gates, ...chain.slice(1)]
+    : [NOINDEX_MIDDLEWARE, ...gates, ...chain];
 }
 
 /** A route that asks for the panel's own sign-in, which says who someone is, needs no shared password. */
@@ -182,11 +287,53 @@ const gateUsers = (plan: ProtectionPlan): string[] =>
  * published with its protection half-defined: Traefik refuses a route naming a middleware it can't find.
  */
 function sharedDefinitions(plan: ProtectionPlan): Record<string, unknown> {
+  const remember = rememberOf(plan);
   return {
     [NOINDEX_MIDDLEWARE]: { headers: { customResponseHeaders: { "X-Robots-Tag": ROBOTS_TAG } } },
     [GATE_MIDDLEWARE]: { basicAuth: { users: gateUsers(plan), realm: REALM, removeHeader: true } },
     [ROBOTS_PATH_MIDDLEWARE]: { replacePath: { path: ROBOTS_TXT_PATH } },
+    ...(remember === null
+      ? {}
+      : {
+          // Traefik sets the X-Forwarded headers itself, and passes the cookie on to the browser.
+          [GATE_CHECK_MIDDLEWARE]: {
+            forwardAuth: {
+              address: remember.address,
+              trustForwardHeader: false,
+              addAuthCookiesToResponse: [GATE_COOKIE],
+            },
+          },
+          [GATE_STRIP_MIDDLEWARE]: { headers: { customRequestHeaders: { Authorization: "" } } },
+        }),
   };
+}
+
+/**
+ * A twin's rule: its route's, for a request carrying the gate's cookie with one of these values, and
+ * sending the gate's password or not.
+ */
+const twinRule = (rule: string, tokens: readonly string[], basic: boolean): string =>
+  `(${rule}) && HeaderRegexp(\`Cookie\`, \`(?:^|;\\s*)${GATE_COOKIE}=(?:${tokens.join("|")})(?:;|$)\`) && ${
+    basic ? "" : "!"
+  }${BASIC_MATCHER}`;
+
+/**
+ * The cookie values a route lets through, or none when the route is better left to Traefik's own
+ * gate: it sends to HTTPS rather than answers, or its rule does not say for certain which one host
+ * it is for, as for a domain with all its subdomains. A value is valid on one host only, and the
+ * twin's rule must match that host and no other.
+ */
+function rememberedTokens(router: Router, remember: GateRemember | null): readonly string[] {
+  if (
+    remember === null ||
+    router.middlewares?.[0] === REDIRECT_HTTPS_MIDDLEWARE ||
+    (router.ruleSyntax !== undefined && router.ruleSyntax !== "v3")
+  ) {
+    return [];
+  }
+  const host = soleHost(router.rule);
+  const tokens = host === null ? [] : remember.tokensFor(host);
+  return tokens.length > 0 && tokens.every((token) => GATE_TOKEN.test(token)) ? tokens : [];
 }
 
 /**
@@ -231,13 +378,38 @@ export function protectServiceConfig(input: unknown, plan: ProtectionPlan): Rout
   const routers: Record<string, Router> = {};
   const added: Record<string, unknown> = {};
   const seenRobots = new Set<string>();
+  const remember = rememberOf(plan);
 
   for (const [name, router] of Object.entries(config.http.routers)) {
     const chain = router.middlewares ?? [];
-    routers[name] = {
-      ...router,
-      middlewares: gatedChain(chain, gateFor(name, router, definitions, plan, added)),
-    };
+    const gate = gateFor(name, router, definitions, plan, added);
+    // The server's own gate remembers a browser: the panel checks the password once, and the route's
+    // twins let the browser's cookie through, for what a page asks without the password, such as a
+    // service worker's requests. One twin passes the request on as it came, a token of the site's own
+    // included; the other takes off the gate's password, which a browser keeps sending once typed.
+    const tokens = gate === GATE_MIDDLEWARE ? rememberedTokens(router, remember) : [];
+    if (tokens.length > 0) {
+      routers[name] = {
+        ...router,
+        middlewares: gatedChain(chain, [GATE_CHECK_MIDDLEWARE, GATE_STRIP_MIDDLEWARE]),
+      };
+      // Just above its own route, never above another route the request would otherwise take.
+      const priority = (router.priority ?? router.rule.length) + 1;
+      routers[`${PASS_ROUTER_PREFIX}${name}`] = {
+        ...router,
+        rule: twinRule(router.rule, tokens, false),
+        priority,
+        middlewares: gatedChain(chain, null),
+      };
+      routers[`${PASS_BASIC_ROUTER_PREFIX}${name}`] = {
+        ...router,
+        rule: twinRule(router.rule, tokens, true),
+        priority,
+        middlewares: gatedChain(chain, GATE_STRIP_MIDDLEWARE),
+      };
+    } else {
+      routers[name] = { ...router, middlewares: gatedChain(chain, gate) };
+    }
 
     const robots = `${hostMatcher(router.rule) ?? "*"}|${entryKey(router)}`;
     if (!seenRobots.has(robots)) {
@@ -247,7 +419,8 @@ export function protectServiceConfig(input: unknown, plan: ProtectionPlan): Rout
 
     plan.exemptions.forEach((exemption, index) => {
       const matcher = exemptionMatcher(exemption);
-      if (matcher !== null) {
+      // A rule that can't be read for sure gets no exemption: in parentheses, it could end up wider.
+      if (matcher !== null && isSoundRule(router.rule)) {
         routers[`${EXEMPT_ROUTER_PREFIX}${name}-${index}`] = {
           ...router,
           rule: `(${router.rule}) && ${matcher}`,
@@ -344,15 +517,60 @@ function isGated(
     behindPanelSignIn(chain) ||
     chain.some(
       (name) =>
-        (name === GATE_MIDDLEWARE && definedUsers(shared[name]).length > 0) ||
+        ((name === GATE_MIDDLEWARE || name === GATE_CHECK_MIDDLEWARE) &&
+          definedUsers(shared[GATE_MIDDLEWARE]).length > 0 &&
+          shared[name] !== undefined) ||
         (name.startsWith(`${GATE_MIDDLEWARE}-`) && definedUsers(own[name]).length > 0),
     )
   );
 }
 
+const EXEMPTION_CONDITION = /^(?:ClientIP|Path|PathPrefix)\(`[^`]*`\)$/;
+const TWIN_TOKENS = new RegExp(`${GATE_COOKIE}=\\(\\?:([0-9a-f|]+)\\)`);
+
+/** The route a twin or an exemption was made from, by its name. */
+function siblingName(name: string): string | null {
+  if (name.startsWith(PASS_BASIC_ROUTER_PREFIX)) {
+    return name.slice(PASS_BASIC_ROUTER_PREFIX.length);
+  }
+  if (name.startsWith(PASS_ROUTER_PREFIX)) {
+    return name.slice(PASS_ROUTER_PREFIX.length);
+  }
+  return name.startsWith(EXEMPT_ROUTER_PREFIX)
+    ? name.slice(EXEMPT_ROUTER_PREFIX.length).replace(/-\d+$/, "")
+    : null;
+}
+
+/**
+ * Whether a route that lets requests past the gate is only ever narrower than the route it was made
+ * from, as this module writes it: a twin asks for the gate's cookie on that route's one host, and an
+ * exemption adds one path or address to a rule that can be read for sure.
+ */
+function isBounded(name: string, router: Router, sibling: Router | undefined): boolean {
+  if (sibling === undefined || router.middlewares?.[0] !== NOINDEX_MIDDLEWARE) {
+    return false;
+  }
+  if (name.startsWith(EXEMPT_ROUTER_PREFIX)) {
+    const prefix = `(${sibling.rule}) && `;
+    return (
+      isSoundRule(sibling.rule) &&
+      router.rule.startsWith(prefix) &&
+      EXEMPTION_CONDITION.test(router.rule.slice(prefix.length))
+    );
+  }
+  const tokens = TWIN_TOKENS.exec(router.rule)?.[1]?.split("|") ?? [];
+  return (
+    soleHost(sibling.rule) !== null &&
+    tokens.length > 0 &&
+    tokens.every((token) => GATE_TOKEN.test(token)) &&
+    router.rule === twinRule(sibling.rule, tokens, name.startsWith(PASS_BASIC_ROUTER_PREFIX))
+  );
+}
+
 function auditServiceFile(file: string, input: unknown, shared: Record<string, unknown>): AuditedDomain[] {
   const config = asConfig(input);
-  const routers = Object.entries(config.http?.routers ?? {});
+  const byName = config.http?.routers ?? {};
+  const routers = Object.entries(byName);
   const own = config.http?.middlewares ?? {};
   const robots = new Set(
     routers
@@ -361,8 +579,23 @@ function auditServiceFile(file: string, input: unknown, shared: Record<string, u
   );
 
   const domains = new Map<string, AuditedDomain>();
+  const note = (rule: string, isProtected: boolean) => {
+    const shape = routeShape(rule);
+    const key = `${shape.wildcard}|${shape.host}|${shape.path}`;
+    const known = domains.get(key);
+    domains.set(key, { ...shape, file, protected: isProtected && (known?.protected ?? true) });
+  };
   for (const [name, router] of routers) {
-    if (name.startsWith(RESERVED) || name.startsWith(STUDIO_GUEST_ROUTER_PREFIX)) {
+    if (name.startsWith(STUDIO_GUEST_ROUTER_PREFIX)) {
+      continue;
+    }
+    if (name.startsWith(RESERVED)) {
+      // A way past the gate that is wider than its route leaves that route's domain open.
+      const sibling = siblingName(name);
+      const made = sibling === null || sibling.startsWith(RESERVED) ? undefined : byName[sibling];
+      if (sibling !== null && !isBounded(name, router, made)) {
+        note(made?.rule ?? router.rule, false);
+      }
       continue;
     }
     const chain = router.middlewares ?? [];
@@ -370,14 +603,7 @@ function auditServiceFile(file: string, input: unknown, shared: Record<string, u
       chain[0] === NOINDEX_MIDDLEWARE &&
       isGated(chain, shared, own) &&
       robots.has(`${hostMatcher(router.rule) ?? "*"}|${entryKey(router)}`);
-    const shape = routeShape(router.rule);
-    const key = `${shape.wildcard}|${shape.host}|${shape.path}`;
-    const known = domains.get(key);
-    domains.set(key, {
-      ...shape,
-      file,
-      protected: isProtected && (known?.protected ?? true),
-    });
+    note(router.rule, isProtected);
   }
   return [...domains.values()];
 }

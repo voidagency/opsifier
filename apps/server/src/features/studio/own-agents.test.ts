@@ -6,6 +6,7 @@ import type {
   StudioIsolated,
   StudioOverview,
   StudioSettings,
+  StudioSync,
 } from "@opsifier/contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -41,7 +42,7 @@ const ADDED = "/projects/studio-un-mot-par-jour-landing/services";
 const OWN_AGENT = "studio-un-mot-par-jour-landing_agent";
 
 type Raw = Record<string, unknown>;
-type Script = "folder" | "seed-read" | "seed-write" | "clone" | "agent";
+type Script = "folder" | "seed-read" | "seed-write" | "clone" | "sync" | "agent";
 interface Exec {
   service: string;
   script: Script;
@@ -57,7 +58,9 @@ const kindOf = (script: string): Script =>
         ? "seed-write"
         : script.includes("opsifier-studio-clone")
           ? "clone"
-          : "agent";
+          : script.includes("opsifier-studio-sync")
+            ? "sync"
+            : "agent";
 
 /**
  * Plays the agent servers in their containers: the model, `lovable_openhands`, which alone has a
@@ -79,6 +82,18 @@ function installFakeAgents() {
       branch: "main",
       manifest: true,
       vite: true,
+    }),
+    /** What bringing a folder up to date answers: nothing new on GitHub, unless a test says otherwise. */
+    sync: (_request: Raw): Raw => ({
+      ok: true,
+      state: "current",
+      branch: "main",
+      pulled: 0,
+      behind: 0,
+      ahead: 0,
+      changed: 0,
+      blocking: [],
+      dependencies: false,
     }),
   };
   let sequence = 0;
@@ -164,6 +179,8 @@ function installFakeAgents() {
         }
         case "clone":
           return { output: `opsifier-studio-clone ${JSON.stringify(state.clone(request))}\n`, exitCode: 0 };
+        case "sync":
+          return { output: `opsifier-studio-sync ${JSON.stringify(state.sync(request))}\n`, exitCode: 0 };
         default: {
           const calls = request.calls as { method: string; path: string; body?: unknown }[];
           const answers = calls.map((one) => answer(service, one));
@@ -880,6 +897,80 @@ describe("the Studio's GitHub keys, when a project is copied", () => {
     expect(apiErrorOf(refused).message).toContain(
       "The Studio's GitHub key for mehdinajeddine serves projects with an agent server of their own only.",
     );
+  });
+});
+
+describe("bringing a project with its own agent server up to date with GitHub", () => {
+  const KEY = "github_pat_55EEEEEEE0the0owners0narrow0studio0key";
+  const current: Raw = {
+    ok: true,
+    state: "current",
+    branch: "main",
+    pulled: 0,
+    behind: 0,
+    ahead: 0,
+    changed: 0,
+    blocking: [],
+    dependencies: false,
+  };
+  const updates = () => agents.execs.filter((exec) => exec.script === "sync");
+  const sync = () => api<StudioSync>(`${ADDED}/preview/studio/sync?force=true`, "POST");
+
+  it("runs in the project's own agent server, which reaches GitHub through the panel and holds no key", async () => {
+    expect(
+      (await api("/settings/studio/github-keys", "POST", { owner: "mehdinajeddine", token: KEY })).status,
+    ).toBe(201);
+    await addOwnProject();
+    agents.sync = () => current;
+
+    expect((await sync()).body.state).toBe("current");
+
+    // Never the model's container, which holds every project's folder: what the folder's own settings
+    // could make git do stays within the project.
+    expect(updates()).toEqual([
+      {
+        service: OWN_AGENT,
+        script: "sync",
+        input: {
+          relay: true,
+          dir: "/projects/un-mot-par-jour-landing",
+          url: "https://github.com/mehdinajeddine/un-mot-par-jour-landing.git",
+        },
+      },
+    ]);
+  });
+
+  it("stays in the project's own agent server when agents per project are turned off later", async () => {
+    await addOwnProject();
+    expect((await saveSettings({ agentPerProject: false })).status).toBe(200);
+    agents.sync = () => current;
+
+    expect((await sync()).body.state).toBe("current");
+    // The project's agent still writes its folder: the model's container never runs its git.
+    expect(updates().map((exec) => exec.service)).toEqual([OWN_AGENT]);
+    expect(updates()[0]?.input.relay).toBe(true);
+  });
+
+  it("wakes the project's agent server, and waits for it", async () => {
+    await addOwnProject();
+    expect((await api(`${ADDED}/agent/stop`, "POST")).status).toBe(202);
+    await settle();
+    agents.sync = () => current;
+
+    expect((await sync()).body.state).toBe("current");
+    expect(updates().map((exec) => exec.service)).toEqual([OWN_AGENT]);
+    expect((await api<{ stopped: boolean }>(`${ADDED}/agent`)).body.stopped).toBe(false);
+  });
+
+  it("only looks while the agent is at work, so that its folder does not move under it", async () => {
+    await addOwnProject();
+    await startConversation(`${ADDED}/preview`, "Bonjour");
+    agents.sync = () => ({ ...current, state: "deferred", behind: 2 });
+
+    const synced = await sync();
+
+    expect(synced.body).toMatchObject({ state: "deferred", behind: 2 });
+    expect(updates().at(-1)?.input.fetchOnly).toBe(true);
   });
 });
 

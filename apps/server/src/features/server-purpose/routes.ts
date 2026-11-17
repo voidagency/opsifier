@@ -22,6 +22,7 @@ import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
 import { requestAccess } from "../access/guard";
 import { roleInProject } from "../access/rules";
 import { ROBOTS_TAG, ROBOTS_TXT, ROBOTS_TXT_PATH } from "../services/compile/protection";
+import { registerGateCheck } from "./gate";
 import { readProtection } from "./repo";
 import {
   addAllowlistEntry,
@@ -33,6 +34,7 @@ import {
   removeAllowlistEntry,
   removeProtectionUser,
   setServerPurpose,
+  startGateCookieRefresh,
   updateProtectionUser,
 } from "./service";
 
@@ -193,10 +195,26 @@ export function noindexPanelResponses(deps: Pick<AppDeps, "db">): MiddlewareHand
   };
 }
 
+let stopGateCookieRefresh: (() => void) | undefined;
+
 export const feature: Feature = {
   boot: reconcileProtection,
 
+  // The gate's cookie changes every week, so its routes are brought to the week's values.
+  ready(deps) {
+    stopGateCookieRefresh?.();
+    stopGateCookieRefresh = startGateCookieRefresh(deps);
+  },
+
+  shutdown() {
+    stopGateCookieRefresh?.();
+    stopGateCookieRefresh = undefined;
+  },
+
   register(app, deps) {
+    // Traefik asks here about a request to a protected site that carries no cookie of the gate.
+    registerGateCheck(app, deps);
+
     // What the proxy answers on /robots.txt of every host, and the panel's own too.
     app.all(ROBOTS_TXT_PATH, (c) => {
       c.header("Cache-Control", "no-store");

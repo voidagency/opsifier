@@ -29,6 +29,7 @@ import {
   studioRemark,
   studioRemarkList,
   studioSettings,
+  studioSync,
   type UpdateStudioRemarkRequest,
   unlinkedStudioApp,
 } from "@opsifier/contract";
@@ -115,6 +116,9 @@ export const studioApi = {
   isolateAll: () => api.post("/studio/isolate", { schema: studioIsolateAll }),
   startPreview: (project: string, service: string) =>
     api.post(`${appPath(project, service)}/preview/start`, { schema: studioPreviewStart }),
+  /** Brings the project's folder up to date with GitHub, when that loses nothing made here. */
+  sync: (project: string, service: string, force = false) =>
+    api.post(`${appPath(project, service)}/sync${force ? "?force=true" : ""}`, { schema: studioSync }),
   link: (project: string, service: string, body: LinkStudioAppRequest) =>
     api.put(appPath(project, service), { body, schema: studioAppDetail }),
   unlink: (project: string, service: string) =>

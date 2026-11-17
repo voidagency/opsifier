@@ -643,7 +643,7 @@ export function awakeOwnAgent(deps: AppDeps, model: StudioAgent, record: Service
 }
 
 /** Whether one of the project's recent conversations with its own agent server is at work. */
-async function isWorking(deps: AppDeps, agent: StudioAgent, appId: string): Promise<boolean> {
+export async function isWorking(deps: AppDeps, agent: StudioAgent, appId: string): Promise<boolean> {
   const recent = repo
     .listConversations(deps.db, appId)
     .filter((conversation) => !conversation.sharedAgent)

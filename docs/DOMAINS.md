@@ -79,6 +79,17 @@ Certificates from a public authority are written to public Certificate Transpare
 
 Until the server's purpose is production, every site on it asks for the server's password and tells search engines to stay away. The panel's own domains never ask for it, so deployment triggers and Git webhooks keep working. Move the server to production under **Settings, Purpose** when its sites should be public.
 
+A browser that gave the right password is remembered on that site for a week. The proxy asks the panel about a request that carries no cookie of the server's gate: with the right password, the panel gives the browser that cookie, and every request carrying it goes through without the password. A browser sends a password typed once with what a page asks, but not with what the page's service worker asks; without the cookie, a site with a service worker, such as a progressive web app, asked for the password again and again.
+
+- The cookie is good on its own site only, and for two weeks at most: its value changes every week, and as soon as the server's users change. Whoever was taken off the list is asked again, and so is everyone else, once.
+- A site sees the cookie, as it sees all of its own cookies, but can't use it on another site of the server.
+- The proxy takes the server's password off a request before it reaches a site. A request with the cookie reaches the site as it was sent otherwise, with a token of the site's own if it carries one.
+- A request let through by an exemption, under **Settings, Purpose, Exemptions**, reaches the site exactly as it was sent, password included if the browser sends it: webhooks often sign their requests in that same header.
+- A site that answers on every subdomain of a domain, and a route of your own whose rule names more than one host or can't be read for sure, keep the proxy's own check: the password is asked again with every request that comes without it.
+- An address that tries 30 wrong passwords in five minutes waits; with IPv6, a whole /64 counts as one address.
+- A browser not yet remembered goes through the panel. While the panel restarts, its request gets an error rather than the password prompt, and so does a script that sends the password with every request. Browsers already remembered, and scripts that keep the cookie between requests, don't depend on the panel.
+- A service with users of its own, under **Security**, still asks for its own password with every request.
+
 ## The panel's own address
 
 **Settings, General, Panel domain** gives the panel a domain of its own, which must point at the server. Turn **Serve on IP** off and only its domains answer.

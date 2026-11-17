@@ -11,6 +11,7 @@ import { qualifiedName } from "../services/compile";
 import { findService } from "../services/repo";
 import { requireService } from "../services/service";
 import { OWN_PREVIEW, requireModel, requirePanelUrl } from "./agents";
+import { GITHUB_SECRET, scriptPrelude } from "./git-scripts";
 import { githubKeyFor, hasGithubKeyFor } from "./github-keys";
 import { createOwnProject, deployOwnProject, inspectFolder, requireNoCredentials } from "./own-project";
 import { inspectorEnv, PREVIEW_RESOURCES, previewDockerfile } from "./preview";
@@ -18,8 +19,6 @@ import * as repo from "./repo";
 import { getStudioApp, linkStudioApp } from "./service";
 import { readStudioSettings } from "./settings";
 
-/** The agent server's secret that holds the GitHub token, as OpenHands names it. */
-export const GITHUB_SECRET = "GITHUB_TOKEN";
 /** Copying a large repository takes a while. */
 const CLONE_TIMEOUT_MS = 300_000;
 const CLONE_PREFIX = "opsifier-studio-clone ";
@@ -92,46 +91,11 @@ export function projectsHostDir(deps: AppDeps, agent: StudioAgent & { projectsDi
 }
 
 /**
- * Runs in the agent server's container. Takes the GitHub token the panel hands it on standard input, a
- * Studio key, or else reads the agent server's key there and with it the GitHub token it keeps as a
- * secret, then copies the repository with a credential helper that reads the token from the
- * environment: the token is never written, printed or sent back. A folder that
- * already holds a copy of the same repository is kept, so that adding a project again goes on from
- * where it stopped. The request comes on standard input.
+ * Copies the repository into the projects folder, with the credential helper of `scriptPrelude`. A
+ * folder that already holds a copy of the same repository is kept, so that adding a project again goes
+ * on from where it stopped.
  */
-export const CLONE_SCRIPT = `
-import json, os, subprocess, sys, urllib.error, urllib.request
-request = json.load(sys.stdin)
-def done(result):
-    print(${JSON.stringify(CLONE_PREFIX)} + json.dumps(result))
-    sys.exit(0)
-key = os.environ.get("SESSION_API_KEY") or os.environ.get("OH_SESSION_API_KEYS_0")
-if not key and request.get("keyFile"):
-    try:
-        with open(request["keyFile"]) as handle:
-            key = handle.read().strip()
-    except OSError:
-        key = None
-token = request.get("token") or ""
-headers = {"X-Session-API-Key": key} if key else {}
-if not token:
-    try:
-        secret = urllib.request.Request(request["agentUrl"] + "/api/settings/secrets/" + request["secret"], headers=headers)
-        with urllib.request.urlopen(secret, timeout=20) as answer:
-            token = answer.read().decode().strip()
-        if token.startswith('"'):
-            token = json.loads(token)
-    except urllib.error.HTTPError as error:
-        if error.code in (401, 403):
-            done({"ok": False, "code": "refused"})
-    except Exception:
-        done({"ok": False, "code": "unreachable"})
-helper = '!f() { test "$1" = get && echo username=x-access-token && echo "password=$GITHUB_TOKEN"; }; f'
-env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GITHUB_TOKEN=token)
-def clean(text):
-    text = text.strip().splitlines()[-1] if text.strip() else ""
-    return text.replace(token, "***")[:300] if token else text[:300]
-target = request["dir"]
+export const CLONE_SCRIPT = `${scriptPrelude(CLONE_PREFIX)}target = request["dir"]
 reused = False
 if os.path.exists(target):
     origin = ""

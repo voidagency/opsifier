@@ -37,6 +37,8 @@ import {
   studioRemarkList,
   studioRemarkPath,
   studioSettings,
+  studioSync,
+  studioSyncQuery,
   unlinkedStudioApp,
   updateStudioRemarkRequest,
 } from "@opsifier/contract";
@@ -99,6 +101,7 @@ import {
   SIGNIN_RETURN_PATH,
   safeReturnPath,
 } from "./signin";
+import { syncBeforeStart, syncStudioProject } from "./sync";
 
 const tags = ["Studio"];
 const SETTINGS = "/api/v1/settings/studio";
@@ -342,6 +345,24 @@ const startPreviewRoute = createRoute({
   request: { params: servicePath },
   responses: {
     200: jsonResponse(studioPreviewStart, "Whether a start was asked for."),
+    400: invalid,
+    401: denied,
+    404: missing,
+    409: blocked,
+  },
+});
+
+const syncRoute = createRoute({
+  method: "post",
+  path: `${APP}/sync`,
+  tags,
+  description:
+    "Brings the project's folder up to date with its branch on GitHub, for anyone the project is shared with: " +
+    "only a fast-forward, which never overwrites a file made here. The Studio asks for it when a project opens, " +
+    "and before its preview starts; an answer of the last seconds is given again unless `force` is true.",
+  request: { params: servicePath, query: studioSyncQuery },
+  responses: {
+    200: jsonResponse(studioSync, "What GitHub had, and what the folder took from it."),
     400: invalid,
     401: denied,
     404: missing,
@@ -838,8 +859,24 @@ export const feature: Feature = {
       );
     });
 
-    app.openapi(startPreviewRoute, async (c) =>
-      c.json(await startStudioPreview(deps, target(c.req.valid("param")), actorOf(requirePrincipal(c))), 200),
+    app.openapi(startPreviewRoute, async (c) => {
+      const preview = target(c.req.valid("param"));
+      const actor = actorOf(requirePrincipal(c));
+      // The preview installs its packages from the folder as it starts: from what is on GitHub.
+      await syncBeforeStart(deps, preview, actor);
+      return c.json(await startStudioPreview(deps, preview, actor), 200);
+    });
+
+    app.openapi(syncRoute, async (c) =>
+      c.json(
+        await syncStudioProject(
+          deps,
+          target(c.req.valid("param")),
+          actorOf(requirePrincipal(c)),
+          c.req.valid("query").force === "true",
+        ),
+        200,
+      ),
     );
 
     app.openapi(appRoute, async (c) => c.json(await getStudioApp(deps, target(c.req.valid("param"))), 200));

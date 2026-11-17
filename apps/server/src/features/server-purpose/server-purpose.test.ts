@@ -16,11 +16,21 @@ import { apiErrorOf, call, type TestContext } from "../../testing/harness";
 import { requirementFor } from "../access/policy";
 import { type DatabaseTestContext, setupDatabaseTests } from "../databases/testing";
 import { PANEL_DOMAIN_KEY } from "../server/panel-host";
-import { GATE_MIDDLEWARE, NOINDEX_MIDDLEWARE, ROBOTS_ROUTER_PREFIX } from "../services/compile/protection";
+import {
+  GATE_CHECK_MIDDLEWARE,
+  GATE_COOKIE,
+  GATE_MIDDLEWARE,
+  GATE_STRIP_MIDDLEWARE,
+  NOINDEX_MIDDLEWARE,
+  PASS_BASIC_ROUTER_PREFIX,
+  PASS_ROUTER_PREFIX,
+  ROBOTS_ROUTER_PREFIX,
+} from "../services/compile/protection";
 import { findService } from "../services/repo";
 import { writeProxyConfig } from "../services/service";
 import { putSetting } from "../system/repo";
 import { readProtection, saveProtection, seedProtection } from "./repo";
+import { refreshGateCookies } from "./service";
 
 let suite: DatabaseTestContext;
 let context: TestContext;
@@ -66,9 +76,11 @@ const allRouters = () =>
     Object.entries(http.routers ?? {}).map(([name, router]) => ({ file, name, router })),
   );
 
+/** Behind the gate: Traefik's own, a route's own, or the panel's check that remembers a browser. */
 const gated = (router: Router) =>
   (router.middlewares ?? []).some(
-    (name) => name === GATE_MIDDLEWARE || name.startsWith(`${GATE_MIDDLEWARE}-`),
+    (name) =>
+      name === GATE_MIDDLEWARE || name.startsWith(`${GATE_MIDDLEWARE}-`) || name === GATE_CHECK_MIDDLEWARE,
   );
 
 /** Every route of every kind, however it was produced, has the protection on it. */
@@ -86,6 +98,23 @@ function expectEveryRouterProtected(): void {
     }
     if (file === "_base.yaml") {
       expect(gated(router), `${where} keeps the panel's own login only`).toBe(false);
+      continue;
+    }
+    if (name.startsWith(PASS_ROUTER_PREFIX) || name.startsWith(PASS_BASIC_ROUTER_PREFIX)) {
+      // A remembered browser's way in: only with the gate's cookie, and the gate's password taken off.
+      const withPassword = name.startsWith(PASS_BASIC_ROUTER_PREFIX);
+      expect(router.rule, where).toMatch(
+        new RegExp(
+          `HeaderRegexp\\(\`Cookie\`, .*${GATE_COOKIE}=\\(\\?:[0-9a-f]{64}(?:\\|[0-9a-f]{64}){2}\\)`,
+        ),
+      );
+      expect(
+        router.rule.endsWith(
+          `${withPassword ? "&& " : "&& !"}HeaderRegexp(\`Authorization\`, \`(?i)^basic\\b\`)`,
+        ),
+        where,
+      ).toBe(true);
+      expect(router.middlewares?.includes(GATE_STRIP_MIDDLEWARE), where).toBe(withPassword);
       continue;
     }
     expect(gated(router), `${where} has no gate`).toBe(true);
@@ -106,6 +135,12 @@ function expectEveryRouterProtected(): void {
   const base = routingFiles().find(({ file }) => file === "_base.yaml")?.http.middlewares ?? {};
   expect(base[NOINDEX_MIDDLEWARE]).toBeDefined();
   expect(base[GATE_MIDDLEWARE]).toBeDefined();
+  // Every shared middleware of the protection a route names, the gate that remembers included.
+  for (const name of new Set(routers.flatMap(({ router }) => router.middlewares ?? []))) {
+    if (name.startsWith("opsifier-protect-") && !name.startsWith(`${GATE_MIDDLEWARE}-`)) {
+      expect(base[name], name).toBeDefined();
+    }
+  }
 }
 
 /** One of every kind of thing that produces a route today. */
@@ -234,7 +269,7 @@ describe("SRV-02: every route on a non-production server", () => {
     const fresh = parse(readFileSync(join(dynamicDir(), "shop__fresh.yaml"), "utf8")) as {
       http: { routers: Record<string, Router> };
     };
-    expect(fresh.http.routers["https-shop_fresh-0"]?.middlewares).toContain(GATE_MIDDLEWARE);
+    expect(fresh.http.routers["https-shop_fresh-0"]?.middlewares).toContain(GATE_CHECK_MIDDLEWARE);
     expect(await stateNow()).toMatchObject({ totalCount: 1, protectedCount: 1, problems: [] });
   });
 
@@ -426,6 +461,189 @@ describe("SRV-04: changing the purpose", () => {
     } finally {
       chmodSync(dynamicDir(), 0o755);
     }
+  });
+});
+
+describe("the gate remembering a browser", () => {
+  const CHECK = "/api/proxy-pages/gate";
+  const TRAEFIK = "10.0.0.2";
+  const WEEK = 7 * 24 * 60 * 60 * 1000;
+  const basic = (username: string, password: string) =>
+    `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+
+  beforeEach(() => {
+    // Traefik reaches the panel from the overlay network, which the installer tells the panel to trust.
+    context.deps.config.trustedProxies.addSubnet("10.0.0.0", 8, "ipv4");
+  });
+
+  /** What Traefik asks the panel about a request for a site that carries no cookie of the gate. */
+  const asked = ({
+    site = "shop.example.test",
+    authorization,
+    peer = TRAEFIK,
+    forwardedFor = "198.51.100.7",
+  }: {
+    site?: string;
+    authorization?: string;
+    peer?: string;
+    forwardedFor?: string;
+  } = {}) =>
+    call(context.app, CHECK, {
+      peer,
+      headers: {
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": site,
+        "x-forwarded-for": forwardedFor,
+        ...(authorization === undefined ? {} : { authorization }),
+      },
+    });
+  /** Every twin route, with the one host it is for and the values of the cookie it lets through. */
+  const twins = () =>
+    allRouters()
+      .filter(({ name }) => name.startsWith(PASS_ROUTER_PREFIX) || name.startsWith(PASS_BASIC_ROUTER_PREFIX))
+      .map(({ router }) => ({
+        host: /Host\(`([^`]*)`\)/.exec(router.rule)?.[1] ?? "",
+        tokens: new RegExp(`${GATE_COOKIE}=\\(\\?:([0-9a-f|]+)\\)`).exec(router.rule)?.[1]?.split("|") ?? [],
+      }));
+  const tokensOf = (host: string) => twins().find((twin) => twin.host === host)?.tokens ?? [];
+  const cookieValue = (result: { cookie?: string }) => result.cookie?.split("=")[1] ?? "";
+
+  async function staging(): Promise<{ username: string; password: string }> {
+    const set = await setPurpose("staging");
+    return set.body.credentials ?? { username: "", password: "" };
+  }
+
+  it("lets the right password through once, and the browser in on that site with its cookie after", async () => {
+    const { username, password } = await staging();
+    await suite.api("/projects/shop/services", "POST", { name: "web" });
+    await suite.api("/projects/shop/services", "POST", { name: "api" });
+    const hosts = [...new Set(twins().map((twin) => twin.host))];
+    expect(hosts.length).toBeGreaterThanOrEqual(2);
+    const site = hosts[0] as string;
+
+    const none = await asked({ site });
+    expect(none.status).toBe(401);
+    expect(none.headers.get("www-authenticate")).toBe('Basic realm="Protected server"');
+    expect((await asked({ site, authorization: basic(username, "wrong") })).status).toBe(401);
+    expect((await asked({ site, authorization: basic("nobody", password) })).status).toBe(401);
+
+    const right = await asked({ site, authorization: basic(username, password) });
+    expect(right.status).toBe(200);
+    expect(right.setCookie).toMatch(new RegExp(`^${GATE_COOKIE}=[0-9a-f]{64};`));
+    expect(right.setCookie).toContain("Max-Age=604800");
+    expect(right.setCookie).toContain("HttpOnly");
+    expect(right.setCookie).toContain("Secure");
+    expect(right.setCookie).toContain("SameSite=Lax");
+    // Both twins of every route of that site let the cookie through, and no other site's.
+    const value = cookieValue(right);
+    for (const twin of twins()) {
+      expect(twin.tokens.includes(value), twin.host).toBe(twin.host === site);
+    }
+    // The same password on another site gives that site's own value.
+    const other = await asked({ site: hosts[1], authorization: basic(username, password) });
+    expect(cookieValue(other)).not.toBe(value);
+    expect(tokensOf(hosts[1] as string)).toContain(cookieValue(other));
+  });
+
+  it("changes the cookie every week, and keeps last week's good until it runs out", async () => {
+    const { username, password } = await staging();
+    await suite.api("/projects/shop/services", "POST", { name: "web" });
+    const site = twins()[0]?.host ?? "";
+    const authorization = basic(username, password);
+
+    const first = cookieValue(await asked({ site, authorization }));
+    expect(tokensOf(site)[1]).toBe(first);
+
+    context.advance(WEEK);
+    await refreshGateCookies(context.deps);
+    const second = cookieValue(await asked({ site, authorization }));
+    expect(second).not.toBe(first);
+    expect(tokensOf(site).slice(0, 2)).toEqual([first, second]);
+
+    context.advance(WEEK);
+    await refreshGateCookies(context.deps);
+    expect(tokensOf(site)).not.toContain(first);
+    expect(tokensOf(site)).toContain(second);
+  });
+
+  it("forgets every browser when the gate's users change", async () => {
+    await staging();
+    await suite.api("/projects/shop/services", "POST", { name: "web" });
+    const site = twins()[0]?.host ?? "";
+    const before = tokensOf(site);
+
+    await suite.api("/server-purpose/users", "POST", { username: "alice" });
+
+    const after = tokensOf(site);
+    expect(before).toHaveLength(3);
+    expect(after).toHaveLength(3);
+    expect(after.some((token) => before.includes(token))).toBe(false);
+  });
+
+  it("counts wrong passwords by the address the proxy saw", async () => {
+    const { username, password } = await staging();
+    const wrong = (attempt: number) => basic(username, `wrong-${attempt}`);
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      expect((await asked({ authorization: wrong(attempt) })).status).toBe(401);
+    }
+    // The same wrong password again is not one more guess.
+    expect((await asked({ authorization: wrong(0) })).status).toBe(401);
+    expect((await asked({ authorization: wrong(30) })).status).toBe(429);
+    // Someone else behind the same proxy is not held back.
+    const someoneElse = { authorization: basic(username, password), forwardedFor: "198.51.100.8" };
+    expect((await asked(someoneElse)).status).toBe(200);
+  });
+
+  it("counts a client that asks the panel directly by its own address, whatever it says it is", async () => {
+    const { username } = await staging();
+    const direct = (attempt: number) => ({
+      peer: "198.51.100.9",
+      forwardedFor: `198.51.100.${100 + attempt}`,
+      authorization: basic(username, `wrong-${attempt}`),
+    });
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      expect((await asked(direct(attempt))).status).toBe(401);
+    }
+    expect((await asked(direct(30))).status).toBe(429);
+  });
+
+  it("counts an IPv6 /64 as one address, since one subscriber holds it whole", async () => {
+    const { username, password } = await staging();
+    const from = (forwardedFor: string, attempt: number) => ({
+      forwardedFor,
+      authorization: basic(username, `wrong-${attempt}`),
+    });
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      expect((await asked(from(`2001:db8:1:2::${(attempt + 1).toString(16)}`, attempt))).status).toBe(401);
+    }
+    expect((await asked(from("2001:db8:1:2:ffff::1", 30))).status).toBe(429);
+    const next = { forwardedFor: "2001:db8:1:3::1", authorization: basic(username, password) };
+    expect((await asked(next)).status).toBe(200);
+  });
+
+  it("asks a client to come back when too many passwords are being checked at once", async () => {
+    await staging();
+    const answers = await Promise.all(
+      Array.from({ length: 12 }, (_, attempt) =>
+        asked({
+          authorization: basic("nobody", `busy-${attempt}`),
+          forwardedFor: `198.51.100.${20 + attempt}`,
+        }),
+      ),
+    );
+
+    const busy = answers.filter((answer) => answer.status === 503);
+    expect(busy.length).toBeGreaterThan(0);
+    expect(busy[0]?.headers.get("retry-after")).toBe("1");
+    expect(answers.every((answer) => answer.status === 401 || answer.status === 503)).toBe(true);
+  });
+
+  it("lets nobody in on production, nor for a site it can't name", async () => {
+    const { username, password } = await staging();
+    expect((await asked({ site: "not a host", authorization: basic(username, password) })).status).toBe(401);
+
+    await setPurpose("production", "PUBLIC 0");
+    expect((await asked({ authorization: basic(username, password) })).status).toBe(401);
   });
 });
 

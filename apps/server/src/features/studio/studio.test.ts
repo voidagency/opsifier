@@ -10,6 +10,7 @@ import type {
   StudioModels,
   StudioOverview,
   StudioSettings,
+  StudioSync,
 } from "@opsifier/contract";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -166,6 +167,22 @@ function installFakeAgent() {
   context.docker.execHandler = (options) => {
     if (options.service !== "lovable_openhands" || options.command[0] !== "python3") {
       return undefined;
+    }
+    if (String(options.command[2]).includes("opsifier-studio-sync")) {
+      // Bringing the folder up to date, before a preview starts: GitHub has nothing new.
+      const current = {
+        ok: true,
+        state: "current",
+        branch: "main",
+        pulled: 0,
+        behind: 0,
+        ahead: 0,
+        changed: 0,
+      };
+      return () => ({
+        output: `opsifier-studio-sync ${JSON.stringify({ ...current, blocking: [], dependencies: false })}\n`,
+        exitCode: 0,
+      });
     }
     return (input: string) => {
       agent.inputs.push(input);
@@ -981,5 +998,151 @@ describe("a Studio conversation", () => {
 
     expect(refused.status).toBe(409);
     expect(apiErrorOf(refused).code).toBe("studio_disabled");
+  });
+});
+
+describe("bringing a Studio project up to date with GitHub", () => {
+  const found = {
+    ok: true,
+    branch: "main",
+    pulled: 0,
+    behind: 0,
+    ahead: 0,
+    changed: 0,
+    blocking: [],
+    dependencies: false,
+  };
+
+  /** Plays the update script in the agent server's container: what it is sent, and what it answers. */
+  function installFakeSync(answer: Record<string, unknown>) {
+    const inputs: Record<string, unknown>[] = [];
+    const before = context.docker.execHandler;
+    context.docker.execHandler = (options) => {
+      if (
+        options.service === "lovable_openhands" &&
+        String(options.command[2]).includes("opsifier-studio-sync")
+      ) {
+        return (input: string) => {
+          inputs.push(JSON.parse(input) as Record<string, unknown>);
+          return { output: `opsifier-studio-sync ${JSON.stringify(answer)}\n`, exitCode: 0 };
+        };
+      }
+      return before?.(options);
+    };
+    return inputs;
+  }
+
+  const sync = (as = cookie) => api<StudioSync>(`${PREVIEW}/studio/sync`, "POST", undefined, as);
+  const actionTypes = async () =>
+    (await api<ActionPage>("/actions?limit=100")).body.items.map((action) => action.type);
+
+  async function prepare(running = true): Promise<void> {
+    await deployAgent();
+    await api(`${PREVIEW}/source`, "PUT", { image: "node:22" });
+    await run(`${PREVIEW}/deploy`);
+    if (!running) {
+      await run(`${PREVIEW}/stop`);
+    }
+    await enable();
+    await link();
+  }
+
+  it("brings the folder in from GitHub in the agent server's container, and says what came in", async () => {
+    await prepare();
+    const inputs = installFakeSync({ ...found, state: "updated", pulled: 2 });
+
+    const synced = await sync();
+
+    expect(synced.status).toBe(200);
+    expect(synced.body).toEqual({
+      state: "updated",
+      branch: "main",
+      pulled: 2,
+      behind: 0,
+      ahead: 0,
+      changed: 0,
+      blocking: [],
+      previewRestarted: false,
+      reason: null,
+    });
+    // The agent server's own token, read in its container: no Studio key is handed to a shared one.
+    expect(inputs).toEqual([
+      { agentUrl: AGENT.url, keyFile: AGENT.keyFile, secret: "GITHUB_TOKEN", dir: "/projects/cd-studio" },
+    ]);
+    expect(await actionTypes()).toContain("studio.sync");
+  });
+
+  it("shares one update between openings close together", async () => {
+    await prepare();
+    const inputs = installFakeSync({ ...found, state: "current" });
+
+    const [first, second] = await Promise.all([sync(), sync()]);
+    expect(first.body.state).toBe("current");
+    expect(second.body.state).toBe("current");
+    expect((await sync()).body.state).toBe("current");
+    expect(inputs).toHaveLength(1);
+
+    context.advance(16_000);
+    await sync();
+    expect(inputs).toHaveLength(2);
+    // Someone who asks again is answered anew, at once.
+    await api(`${PREVIEW}/studio/sync?force=true`, "POST");
+    expect(inputs).toHaveLength(3);
+    // Nothing came in: nothing for the activity.
+    expect(await actionTypes()).not.toContain("studio.sync");
+  });
+
+  it("asks again at once after an answer that was not good news", async () => {
+    await prepare();
+    const inputs = installFakeSync({ ok: false, code: "busy" });
+
+    expect((await sync()).body).toMatchObject({ state: "unavailable", reason: "busy" });
+    expect((await sync()).body).toMatchObject({ state: "unavailable", reason: "busy" });
+    expect(inputs).toHaveLength(2);
+  });
+
+  it("starts the preview again when the changes bring new packages", async () => {
+    await prepare();
+    installFakeSync({ ...found, state: "updated", pulled: 1, dependencies: true });
+
+    expect((await sync()).body.previewRestarted).toBe(true);
+    await settle();
+    expect(await actionTypes()).toContain("service.restart");
+  });
+
+  it("brings the folder up to date before a stopped preview starts and installs its packages", async () => {
+    await prepare(false);
+    const inputs = installFakeSync({ ...found, state: "updated", pulled: 1, dependencies: true });
+
+    const started = await api<{ started: boolean }>(`${PREVIEW}/studio/preview/start`, "POST");
+
+    expect(started.body.started).toBe(true);
+    expect(inputs).toHaveLength(1);
+    await settle();
+    // The start installs them: no restart on top of it.
+    expect(await actionTypes()).not.toContain("service.restart");
+  });
+
+  it("says why it could not look at GitHub, without failing the opening", async () => {
+    await prepare();
+    installFakeSync({ ok: false, code: "no_access", branch: "main", token: true, message: "403" });
+
+    const synced = await sync();
+
+    expect(synced.status).toBe(200);
+    expect(synced.body).toMatchObject({ state: "unavailable", reason: "no_access", branch: "main" });
+  });
+
+  it("is open to the accounts the project is shared with, and to no one else", async () => {
+    await prepare();
+    installFakeSync({ ...found, state: "current" });
+    const designer = await signInMember(context.app, cookie, "designer@example.com", []);
+
+    expect((await sync(designer)).status).toBe(404);
+
+    const users = await api<{ users: { id: string; email: string }[] }>("/users");
+    const id = users.body.users.find((user) => user.email === "designer@example.com")?.id ?? "";
+    await api(`${PREVIEW}/studio/members`, "PUT", { userIds: [id] });
+    expect((await sync(designer)).status).toBe(200);
   });
 });

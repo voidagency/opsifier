@@ -23,6 +23,7 @@ import { createSecrets, type Secrets } from "./core/secrets";
 import { createTools, FakeTools, type ToolRunner } from "./core/tools";
 import { addressCertificatesGuard } from "./features/opsifier-address/certificates";
 import { restoreInterruptedUpdate } from "./features/panel-update/journal";
+import { gateRemembering } from "./features/server-purpose/gate";
 import { protectionGuard } from "./features/server-purpose/service";
 import { sealStoredVariables } from "./features/services/env-store";
 import { actionRedactor } from "./features/services/masking";
@@ -93,7 +94,11 @@ function assembleRuntime(
       studioSignInGuard(
         database.db,
         `${config.panelUpstream ?? DEFAULT_PANEL_UPSTREAM_URL}${SIGNIN_CHECK_PATH}`,
-        addressCertificatesGuard(database.db, config.namesUrl !== null, protectionGuard(database.db, now)),
+        addressCertificatesGuard(
+          database.db,
+          config.namesUrl !== null,
+          protectionGuard(database.db, now, gateRemembering({ config, secrets, now })),
+        ),
       ),
     ),
     realtime,

@@ -2,7 +2,7 @@
 import "../../testing/browser-stubs";
 import type { StudioApp, StudioAppDetail, StudioEventPage, StudioRemark } from "@opsifier/contract";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type FakeRoute,
   installFakeServer,
@@ -101,8 +101,23 @@ const page = (overrides: Partial<StudioEventPage> = {}): StudioEventPage => ({
   ...overrides,
 });
 
+/** What opening a project found on GitHub: nothing new, unless a test says otherwise. */
+const synced = (extra: Record<string, unknown> = {}) => ({
+  state: "current",
+  branch: "main",
+  pulled: 0,
+  behind: 0,
+  ahead: 0,
+  changed: 0,
+  blocking: [],
+  previewRestarted: false,
+  reason: null,
+  ...extra,
+});
+
 const base = (extra: FakeRoute = {}): FakeRoute => ({
   "GET /projects": { projects: [] },
+  [`POST ${APP}/sync`]: synced(),
   "GET /studio": {
     enabled: true,
     agentConfigured: true,
@@ -727,7 +742,9 @@ describe("a Studio project", () => {
     fireEvent.keyDown(screen.getByLabelText("Message to the agent"), { key: "Enter" });
 
     expect(await screen.findByText("The project's agent is starting…")).toBeTruthy();
-    expect(server.calls.filter((call) => call.method === "POST").length).toBeGreaterThanOrEqual(1);
+    expect(
+      server.calls.filter((call) => call.method === "POST" && call.path === `${APP}/conversations`).length,
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("starts a new conversation with its first message", async () => {
@@ -1237,7 +1254,9 @@ describe("remarks left on a Studio project's preview", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Make a client link" }));
 
     await waitFor(() =>
-      expect(server.calls.find((call) => call.method === "POST")?.body).toEqual({
+      expect(
+        server.calls.find((call) => call.method === "POST" && call.path === `${APP}/links`)?.body,
+      ).toEqual({
         label: "Karim Benali · Acme",
         remarks: true,
         days: 7,
@@ -1320,5 +1339,145 @@ describe("remarks left on a Studio project's preview", () => {
     expect(await screen.findByText("Remark 2 · /comptes · Phone")).toBeTruthy();
     expect(screen.getByText("Le bouton devrait être vert.")).toBeTruthy();
     expect(screen.queryByText(/client_remark/)).toBeNull();
+  });
+});
+
+describe("a project brought up to date with GitHub when it opens", () => {
+  const syncs = (server: { calls: Array<{ method: string; path: string }> }) =>
+    server.calls.filter((call) => call.method === "POST" && call.path === `${APP}/sync`).length;
+
+  it("asks for GitHub's changes once as it opens, and says what came in", async () => {
+    const forced: Array<string | null> = [];
+    const server = installFakeServer(
+      base({
+        [`POST ${APP}/sync`]: (_body: unknown, url: URL) => {
+          forced.push(url.searchParams.get("force"));
+          return synced({ state: "updated", pulled: 3 });
+        },
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    expect(await screen.findByText("3 changes brought in from GitHub (main).")).toBeTruthy();
+    expect(syncs(server)).toBe(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide this message" }));
+    expect(screen.queryByText("3 changes brought in from GitHub (main).")).toBeNull();
+
+    // And again whenever someone asks, asking GitHub anew.
+    fireEvent.click(screen.getByRole("button", { name: "Bring in the changes on GitHub" }));
+    await waitFor(() => expect(syncs(server)).toBe(2));
+    expect(forced).toEqual([null, "true"]);
+  });
+
+  it("asks again, by itself, while the project's agent server starts", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const server = installFakeServer(
+        base({ [`POST ${APP}/sync`]: synced({ state: "unavailable", reason: "agent_starting" }) }),
+      );
+      renderApp("/studio/lovable/cd-studio-preview");
+
+      expect(
+        await screen.findByText(
+          "The project's agent server is starting: the changes on GitHub come in a moment.",
+        ),
+      ).toBeTruthy();
+      server.set({ [`POST ${APP}/sync`]: synced({ state: "updated", pulled: 2 }) });
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(await screen.findByText("2 changes brought in from GitHub (main).")).toBeTruthy();
+      expect(syncs(server)).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops asking once the page is left", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      // The answer comes once the page is gone.
+      let answer: (value: unknown) => void = () => {};
+      const server = installFakeServer(
+        base({
+          [`POST ${APP}/sync`]: () =>
+            new Promise((resolve) => {
+              answer = resolve;
+            }),
+        }),
+      );
+      const view = renderApp("/studio/lovable/cd-studio-preview");
+      await waitFor(() => expect(syncs(server)).toBe(1));
+
+      view.unmount();
+      answer(synced({ state: "unavailable", reason: "agent_starting" }));
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(syncs(server)).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says when the agent is at work, and leaves its folder be", async () => {
+    installFakeServer(base({ [`POST ${APP}/sync`]: synced({ state: "deferred", behind: 3 }) }));
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    expect(
+      await screen.findByText(
+        "The agent is at work: GitHub's 3 new changes come in at its next request, or when the project opens again.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("says nothing when the folder is up to date", async () => {
+    const server = installFakeServer(base());
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    await waitFor(() => expect(syncs(server)).toBe(1));
+    expect(await screen.findByLabelText("Message to the agent")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Hide this message" })).toBeNull();
+  });
+
+  it("says when changes made here keep GitHub's out, and which files", async () => {
+    installFakeServer(
+      base({
+        [`POST ${APP}/sync`]: synced({ state: "blocked", behind: 2, changed: 1, blocking: ["src/App.tsx"] }),
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    expect(
+      await screen.findByText(
+        "GitHub has 2 changes this folder does not, but files made here are in the way (src/App.tsx). The agent brings them together at its next request.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("waits for the preview when the changes bring new packages", async () => {
+    installFakeServer(
+      base({
+        [`GET ${APP}`]: detail(),
+        [`POST ${APP}/sync`]: synced({ state: "updated", pulled: 1, previewRestarted: true }),
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    expect(
+      await screen.findByText(
+        "1 change brought in from GitHub (main). The preview starts again to install the new packages.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("says why GitHub could not be asked", async () => {
+    installFakeServer(base({ [`POST ${APP}/sync`]: synced({ state: "unavailable", reason: "no_access" }) }));
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    expect(
+      await screen.findByText(
+        "GitHub refuses the Studio access to this repository: an administrator checks the Studio's access to GitHub.",
+      ),
+    ).toBeTruthy();
   });
 });
