@@ -154,9 +154,13 @@ describe("a link for a client", () => {
 
     expect(opened.status).toBe(302);
     expect(opened.headers.get("location")).toBe("/?remarks=1");
-    expect(opened.setCookie).toContain("opsifier_studio_guest=");
-    expect(opened.setCookie).toContain("HttpOnly");
-    expect(opened.setCookie).toContain("SameSite=Lax");
+    const cookies = opened.headers.getSetCookie();
+    expect(cookies[0]).toContain("opsifier_studio_guest=");
+    expect(cookies[0]).toContain("HttpOnly");
+    expect(cookies[0]).toContain("SameSite=Lax");
+    // The tool's flag, for the inspector to read on whatever page the site's home page sends it to.
+    expect(cookies[1]).toMatch(/^opsifier_studio_remarks=1;/);
+    expect(cookies[1]).not.toContain("HttpOnly");
     const list = await api<StudioGuestLinkList>(`${PREVIEW}/studio/links`);
     expect(list.body.links[0]?.lastUsedAt).not.toBeNull();
   });
@@ -170,6 +174,7 @@ describe("a link for a client", () => {
     const opened = await onPreview(`/link/${tokenOf(made.body.url)}`);
 
     expect(opened.headers.get("location")).toBe("/");
+    expect(opened.headers.getSetCookie().join("\n")).not.toContain("opsifier_studio_remarks");
   });
 
   it("opens its own preview only, and nothing once taken back or expired", async () => {

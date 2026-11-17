@@ -29,6 +29,7 @@
   const ACCENT = "#f97316";
   const API = "/__opsifier/studio/remarks";
   const FLAG = "remarks";
+  const FLAG_COOKIE = "opsifier_studio_remarks";
   const MODE_KEY = "opsifier-studio-remarks";
   const FOCUS_KEY = "opsifier-studio-remarks-focus";
   const REFRESH_MS = 20000;
@@ -723,14 +724,22 @@
 
   function readMode() {
     const params = new URLSearchParams(location.search);
+    // A client's link says it with a cookie too, which follows a site that sends its home page on to
+    // another, as many do for their language. Read once, it goes.
+    const fromLink = new RegExp(`(?:^|;\\s*)${FLAG_COOKIE}=1(?:;|$)`).test(document.cookie);
+    if (fromLink) {
+      // biome-ignore lint/suspicious/noDocumentCookie: every browser a client may use has this one
+      document.cookie = `${FLAG_COOKIE}=; Max-Age=0; Path=/${location.protocol === "https:" ? "; Secure" : ""}`;
+    }
+    const asked = params.has(FLAG) ? params.get(FLAG) !== "0" : fromLink ? true : null;
     let stored = null;
     try {
-      if (params.has(FLAG)) {
-        sessionStorage.setItem(MODE_KEY, params.get(FLAG) === "0" ? "off" : "on");
+      if (asked !== null) {
+        sessionStorage.setItem(MODE_KEY, asked ? "on" : "off");
       }
       stored = sessionStorage.getItem(MODE_KEY);
     } catch {
-      stored = params.get(FLAG) === "1" ? "on" : null;
+      stored = asked ? "on" : null;
     }
     if (params.has(FLAG)) {
       // The flag has been read: the address goes back to the page's own.

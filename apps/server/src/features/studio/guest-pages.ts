@@ -33,6 +33,9 @@ import {
  */
 
 const MAX_BODY_BYTES = 64 * 1024;
+/** Says « show the remarks tool » to the inspector, for the first page a client's link lands on. */
+export const REMARKS_FLAG_COOKIE = "opsifier_studio_remarks";
+const REMARKS_FLAG_SECONDS = 600;
 
 const escapeAttribute = (value: string) =>
   value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -133,6 +136,16 @@ export function registerGuestPages(app: ApiApp, deps: AppDeps, signIn: PreviewSi
       secure: preview.https,
       sameSite: "Lax",
     });
+    if (link.remarks) {
+      // Many sites send their home page on to another, a language's most often, and the address's flag
+      // would not follow: the inspector reads this cookie as it reads ?remarks=1, then takes it off.
+      setCookie(c, REMARKS_FLAG_COOKIE, "1", {
+        path: "/",
+        maxAge: REMARKS_FLAG_SECONDS,
+        secure: preview.https,
+        sameSite: "Lax",
+      });
+    }
     return c.redirect(link.remarks ? "/?remarks=1" : "/", 302);
   });
 
