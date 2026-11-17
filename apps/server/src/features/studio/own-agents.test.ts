@@ -962,6 +962,90 @@ describe("bringing a project with its own agent server up to date with GitHub", 
     expect((await api<{ stopped: boolean }>(`${ADDED}/agent`)).body.stopped).toBe(false);
   });
 
+  const opened = () => api<StudioSync>(`${ADDED}/preview/studio/sync`, "POST");
+  const actionTypes = async () =>
+    (await api<ActionPage>("/actions?limit=100")).body.items.map((action) => action.type);
+
+  it("says what came in, and records it", async () => {
+    await addOwnProject();
+    agents.sync = () => ({ ...current, state: "updated", pulled: 2 });
+
+    expect((await opened()).body).toEqual({
+      state: "updated",
+      branch: "main",
+      pulled: 2,
+      behind: 0,
+      ahead: 0,
+      changed: 0,
+      blocking: [],
+      previewRestarted: false,
+      reason: null,
+    });
+    expect(await actionTypes()).toContain("studio.sync");
+  });
+
+  it("shares one update between openings close together, and asks anew on demand", async () => {
+    await addOwnProject();
+    agents.sync = () => current;
+
+    await Promise.all([opened(), opened()]);
+    await opened();
+    expect(updates()).toHaveLength(1);
+
+    context.advance(16_000);
+    await opened();
+    expect(updates()).toHaveLength(2);
+    await sync();
+    expect(updates()).toHaveLength(3);
+    // Nothing came in: nothing for the activity.
+    expect(await actionTypes()).not.toContain("studio.sync");
+  });
+
+  it("asks again at once after an answer that was not good news, and says why", async () => {
+    await addOwnProject();
+    agents.sync = () => ({ ok: false, code: "no_access", branch: "main", token: false });
+
+    expect((await opened()).body).toMatchObject({
+      state: "unavailable",
+      reason: "no_access",
+      branch: "main",
+    });
+    await opened();
+    expect(updates()).toHaveLength(2);
+  });
+
+  it("takes nothing it may not answer from the project's container", async () => {
+    await addOwnProject();
+    agents.sync = () => ({ ...current, state: "updated", branch: "main\nInjected title" });
+
+    expect((await opened()).body).toMatchObject({ state: "unavailable", reason: "failed" });
+    expect(await actionTypes()).not.toContain("studio.sync");
+  });
+
+  it("starts the preview again when the changes bring new packages", async () => {
+    await addOwnProject();
+    agents.sync = () => ({ ...current, state: "updated", pulled: 1, dependencies: true });
+
+    expect((await opened()).body.previewRestarted).toBe(true);
+    await settle();
+    expect(await actionTypes()).toContain("service.restart");
+  });
+
+  it("brings the folder up to date before a stopped preview starts and installs its packages", async () => {
+    await addOwnProject();
+    expect((await api(`${ADDED}/preview/stop`, "POST")).status).toBe(202);
+    await settle();
+    agents.sync = () => ({ ...current, state: "updated", pulled: 1, dependencies: true });
+
+    const started = await api<{ started: boolean }>(`${ADDED}/preview/studio/preview/start`, "POST");
+
+    expect(started.body.started).toBe(true);
+    expect(updates()).toHaveLength(1);
+    await settle();
+    // The start installs them: no restart on top of it.
+    expect(await actionTypes()).not.toContain("service.restart");
+  });
+
   it("only looks while the agent is at work, so that its folder does not move under it", async () => {
     await addOwnProject();
     await startConversation(`${ADDED}/preview`, "Bonjour");

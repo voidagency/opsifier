@@ -212,7 +212,8 @@ export const studioSyncReason = z.enum([
   "no_access",
   // The project's agent server is starting: the update follows in a moment.
   "agent_starting",
-  // The project waits for an agent server of its own.
+  // The project has no agent server of its own: its folder is left to its agent, which pulls before
+  // its changes.
   "no_agent",
   // The agent server does not answer the panel.
   "agent_unavailable",

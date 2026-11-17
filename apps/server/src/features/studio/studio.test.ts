@@ -1002,39 +1002,20 @@ describe("a Studio conversation", () => {
 });
 
 describe("bringing a Studio project up to date with GitHub", () => {
-  const found = {
-    ok: true,
-    branch: "main",
-    pulled: 0,
-    behind: 0,
-    ahead: 0,
-    changed: 0,
-    blocking: [],
-    dependencies: false,
-  };
-
-  /** Plays the update script in the agent server's container: what it is sent, and what it answers. */
-  function installFakeSync(answer: Record<string, unknown>) {
-    const inputs: Record<string, unknown>[] = [];
+  /** Every update script run in the agent server's container. */
+  function watchSyncs() {
+    const runs: string[] = [];
     const before = context.docker.execHandler;
     context.docker.execHandler = (options) => {
-      if (
-        options.service === "lovable_openhands" &&
-        String(options.command[2]).includes("opsifier-studio-sync")
-      ) {
-        return (input: string) => {
-          inputs.push(JSON.parse(input) as Record<string, unknown>);
-          return { output: `opsifier-studio-sync ${JSON.stringify(answer)}\n`, exitCode: 0 };
-        };
+      if (String(options.command[2]).includes("opsifier-studio-sync")) {
+        runs.push(options.service);
       }
       return before?.(options);
     };
-    return inputs;
+    return runs;
   }
 
   const sync = (as = cookie) => api<StudioSync>(`${PREVIEW}/studio/sync`, "POST", undefined, as);
-  const actionTypes = async () =>
-    (await api<ActionPage>("/actions?limit=100")).body.items.map((action) => action.type);
 
   async function prepare(running = true): Promise<void> {
     await deployAgent();
@@ -1047,95 +1028,30 @@ describe("bringing a Studio project up to date with GitHub", () => {
     await link();
   }
 
-  it("brings the folder in from GitHub in the agent server's container, and says what came in", async () => {
-    await prepare();
-    const inputs = installFakeSync({ ...found, state: "updated", pulled: 2 });
+  it("leaves a project on the shared agent server to that agent, and runs nothing in its container", async () => {
+    await prepare(false);
+    const runs = watchSyncs();
 
-    const synced = await sync();
-
-    expect(synced.status).toBe(200);
-    expect(synced.body).toEqual({
-      state: "updated",
-      branch: "main",
-      pulled: 2,
+    expect((await sync()).body).toEqual({
+      state: "unavailable",
+      branch: null,
+      pulled: 0,
       behind: 0,
       ahead: 0,
       changed: 0,
       blocking: [],
       previewRestarted: false,
-      reason: null,
+      reason: "no_agent",
     });
-    // The agent server's own token, read in its container: no Studio key is handed to a shared one.
-    expect(inputs).toEqual([
-      { agentUrl: AGENT.url, keyFile: AGENT.keyFile, secret: "GITHUB_TOKEN", dir: "/projects/cd-studio" },
-    ]);
-    expect(await actionTypes()).toContain("studio.sync");
-  });
-
-  it("shares one update between openings close together", async () => {
-    await prepare();
-    const inputs = installFakeSync({ ...found, state: "current" });
-
-    const [first, second] = await Promise.all([sync(), sync()]);
-    expect(first.body.state).toBe("current");
-    expect(second.body.state).toBe("current");
-    expect((await sync()).body.state).toBe("current");
-    expect(inputs).toHaveLength(1);
-
-    context.advance(16_000);
-    await sync();
-    expect(inputs).toHaveLength(2);
-    // Someone who asks again is answered anew, at once.
-    await api(`${PREVIEW}/studio/sync?force=true`, "POST");
-    expect(inputs).toHaveLength(3);
-    // Nothing came in: nothing for the activity.
-    expect(await actionTypes()).not.toContain("studio.sync");
-  });
-
-  it("asks again at once after an answer that was not good news", async () => {
-    await prepare();
-    const inputs = installFakeSync({ ok: false, code: "busy" });
-
-    expect((await sync()).body).toMatchObject({ state: "unavailable", reason: "busy" });
-    expect((await sync()).body).toMatchObject({ state: "unavailable", reason: "busy" });
-    expect(inputs).toHaveLength(2);
-  });
-
-  it("starts the preview again when the changes bring new packages", async () => {
-    await prepare();
-    installFakeSync({ ...found, state: "updated", pulled: 1, dependencies: true });
-
-    expect((await sync()).body.previewRestarted).toBe(true);
-    await settle();
-    expect(await actionTypes()).toContain("service.restart");
-  });
-
-  it("brings the folder up to date before a stopped preview starts and installs its packages", async () => {
-    await prepare(false);
-    const inputs = installFakeSync({ ...found, state: "updated", pulled: 1, dependencies: true });
-
-    const started = await api<{ started: boolean }>(`${PREVIEW}/studio/preview/start`, "POST");
-
-    expect(started.body.started).toBe(true);
-    expect(inputs).toHaveLength(1);
-    await settle();
-    // The start installs them: no restart on top of it.
-    expect(await actionTypes()).not.toContain("service.restart");
-  });
-
-  it("says why it could not look at GitHub, without failing the opening", async () => {
-    await prepare();
-    installFakeSync({ ok: false, code: "no_access", branch: "main", token: true, message: "403" });
-
-    const synced = await sync();
-
-    expect(synced.status).toBe(200);
-    expect(synced.body).toMatchObject({ state: "unavailable", reason: "no_access", branch: "main" });
+    expect((await api<{ started: boolean }>(`${PREVIEW}/studio/preview/start`, "POST")).body.started).toBe(
+      true,
+    );
+    // The shared server's container holds its GitHub token and every project's folder.
+    expect(runs).toEqual([]);
   });
 
   it("is open to the accounts the project is shared with, and to no one else", async () => {
     await prepare();
-    installFakeSync({ ...found, state: "current" });
     const designer = await signInMember(context.app, cookie, "designer@example.com", []);
 
     expect((await sync(designer)).status).toBe(404);

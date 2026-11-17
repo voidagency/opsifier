@@ -279,29 +279,14 @@ describe.skipIf(!hasTools)("bringing a project's folder up to date with GitHub",
     expect(existsSync(marker)).toBe(true);
   });
 
-  it("with a token, reaches GitHub over HTTPS only, wherever the folder's settings send it", () => {
-    // The folder sends GitHub's address to a repository on the disk, and allows that way by name:
-    // refused, nothing fetched, and nothing ran.
-    git(folder, "config", `url.${origin}.insteadOf`, GITHUB);
-    git(folder, "config", "protocol.file.allow", "always");
+  it("never runs with a token: only a project's own agent server, through the panel", () => {
     git(folder, "config", "core.fsmonitor", trap("fsmonitor"));
     const here = git(folder, "rev-parse", "HEAD");
     pushed({ "README.md": "Changed elsewhere\n" });
     rmSync(marker, { force: true });
 
-    expect(sync({ relay: false })).toMatchObject({ ok: false, code: "failed", branch: "main" });
-    expect(existsSync(marker)).toBe(false);
-    expect(git(folder, "rev-parse", "HEAD")).toBe(here);
-
-    // Nor through a command run as a way of reaching GitHub.
-    git(folder, "config", "--unset", `url.${origin}.insteadOf`);
-    git(folder, "config", `url.ext::${trap("transport")} %S.insteadOf`, GITHUB);
-    git(folder, "config", "protocol.ext.allow", "always");
-    rmSync(marker, { force: true });
     expect(sync({ relay: false })).toMatchObject({ ok: false, code: "failed" });
     expect(existsSync(marker)).toBe(false);
-    // The trap was live: git left to the folder's settings runs it.
-    spawnSync("git", ["-C", folder, "ls-remote", GITHUB], { env: base });
-    expect(existsSync(marker)).toBe(true);
+    expect(git(folder, "rev-parse", "HEAD")).toBe(here);
   });
 });

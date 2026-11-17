@@ -1,4 +1,5 @@
 import type { StudioSync, StudioSyncReason } from "@opsifier/contract";
+import { z } from "zod";
 import type { AppDeps } from "../../core/context";
 import { DockerDriverError } from "../../core/docker";
 import { conflict } from "../../core/errors";
@@ -9,22 +10,22 @@ import { findService, findServiceById, type ServiceRecord } from "../services/re
 import type { ServiceTarget } from "../services/service";
 import { indexActiveActions } from "../services/status";
 import { isWorking, ownAgentOf, startOwnAgent } from "./agents";
-import { GITHUB_SECRET, scriptPrelude } from "./git-scripts";
+import { scriptPrelude } from "./git-scripts";
 import type * as repo from "./repo";
 import { requireLinked } from "./service";
 import { readStudioSettings } from "./settings";
 
 /**
  * Opening a project brings its folder up to date with its branch on GitHub, so that the preview and
- * the agent start from what Lovable, another designer or anyone else pushed meanwhile. Only a
- * fast-forward, which never overwrites a file made here: the agent, which pulls before every change,
- * brings the two together when they have both moved.
+ * the agent start from what a hosted builder, another designer or anyone else pushed meanwhile. Only
+ * a fast-forward, which never overwrites a file made here: the agent, which pulls before every
+ * change, brings the two together when they have both moved.
  *
- * The folder is written by the project's agent and its preview, so nothing in it steers the panel's
- * git: what is fetched is the project's repository on GitHub and the folder's branch, checked; hooks
- * and the like are off. A project with an agent server of its own has its git run in that agent
- * server's container, which reaches this one repository through the panel and holds no key: whatever
- * the folder's settings make git do there, the agent could do itself.
+ * The folder is written by the project's agent and its preview, which runs the project's code, git
+ * settings included, so its git runs only where that code can reach nothing more: in the project's
+ * own agent server, which reaches its one repository through the panel and holds no key. A project
+ * on the shared agent server is left to that agent, which pulls before its changes: the shared
+ * server's container holds its GitHub token and every project's folder.
  */
 
 const SYNC_PREFIX = "opsifier-studio-sync ";
@@ -42,8 +43,8 @@ const RESTART_WAITS_MS = 5 * 60_000;
 /**
  * Fetches the folder's branch from the project's repository and fast-forwards the folder to it. Files
  * a development server writes again by itself, from the files they are made from, are set back when
- * they are all that stands in the way. `relay` runs with the container's own git settings, which send
- * GitHub's address to the panel; otherwise the token of `scriptPrelude` is used, for GitHub only.
+ * they are all that stands in the way. It runs with the container's own git settings, which send
+ * GitHub's address to the panel, and never with a token: a request not marked `relay` is refused.
  */
 export const SYNC_SCRIPT = `${scriptPrelude(SYNC_PREFIX)}import re, time
 target = request["dir"]
@@ -52,12 +53,7 @@ GENERATED = ("src/routeTree.gen.ts",)
 MANIFESTS = ("package.json", "bun.lock", "bun.lockb", "package-lock.json")
 SAFE = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "maintenance.auto=false", "-c", "gc.auto=0"]
 if not RELAY:
-    # Every way but HTTPS turned off by name: a protocol the folder's settings allow by name wins over a
-    # general rule.
-    SAFE += ["-c", "protocol.allow=never"]
-    for name in ("ext", "file", "fd", "ssh", "git", "http"):
-        SAFE += ["-c", "protocol." + name + ".allow=never"]
-    SAFE += ["-c", "protocol.https.allow=always", "-c", "credential.helper=", "-c", "credential.https://github.com.helper=" + helper]
+    done({"ok": False, "code": "failed", "message": "The update runs only through a project's own agent server."})
 quiet = dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_OPTIONAL_LOCKS="0")
 quiet.pop("GITHUB_TOKEN", None)
 def git(*args, timeout=60, fetching=False):
@@ -100,9 +96,6 @@ if not url:
     url = git("remote", "get-url", "origin").stdout.strip()
 if not re.fullmatch(r"https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", url):
     done({"ok": False, "code": "failed", "branch": branch, "message": "The folder's repository is not on GitHub."})
-if not RELAY and git("ls-remote", "--get-url", url).stdout.strip() != url:
-    # The folder's settings would send GitHub's address somewhere else.
-    done({"ok": False, "code": "failed", "branch": branch, "message": "The folder's git settings send GitHub's address elsewhere."})
 # Fetched into the Studio's own name: what the agent knows of GitHub moves only once the folder holds it.
 fetched_ref = "refs/opsifier/sync/" + branch
 tracking = "refs/remotes/origin/" + branch
@@ -165,32 +158,53 @@ files = git("diff", "--name-only", before, "HEAD").stdout.splitlines()
 done(dict(found, state="updated", pulled=behind, behind=0, changed=changed(), dependencies=any(os.path.basename(path) in MANIFESTS for path in files)))
 `;
 
-type SyncCode =
-  | "refused"
-  | "unreachable"
-  | "not_a_copy"
-  | "detached"
-  | "busy"
-  | "interrupted"
-  | "no_branch"
-  | "no_access"
-  | "failed";
+const SYNC_CODES = [
+  "refused",
+  "unreachable",
+  "not_a_copy",
+  "detached",
+  "busy",
+  "interrupted",
+  "no_branch",
+  "no_access",
+  "failed",
+] as const;
+type SyncCode = (typeof SYNC_CODES)[number];
 
-export type SyncScriptResult =
-  | {
-      ok: true;
-      state: "current" | "updated" | "blocked" | "diverged" | "ahead" | "deferred";
-      branch: string;
-      pulled: number;
-      behind: number;
-      ahead: number;
-      changed: number;
-      blocking: string[];
-      dependencies: boolean;
-    }
-  | { ok: false; code: SyncCode; branch?: string; token?: boolean; message?: string };
+const count = z.number().int().min(0).max(1_000_000);
+/** As the script checks a branch's name before it fetches it. */
+const branchName = z
+  .string()
+  .max(200)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/);
 
-/** The script's verdict, from its output. Null when it printed none. */
+/**
+ * What the script may answer. It runs in a container the project's agent controls, so its answer is
+ * read as a claim: anything else is a failure, and nothing in it reaches a title or a page unchecked.
+ */
+const syncScriptResult = z.discriminatedUnion("ok", [
+  z.object({
+    ok: z.literal(true),
+    state: z.enum(["current", "updated", "blocked", "diverged", "ahead", "deferred"]),
+    branch: branchName,
+    pulled: count,
+    behind: count,
+    ahead: count,
+    changed: count,
+    blocking: z.array(z.string().max(500)).max(5),
+    dependencies: z.boolean(),
+  }),
+  z.object({
+    ok: z.literal(false),
+    code: z.enum(SYNC_CODES),
+    branch: branchName.optional(),
+    token: z.boolean().optional(),
+    message: z.string().max(500).optional(),
+  }),
+]);
+export type SyncScriptResult = z.infer<typeof syncScriptResult>;
+
+/** The script's verdict, from its output. Null when it printed none, or nothing it may answer. */
 export function readSyncResult(output: string): SyncScriptResult | null {
   const line = output
     .split("\n")
@@ -200,7 +214,8 @@ export function readSyncResult(output: string): SyncScriptResult | null {
     return null;
   }
   try {
-    return JSON.parse(line.slice(SYNC_PREFIX.length)) as SyncScriptResult;
+    const parsed = syncScriptResult.safeParse(JSON.parse(line.slice(SYNC_PREFIX.length)));
+    return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }
@@ -378,17 +393,9 @@ async function bringUpToDate(
       ...url,
       ...(working ? { fetchOnly: true } : {}),
     });
-  } else if (settings.agentPerProject) {
-    return unavailable("no_agent");
   } else {
-    // The agents work in the agent server's own container, with its own GitHub token: so does this.
-    result = await runScript(deps, qualifiedName(model.project, model.service), {
-      agentUrl: model.url,
-      keyFile: model.keyFile,
-      secret: GITHUB_SECRET,
-      dir: app.workspaceDir,
-      ...url,
-    });
+    // A project on the shared agent server is left to that agent, which pulls before its changes.
+    return unavailable("no_agent");
   }
   if (!result.ok) {
     if (result.code === "failed" && result.message !== undefined) {

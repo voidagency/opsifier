@@ -190,7 +190,9 @@ export function PreviewPane({
   const pendingFocus = useRef<string | null>(null);
   const autoStarted = useRef(false);
   const [box, size] = useSize<HTMLDivElement>();
-  const sync = useProjectSync(app.project, app.service);
+  // Only a project's own agent server brings its folder up to date: the shared one leaves it to its agent.
+  const ownAgent = app.agentMode === "own";
+  const sync = useProjectSync(app.project, app.service, ownAgent);
   const [noticeHidden, setNoticeHidden] = useState(false);
   // A new answer is told, even after the last one was put away.
   // biome-ignore lint/correctness/useExhaustiveDependencies: once per answer.
@@ -486,34 +488,37 @@ export function PreviewPane({
             </Tooltip>
           </>
         )}
-        <Tooltip
-          content={
-            sync.syncing
-              ? t("preview.sync.running")
-              : sync.result?.state === "current"
-                ? t("preview.sync.current", { branch: sync.result.branch })
-                : t("preview.sync.action")
-          }
-        >
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            className="ml-auto"
-            aria-label={t("preview.sync.action")}
-            aria-busy={sync.syncing}
-            disabled={sync.syncing}
-            onClick={sync.run}
+        {ownAgent && (
+          <Tooltip
+            content={
+              sync.syncing
+                ? t("preview.sync.running")
+                : sync.result?.state === "current"
+                  ? t("preview.sync.current", { branch: sync.result.branch })
+                  : t("preview.sync.action")
+            }
           >
-            {sync.syncing ? (
-              <LoaderCircle aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />
-            ) : (
-              <GitBranch aria-hidden="true" className="size-4" />
-            )}
-          </Button>
-        </Tooltip>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              className="ml-auto"
+              aria-label={t("preview.sync.action")}
+              aria-busy={sync.syncing}
+              disabled={sync.syncing}
+              onClick={sync.run}
+            >
+              {sync.syncing ? (
+                <LoaderCircle aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />
+              ) : (
+                <GitBranch aria-hidden="true" className="size-4" />
+              )}
+            </Button>
+          </Tooltip>
+        )}
         <Button
           size="sm"
           variant="secondary"
+          className={ownAgent ? undefined : "ml-auto"}
           icon={<Link2 aria-hidden="true" className="size-3.5" />}
           onClick={onShare}
         >

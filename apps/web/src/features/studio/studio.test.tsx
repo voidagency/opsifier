@@ -1343,13 +1343,15 @@ describe("remarks left on a Studio project's preview", () => {
 });
 
 describe("a project brought up to date with GitHub when it opens", () => {
+  /** A project with an agent server of its own, which alone brings its folder up to date. */
+  const own = (extra: FakeRoute = {}) => base({ [`GET ${APP}`]: detail({ agentMode: "own" }), ...extra });
   const syncs = (server: { calls: Array<{ method: string; path: string }> }) =>
     server.calls.filter((call) => call.method === "POST" && call.path === `${APP}/sync`).length;
 
   it("asks for GitHub's changes once as it opens, and says what came in", async () => {
     const forced: Array<string | null> = [];
     const server = installFakeServer(
-      base({
+      own({
         [`POST ${APP}/sync`]: (_body: unknown, url: URL) => {
           forced.push(url.searchParams.get("force"));
           return synced({ state: "updated", pulled: 3 });
@@ -1374,7 +1376,7 @@ describe("a project brought up to date with GitHub when it opens", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const server = installFakeServer(
-        base({ [`POST ${APP}/sync`]: synced({ state: "unavailable", reason: "agent_starting" }) }),
+        own({ [`POST ${APP}/sync`]: synced({ state: "unavailable", reason: "agent_starting" }) }),
       );
       renderApp("/studio/lovable/cd-studio-preview");
 
@@ -1399,7 +1401,7 @@ describe("a project brought up to date with GitHub when it opens", () => {
       // The answer comes once the page is gone.
       let answer: (value: unknown) => void = () => {};
       const server = installFakeServer(
-        base({
+        own({
           [`POST ${APP}/sync`]: () =>
             new Promise((resolve) => {
               answer = resolve;
@@ -1420,7 +1422,7 @@ describe("a project brought up to date with GitHub when it opens", () => {
   });
 
   it("says when the agent is at work, and leaves its folder be", async () => {
-    installFakeServer(base({ [`POST ${APP}/sync`]: synced({ state: "deferred", behind: 3 }) }));
+    installFakeServer(own({ [`POST ${APP}/sync`]: synced({ state: "deferred", behind: 3 }) }));
     renderApp("/studio/lovable/cd-studio-preview");
 
     expect(
@@ -1431,7 +1433,7 @@ describe("a project brought up to date with GitHub when it opens", () => {
   });
 
   it("says nothing when the folder is up to date", async () => {
-    const server = installFakeServer(base());
+    const server = installFakeServer(own());
     renderApp("/studio/lovable/cd-studio-preview");
 
     await waitFor(() => expect(syncs(server)).toBe(1));
@@ -1441,7 +1443,7 @@ describe("a project brought up to date with GitHub when it opens", () => {
 
   it("says when changes made here keep GitHub's out, and which files", async () => {
     installFakeServer(
-      base({
+      own({
         [`POST ${APP}/sync`]: synced({ state: "blocked", behind: 2, changed: 1, blocking: ["src/App.tsx"] }),
       }),
     );
@@ -1456,8 +1458,7 @@ describe("a project brought up to date with GitHub when it opens", () => {
 
   it("waits for the preview when the changes bring new packages", async () => {
     installFakeServer(
-      base({
-        [`GET ${APP}`]: detail(),
+      own({
         [`POST ${APP}/sync`]: synced({ state: "updated", pulled: 1, previewRestarted: true }),
       }),
     );
@@ -1471,7 +1472,7 @@ describe("a project brought up to date with GitHub when it opens", () => {
   });
 
   it("says why GitHub could not be asked", async () => {
-    installFakeServer(base({ [`POST ${APP}/sync`]: synced({ state: "unavailable", reason: "no_access" }) }));
+    installFakeServer(own({ [`POST ${APP}/sync`]: synced({ state: "unavailable", reason: "no_access" }) }));
     renderApp("/studio/lovable/cd-studio-preview");
 
     expect(
@@ -1479,5 +1480,14 @@ describe("a project brought up to date with GitHub when it opens", () => {
         "GitHub refuses the Studio access to this repository: an administrator checks the Studio's access to GitHub.",
       ),
     ).toBeTruthy();
+  });
+
+  it("asks nothing for a project on the shared agent server, and shows no button for it", async () => {
+    const server = installFakeServer(base());
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    expect(await screen.findByLabelText("Message to the agent")).toBeTruthy();
+    expect(syncs(server)).toBe(0);
+    expect(screen.queryByRole("button", { name: "Bring in the changes on GitHub" })).toBeNull();
   });
 });

@@ -21,9 +21,10 @@ export interface ProjectSync {
  * Opening a project brings its folder up to date with GitHub, once per visit, as a hosted builder
  * shows what was pushed meanwhile; and again whenever someone asks. The panel shares one update
  * between people opening the same project at once. When the project's agent server, which runs its
- * git, is still starting, the update is asked for again until it can run.
+ * git, is still starting, the update is asked for again until it can run. A project without an agent
+ * server of its own is left to its agent: nothing is asked for.
  */
-export function useProjectSync(project: string, service: string): ProjectSync {
+export function useProjectSync(project: string, service: string, enabled = true): ProjectSync {
   const [syncing, setSyncing] = useState(false);
   const [result, setResult] = useState<StudioSync | null>(null);
   const [failed, setFailed] = useState(false);
@@ -69,7 +70,9 @@ export function useProjectSync(project: string, service: string): ProjectSync {
     live.current = true;
     setResult(null);
     setFailed(false);
-    ask(false, AGENT_STARTING_RETRIES);
+    if (enabled) {
+      ask(false, AGENT_STARTING_RETRIES);
+    }
     return () => {
       live.current = false;
       if (retry.current !== null) {
@@ -77,7 +80,7 @@ export function useProjectSync(project: string, service: string): ProjectSync {
         retry.current = null;
       }
     };
-  }, [ask]);
+  }, [ask, enabled]);
 
   const run = useCallback(() => ask(true, AGENT_STARTING_RETRIES), [ask]);
   return { syncing, result, failed, run };

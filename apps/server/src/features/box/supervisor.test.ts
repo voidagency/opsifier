@@ -123,7 +123,8 @@ afterEach(async () => {
     }
     await finished;
   }
-  rmSync(root, { recursive: true, force: true });
+  // A process that was just killed may still be writing its last state: removal tries again a moment later.
+  rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 describe("the supervisor", () => {
