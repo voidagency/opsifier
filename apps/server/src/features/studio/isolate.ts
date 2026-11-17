@@ -123,7 +123,6 @@ async function isolate(deps: AppDeps, isolation: Isolation): Promise<StudioIsola
       `${app.workspaceDir} is not a copy of a GitHub repository, so an agent server of its own would have nowhere to push.`,
     );
   }
-  const settings = readStudioSettings(deps);
   const now = new Date(deps.now());
 
   const shared = repo
@@ -187,10 +186,8 @@ async function isolate(deps: AppDeps, isolation: Isolation): Promise<StudioIsola
       updatedAt: now,
     }),
   );
-  if (settings.previewSignIn) {
-    await rewriteRoutes(deps, { projectName: own.project, serviceName: OWN_PREVIEW });
-    await rewriteRoutes(deps, target);
-  }
+  await rewriteRoutes(deps, { projectName: own.project, serviceName: OWN_PREVIEW });
+  await rewriteRoutes(deps, target);
   await pauseShared(deps, model, shared);
   await stopOldPreview(deps, target, actorEmail);
   recordIsolation(deps, own.project, actorEmail, target);

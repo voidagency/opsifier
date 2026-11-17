@@ -73,7 +73,8 @@
     "tooManyImages": "{{count}} images au plus par message.",
     "imageFailed": "Cette image n'a pas pu être lue.",
     "send": "Envoyer",
-    "elementPlaceholder": "Que faut-il changer dans cet élément ?"
+    "elementPlaceholder": "Que faut-il changer dans cet élément ?",
+    "remarkPlaceholder": "Ajoutez une consigne pour l'agent, ou envoyez la remarque telle quelle."
   },
   "preview": {
     "label": "Aperçu en direct",
@@ -106,7 +107,13 @@
     "inspect": "Désigner un élément",
     "inspectUnavailable": "Cet aperçu ne charge pas l'inspecteur du Studio",
     "inspecting": "Cliquez sur un élément de l'aperçu pour le joindre à votre message. Échap annule.",
-    "opening": "Ouverture de l'aperçu…"
+    "opening": "Ouverture de l'aperçu…",
+    "pins_one": "Remarques sur l'aperçu ({{count}} à traiter)",
+    "pins_other": "Remarques sur l'aperçu ({{count}} à traiter)",
+    "showPins": "Épingler les remarques sur l'aperçu",
+    "hidePins": "Masquer les épingles des remarques",
+    "pinsUnavailable": "Cet aperçu ne charge pas l'inspecteur du Studio : ses remarques ne peuvent pas y être épinglées",
+    "share": "Partager avec un client"
   },
   "settings": {
     "title": "Studio",
@@ -216,7 +223,7 @@
   "remove": {
     "action": "Supprimer {{name}}",
     "title": "Supprimer {{name}} du Studio ?",
-    "description": "Ses conversations, ses partages, son agent et son aperçu sont supprimés, avec le projet Opsifier que le Studio a créé pour lui. Son dossier reste sur le serveur, avec le travail non poussé : ajouter de nouveau le même dépôt le reprend. Un site relié au Studio reste en place, sans la connexion du Studio devant lui.",
+    "description": "Ses conversations, ses partages, ses remarques, ses liens client, son agent et son aperçu sont supprimés, avec le projet Opsifier que le Studio a créé pour lui. Son dossier reste sur le serveur, avec le travail non poussé : ajouter de nouveau le même dépôt le reprend. Un site relié au Studio reste en place, sans la connexion du Studio devant lui.",
     "confirm": "Supprimer",
     "started": "{{name}} est en cours de suppression"
   },
@@ -255,5 +262,73 @@
     "refused": "GitHub a refusé ce jeton à la dernière vérification",
     "noRepositories": "Le jeton de {{login}} ne lit aucun dépôt privé de {{owner}} : vérifiez son « Resource owner » et ses dépôts sur GitHub.",
     "ownOnly": "Les clés GitHub servent aux projets qui ont leur propre serveur d'agent : activez « Un agent par projet » pour les utiliser."
+  },
+  "tabs": {
+    "conversation": "Conversation",
+    "remarks": "Remarques",
+    "newRemarks_one": "{{count}} nouvelle remarque",
+    "newRemarks_other": "{{count}} nouvelles remarques"
+  },
+  "remarks": {
+    "label": "Remarques laissées sur l'aperçu",
+    "filter": "Remarques affichées",
+    "open": "À traiter · {{count}}",
+    "done": "Traitées · {{count}}",
+    "show": "Voir la remarque {{number}} sur l'aperçu",
+    "emptyTitle": "Aucune remarque pour l'instant",
+    "emptyDescription": "Envoyez un lien à votre client : il ouvre l'aperçu sans compte, clique sur un élément et écrit ce qu'il veut changer. Ses remarques arrivent ici, épinglées sur l'aperçu.",
+    "noneOpen": "Rien à traiter : toutes les remarques sont traitées.",
+    "noneDone": "Aucune remarque traitée pour l'instant.",
+    "fromClient": "{{name}} · client",
+    "withAgent": "confiée à l'agent",
+    "handToAgent": "Confier à l'agent",
+    "handAgain": "Confier de nouveau",
+    "markDone": "Traitée",
+    "reopen": "À traiter de nouveau",
+    "doneToast": "Remarque {{number}} traitée : son auteur le voit sur l'aperçu.",
+    "delete": "Supprimer la remarque {{number}}",
+    "deleteTitle": "Supprimer la remarque {{number}} ?",
+    "deleteDescription": "Elle disparaît du Studio et de l'aperçu, pour tout le monde. Pour garder une trace, marquez-la plutôt comme traitée.",
+    "deleteConfirm": "Supprimer",
+    "deleted": "Remarque {{number}} supprimée",
+    "chip": "Remarque {{number}}",
+    "unhand": "Ne plus joindre cette remarque"
+  },
+  "links": {
+    "action": "Liens client",
+    "create": "Créer un lien client",
+    "title": "Liens pour vos clients",
+    "description": "Un lien ouvre l'aperçu de {{name}} à quelqu'un qui n'a pas de compte. Avec l'outil de remarques, il clique sur un élément de la page et écrit ce qu'il veut changer : ses remarques arrivent dans le Studio.",
+    "label": "Pour qui",
+    "labelHint": "Son nom, et sa société : il signe ses remarques.",
+    "labelPlaceholder": "Karim Benali · Acme",
+    "labelRequired": "Dites pour qui est ce lien.",
+    "remarks": "Outil de remarques",
+    "remarksHint": "Le lien ouvre l'aperçu avec l'outil. Sans lui, le client voit le site seul. Dans l'adresse de l'aperçu, ?remarks=1 affiche l'outil et ?remarks=0 le masque.",
+    "validity": "Valable",
+    "days_one": "{{count}} jour",
+    "days_other": "{{count}} jours",
+    "noLimit": "Sans limite",
+    "until": "jusqu'au {{date}}",
+    "expired": "expiré",
+    "list": "Liens envoyés",
+    "none": "Aucun lien pour l'instant.",
+    "withRemarks": "avec l'outil de remarques",
+    "siteOnly": "le site seul",
+    "neverOpened": "jamais ouvert",
+    "opened": "ouvert {{when}}",
+    "madeBy": "par {{email}}",
+    "remove": "Retirer",
+    "removed": "Le lien pour {{label}} est retiré : il n'ouvre plus l'aperçu.",
+    "madeTitle": "Le lien pour {{label}} est prêt",
+    "madeHint": "Copiez-le maintenant et envoyez-le : il ne sera plus affiché. Retirer le lien coupe l'accès.",
+    "address": "Adresse du lien",
+    "copy": "Copier le lien",
+    "written_one": "{{count}} remarque",
+    "written_other": "{{count}} remarques",
+    "removeTitle": "Retirer le lien pour {{label}} ?",
+    "removeDescription": "Il n'ouvre plus l'aperçu : ses remarques coupent aussitôt, l'aperçu dans la demi-minute. Ce qu'il a écrit reste, sauf si vous cochez ci-dessous.",
+    "removeRemarks_one": "Supprimer aussi la remarque écrite avec ce lien",
+    "removeRemarks_other": "Supprimer aussi les {{count}} remarques écrites avec ce lien"
   }
 }

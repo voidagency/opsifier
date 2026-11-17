@@ -1,4 +1,4 @@
-import type { StudioAppDetail, StudioEvent, StudioModel } from "@opsifier/contract";
+import type { StudioAppDetail, StudioEvent, StudioModel, StudioRemark } from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
@@ -9,6 +9,7 @@ import {
   Globe,
   ImagePlus,
   Lock,
+  MessageSquareText,
   MousePointerClick,
   Plus,
   Sparkles,
@@ -39,16 +40,36 @@ import {
   Segmented,
   Select,
   Skeleton,
+  Tabs,
+  TabsList,
+  TabsTrigger,
   Tooltip,
   toast,
 } from "../../ui";
 import { useCurrentUser } from "../auth/session";
-import { studioApi, studioAppName, studioAppQuery, studioKey, studioModelsQuery } from "./api";
+import {
+  studioApi,
+  studioAppName,
+  studioAppQuery,
+  studioKey,
+  studioModelsQuery,
+  studioRemarksQuery,
+} from "./api";
 import { type ChatItem, changedFiles, type StudioActionEvent, toChatItems, userMessageCount } from "./chat";
+import { GuestLinksDialog } from "./GuestLinksDialog";
 import { imageToDataUrl } from "./images";
-import { PreviewPane } from "./PreviewPane";
+import { PreviewPane, type RemarkFocus } from "./PreviewPane";
+import { RemarksPanel } from "./RemarksPanel";
 import { ShareDialog } from "./ShareDialog";
-import { elementBlock, elementLabel, type SelectedElement, splitMessage } from "./selection";
+import {
+  deviceOfWidth,
+  elementBlock,
+  elementLabel,
+  type RemarkTag,
+  remarkBlock,
+  type SelectedElement,
+  splitMessage,
+} from "./selection";
 import { useConversation } from "./useConversation";
 
 const MAX_IMAGES = 4;
@@ -62,6 +83,8 @@ const STARTERS = ["design", "mobile", "texts"] as const;
 const COMPOSER_MAX_HEIGHT = 192;
 /** Closer than this to the end, the conversation follows what arrives. */
 const FOLLOW_DISTANCE = 48;
+
+type WorkspaceTab = "conversation" | "remarks";
 
 /** A message on its way: shown at once, until the conversation has it. */
 interface PendingMessage {
@@ -84,6 +107,40 @@ export function WorkspacePage() {
   const [element, setElement] = useState<SelectedElement | null>(null);
   // A phone shows one pane at a time, at full height; a wide screen shows both.
   const [pane, setPane] = useState<"chat" | "preview">("chat");
+  // The left pane holds the conversation, or the remarks left on the preview.
+  const [tab, setTab] = useState<WorkspaceTab>("conversation");
+  // The remark the next message hands to the agent.
+  const [handed, setHanded] = useState<StudioRemark | null>(null);
+  const [pinsOn, setPinsOn] = useState(false);
+  const [selectedRemark, setSelectedRemark] = useState<string | null>(null);
+  const [focus, setFocus] = useState<RemarkFocus | null>(null);
+  // The links that open the preview to clients, from the remarks or from the preview's toolbar.
+  const [linking, setLinking] = useState(false);
+  const remarks = useQuery({
+    ...studioRemarksQuery(project, service),
+    enabled: user !== null && user !== undefined,
+  });
+  const showTab = useCallback((next: WorkspaceTab) => {
+    setTab(next);
+    // Opening the remarks pins them on the preview.
+    if (next === "remarks") {
+      setPinsOn(true);
+    }
+  }, []);
+  const onRemarkClicked = useCallback(
+    (id: string) => {
+      showTab("remarks");
+      setSelectedRemark(id);
+      setPane("chat");
+    },
+    [showTab],
+  );
+  const onSelected = useCallback((selection: SelectedElement) => {
+    setElement(selection);
+    setTab("conversation");
+    // On a phone, the element pointed at is the start of a message: back to the conversation.
+    setPane("chat");
+  }, []);
   const { data, isPending, isError, error, refetch } = useQuery({
     ...studioAppQuery(project, service),
     enabled: user !== null && user !== undefined,
@@ -150,6 +207,28 @@ export function WorkspacePage() {
         onSelect={select}
         element={element}
         onClearElement={() => setElement(null)}
+        tab={tab}
+        onTab={showTab}
+        remarks={remarks.data?.remarks ?? []}
+        remarksLoading={remarks.isPending}
+        remarksError={remarks.error}
+        onRetryRemarks={() => void remarks.refetch()}
+        selectedRemark={selectedRemark}
+        onShowRemark={(remark) => {
+          setSelectedRemark(remark.id);
+          setPinsOn(true);
+          setFocus((current) => ({ id: remark.id, nonce: (current?.nonce ?? 0) + 1 }));
+          // On a phone, the remark is shown on the preview, in place of the list.
+          setPane("preview");
+        }}
+        handed={handed}
+        onHandToAgent={(remark) => {
+          setHanded(remark);
+          setTab("conversation");
+          setPane("chat");
+        }}
+        onClearHanded={() => setHanded(null)}
+        onOpenLinks={() => setLinking(true)}
       />
       <PreviewPane
         // Hidden rather than taken away on a phone, so that the preview keeps its page.
@@ -158,12 +237,24 @@ export function WorkspacePage() {
         startRequested={startRequested}
         onStartRequested={() => setStartRequested(true)}
         onStartFailed={() => setStartRequested(false)}
-        onSelected={(selection) => {
-          setElement(selection);
-          // On a phone, the element pointed at is the start of a message: back to the conversation.
-          setPane("chat");
-        }}
+        onSelected={onSelected}
+        remarks={(remarks.data?.remarks ?? []).filter(
+          (remark) => remark.status !== "done" || remark.id === selectedRemark,
+        )}
+        pinsOn={pinsOn}
+        onTogglePins={() => setPinsOn((on) => !on)}
+        focus={focus}
+        onRemarkClicked={onRemarkClicked}
+        onShare={() => setLinking(true)}
       />
+      {linking && (
+        <GuestLinksDialog
+          project={data.project}
+          service={data.service}
+          name={studioAppName(data)}
+          onClose={() => setLinking(false)}
+        />
+      )}
     </div>
   );
 }
@@ -210,6 +301,18 @@ function ConversationPane({
   onSelect,
   element,
   onClearElement,
+  tab,
+  onTab,
+  remarks,
+  remarksLoading,
+  remarksError,
+  onRetryRemarks,
+  selectedRemark,
+  onShowRemark,
+  handed,
+  onHandToAgent,
+  onClearHanded,
+  onOpenLinks,
   className,
 }: {
   app: StudioAppDetail;
@@ -217,6 +320,19 @@ function ConversationPane({
   onSelect: (id: string) => void;
   element: SelectedElement | null;
   onClearElement: () => void;
+  tab: WorkspaceTab;
+  onTab: (tab: WorkspaceTab) => void;
+  remarks: readonly StudioRemark[];
+  remarksLoading: boolean;
+  remarksError: unknown;
+  onRetryRemarks: () => void;
+  selectedRemark: string | null;
+  onShowRemark: (remark: StudioRemark) => void;
+  /** The remark the next message hands to the agent. */
+  handed: StudioRemark | null;
+  onHandToAgent: (remark: StudioRemark) => void;
+  onClearHanded: () => void;
+  onOpenLinks: () => void;
   className?: string;
 }) {
   const { t } = useTranslation(["studio", "common"]);
@@ -240,6 +356,7 @@ function ConversationPane({
   // A conversation that ran on the shared agent server, in a project that has its own now: read only.
   const readOnly = app.conversations.find((one) => one.id === conversationId)?.readOnly === true;
   const [sharing, setSharing] = useState(false);
+  const newRemarks = remarks.filter((remark) => remark.status === "new").length;
   const models = useQuery({ ...studioModelsQuery, enabled: conversationId === null });
   const [chosenModel, setChosenModel] = useState<string | null>(null);
   const nextProfile = chosenModel ?? models.data?.active ?? null;
@@ -258,12 +375,35 @@ function ConversationPane({
     }
   }, [pending, conversationId, conversation.events]);
 
-  /** Sends what was typed, with the element pointed at in the preview, to a new conversation or this one. */
+  /** The remark handed to the agent is with it now, in this conversation: its writer sees it is in progress. */
+  const markHanded = async (remark: StudioRemark, conversation: string) => {
+    try {
+      await studioApi.updateRemark(app.project, app.service, remark.id, {
+        status: "in_progress",
+        conversationId: conversation,
+      });
+      await queryClient.invalidateQueries({ queryKey: [...studioKey, "remarks", app.project, app.service] });
+    } catch (reason) {
+      toast.error(errorMessage(reason, t));
+    }
+  };
+
+  /**
+   * Sends what was typed, with the remark handed to the agent and the element pointed at in the preview,
+   * to a new conversation or this one.
+   */
   const send = async (text: string, images: string[]): Promise<boolean> => {
     if (sending) {
       return false;
     }
-    const full = element === null ? text : `${text.trim()}\n\n${elementBlock(element)}`.trim();
+    const remark = handed;
+    const full = [
+      text.trim(),
+      remark === null ? null : remarkBlock(remark),
+      element === null ? null : elementBlock(element),
+    ]
+      .filter((part) => part !== null && part !== "")
+      .join("\n\n");
     setSending(true);
     setPending({
       conversationId,
@@ -290,6 +430,9 @@ function ConversationPane({
         }
         setPending((current) => (current === null ? null : { ...current, conversationId: started.id }));
         onSelect(started.id);
+        if (remark !== null) {
+          await markHanded(remark, started.id);
+        }
       } else {
         await whenAgentReady(
           () => studioApi.send(app.project, app.service, conversationId, { text: full, images }),
@@ -297,8 +440,12 @@ function ConversationPane({
           () => alive.current,
         );
         conversation.refresh();
+        if (remark !== null) {
+          await markHanded(remark, conversationId);
+        }
       }
       onClearElement();
+      onClearHanded();
       return true;
     } catch (reason) {
       if (reason instanceof LeftPage) {
@@ -386,104 +533,137 @@ function ConversationPane({
         </Tooltip>
       </header>
 
-      {conversationId === null && (models.data?.models.length ?? 0) > 1 && (
-        <div className="flex min-w-0 items-center gap-2 border-b px-3 py-1.5 text-xs">
-          <span className="shrink-0 text-muted">{t("model.pick")}</span>
-          <Select
-            aria-label={t("model.pick")}
-            value={nextProfile ?? undefined}
-            onValueChange={setChosenModel}
-            options={(models.data?.models ?? []).flatMap((model) =>
-              model.profile === null
-                ? []
-                : [
-                    {
-                      value: model.profile,
-                      label: `${model.name} · ${model.private ? t("model.privateShort") : t("model.externalShort")}`,
-                    },
-                  ],
+      <Tabs value={tab} onValueChange={(value) => onTab(value as WorkspaceTab)}>
+        <TabsList className="gap-4 px-3">
+          <TabsTrigger value="conversation">{t("tabs.conversation")}</TabsTrigger>
+          <TabsTrigger value="remarks" className="inline-flex items-center gap-1.5">
+            {t("tabs.remarks")}
+            {newRemarks > 0 && (
+              <span className="min-w-4 rounded-full bg-[#f97316] px-1 text-center font-semibold text-[10px] text-white leading-4">
+                <span className="sr-only">{t("tabs.newRemarks", { count: newRemarks })}</span>
+                <span aria-hidden="true">{newRemarks}</span>
+              </span>
             )}
-          />
-        </div>
-      )}
-      {conversationId === null
-        ? nextModel !== null && <ModelLine model={nextModel} />
-        : conversation.model !== null && <ModelLine model={conversation.model} />}
-
-      <EventList
-        key={conversationId ?? "new"}
-        app={app}
-        conversationId={conversationId}
-        events={conversation.events}
-        loaded={conversation.loaded}
-        busy={busy}
-        waiting={conversation.status === "waiting"}
-        pending={pending !== null && pending.conversationId === conversationId ? pending : null}
-      />
-
-      {conversation.error !== null &&
-        (conversation.error instanceof ApiError && conversation.error.code === "studio_agent_asleep" ? (
-          <p role="status" className="border-t px-3 py-2 text-xs text-muted">
-            {t("conversation.agentAsleep")}
-          </p>
-        ) : (
-          <p role="alert" className="border-t px-3 py-2 text-xs text-bad wrap-anywhere">
-            {errorMessage(conversation.error, t)}
-          </p>
-        ))}
-
-      {agentStarting && (
-        <p role="status" className="border-t px-3 py-2 text-xs text-muted">
-          {t("conversation.agentStarting")}
-        </p>
-      )}
-
-      {!readOnly && suggestions.length > 0 && (
-        <ul aria-label={t("suggestions.label")} className="flex flex-wrap gap-1.5 px-3 pt-2.5">
-          {suggestions.map((suggestion) => (
-            <li key={suggestion} className="min-w-0 max-w-full">
-              <button
-                type="button"
-                disabled={sending}
-                onClick={() => void send(suggestion, [])}
-                className="inline-flex max-w-full items-center gap-1.5 rounded-full border bg-raised px-2.5 py-1 text-left text-xs hover:border-accent hover:text-ink disabled:opacity-45"
-              >
-                <Sparkles aria-hidden="true" className="size-3 shrink-0 text-accent" />
-                <span className="min-w-0 wrap-anywhere">{suggestion}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {sharing && (
         <ShareDialog project={app.project} service={app.service} onClose={() => setSharing(false)} />
       )}
 
-      {readOnly ? (
-        <div className="grid gap-2 border-t px-3 py-3 text-sm">
-          <p className="text-muted">{t("conversation.readOnly")}</p>
-          <Link
-            to="/studio/$project/$service"
-            params={{ project: app.project, service: app.service }}
-            search={{ c: "new" }}
-            className={cn(buttonClass("primary", "sm"), "justify-self-start")}
-          >
-            {t("conversation.readOnlyAction")}
-          </Link>
-        </div>
-      ) : (
-        <Composer
-          firstMessage={conversationId === null}
-          sending={sending}
-          busy={busy}
-          stopping={stopping}
-          element={element}
-          onClearElement={onClearElement}
-          onSend={send}
-          onStop={stop}
+      {tab === "remarks" && (
+        <RemarksPanel
+          app={app}
+          remarks={remarks}
+          loading={remarksLoading}
+          error={remarksError}
+          onRetry={onRetryRemarks}
+          selectedId={selectedRemark}
+          onSelect={onShowRemark}
+          onHandToAgent={onHandToAgent}
+          onOpenLinks={onOpenLinks}
         />
       )}
+      {/* Hidden rather than taken away, so that what is being typed waits for the person to come back. */}
+      <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", tab === "remarks" && "hidden")}>
+        {conversationId === null && (models.data?.models.length ?? 0) > 1 && (
+          <div className="flex min-w-0 items-center gap-2 border-b px-3 py-1.5 text-xs">
+            <span className="shrink-0 text-muted">{t("model.pick")}</span>
+            <Select
+              aria-label={t("model.pick")}
+              value={nextProfile ?? undefined}
+              onValueChange={setChosenModel}
+              options={(models.data?.models ?? []).flatMap((model) =>
+                model.profile === null
+                  ? []
+                  : [
+                      {
+                        value: model.profile,
+                        label: `${model.name} · ${model.private ? t("model.privateShort") : t("model.externalShort")}`,
+                      },
+                    ],
+              )}
+            />
+          </div>
+        )}
+        {conversationId === null
+          ? nextModel !== null && <ModelLine model={nextModel} />
+          : conversation.model !== null && <ModelLine model={conversation.model} />}
+
+        <EventList
+          key={conversationId ?? "new"}
+          app={app}
+          conversationId={conversationId}
+          events={conversation.events}
+          loaded={conversation.loaded}
+          busy={busy}
+          waiting={conversation.status === "waiting"}
+          pending={pending !== null && pending.conversationId === conversationId ? pending : null}
+        />
+
+        {conversation.error !== null &&
+          (conversation.error instanceof ApiError && conversation.error.code === "studio_agent_asleep" ? (
+            <p role="status" className="border-t px-3 py-2 text-xs text-muted">
+              {t("conversation.agentAsleep")}
+            </p>
+          ) : (
+            <p role="alert" className="border-t px-3 py-2 text-xs text-bad wrap-anywhere">
+              {errorMessage(conversation.error, t)}
+            </p>
+          ))}
+
+        {agentStarting && (
+          <p role="status" className="border-t px-3 py-2 text-xs text-muted">
+            {t("conversation.agentStarting")}
+          </p>
+        )}
+
+        {!readOnly && suggestions.length > 0 && (
+          <ul aria-label={t("suggestions.label")} className="flex flex-wrap gap-1.5 px-3 pt-2.5">
+            {suggestions.map((suggestion) => (
+              <li key={suggestion} className="min-w-0 max-w-full">
+                <button
+                  type="button"
+                  disabled={sending}
+                  onClick={() => void send(suggestion, [])}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-full border bg-raised px-2.5 py-1 text-left text-xs hover:border-accent hover:text-ink disabled:opacity-45"
+                >
+                  <Sparkles aria-hidden="true" className="size-3 shrink-0 text-accent" />
+                  <span className="min-w-0 wrap-anywhere">{suggestion}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {readOnly ? (
+          <div className="grid gap-2 border-t px-3 py-3 text-sm">
+            <p className="text-muted">{t("conversation.readOnly")}</p>
+            <Link
+              to="/studio/$project/$service"
+              params={{ project: app.project, service: app.service }}
+              search={{ c: "new" }}
+              className={cn(buttonClass("primary", "sm"), "justify-self-start")}
+            >
+              {t("conversation.readOnlyAction")}
+            </Link>
+          </div>
+        ) : (
+          <Composer
+            firstMessage={conversationId === null}
+            sending={sending}
+            busy={busy}
+            stopping={stopping}
+            element={element}
+            onClearElement={onClearElement}
+            handed={handed}
+            onClearHanded={onClearHanded}
+            onSend={send}
+            onStop={stop}
+          />
+        )}
+      </div>
     </section>
   );
 }
@@ -680,6 +860,34 @@ function ElementChip({ label, onRemove }: { label: string; onRemove?: () => void
   );
 }
 
+/** A remark handed to the agent: its number, its page, and the screen it was written on. */
+function RemarkChip({ tag, onRemove }: { tag: RemarkTag; onRemove?: () => void }) {
+  const { t } = useTranslation("studio");
+  const label = [
+    t("remarks.chip", { number: tag.number }),
+    tag.path,
+    tag.device === null ? null : t(`preview.devices.${tag.device}`),
+  ]
+    .filter((part) => part !== null)
+    .join(" · ");
+  return (
+    <span className="inline-flex max-w-full items-center gap-1.5 justify-self-start rounded-sm border border-[#f97316]/40 bg-raised px-2 py-0.5 text-xs">
+      <MessageSquareText aria-hidden="true" className="size-3.5 shrink-0 text-[#f97316]" />
+      <span className="min-w-0 truncate">{label}</span>
+      {onRemove !== undefined && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={t("remarks.unhand")}
+          className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-muted hover:text-ink"
+        >
+          <X aria-hidden="true" className="size-3" />
+        </button>
+      )}
+    </span>
+  );
+}
+
 function ChatEntry({ item }: { item: Exclude<ChatItem, { kind: "work" }> }) {
   const { t } = useTranslation("studio");
   if (item.kind === "error") {
@@ -740,6 +948,16 @@ function UserMessage({
       )}
     >
       <span className="sr-only">{t("conversation.you")}</span>
+      {parts.remarks.map((tag) => (
+        <span key={`remark-${tag.number}`} className="grid min-w-0 gap-1">
+          <RemarkChip tag={tag} />
+          {tag.text !== "" && (
+            <span className="border-l-2 border-[#f97316]/50 pl-2 text-xs text-muted whitespace-pre-wrap wrap-anywhere">
+              {tag.text}
+            </span>
+          )}
+        </span>
+      ))}
       {parts.elements.map((label) => (
         <span key={label} className="min-w-0">
           <ElementChip label={label} />
@@ -841,6 +1059,8 @@ function Composer({
   stopping,
   element,
   onClearElement,
+  handed,
+  onClearHanded,
   onSend,
   onStop,
 }: {
@@ -850,6 +1070,8 @@ function Composer({
   stopping: boolean;
   element: SelectedElement | null;
   onClearElement: () => void;
+  handed: StudioRemark | null;
+  onClearHanded: () => void;
   /** Resolves true once sent, when what was typed can go. */
   onSend: (text: string, images: string[]) => Promise<boolean>;
   onStop: () => void;
@@ -860,12 +1082,12 @@ function Composer({
   const fileInput = useRef<HTMLInputElement>(null);
   const area = useRef<HTMLTextAreaElement>(null);
 
-  // Pointing at an element is the start of a request about it.
+  // Pointing at an element, or handing a remark over, is the start of a request about it.
   useEffect(() => {
-    if (element !== null) {
+    if (element !== null || handed !== null) {
       area.current?.focus();
     }
-  }, [element]);
+  }, [element, handed]);
 
   // The field grows with what is typed, then scrolls. Empty, it keeps its two rows: a browser counts
   // the placeholder in the height it reports, and the placeholder of a narrow field is tall.
@@ -920,8 +1142,11 @@ function Composer({
     }
   };
 
+  // A remark handed over is a message on its own: the person may add to it, or send it as it is.
+  const empty = text.trim() === "" && images.length === 0 && handed === null;
+
   const submit = async () => {
-    if (text.trim() === "" && images.length === 0) {
+    if (empty) {
       return;
     }
     if (await onSend(text, images)) {
@@ -954,6 +1179,23 @@ function Composer({
       }}
     >
       <div className="grid grid-cols-1 gap-2 rounded-md border bg-raised p-2 transition-colors focus-within:border-accent">
+        {handed !== null && (
+          <div className="grid min-w-0 gap-1">
+            <RemarkChip
+              tag={{
+                number: handed.number,
+                path: handed.path,
+                device: handed.viewport === null ? null : deviceOfWidth(handed.viewport.width),
+                text: handed.text,
+              }}
+              onRemove={onClearHanded}
+            />
+            {handed.element !== null && <ElementChip label={elementLabel(handed.element)} />}
+            <p className="line-clamp-3 border-l-2 border-[#f97316]/50 pl-2 text-xs text-muted wrap-anywhere">
+              {handed.text}
+            </p>
+          </div>
+        )}
         {element !== null && (
           <div className="min-w-0">
             <ElementChip label={elementLabel(element)} onRemove={onClearElement} />
@@ -984,11 +1226,13 @@ function Composer({
           ref={area}
           aria-label={t("composer.label")}
           placeholder={
-            element !== null
-              ? t("composer.elementPlaceholder")
-              : firstMessage
-                ? t("composer.firstPlaceholder")
-                : t("composer.placeholder")
+            handed !== null
+              ? t("composer.remarkPlaceholder")
+              : element !== null
+                ? t("composer.elementPlaceholder")
+                : firstMessage
+                  ? t("composer.firstPlaceholder")
+                  : t("composer.placeholder")
           }
           value={text}
           rows={2}
@@ -1037,7 +1281,7 @@ function Composer({
             size="icon-sm"
             variant="primary"
             pending={sending}
-            disabled={text.trim() === "" && images.length === 0}
+            disabled={empty}
             aria-label={t("composer.send")}
             tooltip={t("composer.send")}
             icon={<ArrowUp aria-hidden="true" className="size-4" />}

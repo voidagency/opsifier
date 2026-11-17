@@ -209,6 +209,10 @@ export function LoginPage() {
         <Button type="submit" variant="primary" size="lg" pending={form.pending} className="mt-2 w-full">
           {t("login.submit")}
         </Button>
+        {/* On the way to a Studio preview: a client has no account, and needs the designer's link. */}
+        {search.redirect?.startsWith("/studio/open-preview") && (
+          <p className="text-sm text-muted">{t("login.previewHint")}</p>
+        )}
       </form>
     </AuthLayout>
   );

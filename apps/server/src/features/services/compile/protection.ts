@@ -1,10 +1,12 @@
 import { isAllowlistIp, isAllowlistPath } from "@opsifier/contract";
 import {
   BASE_FILE,
+  hostMatcher,
   InvalidProxyInputError,
   PANEL_SERVICE,
   PROXY_PAGES_PREFIX,
   REDIRECT_HTTPS_MIDDLEWARE,
+  STUDIO_GUEST_ROUTER_PREFIX,
   STUDIO_SIGNIN_PREFIX,
 } from "../../../core/proxy";
 
@@ -37,8 +39,6 @@ const CATCH_ALL_PRIORITY = 1;
 const ROBOTS_MATCHER = "Path(`/robots.txt`)";
 /** `*` is outside bcrypt's alphabet, so no password can match this: the account is locked. */
 const LOCKED_USER = `locked:$2y$10$${"*".repeat(53)}`;
-
-const HOST_MATCHERS = /(?:HostRegexp|Host)\(`[^`]*`\)/g;
 
 export interface ProtectionExemption {
   kind: "path" | "ip";
@@ -129,14 +129,6 @@ function safeHttpSection(value: unknown): HttpSection | undefined {
   } catch {
     return undefined;
   }
-}
-
-function hostMatcher(rule: string): string | null {
-  const matchers = rule.match(HOST_MATCHERS);
-  if (matchers === null) {
-    return null;
-  }
-  return matchers.length === 1 ? (matchers[0] as string) : `(${matchers.join(" || ")})`;
 }
 
 function isBasicAuth(definition: unknown): definition is { basicAuth: { users?: string[] } } {
@@ -370,7 +362,7 @@ function auditServiceFile(file: string, input: unknown, shared: Record<string, u
 
   const domains = new Map<string, AuditedDomain>();
   for (const [name, router] of routers) {
-    if (name.startsWith(RESERVED)) {
+    if (name.startsWith(RESERVED) || name.startsWith(STUDIO_GUEST_ROUTER_PREFIX)) {
       continue;
     }
     const chain = router.middlewares ?? [];

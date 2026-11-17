@@ -1,12 +1,21 @@
-import type { ServiceStatus, StudioAppDetail } from "@opsifier/contract";
-import { ExternalLink, Monitor, MousePointerClick, RotateCw, Smartphone, Tablet } from "lucide-react";
+import type { ServiceStatus, StudioAppDetail, StudioRemark } from "@opsifier/contract";
+import {
+  ExternalLink,
+  Link2,
+  MessageSquareText,
+  Monitor,
+  MousePointerClick,
+  RotateCw,
+  Smartphone,
+  Tablet,
+} from "lucide-react";
 import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/forms";
 import { Button, buttonClass, Lamp, Tooltip, toast } from "../../ui";
 import { studioApi } from "./api";
-import { readSelected, type SelectedElement } from "./selection";
+import { type Device, readSelected, type SelectedElement } from "./selection";
 
 type LampState = "running" | "stopped" | "progress" | "failed" | "unknown";
 const lampOf: Record<ServiceStatus, LampState> = {
@@ -18,7 +27,8 @@ const lampOf: Record<ServiceStatus, LampState> = {
   unknown: "unknown",
 };
 
-export type Device = "desktop" | "tablet" | "mobile";
+export type { Device };
+
 /** The width each device shows the page at: a common tablet's, and a common phone's. */
 const DEVICE_WIDTHS: Record<Device, number | null> = { desktop: null, tablet: 768, mobile: 390 };
 const DEVICE_ICONS = { desktop: Monitor, tablet: Tablet, mobile: Smartphone } as const;
@@ -36,6 +46,15 @@ function originOf(url: string | null): string | null {
     return new URL(url).origin;
   } catch {
     return null;
+  }
+}
+
+/** A page's path alone, without its query or fragment: a remark's pin is on the page whatever they say. */
+function pageOf(path: string): string {
+  try {
+    return new URL(path, "https://preview.invalid").pathname;
+  } catch {
+    return path;
   }
 }
 
@@ -71,9 +90,15 @@ function useSize<T extends HTMLElement>() {
   return [ref, size] as const;
 }
 
+/** A request to show a remark on the preview: `nonce` asks again for the same one. */
+export interface RemarkFocus {
+  id: string;
+  nonce: number;
+}
+
 /**
  * The project's live preview: at a desktop's, a tablet's or a phone's width, with its address, and with
- * the inspector, when the page loads it, to point at one of its elements.
+ * the inspector, when the page loads it, to point at one of its elements and to pin its remarks.
  */
 export function PreviewPane({
   app,
@@ -81,6 +106,12 @@ export function PreviewPane({
   onStartRequested,
   onStartFailed,
   onSelected,
+  remarks,
+  pinsOn,
+  onTogglePins,
+  focus,
+  onRemarkClicked,
+  onShare,
   className,
 }: {
   app: StudioAppDetail;
@@ -89,6 +120,15 @@ export function PreviewPane({
   /** The start asked for came to nothing: no more waiting for it. */
   onStartFailed: () => void;
   onSelected: (element: SelectedElement) => void;
+  /** The remarks to pin on the page, when the pins are on. */
+  remarks: readonly StudioRemark[];
+  pinsOn: boolean;
+  onTogglePins: () => void;
+  focus: RemarkFocus | null;
+  /** Someone clicked a remark's pin on the page. */
+  onRemarkClicked: (id: string) => void;
+  /** Opens the links that show the preview to a client without an account. */
+  onShare: () => void;
   className?: string;
 }) {
   const { t } = useTranslation(["studio", "common"]);
@@ -104,6 +144,10 @@ export function PreviewPane({
   const [inspectable, setInspectable] = useState(false);
   const [inspecting, setInspecting] = useState(false);
   const frame = useRef<HTMLIFrameElement>(null);
+  // Each page the frame loads says it is ready: its pins are sent again.
+  const [loads, setLoads] = useState(0);
+  // A remark to show once the page it is on has loaded.
+  const pendingFocus = useRef<string | null>(null);
   const autoStarted = useRef(false);
   const [box, size] = useSize<HTMLDivElement>();
 
@@ -152,6 +196,7 @@ export function PreviewPane({
       if ((data.type === "ready" || data.type === "location") && typeof data.path === "string") {
         if (data.type === "ready") {
           setInspectable(true);
+          setLoads((count) => count + 1);
         }
         setPath(data.path);
         setAddress((current) => (editing.current ? current : (data.path as string)));
@@ -163,17 +208,62 @@ export function PreviewPane({
         }
       } else if (data.type === "inspect-ended") {
         setInspecting(false);
+      } else if (data.type === "remark" && typeof (data as { id?: unknown }).id === "string") {
+        onRemarkClicked((data as { id: string }).id);
       }
     };
     window.addEventListener("message", listen);
     return () => window.removeEventListener("message", listen);
-  }, [origin, onSelected]);
+  }, [origin, onSelected, onRemarkClicked]);
 
   const tell = (message: Record<string, unknown>) => {
     if (origin !== null) {
       frame.current?.contentWindow?.postMessage({ source: FROM_STUDIO, ...message }, origin);
     }
   };
+
+  // What the page needs of each remark to pin it: no more. Sent again only when it changes.
+  const pins = JSON.stringify(
+    remarks.map((remark) => ({
+      id: remark.id,
+      number: remark.number,
+      path: remark.path,
+      selector: remark.element?.selector ?? "",
+      point: remark.point,
+      status: remark.status,
+      text: remark.text,
+      author: remark.author,
+    })),
+  );
+  const openRemarks = remarks.filter((remark) => remark.status !== "done").length;
+
+  // The page gets the pins whenever they change, and each time it loads; then the remark to show.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `tell` reads the frame as it is now
+  useEffect(() => {
+    if (!inspectable) {
+      return;
+    }
+    tell({ type: "remarks", items: pinsOn ? JSON.parse(pins) : [] });
+    if (pendingFocus.current !== null) {
+      tell({ type: "focus-remark", id: pendingFocus.current });
+      pendingFocus.current = null;
+    }
+  }, [inspectable, pinsOn, pins, loads]);
+
+  // A remark asked for is shown where it is: on the page shown, or once its own page has loaded.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new request is a new nonce
+  useEffect(() => {
+    const remark = focus === null ? undefined : remarks.find((one) => one.id === focus.id);
+    if (remark === undefined) {
+      return;
+    }
+    if (pageOf(remark.path) === pageOf(path) && inspectable) {
+      tell({ type: "focus-remark", id: remark.id });
+    } else {
+      pendingFocus.current = remark.id;
+      reload(remark.path);
+    }
+  }, [focus?.nonce]);
 
   const reload = (to: string = path) => {
     if (origin === null) {
@@ -282,6 +372,37 @@ export function PreviewPane({
                 <MousePointerClick aria-hidden="true" className="size-4" />
               </Button>
             </Tooltip>
+            <Tooltip
+              content={
+                !inspectable
+                  ? t("preview.pinsUnavailable")
+                  : pinsOn
+                    ? t("preview.hidePins")
+                    : t("preview.showPins")
+              }
+            >
+              <button
+                type="button"
+                aria-label={t("preview.pins", { count: openRemarks })}
+                aria-pressed={pinsOn}
+                disabled={!inspectable}
+                onClick={onTogglePins}
+                className={cn(
+                  buttonClass(pinsOn ? "secondary" : "ghost", "icon-sm"),
+                  "relative disabled:opacity-45",
+                )}
+              >
+                <MessageSquareText aria-hidden="true" className="size-4" />
+                {openRemarks > 0 && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute -top-1 -right-1 min-w-4 rounded-full bg-[#f97316] px-1 text-center font-semibold text-[10px] text-white leading-4"
+                  >
+                    {openRemarks}
+                  </span>
+                )}
+              </button>
+            </Tooltip>
             <Tooltip content={t("preview.reload")}>
               <Button
                 size="icon-sm"
@@ -305,6 +426,15 @@ export function PreviewPane({
             </Tooltip>
           </>
         )}
+        <Button
+          size="sm"
+          variant="secondary"
+          className="ml-auto"
+          icon={<Link2 aria-hidden="true" className="size-3.5" />}
+          onClick={onShare}
+        >
+          {t("preview.share")}
+        </Button>
       </header>
       {inspecting && (
         <p className="border-b bg-wash px-3 py-1.5 text-xs text-muted">{t("preview.inspecting")}</p>

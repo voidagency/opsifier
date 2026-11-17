@@ -73,7 +73,8 @@
     "tooManyImages": "At most {{count}} images per message.",
     "imageFailed": "This image could not be read.",
     "send": "Send",
-    "elementPlaceholder": "What should change in this element?"
+    "elementPlaceholder": "What should change in this element?",
+    "remarkPlaceholder": "Add an instruction for the agent, or send the remark as it is."
   },
   "preview": {
     "label": "Live preview",
@@ -106,7 +107,13 @@
     "inspect": "Point at an element",
     "inspectUnavailable": "This preview does not load the Studio's inspector",
     "inspecting": "Click an element of the preview to join it to your message. Esc cancels.",
-    "opening": "Opening the preview…"
+    "opening": "Opening the preview…",
+    "pins_one": "Remarks on the preview ({{count}} to do)",
+    "pins_other": "Remarks on the preview ({{count}} to do)",
+    "showPins": "Pin the remarks on the preview",
+    "hidePins": "Hide the remarks' pins",
+    "pinsUnavailable": "This preview does not load the Studio's inspector: its remarks can't be pinned on it",
+    "share": "Share with a client"
   },
   "settings": {
     "title": "Studio",
@@ -216,7 +223,7 @@
   "remove": {
     "action": "Delete {{name}}",
     "title": "Delete {{name}} from the Studio?",
-    "description": "Its conversations, its shares, its agent and its preview are deleted, with the Opsifier project the Studio made for it. Its folder stays on the server, with any work not pushed: adding the same repository again picks it up. A site linked to the Studio stays, without the Studio's sign-in in front of it.",
+    "description": "Its conversations, its shares, its remarks, its client links, its agent and its preview are deleted, with the Opsifier project the Studio made for it. Its folder stays on the server, with any work not pushed: adding the same repository again picks it up. A site linked to the Studio stays, without the Studio's sign-in in front of it.",
     "confirm": "Delete",
     "started": "{{name}} is being deleted"
   },
@@ -255,5 +262,73 @@
     "refused": "GitHub refused this token at the last check",
     "noRepositories": "{{login}}'s token reads no private repository of {{owner}}: check its resource owner and its repositories on GitHub.",
     "ownOnly": "GitHub keys serve projects that have an agent server of their own: turn on « One agent per project » to use them."
+  },
+  "tabs": {
+    "conversation": "Conversation",
+    "remarks": "Remarks",
+    "newRemarks_one": "{{count}} new remark",
+    "newRemarks_other": "{{count}} new remarks"
+  },
+  "remarks": {
+    "label": "Remarks left on the preview",
+    "filter": "Remarks shown",
+    "open": "To do · {{count}}",
+    "done": "Done · {{count}}",
+    "show": "Show remark {{number}} on the preview",
+    "emptyTitle": "No remark yet",
+    "emptyDescription": "Send your client a link: they open the preview without an account, click an element and write what they want changed. Their remarks arrive here, pinned on the preview.",
+    "noneOpen": "Nothing to do: every remark is done.",
+    "noneDone": "No remark done yet.",
+    "fromClient": "{{name}} · client",
+    "withAgent": "handed to the agent",
+    "handToAgent": "Hand to the agent",
+    "handAgain": "Hand over again",
+    "markDone": "Done",
+    "reopen": "To do again",
+    "doneToast": "Remark {{number}} is done: its writer sees it on the preview.",
+    "delete": "Delete remark {{number}}",
+    "deleteTitle": "Delete remark {{number}}?",
+    "deleteDescription": "It goes from the Studio and from the preview, for everyone. To keep a trace of it, mark it done instead.",
+    "deleteConfirm": "Delete",
+    "deleted": "Remark {{number}} deleted",
+    "chip": "Remark {{number}}",
+    "unhand": "Leave this remark out"
+  },
+  "links": {
+    "action": "Client links",
+    "create": "Make a client link",
+    "title": "Links for your clients",
+    "description": "A link opens the preview of {{name}} to someone without an account. With the remarks tool, they click an element of the page and write what they want changed: their remarks arrive in the Studio.",
+    "label": "Who it is for",
+    "labelHint": "Their name, and their company: it signs their remarks.",
+    "labelPlaceholder": "Karim Benali · Acme",
+    "labelRequired": "Say who this link is for.",
+    "remarks": "Remarks tool",
+    "remarksHint": "The link opens the preview with the tool. Without it, the client sees the site alone. In the preview's address, ?remarks=1 shows the tool and ?remarks=0 hides it.",
+    "validity": "Valid for",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "noLimit": "No limit",
+    "until": "until {{date}}",
+    "expired": "expired",
+    "list": "Links sent",
+    "none": "No link yet.",
+    "withRemarks": "with the remarks tool",
+    "siteOnly": "the site alone",
+    "neverOpened": "never opened",
+    "opened": "opened {{when}}",
+    "madeBy": "by {{email}}",
+    "remove": "Take back",
+    "removed": "The link for {{label}} is taken back: it no longer opens the preview.",
+    "madeTitle": "The link for {{label}} is ready",
+    "madeHint": "Copy it now and send it: it is not shown again. Taking the link back cuts the access.",
+    "address": "The link's address",
+    "copy": "Copy the link",
+    "written_one": "{{count}} remark",
+    "written_other": "{{count}} remarks",
+    "removeTitle": "Take back the link for {{label}}?",
+    "removeDescription": "It no longer opens the preview: its remarks stop at once, the preview within half a minute. What was written through it stays, unless you tick below.",
+    "removeRemarks_one": "Also delete the remark written through this link",
+    "removeRemarks_other": "Also delete the {{count}} remarks written through this link"
   }
 }

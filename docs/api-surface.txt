@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 48
+# documented-changes: 50
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -4122,6 +4122,52 @@ POST /api/v1/projects/{project}/services/{service}/studio/isolate
   503
   path project!: string
   path service!: string
+GET /api/v1/projects/{project}/services/{service}/studio/links
+  200 links![].createdAt!: string
+  200 links![].createdBy!: null|string
+  200 links![].expired!: boolean
+  200 links![].expiresAt!: null|string
+  200 links![].id!: string
+  200 links![].label!: string
+  200 links![].lastUsedAt!: null|string
+  200 links![].remarkCount!: integer
+  200 links![].remarks!: boolean
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/studio/links
+  201 createdAt!: string
+  201 createdBy!: null|string
+  201 expired!: boolean
+  201 expiresAt!: null|string
+  201 id!: string
+  201 label!: string
+  201 lastUsedAt!: null|string
+  201 remarkCount!: integer
+  201 remarks!: boolean
+  201 url!: string
+  400
+  401
+  403
+  404
+  409
+  body days: integer|null
+  body label!: string
+  body remarks: boolean
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/studio/links/{link}
+  200 id!: string
+  400
+  401
+  403
+  404
+  path link!: string
+  path project!: string
+  path service!: string
+  query remarks: enum(delete|keep)
 GET /api/v1/projects/{project}/services/{service}/studio/members
   200 members![].addedAt!: string
   200 members![].email!: string
@@ -4151,6 +4197,71 @@ POST /api/v1/projects/{project}/services/{service}/studio/preview/start
   404
   409
   path project!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/studio/remarks
+  200 remarks![].author!: string
+  200 remarks![].authorKind!: enum(account|guest)
+  200 remarks![].conversationId!: null|string
+  200 remarks![].createdAt!: string
+  200 remarks![].element!.attributes!: object
+  200 remarks![].element!.classes![]: string
+  200 remarks![].element!.components![]: string
+  200 remarks![].element!.selector!: string
+  200 remarks![].element!.tag!: string
+  200 remarks![].element!.text!: string
+  200 remarks![].id!: string
+  200 remarks![].number!: integer
+  200 remarks![].path!: string
+  200 remarks![].point!.x!: number
+  200 remarks![].point!.y!: number
+  200 remarks![].status!: enum(done|in_progress|new)
+  200 remarks![].text!: string
+  200 remarks![].updatedAt!: string
+  200 remarks![].viewport!.height!: integer
+  200 remarks![].viewport!.width!: integer
+  400
+  401
+  404
+  path project!: string
+  path service!: string
+DELETE /api/v1/projects/{project}/services/{service}/studio/remarks/{remark}
+  200 id!: string
+  400
+  401
+  403
+  404
+  path project!: string
+  path remark!: string
+  path service!: string
+PATCH /api/v1/projects/{project}/services/{service}/studio/remarks/{remark}
+  200 author!: string
+  200 authorKind!: enum(account|guest)
+  200 conversationId!: null|string
+  200 createdAt!: string
+  200 element!.attributes!: object
+  200 element!.classes![]: string
+  200 element!.components![]: string
+  200 element!.selector!: string
+  200 element!.tag!: string
+  200 element!.text!: string
+  200 id!: string
+  200 number!: integer
+  200 path!: string
+  200 point!.x!: number
+  200 point!.y!: number
+  200 status!: enum(done|in_progress|new)
+  200 text!: string
+  200 updatedAt!: string
+  200 viewport!.height!: integer
+  200 viewport!.width!: integer
+  400
+  401
+  403
+  404
+  body conversationId: null|string
+  body status!: enum(done|in_progress|new)
+  path project!: string
+  path remark!: string
   path service!: string
 POST /api/v1/projects/{project}/services/{service}/studio/remove
   202 actorEmail!: null|string

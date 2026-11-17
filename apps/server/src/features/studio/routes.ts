@@ -3,7 +3,12 @@ import {
   actionEntry,
   addStudioGithubKeyRequest,
   addStudioProjectRequest,
+  createdStudioGuestLink,
+  createStudioGuestLinkRequest,
   deletedStudioGithubKey,
+  deletedStudioGuestLink,
+  deletedStudioRemark,
+  deleteStudioGuestLinkQuery,
   destroyRequest,
   linkStudioAppRequest,
   replaceStudioGithubKeyRequest,
@@ -19,6 +24,8 @@ import {
   studioGithubKeyCheck,
   studioGithubKeyList,
   studioGithubKeyPath,
+  studioGuestLinkList,
+  studioGuestLinkPath,
   studioIsolateAll,
   studioIsolated,
   studioMembers,
@@ -26,10 +33,14 @@ import {
   studioModels,
   studioOverview,
   studioPreviewStart,
+  studioRemark,
+  studioRemarkList,
+  studioRemarkPath,
   studioSettings,
   unlinkedStudioApp,
+  updateStudioRemarkRequest,
 } from "@opsifier/contract";
-import { getCookie, setCookie } from "hono/cookie";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { toActionEntry } from "../../core/actions";
 import { requirePrincipal, requireSessionPrincipal } from "../../core/auth";
 import type { Feature } from "../../core/context";
@@ -45,10 +56,21 @@ import {
   removeGithubKey,
   replaceGithubKey,
 } from "./github-keys";
+import { linkGonePage, registerGuestPages } from "./guest-pages";
 import { isolateAllStudioApps, isolateStudioApp } from "./isolate";
 import { refreshPreviewDockerfiles } from "./preview";
 import { addStudioProject } from "./projects";
 import { isRelayPath, relayGit } from "./relay";
+import {
+  createGuestLink,
+  deleteRemark,
+  GUEST_COOKIE,
+  listGuestLinks,
+  listRemarks,
+  liveGuestLink,
+  removeGuestLink,
+  updateRemark,
+} from "./remarks";
 import { removeStudioProject } from "./remove";
 import {
   checkStudioAgent,
@@ -72,6 +94,7 @@ import {
   PREVIEW_COOKIE,
   PreviewSignIn,
   previewAppOfHost,
+  previewPage,
   SIGNIN_CHECK_PATH,
   SIGNIN_RETURN_PATH,
   safeReturnPath,
@@ -459,6 +482,103 @@ const stopRoute = createRoute({
   },
 });
 
+const LINKS = `${APP}/links`;
+const REMARKS = `${APP}/remarks`;
+
+const linksRoute = createRoute({
+  method: "get",
+  path: LINKS,
+  tags,
+  description:
+    "The project's links for clients, live or expired, the most recent first. Their addresses are never sent again.",
+  request: { params: servicePath },
+  responses: {
+    200: jsonResponse(studioGuestLinkList, "The links."),
+    400: invalid,
+    401: denied,
+    404: missing,
+  },
+});
+
+const createLinkRoute = createRoute({
+  method: "post",
+  path: LINKS,
+  tags,
+  description:
+    "Makes a link that opens the project's preview to someone without an account, a client most often, who can leave remarks on its pages. " +
+    "Anyone the project is shared with may make one. The link's address is in this answer only: the panel keeps the hash of its secret.",
+  request: { params: servicePath, body: jsonBody(createStudioGuestLinkRequest) },
+  responses: {
+    201: jsonResponse(createdStudioGuestLink, "The link, with its address."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    404: missing,
+    409: errorResponse("The preview has no address yet."),
+  },
+});
+
+const removeLinkRoute = createRoute({
+  method: "delete",
+  path: `${LINKS}/{link}`,
+  tags,
+  description:
+    "Takes a link back: whoever opened it is let in no more, within half a minute. What they wrote stays, unless `remarks=delete`.",
+  request: { params: studioGuestLinkPath, query: deleteStudioGuestLinkQuery },
+  responses: {
+    200: jsonResponse(deletedStudioGuestLink, "Taken back."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    404: missing,
+  },
+});
+
+const remarksRoute = createRoute({
+  method: "get",
+  path: REMARKS,
+  tags,
+  description: "The remarks left on the project's preview, the most recent first.",
+  request: { params: servicePath },
+  responses: {
+    200: jsonResponse(studioRemarkList, "The remarks."),
+    400: invalid,
+    401: denied,
+    404: missing,
+  },
+});
+
+const updateRemarkRoute = createRoute({
+  method: "patch",
+  path: `${REMARKS}/{remark}`,
+  tags,
+  description:
+    "Hands a remark to the agent, marks it dealt with, or back to be dealt with. Its writer sees which on the preview.",
+  request: { params: studioRemarkPath, body: jsonBody(updateStudioRemarkRequest) },
+  responses: {
+    200: jsonResponse(studioRemark, "The remark."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    404: missing,
+  },
+});
+
+const deleteRemarkRoute = createRoute({
+  method: "delete",
+  path: `${REMARKS}/{remark}`,
+  tags,
+  description: "Deletes a remark, for the preview's pins and the Studio alike.",
+  request: { params: studioRemarkPath },
+  responses: {
+    200: jsonResponse(deletedStudioRemark, "Deleted."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    404: missing,
+  },
+});
+
 const target = (params: { project: string; service: string }) => ({
   projectName: params.project,
   serviceName: params.service,
@@ -467,23 +587,18 @@ const target = (params: { project: string; service: string }) => ({
 /** The person behind the request, including whoever owns an API key. */
 const actorOf = (principal: ReturnType<typeof requirePrincipal>) => principal.user.email;
 
-/** A short page in the panel's two languages, for the hops of a preview's sign-in that can fail. */
-function signInPage(title: string, body: string): string {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:36rem;margin:15vh auto;padding:0 1rem;color:#222}</style></head><body><h1 style="font-size:1.25rem">${title}</h1><p>${body}</p></body></html>`;
-}
-
 /** On the panel: where a browser comes to be given a code for a preview. */
 const PREVIEW_SIGNIN_HOP = "/api/v1/studio/preview-signin";
 
-const NOT_A_PREVIEW = signInPage(
+const NOT_A_PREVIEW = previewPage(
   "Aperçu introuvable · Preview not found",
   "Cette adresse n'est pas celle d'un aperçu du Studio. This address is not a Studio preview's.",
 );
-const NOT_SHARED = signInPage(
+const NOT_SHARED = previewPage(
   "Aperçu non partagé · Preview not shared",
   "Ce projet n'est pas partagé avec votre compte : demandez-le à un administrateur. This project is not shared with your account: ask an administrator.",
 );
-const EXPIRED = signInPage(
+const EXPIRED = previewPage(
   "Lien expiré · Link expired",
   "Rechargez la page de l'aperçu pour vous connecter de nouveau. Reload the preview to sign in again.",
 );
@@ -587,13 +702,35 @@ export const feature: Feature = {
           return c.body(null, 200);
         }
       }
-      // A page someone opens goes through the panel to sign in; anything else is refused.
       const panel = getPanelDomainSettings(deps).url;
-      if (
-        (method === "GET" || method === "HEAD") &&
-        (c.req.header("accept") ?? "").includes("text/html") &&
-        panel !== null
-      ) {
+      const page =
+        (method === "GET" || method === "HEAD") && (c.req.header("accept") ?? "").includes("text/html");
+      // A client's link let them in: theirs until the link expires or is taken back.
+      const guest = getCookie(c, GUEST_COOKIE);
+      if (guest !== undefined) {
+        const allowed = signIn.allowed(
+          `${host}|guest|${guest}`,
+          () => liveGuestLink(deps, guest, host, preview) !== null,
+        );
+        if (allowed) {
+          return c.body(null, 200);
+        }
+        // The link is gone, and so goes its cookie: the next page goes through the panel's sign-in.
+        deleteCookie(c, GUEST_COOKIE, { path: "/", secure: preview.https });
+        if (value === undefined && page) {
+          // Said in words for a client, with the way in for someone of the team.
+          return c.html(
+            linkGonePage(
+              panel === null
+                ? null
+                : `${panel}/api/v1/studio/preview-signin?${new URLSearchParams({ host, to: uri })}`,
+            ),
+            403,
+          );
+        }
+      }
+      // A page someone opens goes through the panel to sign in; anything else is refused.
+      if (page && panel !== null) {
         return c.redirect(
           `${panel}/api/v1/studio/preview-signin?${new URLSearchParams({ host, to: uri })}`,
           302,
@@ -601,6 +738,9 @@ export const feature: Feature = {
       }
       return c.text("Sign in to the panel to open this preview.", 401);
     });
+
+    // On a preview's own address: a client's link, and the remarks the inspector shows and writes.
+    registerGuestPages(app, deps, signIn);
 
     app.openapi(getSettingsRoute, (c) => {
       requireSessionPrincipal(c);
@@ -795,6 +935,46 @@ export const feature: Feature = {
     app.openapi(stopRoute, async (c) => {
       const params = c.req.valid("param");
       return c.json(await stopStudioConversation(deps, target(params), params.conversation), 200);
+    });
+
+    app.openapi(linksRoute, (c) => c.json(listGuestLinks(deps, target(c.req.valid("param"))), 200));
+
+    app.openapi(createLinkRoute, (c) =>
+      c.json(
+        createGuestLink(
+          deps,
+          target(c.req.valid("param")),
+          c.req.valid("json"),
+          actorOf(requirePrincipal(c)),
+        ),
+        201,
+      ),
+    );
+
+    app.openapi(removeLinkRoute, (c) => {
+      const params = c.req.valid("param");
+      return c.json(
+        removeGuestLink(
+          deps,
+          target(params),
+          params.link,
+          c.req.valid("query").remarks === "delete",
+          actorOf(requirePrincipal(c)),
+        ),
+        200,
+      );
+    });
+
+    app.openapi(remarksRoute, (c) => c.json(listRemarks(deps, target(c.req.valid("param"))), 200));
+
+    app.openapi(updateRemarkRoute, (c) => {
+      const params = c.req.valid("param");
+      return c.json(updateRemark(deps, target(params), params.remark, c.req.valid("json")), 200);
+    });
+
+    app.openapi(deleteRemarkRoute, (c) => {
+      const params = c.req.valid("param");
+      return c.json(deleteRemark(deps, target(params), params.remark), 200);
     });
   },
 };

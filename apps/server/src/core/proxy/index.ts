@@ -19,6 +19,11 @@ export const PROXY_PAGES_PREFIX = "/api/proxy-pages";
  * shared by every site, leaves such a route alone.
  */
 export const STUDIO_SIGNIN_PREFIX = "opsifier-studio-signin-";
+/**
+ * A route on a Studio preview's own address that the panel answers, for the people a link lets in:
+ * not one of the site's domains, and behind the panel's own checks.
+ */
+export const STUDIO_GUEST_ROUTER_PREFIX = "opsifier-studio-guest-";
 /** Where Traefik reaches the panel, unless the configuration says otherwise. */
 export const DEFAULT_PANEL_UPSTREAM_URL = DEFAULT_PANEL_UPSTREAM;
 
@@ -37,6 +42,17 @@ export const proxyPagePath = (name: ProxyPageName): string => `${PROXY_PAGES_PRE
 /** The page shown for one service while it is in maintenance. */
 export const maintenancePagePath = (project: string, service: string): string =>
   `${PROXY_PAGES_PREFIX}/maintenance/${project}/${service}`;
+
+const HOST_MATCHERS = /(?:HostRegexp|Host)\(`[^`]*`\)/g;
+
+/** The host part of a route's rule, every host it names, or null for a route on no host in particular. */
+export function hostMatcher(rule: string): string | null {
+  const matchers = rule.match(HOST_MATCHERS);
+  if (matchers === null) {
+    return null;
+  }
+  return matchers.length === 1 ? (matchers[0] as string) : `(${matchers.join(" || ")})`;
+}
 
 export class InvalidProxyInputError extends Error {
   override readonly name = "InvalidProxyInputError";

@@ -1,4 +1,10 @@
-import type { DeploymentRecord, ProjectGrant } from "@opsifier/contract";
+import type {
+  DeploymentRecord,
+  ProjectGrant,
+  StudioRemarkElement,
+  StudioRemarkPoint,
+  StudioRemarkViewport,
+} from "@opsifier/contract";
 import { sql } from "drizzle-orm";
 import {
   check,
@@ -798,6 +804,8 @@ export const studioApps = sqliteTable("studio_apps", {
   repository: text("repository"),
   /** The hash of the credential the project's own agent pulls and pushes through the panel with. */
   gitTokenHash: text("git_token_hash"),
+  /** The number of the project's last remark: a number, once given, is never given again. */
+  remarkCounter: integer("remark_counter").notNull().default(0),
   createdAt: millis("created_at").notNull(),
   updatedAt: millis("updated_at").notNull(),
 });
@@ -839,5 +847,70 @@ export const studioMembers = sqliteTable(
   (table) => [
     primaryKey({ columns: [table.serviceId, table.userId] }),
     index("studio_members_user_idx").on(table.userId),
+  ],
+);
+
+/**
+ * Links that open a Studio project's preview to someone without an account, a client most often. The
+ * link holds a secret the panel keeps only the hash of: it is shown once, when it is made.
+ */
+export const studioGuestLinks = sqliteTable(
+  "studio_guest_links",
+  {
+    id: text("id").primaryKey(),
+    serviceId: text("service_id")
+      .notNull()
+      .references(() => studioApps.serviceId, { onDelete: "cascade" }),
+    /** Who it is for, as its maker wrote it: it signs that person's remarks. */
+    label: text("label").notNull(),
+    /** SHA-256 of the link's secret, in hexadecimal. */
+    tokenHash: text("token_hash").notNull(),
+    /** Whether it opens the preview with the remarks tool shown. */
+    remarks: integer("remarks", { mode: "boolean" }).notNull().default(true),
+    createdBy: text("created_by"),
+    createdAt: millis("created_at").notNull(),
+    /** Null: it opens the preview until it is taken back. */
+    expiresAt: millis("expires_at"),
+    lastUsedAt: millis("last_used_at"),
+  },
+  (table) => [
+    uniqueIndex("studio_guest_links_token_idx").on(table.tokenHash),
+    index("studio_guest_links_service_idx").on(table.serviceId),
+  ],
+);
+
+/** What someone wrote about a page of a Studio project's preview, pinned to one of its elements. */
+export const studioRemarks = sqliteTable(
+  "studio_remarks",
+  {
+    id: text("id").primaryKey(),
+    serviceId: text("service_id")
+      .notNull()
+      .references(() => studioApps.serviceId, { onDelete: "cascade" }),
+    /** Its number in the project, which its pin shows. */
+    number: integer("number").notNull(),
+    path: text("path").notNull(),
+    /** The element, where in it the pin goes, and the window's size, as the inspector saw them. */
+    element: text("element", { mode: "json" }).$type<StudioRemarkElement | null>(),
+    point: text("point", { mode: "json" }).$type<StudioRemarkPoint | null>(),
+    viewport: text("viewport", { mode: "json" }).$type<StudioRemarkViewport | null>(),
+    text: text("text").notNull(),
+    /** Who wrote it, as shown: who the link was made for, or an account's e-mail. */
+    author: text("author").notNull(),
+    /** Written through a client's link, or by an account of the panel. */
+    authorKind: text("author_kind", { enum: ["guest", "account"] }).notNull(),
+    guestLinkId: text("guest_link_id").references(() => studioGuestLinks.id, { onDelete: "set null" }),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    status: text("status", { enum: ["new", "in_progress", "done"] })
+      .notNull()
+      .default("new"),
+    /** The conversation it was handed to, if it was. */
+    conversationId: text("conversation_id"),
+    createdAt: millis("created_at").notNull(),
+    updatedAt: millis("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("studio_remarks_number_idx").on(table.serviceId, table.number),
+    index("studio_remarks_guest_link_idx").on(table.guestLinkId),
   ],
 );

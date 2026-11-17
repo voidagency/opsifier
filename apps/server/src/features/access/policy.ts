@@ -106,8 +106,8 @@ function projectRequirement(method: string, project: string, rest: readonly stri
 }
 
 /**
- * A Studio project's conversations and its preview are open to the accounts it is shared with.
- * Linking it, taking it out and sharing it are administration.
+ * A Studio project's conversations, its preview, its links for clients and their remarks are open to
+ * the accounts it is shared with. Linking it, taking it out and sharing it are administration.
  */
 function studioRequirement(method: string, project: string, rest: readonly string[]): Requirement {
   const [, service, , section] = rest;
@@ -117,7 +117,7 @@ function studioRequirement(method: string, project: string, rest: readonly strin
   if (section === undefined) {
     return isSafeMethod(method) ? { kind: "studio", project, service } : ADMIN;
   }
-  if (section === "conversations" || section === "preview") {
+  if (section === "conversations" || section === "preview" || section === "links" || section === "remarks") {
     return { kind: "studio", project, service };
   }
   if (section === "members") {

@@ -111,7 +111,8 @@
     "studio.add-project": "Project added to the Studio",
     "studio.share": "Studio project shared",
     "studio.remove": "Project taken out of the Studio",
-    "studio.github-key": "Studio GitHub key changed"
+    "studio.github-key": "Studio GitHub key changed",
+    "studio.guest-link": "Studio client link made or taken back"
   },
   "healthLabel": "Recent actions by outcome",
   "noMatch": "Nothing with this outcome in the entries shown.",

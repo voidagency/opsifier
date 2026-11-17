@@ -169,6 +169,13 @@
       "when": 1794838518679,
       "tag": "0023_maintainer_role",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1794915640703,
+      "tag": "0024_studio_remarks",
+      "breakpoints": true
     }
   ]
 }

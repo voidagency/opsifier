@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "../../testing/browser-stubs";
-import type { StudioApp, StudioAppDetail, StudioEventPage } from "@opsifier/contract";
+import type { StudioApp, StudioAppDetail, StudioEventPage, StudioRemark } from "@opsifier/contract";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -1062,5 +1062,263 @@ describe("the Studio's settings", () => {
 
     const banner = await screen.findByText(/does not reach the agent server/);
     expect(within(banner).getByText(/refused the panel's key/)).toBeTruthy();
+  });
+});
+
+const remark = (overrides: Partial<StudioRemark> = {}): StudioRemark => ({
+  id: "r2",
+  number: 2,
+  path: "/comptes",
+  element: {
+    tag: "button",
+    text: "Ouvrir un compte",
+    classes: ["btn"],
+    attributes: {},
+    selector: "main > button.btn",
+    components: ["Hero"],
+  },
+  point: { x: 0.5, y: 0.5 },
+  viewport: { width: 390, height: 844 },
+  text: "Le bouton devrait être vert, comme dans la charte.",
+  author: "Karim Benali · Acme",
+  authorKind: "guest",
+  status: "new",
+  conversationId: null,
+  createdAt: "2026-11-15T12:10:00.000Z",
+  updatedAt: "2026-11-15T12:10:00.000Z",
+  ...overrides,
+});
+const DONE = remark({ id: "r1", number: 1, status: "done", text: "Le logo est flou", path: "/" });
+
+describe("remarks left on a Studio project's preview", () => {
+  // Radix's tabs change on the press of the button, as a browser sends it before the click.
+  const openRemarks = async () => fireEvent.mouseDown(await screen.findByRole("tab", { name: /^Remarks/ }));
+
+  it("are listed to do and done, and one handed to the agent goes with the next message", async () => {
+    const server = installFakeServer(
+      base({
+        [`GET ${APP}/remarks`]: { remarks: [remark(), DONE] },
+        [`POST ${APP}/conversations/${CONVERSATION}/messages`]: conversation,
+        [`PATCH ${APP}/remarks/r2`]: remark({ status: "in_progress", conversationId: CONVERSATION }),
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+    // What is being typed waits while the person looks at the remarks.
+    fireEvent.change(await screen.findByLabelText("Message to the agent"), {
+      target: { value: "Garde le même vert que le logo" },
+    });
+
+    await openRemarks();
+    expect(await screen.findByText("Le bouton devrait être vert, comme dans la charte.")).toBeTruthy();
+    expect(screen.getByText("Karim Benali · Acme · client")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "To do · 1" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByText("Le logo est flou")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hand to the agent" }));
+    // Back in the conversation, the remark waits in the composer, next to what was typed.
+    expect(await screen.findByText("Remark 2 · /comptes · Phone")).toBeTruthy();
+    expect((screen.getByLabelText("Message to the agent") as HTMLTextAreaElement).value).toBe(
+      "Garde le même vert que le logo",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      const sent = server.calls.find((call) => call.path.endsWith("/messages"))?.body as
+        | { text: string }
+        | undefined;
+      expect(sent?.text).toMatch(/^Garde le même vert que le logo\n\n<client_remark>/);
+      expect(sent?.text).toContain("<client_remark>\nRemark: 2\nFrom: Karim Benali · Acme\nPage: /comptes");
+      expect(sent?.text).toContain("Window: 390 × 844 (mobile)");
+      expect(sent?.text).toContain("Text:\nLe bouton devrait être vert, comme dans la charte.");
+      expect(sent?.text).toContain('Element: <button class="btn"> "Ouvrir un compte"');
+    });
+    await waitFor(() =>
+      expect(server.calls.find((call) => call.method === "PATCH")?.body).toEqual({
+        status: "in_progress",
+        conversationId: CONVERSATION,
+      }),
+    );
+  });
+
+  it("are marked done, and shown on the preview when picked", async () => {
+    const server = installFakeServer(
+      base({
+        [`GET ${APP}/remarks`]: { remarks: [remark(), DONE] },
+        [`PATCH ${APP}/remarks/r2`]: remark({ status: "done" }),
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+    const frame = (await screen.findByTitle("Live preview of cd-studio-preview")) as HTMLIFrameElement;
+    const told: unknown[] = [];
+    const contentWindow = frame.contentWindow as Window;
+    contentWindow.postMessage = ((message: unknown) =>
+      told.push(message)) as typeof contentWindow.postMessage;
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "opsifier-studio-preview", type: "ready", path: "/" },
+        origin: "https://lovable-cd-studio-preview.app.example.com",
+        source: frame.contentWindow,
+      }),
+    );
+
+    await openRemarks();
+    // The remarks to do are pinned on the page.
+    await waitFor(() =>
+      expect(told).toContainEqual(
+        expect.objectContaining({
+          type: "remarks",
+          items: [expect.objectContaining({ id: "r2", number: 2, selector: "main > button.btn" })],
+        }),
+      ),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Show remark 2 on the preview" }));
+    // Its page is not the one shown: the preview goes there first.
+    await waitFor(() =>
+      expect(
+        (screen.getByTitle("Live preview of cd-studio-preview") as HTMLIFrameElement).getAttribute("src"),
+      ).toBe("https://lovable-cd-studio-preview.app.example.com/comptes"),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await waitFor(() =>
+      expect(server.calls.find((call) => call.method === "PATCH")?.body).toEqual({ status: "done" }),
+    );
+  });
+
+  it("follow a pin clicked on the preview back to the list", async () => {
+    installFakeServer(base({ [`GET ${APP}/remarks`]: { remarks: [remark()] } }));
+    renderApp("/studio/lovable/cd-studio-preview");
+    const frame = (await screen.findByTitle("Live preview of cd-studio-preview")) as HTMLIFrameElement;
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "opsifier-studio-preview", type: "remark", id: "r2" },
+        origin: "https://lovable-cd-studio-preview.app.example.com",
+        source: frame.contentWindow,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: /^Remarks/ }).getAttribute("aria-selected")).toBe("true"),
+    );
+    expect(await screen.findByText("Le bouton devrait être vert, comme dans la charte.")).toBeTruthy();
+  });
+
+  it("come from a link made for a client, whose address is shown once", async () => {
+    const made = {
+      id: "l1",
+      label: "Karim Benali · Acme",
+      remarks: true,
+      remarkCount: 0,
+      createdBy: "admin@example.com",
+      createdAt: "2026-11-15T12:00:00.000Z",
+      expiresAt: "2026-12-15T12:00:00.000Z",
+      lastUsedAt: null,
+      expired: false,
+      url: "https://lovable-cd-studio-preview.app.example.com/__opsifier/studio/link/abcdefghijklmnopqrstuvwxyz012345",
+    };
+    const server = installFakeServer(
+      base({
+        [`GET ${APP}/remarks`]: { remarks: [] },
+        [`GET ${APP}/links`]: { links: [] },
+        [`POST ${APP}/links`]: made,
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    await openRemarks();
+    expect(await screen.findByText("No remark yet")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Client links" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/Who it is for/), {
+      target: { value: "Karim Benali · Acme" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "7 days" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Make a client link" }));
+
+    await waitFor(() =>
+      expect(server.calls.find((call) => call.method === "POST")?.body).toEqual({
+        label: "Karim Benali · Acme",
+        remarks: true,
+        days: 7,
+      }),
+    );
+    expect(((await within(dialog).findByLabelText("The link's address")) as HTMLInputElement).value).toBe(
+      made.url,
+    );
+  });
+
+  it("come from a link a designer shares from the preview itself", async () => {
+    installFakeServer(base({ [`GET ${APP}/remarks`]: { remarks: [] }, [`GET ${APP}/links`]: { links: [] } }));
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Share with a client" }));
+
+    expect(await screen.findByRole("dialog", { name: "Links for your clients" })).toBeTruthy();
+  });
+
+  it("go with their link when the designer says so", async () => {
+    const link = {
+      id: "l1",
+      label: "Karim Benali · Acme",
+      remarks: true,
+      remarkCount: 2,
+      createdBy: "admin@example.com",
+      createdAt: "2026-11-15T12:00:00.000Z",
+      expiresAt: null,
+      lastUsedAt: "2026-11-15T13:00:00.000Z",
+      expired: false,
+    };
+    let asked = "";
+    installFakeServer(
+      base({
+        [`GET ${APP}/remarks`]: { remarks: [] },
+        [`GET ${APP}/links`]: { links: [link] },
+        [`DELETE ${APP}/links/l1`]: (_body: unknown, url: URL) => {
+          asked = url.search;
+          return { id: "l1" };
+        },
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Share with a client" }));
+    const dialog = await screen.findByRole("dialog", { name: "Links for your clients" });
+    expect(await within(dialog).findByText(/2 remarks/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Take back" }));
+    const confirm = await screen.findByRole("dialog", {
+      name: "Take back the link for Karim Benali · Acme?",
+    });
+    fireEvent.click(within(confirm).getByLabelText("Also delete the 2 remarks written through this link"));
+    fireEvent.click(within(confirm).getByRole("button", { name: "Take back" }));
+
+    await waitFor(() => expect(asked).toBe("?remarks=delete"));
+  });
+
+  it("show as a tag in the conversation once handed to the agent", async () => {
+    const text =
+      "<client_remark>\nRemark: 2\nFrom: Karim Benali · Acme\nPage: /comptes\nWindow: 390 × 844 (mobile)\nText:\nLe bouton devrait être vert.\n</client_remark>";
+    installFakeServer(
+      base({
+        [`GET ${APP}/conversations/${CONVERSATION}/events`]: page({
+          items: [
+            {
+              kind: "message",
+              id: "e1",
+              timestamp: "2026-11-15T12:00:01Z",
+              role: "user",
+              text,
+              images: [],
+              suggestions: [],
+            },
+          ],
+        }),
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    expect(await screen.findByText("Remark 2 · /comptes · Phone")).toBeTruthy();
+    expect(screen.getByText("Le bouton devrait être vert.")).toBeTruthy();
+    expect(screen.queryByText(/client_remark/)).toBeNull();
   });
 });

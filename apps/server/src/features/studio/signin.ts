@@ -3,9 +3,12 @@ import { and, eq } from "drizzle-orm";
 import type { Db, DbHandle } from "../../core/db";
 import { domains, services, studioApps, studioMembers, users } from "../../core/db/schema";
 import {
+  hostMatcher,
   InvalidProxyInputError,
+  PANEL_SERVICE,
   PROXY_PAGES_PREFIX,
   type ProxyGuard,
+  STUDIO_GUEST_ROUTER_PREFIX,
   STUDIO_SIGNIN_PREFIX,
 } from "../../core/proxy";
 import type { Secrets } from "../../core/secrets";
@@ -28,6 +31,18 @@ export const SIGNIN_CHECK_PATH = `${PROXY_PAGES_PREFIX}/studio-signin`;
 /** On the preview's own address: where a code from the panel becomes the preview's cookie. */
 export const SIGNIN_RETURN_PATH = "/__opsifier/studio-signin";
 export const PREVIEW_COOKIE = "opsifier_studio_preview";
+/**
+ * On the preview's own address: the panel's pages for the people a client's link lets in, and their
+ * remarks. Same origin as the page, so the inspector reaches them with the page's own cookies.
+ */
+export const GUEST_PAGES_PATH = "/__opsifier/studio/";
+/** Where the proxy sends them, on the panel: under its pages, which answer under any name. */
+export const GUEST_PAGES_PREFIX = `${PROXY_PAGES_PREFIX}/studio`;
+
+/** A short page in the panel's two languages, for the hops of a preview that can fail. */
+export function previewPage(title: string, body: string): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:36rem;margin:15vh auto;padding:0 1rem;color:#222}</style></head><body><h1 style="font-size:1.25rem">${title}</h1><p>${body}</p></body></html>`;
+}
 
 const CODE_TTL_MS = 60_000;
 const COOKIE_TTL_MS = 12 * 60 * 60 * 1000;
@@ -42,9 +57,12 @@ export interface PreviewApp {
   https: boolean;
 }
 
-/** The Studio project whose preview answers on this host, if any. */
+/**
+ * The Studio project whose preview answers on this host, if any. Two previews on one host, each on a
+ * path of its own, can't be told apart from the host alone: neither is, and a wildcard answers none.
+ */
 export function previewAppOfHost(db: DbHandle, host: string): PreviewApp | null {
-  const row = db
+  const rows = db
     .select({
       serviceId: studioApps.serviceId,
       projectName: services.projectName,
@@ -57,16 +75,13 @@ export function previewAppOfHost(db: DbHandle, host: string): PreviewApp | null 
       and(eq(services.projectName, domains.projectName), eq(services.name, domains.serviceName)),
     )
     .innerJoin(studioApps, eq(studioApps.serviceId, services.id))
-    .where(eq(domains.host, host.toLowerCase()))
-    .get();
-  return row ?? null;
+    .where(and(eq(domains.host, host.toLowerCase()), eq(domains.wildcard, false)))
+    .all();
+  return new Set(rows.map((row) => row.serviceId)).size === 1 ? (rows[0] ?? null) : null;
 }
 
-/** Whether a Studio preview's routes carry the sign-in: turned on, and the service linked. */
-export function signInOnFor(db: Db, projectName: string, serviceName: string): boolean {
-  if (!readStudioSettings({ db }).previewSignIn) {
-    return false;
-  }
+/** Whether a service is a Studio project's preview. */
+export function isLinkedPreview(db: Db, projectName: string, serviceName: string): boolean {
   return (
     db
       .select({ id: services.id })
@@ -75,6 +90,11 @@ export function signInOnFor(db: Db, projectName: string, serviceName: string): b
       .where(and(eq(services.projectName, projectName), eq(services.name, serviceName)))
       .get() !== undefined
   );
+}
+
+/** Whether a Studio preview's routes carry the sign-in: turned on, and the service linked. */
+export function signInOnFor(db: Db, projectName: string, serviceName: string): boolean {
+  return readStudioSettings({ db }).previewSignIn && isLinkedPreview(db, projectName, serviceName);
 }
 
 /** An administrator, or an account the project is shared with, still active. */
@@ -199,16 +219,26 @@ export class PreviewSignIn {
 interface Router {
   rule: string;
   middlewares?: string[];
+  entryPoints?: string[];
+  tls?: unknown;
   [key: string]: unknown;
 }
 
 const REDIRECT_TO_HTTPS = "opsifier-redirect-https";
 
 /**
- * A preview's routing file with the sign-in on every route, or without it. Applied every time a file
- * is written, so it starts from the routes without it, and adds it when the preview needs it.
+ * A preview's routing file with the sign-in on every route, or without it, and, for a Studio project's
+ * preview, with routes of the panel's own under {@link GUEST_PAGES_PATH} on each of its hosts. Applied
+ * every time a file is written, so it starts from the routes without either, and adds what the
+ * preview needs. The panel's routes carry a middleware named as the sign-in's, so that the server's
+ * gate leaves them alone: the panel checks who is there itself, from a client's link or the sign-in.
  */
-export function withStudioSignIn(file: string, input: unknown, address: string | null): unknown {
+export function withStudioSignIn(
+  file: string,
+  input: unknown,
+  address: string | null,
+  guestPages = false,
+): unknown {
   if (input === null || typeof input !== "object" || Array.isArray(input)) {
     return input;
   }
@@ -218,9 +248,18 @@ export function withStudioSignIn(file: string, input: unknown, address: string |
   if (config.http?.routers === undefined) {
     return input;
   }
-  const name = `${SIGNIN_MIDDLEWARE_PREFIX}${file.replace(/\.ya?ml$/, "").replace(/[^A-Za-z0-9_-]/g, "-")}`;
+  const slug = file.replace(/\.ya?ml$/, "").replace(/[^A-Za-z0-9_-]/g, "-");
+  const name = `${SIGNIN_MIDDLEWARE_PREFIX}${slug}`;
+  // A file's name holds `__` once, so no other file's sign-in can be called this.
+  const guestName = `${SIGNIN_MIDDLEWARE_PREFIX}${slug}__guest`;
   const routers: Record<string, Router> = {};
+  const guestRouters: Record<string, Router> = {};
+  const hosts = new Set<string>();
   for (const [routerName, router] of Object.entries(config.http.routers)) {
+    if (routerName.startsWith(STUDIO_GUEST_ROUTER_PREFIX)) {
+      // Made again below, from the routes as they are now.
+      continue;
+    }
     if (typeof router?.rule !== "string") {
       throw new InvalidProxyInputError(`The route ${routerName} has no rule.`);
     }
@@ -233,7 +272,23 @@ export function withStudioSignIn(file: string, input: unknown, address: string |
           : [name, ...chain];
     const { middlewares: _dropped, ...rest } = router;
     routers[routerName] = signed.length > 0 ? { ...rest, middlewares: signed } : rest;
+
+    const host = guestPages ? hostMatcher(router.rule) : null;
+    const key = `${host}|${(router.entryPoints ?? []).join(",")}`;
+    if (host !== null && !hosts.has(key)) {
+      hosts.add(key);
+      const { entryPoints, tls } = router;
+      // Longer than any rule of the preview's own on the same host, so Traefik ranks it first.
+      guestRouters[`${STUDIO_GUEST_ROUTER_PREFIX}${routerName}`] = {
+        rule: `${host} && PathPrefix(\`${GUEST_PAGES_PATH}\`)`,
+        ...(entryPoints === undefined ? {} : { entryPoints }),
+        middlewares: chain[0] === REDIRECT_TO_HTTPS ? [REDIRECT_TO_HTTPS, guestName] : [guestName],
+        service: PANEL_SERVICE,
+        ...(tls === undefined ? {} : { tls }),
+      };
+    }
   }
+  Object.assign(routers, guestRouters);
   const definitions = Object.fromEntries(
     Object.entries(config.http.middlewares ?? {}).filter(
       ([one]) => !one.startsWith(SIGNIN_MIDDLEWARE_PREFIX),
@@ -242,6 +297,11 @@ export function withStudioSignIn(file: string, input: unknown, address: string |
   if (address !== null) {
     // Traefik sets the X-Forwarded headers itself, from the request: none sent by a browser is trusted.
     definitions[name] = { forwardAuth: { address, trustForwardHeader: false } };
+  }
+  if (Object.keys(guestRouters).length > 0) {
+    definitions[guestName] = {
+      replacePathRegex: { regex: `^${GUEST_PAGES_PATH}(.*)$`, replacement: `${GUEST_PAGES_PREFIX}/$1` },
+    };
   }
   const { middlewares: _old, ...http } = config.http;
   return {
@@ -259,7 +319,10 @@ const routingTarget = (file: string): { project: string; service: string } | nul
   return project && service && rest.length === 0 ? { project, service } : null;
 };
 
-/** Puts the sign-in on the routes of the Studio's previews, before any other guard sees them. */
+/**
+ * Puts the sign-in, and the panel's pages for clients, on the routes of the Studio's previews, before
+ * any other guard sees them.
+ */
 export function studioSignInGuard(db: Db, address: string, inner: ProxyGuard): ProxyGuard {
   return {
     apply(file, config) {
@@ -267,8 +330,9 @@ export function studioSignInGuard(db: Db, address: string, inner: ProxyGuard): P
       if (target === null) {
         return inner.apply(file, config);
       }
-      const on = signInOnFor(db, target.project, target.service);
-      return inner.apply(file, withStudioSignIn(file, config, on ? address : null));
+      const linked = isLinkedPreview(db, target.project, target.service);
+      const on = linked && readStudioSettings({ db }).previewSignIn;
+      return inner.apply(file, withStudioSignIn(file, config, on ? address : null, linked));
     },
     forget: (file) => inner.forget?.(file),
   };

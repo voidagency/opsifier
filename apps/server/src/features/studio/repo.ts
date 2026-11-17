@@ -6,7 +6,9 @@ import {
   services,
   studioApps,
   studioConversations,
+  studioGuestLinks,
   studioMembers,
+  studioRemarks,
   users,
 } from "../../core/db/schema";
 
@@ -27,6 +29,7 @@ export function listLinkedApps(db: DbHandle): LinkedApp[] {
       agentServiceId: studioApps.agentServiceId,
       repository: studioApps.repository,
       gitTokenHash: studioApps.gitTokenHash,
+      remarkCounter: studioApps.remarkCounter,
       createdAt: studioApps.createdAt,
       updatedAt: studioApps.updatedAt,
       projectName: services.projectName,
@@ -63,16 +66,29 @@ export function setAppAgent(
 }
 
 /**
- * The project's link, conversations and accounts move to another preview, when the project moves
- * to an Opsifier project of its own. Several statements: the caller runs it in a transaction.
+ * The project's link, conversations, accounts and remarks move to another preview, when the project
+ * moves to an Opsifier project of its own. Several statements: the caller runs it in a transaction.
  */
-export function moveApp(db: DbHandle, from: string, to: StudioAppRow): void {
-  db.insert(studioApps).values(to).run();
+export function moveApp(db: DbHandle, from: string, to: Omit<StudioAppRow, "remarkCounter">): void {
+  // The remarks' numbers go on from where they were.
+  const remarkCounter =
+    db
+      .select({ counter: studioApps.remarkCounter })
+      .from(studioApps)
+      .where(eq(studioApps.serviceId, from))
+      .get()?.counter ?? 0;
+  db.insert(studioApps)
+    .values({ ...to, remarkCounter })
+    .run();
   db.update(studioConversations)
     .set({ serviceId: to.serviceId })
     .where(eq(studioConversations.serviceId, from))
     .run();
   db.update(studioMembers).set({ serviceId: to.serviceId }).where(eq(studioMembers.serviceId, from)).run();
+  // A client's link opens the preview at its address: an old link answers nowhere once the project moves,
+  // and goes. What clients wrote stays with the project.
+  db.delete(studioGuestLinks).where(eq(studioGuestLinks.serviceId, from)).run();
+  db.update(studioRemarks).set({ serviceId: to.serviceId }).where(eq(studioRemarks.serviceId, from)).run();
   db.delete(studioApps).where(eq(studioApps.serviceId, from)).run();
 }
 

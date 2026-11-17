@@ -2,7 +2,11 @@ import {
   type AddStudioGithubKeyRequest,
   type AddStudioProjectRequest,
   actionEntry,
+  type CreateStudioGuestLinkRequest,
+  createdStudioGuestLink,
   deletedStudioGithubKey,
+  deletedStudioGuestLink,
+  deletedStudioRemark,
   type LinkStudioAppRequest,
   type SetStudioMembersRequest,
   type StudioApp,
@@ -15,13 +19,17 @@ import {
   studioGithubKey,
   studioGithubKeyCheck,
   studioGithubKeyList,
+  studioGuestLinkList,
   studioIsolateAll,
   studioIsolated,
   studioMembers,
   studioModels,
   studioOverview,
   studioPreviewStart,
+  studioRemark,
+  studioRemarkList,
   studioSettings,
+  type UpdateStudioRemarkRequest,
   unlinkedStudioApp,
 } from "@opsifier/contract";
 import { queryOptions } from "@tanstack/react-query";
@@ -69,6 +77,26 @@ export const studioMembersQuery = (project: string, service: string) =>
     staleTime: 0,
   });
 
+/** How often the remarks are read again, so that a client's new remark shows without a reload. */
+const REMARKS_REFRESH_MS = 20_000;
+
+export const studioRemarksQuery = (project: string, service: string) =>
+  queryOptions({
+    queryKey: [...studioKey, "remarks", project, service] as const,
+    queryFn: ({ signal }) =>
+      api.get(`${appPath(project, service)}/remarks`, { schema: studioRemarkList, signal }),
+    staleTime: 0,
+    refetchInterval: REMARKS_REFRESH_MS,
+  });
+
+export const studioLinksQuery = (project: string, service: string) =>
+  queryOptions({
+    queryKey: [...studioKey, "links", project, service] as const,
+    queryFn: ({ signal }) =>
+      api.get(`${appPath(project, service)}/links`, { schema: studioGuestLinkList, signal }),
+    staleTime: 0,
+  });
+
 export const studioSettingsQuery = queryOptions({
   queryKey: [...studioKey, "settings"] as const,
   queryFn: ({ signal }) => api.get("/settings/studio", { schema: studioSettings, signal }),
@@ -108,6 +136,18 @@ export const studioApi = {
     api.post(`${conversationPath(project, service, id)}/messages`, { body, schema: studioConversation }),
   stop: (project: string, service: string, id: string) =>
     api.post(`${conversationPath(project, service, id)}/stop`, { schema: studioConversation }),
+  createLink: (project: string, service: string, body: CreateStudioGuestLinkRequest) =>
+    api.post(`${appPath(project, service)}/links`, { body, schema: createdStudioGuestLink }),
+  /** Takes a link back; with `withRemarks`, what was written through it goes too. */
+  removeLink: (project: string, service: string, id: string, withRemarks = false) =>
+    api.delete(`${appPath(project, service)}/links/${id}`, {
+      query: withRemarks ? { remarks: "delete" } : {},
+      schema: deletedStudioGuestLink,
+    }),
+  updateRemark: (project: string, service: string, id: string, body: UpdateStudioRemarkRequest) =>
+    api.patch(`${appPath(project, service)}/remarks/${id}`, { body, schema: studioRemark }),
+  deleteRemark: (project: string, service: string, id: string) =>
+    api.delete(`${appPath(project, service)}/remarks/${id}`, { schema: deletedStudioRemark }),
   events: (project: string, service: string, id: string, after: string | null, signal?: AbortSignal) =>
     api.get(`${conversationPath(project, service, id)}/events`, {
       query: after === null ? {} : { after },

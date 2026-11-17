@@ -1,6 +1,9 @@
+import type { StudioRemark } from "@opsifier/contract";
+
 /**
  * An element the person pointed at in the preview, as the Studio inspector describes it, and the
- * block of text that carries it to the agent in a message.
+ * block of text that carries it to the agent in a message. A remark left on the preview travels the
+ * same way, in a block of its own, followed by its element's.
  */
 export interface SelectedElement {
   tag: string;
@@ -70,27 +73,97 @@ export function elementLabel(element: Pick<SelectedElement, "tag" | "text" | "co
   return parts.filter((part) => part !== undefined && part !== null).join(" ");
 }
 
+/**
+ * What a page or a client wrote, made unable to open or close a block: no `<` reaches the agent from
+ * them, so no text of theirs can end the block it sits in and speak in the person's name.
+ */
+export const fence = (text: string): string => text.replaceAll("<", "‹");
+
 /** The block a message carries for the agent: plain lines, easy for a model and a person to read. */
 export function elementBlock(element: SelectedElement): string {
-  const classes = element.classes.length === 0 ? "" : ` class="${element.classes.join(" ")}"`;
+  const classes = element.classes.length === 0 ? "" : ` class="${fence(element.classes.join(" "))}"`;
   const attributes = Object.entries(element.attributes)
-    .map(([name, value]) => `${name}="${value}"`)
+    .map(([name, value]) => `${fence(name)}="${fence(value)}"`)
     .join(" ");
   return [
     OPEN,
-    `Page: ${element.path}`,
-    `Element: <${element.tag}${classes}>${element.text === "" ? "" : ` "${element.text}"`}`,
-    ...(element.components.length === 0 ? [] : [`React components: ${element.components.join(" < ")}`]),
-    `Selector: ${element.selector}`,
+    `Page: ${fence(element.path)}`,
+    `Element: <${fence(element.tag)}${classes}>${element.text === "" ? "" : ` "${fence(element.text)}"`}`,
+    ...(element.components.length === 0
+      ? []
+      : [`React components: ${element.components.map(fence).join(" < ")}`]),
+    `Selector: ${fence(element.selector)}`,
     ...(attributes === "" ? [] : [`Attributes: ${attributes}`]),
     CLOSE,
   ].join("\n");
 }
 
-/** A sent message's own words, and the elements it points at, each named as {@link elementLabel} does. */
-export function splitMessage(text: string): { text: string; elements: string[] } {
+export type Device = "desktop" | "tablet" | "mobile";
+
+/** The kind of screen a window this wide is: a phone's up to 600 pixels, a tablet's up to 1024. */
+export function deviceOfWidth(width: number): Device {
+  return width <= 600 ? "mobile" : width <= 1024 ? "tablet" : "desktop";
+}
+
+const REMARK_OPEN = "<client_remark>";
+const REMARK_CLOSE = "</client_remark>";
+const REMARK_BLOCK = /<client_remark>([\s\S]*?)<\/client_remark>/g;
+
+/** The block a message carries to hand the agent a remark: what was written, by whom, where, on what screen. */
+export function remarkBlock(remark: StudioRemark): string {
+  const window =
+    remark.viewport === null
+      ? []
+      : [
+          `Window: ${remark.viewport.width} × ${remark.viewport.height} (${deviceOfWidth(remark.viewport.width)})`,
+        ];
+  return [
+    REMARK_OPEN,
+    `Remark: ${remark.number}`,
+    `From: ${fence(remark.author)}`,
+    `Page: ${fence(remark.path)}`,
+    ...window,
+    "Text:",
+    fence(remark.text),
+    REMARK_CLOSE,
+    ...(remark.element === null ? [] : ["", elementBlock({ ...remark.element, path: remark.path })]),
+  ].join("\n");
+}
+
+/** A remark a sent message carries, as its tag shows it. */
+export interface RemarkTag {
+  number: number;
+  path: string;
+  device: Device | null;
+  text: string;
+}
+
+const lineOf = (body: string, prefix: string): string =>
+  body
+    .split("\n")
+    .find((candidate) => candidate.startsWith(prefix))
+    ?.slice(prefix.length)
+    .trim() ?? "";
+
+/**
+ * A sent message's own words, the elements it points at, each named as {@link elementLabel} does, and
+ * the remarks it hands the agent.
+ */
+export function splitMessage(text: string): { text: string; elements: string[]; remarks: RemarkTag[] } {
+  const remarks: RemarkTag[] = [];
+  const withoutRemarks = text.replace(REMARK_BLOCK, (_, body: string) => {
+    const width = /^(\d+)/.exec(lineOf(body, "Window:"));
+    const words = body.split("\nText:\n")[1] ?? "";
+    remarks.push({
+      number: Number(lineOf(body, "Remark:")) || 0,
+      path: lineOf(body, "Page:") || "/",
+      device: width === null ? null : deviceOfWidth(Number(width[1])),
+      text: words.trim(),
+    });
+    return "";
+  });
   const elements: string[] = [];
-  const rest = text.replace(BLOCK, (_, body: string) => {
+  const rest = withoutRemarks.replace(BLOCK, (_, body: string) => {
     const line = (prefix: string) =>
       body
         .split("\n")
@@ -110,5 +183,5 @@ export function splitMessage(text: string): { text: string; elements: string[] }
     );
     return "";
   });
-  return { text: rest.trim(), elements };
+  return { text: rest.trim(), elements, remarks };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { protectServiceConfig } from "../services/compile/protection";
+import { auditRoutingFiles, protectServiceConfig } from "../services/compile/protection";
 import { PreviewSignIn, safeReturnPath, withStudioSignIn } from "./signin";
 
 const ADDRESS = "http://opsifier:3000/api/proxy-pages/studio-signin";
@@ -56,6 +56,95 @@ describe("a Studio preview's routes", () => {
       "opsifier-redirect-site-0",
     ]);
     expect(JSON.stringify(gated)).not.toContain("opsifier-protect-gate");
+  });
+});
+
+describe("the panel's pages on a Studio preview's own address", () => {
+  const GUEST = `${MIDDLEWARE}__guest`;
+  /** As the panel writes a site's routes: one entry point each, the secure one with its certificate. */
+  const served = {
+    http: {
+      routers: {
+        web: {
+          rule: "Host(`site.example.com`)",
+          entryPoints: ["web"],
+          middlewares: ["opsifier-redirect-https"],
+          service: "site",
+        },
+        secure: {
+          rule: "Host(`site.example.com`)",
+          entryPoints: ["websecure"],
+          middlewares: ["opsifier-redirect-site-0"],
+          service: "site",
+          tls: { certResolver: "letsencrypt" },
+        },
+        "secure-api": {
+          rule: "Host(`site.example.com`) && PathPrefix(`/api`)",
+          entryPoints: ["websecure"],
+          service: "site",
+          tls: { certResolver: "letsencrypt" },
+        },
+      },
+      middlewares: plain.http.middlewares,
+    },
+  };
+
+  it("send /__opsifier/studio/ on each host of the preview to the panel, signed in or not", () => {
+    const routed = withStudioSignIn(FILE, served, null, true) as Routed;
+
+    expect(routed.http.routers["opsifier-studio-guest-web"]).toEqual({
+      rule: "Host(`site.example.com`) && PathPrefix(`/__opsifier/studio/`)",
+      entryPoints: ["web"],
+      middlewares: ["opsifier-redirect-https", GUEST],
+      service: "opsifier-panel",
+    });
+    expect(routed.http.routers["opsifier-studio-guest-secure"]).toEqual({
+      rule: "Host(`site.example.com`) && PathPrefix(`/__opsifier/studio/`)",
+      entryPoints: ["websecure"],
+      middlewares: [GUEST],
+      service: "opsifier-panel",
+      tls: { certResolver: "letsencrypt" },
+    });
+    // One route for each host and entry point.
+    expect(routed.http.routers["opsifier-studio-guest-secure-api"]).toBeUndefined();
+    expect(routed.http.middlewares?.[GUEST]).toEqual({
+      replacePathRegex: {
+        regex: "^/__opsifier/studio/(.*)$",
+        replacement: "/api/proxy-pages/studio/$1",
+      },
+    });
+    // The preview's own routes are as they were: the sign-in is off.
+    expect(routed.http.routers.secure?.middlewares).toEqual(["opsifier-redirect-site-0"]);
+  });
+
+  it("go once the service is no longer a Studio project's preview", () => {
+    const routed = withStudioSignIn(FILE, withStudioSignIn(FILE, served, ADDRESS, true), ADDRESS, true);
+    expect(Object.keys((routed as Routed).http.routers)).toEqual([
+      "web",
+      "secure",
+      "secure-api",
+      "opsifier-studio-guest-web",
+      "opsifier-studio-guest-secure",
+    ]);
+
+    expect(withStudioSignIn(FILE, routed, null, false)).toEqual(served);
+  });
+
+  it("are left out of the server's gate and of the site's domains: the panel checks who is there", () => {
+    const routed = withStudioSignIn(FILE, served, null, true);
+
+    const gated = protectServiceConfig(routed, {
+      enabled: true,
+      users: ["opsifier:$2y$10$abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012"],
+      exemptions: [],
+    }) as Routed;
+
+    expect(gated.http.routers["opsifier-studio-guest-secure"]?.middlewares).toEqual([
+      "opsifier-protect-noindex",
+      GUEST,
+    ]);
+    const audit = auditRoutingFiles([{ file: FILE, config: gated }], true);
+    expect(audit.domains.map((domain) => domain.path)).toEqual(["/", "/api"]);
   });
 });
 

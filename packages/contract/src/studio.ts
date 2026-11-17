@@ -348,3 +348,144 @@ export const studioGithubKeyCheck = z.object({
   message: z.string().nullable(),
 });
 export type StudioGithubKeyCheck = z.infer<typeof studioGithubKeyCheck>;
+
+const recordId = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, "Invalid id");
+
+/**
+ * A link that opens a Studio project's preview to someone without an account, a client most often,
+ * who can then leave remarks on it. The link itself is given once, when it is made.
+ */
+export const studioGuestLink = z.object({
+  id: z.string(),
+  /** Who it is for, as its maker wrote it: it signs what that person writes. */
+  label: z.string(),
+  /** Whether it opens the preview with the remarks tool shown. */
+  remarks: z.boolean(),
+  /** How many remarks were written through it, and are still kept. */
+  remarkCount: z.number().int().min(0),
+  createdBy: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  /** Null: it opens the preview until it is taken back. */
+  expiresAt: z.iso.datetime().nullable(),
+  lastUsedAt: z.iso.datetime().nullable(),
+  expired: z.boolean(),
+});
+export type StudioGuestLink = z.infer<typeof studioGuestLink>;
+
+/** GET .../studio/links */
+export const studioGuestLinkList = z.object({ links: z.array(studioGuestLink) });
+export type StudioGuestLinkList = z.infer<typeof studioGuestLinkList>;
+
+/** POST .../studio/links: the link, with its address, which is never shown again. */
+export const createdStudioGuestLink = studioGuestLink.extend({ url: z.string() });
+export type CreatedStudioGuestLink = z.infer<typeof createdStudioGuestLink>;
+
+export const createStudioGuestLinkRequest = z.strictObject({
+  label: z.string().trim().min(1, "Required").max(80, "Must be at most 80 characters"),
+  remarks: z.boolean().default(true),
+  /** How many days the link opens the preview for. Null: until it is taken back. */
+  days: z.number().int().min(1).max(365).nullable().default(30),
+});
+export type CreateStudioGuestLinkRequest = z.input<typeof createStudioGuestLinkRequest>;
+
+export const studioGuestLinkPath = servicePath.extend({ link: recordId });
+
+/** DELETE .../studio/links/{link}: `remarks=delete` deletes what was written through it too. */
+export const deleteStudioGuestLinkQuery = z.object({ remarks: z.enum(["keep", "delete"]).default("keep") });
+
+/** DELETE .../studio/links/{link} */
+export const deletedStudioGuestLink = z.object({ id: z.string() });
+
+/** A remark waits to be dealt with, is with the agent, or is dealt with: its writer sees which. */
+export const studioRemarkStatus = z.enum(["new", "in_progress", "done"]);
+export type StudioRemarkStatus = z.infer<typeof studioRemarkStatus>;
+
+/** The element a remark points at, as the Studio's inspector describes it. */
+export const studioRemarkElement = z.object({
+  tag: z.string(),
+  text: z.string(),
+  classes: z.array(z.string()),
+  attributes: z.record(z.string(), z.string()),
+  selector: z.string(),
+  /** The React components around it, nearest first. */
+  components: z.array(z.string()),
+});
+export type StudioRemarkElement = z.infer<typeof studioRemarkElement>;
+
+/** Where in its element a remark's pin goes, from the top left corner, as fractions of its size. */
+export const studioRemarkPoint = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) });
+export type StudioRemarkPoint = z.infer<typeof studioRemarkPoint>;
+
+/** The size of the window a remark was written in, which says on what kind of screen. */
+export const studioRemarkViewport = z.object({
+  width: z.number().int().min(0).max(100_000),
+  height: z.number().int().min(0).max(100_000),
+});
+export type StudioRemarkViewport = z.infer<typeof studioRemarkViewport>;
+
+/** What someone wrote about a page of a Studio project's preview, pinned to one of its elements. */
+export const studioRemark = z.object({
+  id: z.string(),
+  /** Its number in the project, which its pin shows. */
+  number: z.number().int(),
+  /** The page: its path, query and fragment. */
+  path: z.string(),
+  element: studioRemarkElement.nullable(),
+  point: studioRemarkPoint.nullable(),
+  viewport: studioRemarkViewport.nullable(),
+  text: z.string(),
+  /** Who wrote it: who the link was made for, or an account's e-mail. */
+  author: z.string(),
+  authorKind: z.enum(["guest", "account"]),
+  status: studioRemarkStatus,
+  /** The conversation it was handed to, if it was. */
+  conversationId: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+export type StudioRemark = z.infer<typeof studioRemark>;
+
+/** GET .../studio/remarks: the project's remarks, the most recent first. */
+export const studioRemarkList = z.object({ remarks: z.array(studioRemark) });
+export type StudioRemarkList = z.infer<typeof studioRemarkList>;
+
+/** PATCH .../studio/remarks/{remark} */
+export const updateStudioRemarkRequest = z.strictObject({
+  status: studioRemarkStatus,
+  /** The conversation it is handed to. Left out, it stays as it was. */
+  conversationId: conversationId.nullable().optional(),
+});
+export type UpdateStudioRemarkRequest = z.infer<typeof updateStudioRemarkRequest>;
+
+export const studioRemarkPath = servicePath.extend({ remark: recordId });
+
+/** DELETE .../studio/remarks/{remark} */
+export const deletedStudioRemark = z.object({ id: z.string() });
+
+/**
+ * What the preview's own address answers at /__opsifier/studio/remarks, to whoever a link or the
+ * panel's sign-in lets in: who they are, and the project's remarks, without who handled them.
+ */
+export const studioPreviewRemarks = z.object({
+  viewer: z.object({ name: z.string(), kind: z.enum(["guest", "account"]) }),
+  remarks: z.array(
+    studioRemark
+      .pick({
+        id: true,
+        number: true,
+        path: true,
+        element: true,
+        point: true,
+        viewport: true,
+        text: true,
+        author: true,
+        status: true,
+        createdAt: true,
+      })
+      .extend({
+        /** Written by this viewer: they may take it back while nobody has dealt with it. */
+        mine: z.boolean(),
+      }),
+  ),
+});
+export type StudioPreviewRemarks = z.infer<typeof studioPreviewRemarks>;

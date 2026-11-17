@@ -6,10 +6,10 @@ import "../../i18n";
 import { i18n } from "../../i18n";
 import { LoginPage } from "./LoginPage";
 
-const router = vi.hoisted(() => ({ navigate: vi.fn() }));
+const router = vi.hoisted(() => ({ navigate: vi.fn(), search: {} as { redirect?: string } }));
 
 vi.mock("@tanstack/react-router", () => ({
-  useSearch: () => ({}),
+  useSearch: () => router.search,
   useRouter: () => ({ navigate: router.navigate }),
 }));
 
@@ -52,6 +52,7 @@ const verify = () => fireEvent.click(screen.getByRole("button", { name: "Verify"
 beforeEach(async () => {
   await i18n.changeLanguage("en");
   router.navigate.mockReset();
+  router.search = {};
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -121,5 +122,28 @@ describe("the login 2FA step", () => {
     await i18n.changeLanguage("fr");
 
     await screen.findByRole("button", { name: "Utiliser plutôt un code de récupération" });
+  });
+});
+
+describe("signing in on the way to a Studio preview", () => {
+  const renderLogin = () =>
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <LoginPage />
+      </QueryClientProvider>,
+    );
+
+  it("tells a client without an account that a link opens the preview", () => {
+    router.search = { redirect: "/studio/open-preview?host=site.example.com&to=%2F" };
+    renderLogin();
+
+    expect(screen.getByText(/A preview also opens without one, with a client link/)).toBeTruthy();
+  });
+
+  it("says nothing of it otherwise", () => {
+    router.search = { redirect: "/projects" };
+    renderLogin();
+
+    expect(screen.queryByText(/client link/)).toBeNull();
   });
 });
