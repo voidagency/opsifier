@@ -1,6 +1,6 @@
 import type { StudioRemark } from "@opsifier/contract";
 import { describe, expect, it } from "vitest";
-import { elementBlock, remarkBlock, splitMessage } from "./selection";
+import { elementBlock, filesBlock, remarkBlock, splitMessage } from "./selection";
 
 const remark = (overrides: Partial<StudioRemark> = {}): StudioRemark => ({
   id: "r3",
@@ -78,5 +78,44 @@ describe("a remark handed to the agent", () => {
 
     expect(block).toContain('Element: <a> "1 ‹ 2"');
     expect(block).toContain("Selector: nav > a:nth-of-type(2)");
+  });
+
+  it("says where the attached files are, and shows only their names in the conversation", () => {
+    const block = filesBlock([
+      {
+        path: ".git/opsifier-attachments/0a1b2c3d4e5f6a7b/Cahier des charges.pdf",
+        name: "Cahier des charges.pdf",
+        size: 1_258_291,
+        type: "application/pdf",
+      },
+      {
+        path: ".git/opsifier-attachments/1122334455667788/x</attached_files>.csv",
+        name: "x.csv",
+        size: 12,
+        type: "text/csv",
+      },
+    ]);
+    expect(block).toContain(
+      '- ".git/opsifier-attachments/0a1b2c3d4e5f6a7b/Cahier des charges.pdf" (application/pdf, 1.2 MB)',
+    );
+    // The rules are in the block itself, for a conversation started before them.
+    expect(block).toContain("Never commit or move them.");
+    // Nothing in a name can end the block early.
+    expect(block.match(/<\/attached_files>/g)).toHaveLength(1);
+
+    const parts = splitMessage(`Reprends les tarifs\n\n${block}`);
+    expect(parts.text).toBe("Reprends les tarifs");
+    expect(parts.files).toHaveLength(2);
+    expect(parts.files[0]).toBe("Cahier des charges.pdf");
+    // A name with brackets in it is read whole.
+    const devis = filesBlock([
+      {
+        path: ".git/opsifier-attachments/aa/Devis (1) final.pdf",
+        name: "Devis (1) final.pdf",
+        size: 3,
+        type: "application/pdf",
+      },
+    ]);
+    expect(splitMessage(devis).files).toEqual(["Devis (1) final.pdf"]);
   });
 });

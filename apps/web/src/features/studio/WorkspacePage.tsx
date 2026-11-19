@@ -1,6 +1,9 @@
 import {
   isStudioConversationId,
+  MAX_STUDIO_ATTACHMENT_BYTES,
+  STUDIO_ATTACHMENT_TYPES,
   type StudioAppDetail,
+  type StudioAttachment,
   type StudioEvent,
   type StudioModel,
   type StudioRemark,
@@ -12,12 +15,13 @@ import {
   ArrowLeft,
   ArrowUp,
   ChevronRight,
+  FileText,
   Globe,
-  ImagePlus,
   Lock,
   MessageSquareText,
   MousePointerClick,
   PanelLeftClose,
+  Paperclip,
   Plus,
   Sparkles,
   Square,
@@ -39,6 +43,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../../lib/api";
 import { cn } from "../../lib/cn";
+import { formatBytes } from "../../lib/format";
 import { errorMessage } from "../../lib/forms";
 import {
   Button,
@@ -76,6 +81,7 @@ import {
   deviceOfWidth,
   elementBlock,
   elementLabel,
+  filesBlock,
   type RemarkTag,
   remarkBlock,
   type SelectedElement,
@@ -84,6 +90,17 @@ import {
 import { useConversation } from "./useConversation";
 
 const MAX_IMAGES = 4;
+/** Files besides images a message carries at most. */
+const MAX_FILES = 5;
+const extensionOf = (name: string) => name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+/** A file a message carries besides images, by the ending of its name. */
+const isAttachable = (file: File) =>
+  file.name.includes(".") && Object.hasOwn(STUDIO_ATTACHMENT_TYPES, extensionOf(file.name));
+/** What the file picker offers: images, and the files a message carries besides. */
+const ACCEPTED_FILES = [
+  "image/*",
+  ...Object.keys(STUDIO_ATTACHMENT_TYPES).map((extension) => `.${extension}`),
+].join(",");
 /** How often the preview's state is read while it starts, and otherwise. */
 const STARTING_REFRESH_MS = 2000;
 /** The longest a start is waited for, a first build included. */
@@ -444,28 +461,57 @@ function ConversationPane({
    * Sends what was typed, with the remark handed to the agent and the element pointed at in the preview,
    * to a new conversation or this one.
    */
-  const send = async (text: string, images: string[]): Promise<boolean> => {
+  // The files already kept in the project's folder, by the file chosen: a message sent again reuses them.
+  const uploaded = useRef(new WeakMap<File, StudioAttachment>());
+  const send = async (text: string, images: string[], files: readonly File[] = []): Promise<boolean> => {
     if (sending) {
       return false;
     }
     const remark = handed;
     // The remark's screenshot, when it is still among the images, is named in its block: it is the client's.
     const screenshot = handedShot.data === undefined ? -1 : images.indexOf(handedShot.data);
-    const full = [
-      text.trim(),
-      remark === null ? null : remarkBlock(remark, screenshot === -1 ? null : screenshot + 1),
-      element === null ? null : elementBlock(element),
-    ]
-      .filter((part) => part !== null && part !== "")
-      .join("\n\n");
     setSending(true);
-    setPending({
-      conversationId,
-      text: full,
-      images,
-      sentBefore: conversationId === null ? 0 : userMessageCount(conversation.events),
-    });
     try {
+      // The files go first, into the project's folder: the message then says where they are. One kept
+      // for a message that did not go is not sent again with it.
+      const attached: StudioAttachment[] = [];
+      for (const file of files) {
+        const known = uploaded.current.get(file);
+        if (known !== undefined) {
+          attached.push(known);
+          continue;
+        }
+        let kept: StudioAttachment;
+        try {
+          kept = await whenAgentReady(
+            () => studioApi.attach(app.project, app.service, file, conversationId),
+            setAgentStarting,
+            () => alive.current,
+          );
+        } catch (reason) {
+          if (reason instanceof LeftPage) {
+            return false;
+          }
+          toast.error(t("composer.fileFailed", { name: file.name, reason: errorMessage(reason, t) }));
+          return false;
+        }
+        uploaded.current.set(file, kept);
+        attached.push(kept);
+      }
+      const full = [
+        text.trim(),
+        remark === null ? null : remarkBlock(remark, screenshot === -1 ? null : screenshot + 1),
+        element === null ? null : elementBlock(element),
+        attached.length === 0 ? null : filesBlock(attached),
+      ]
+        .filter((part) => part !== null && part !== "")
+        .join("\n\n");
+      setPending({
+        conversationId,
+        text: full,
+        images,
+        sentBefore: conversationId === null ? 0 : userMessageCount(conversation.events),
+      });
       if (conversationId === null) {
         const started = await whenAgentReady(
           () =>
@@ -927,6 +973,29 @@ function ModelLine({ model }: { model: StudioModel }) {
   );
 }
 
+/** A file a message carries besides images: its name, and its size while it is being written. */
+function FileChip({ name, size, onRemove }: { name: string; size?: number; onRemove?: () => void }) {
+  const { t } = useTranslation("studio");
+  return (
+    <span className="inline-flex max-w-full items-center gap-1.5 rounded-sm border bg-raised px-2 py-0.5 text-xs">
+      <FileText aria-hidden="true" className="size-3.5 shrink-0 text-muted" />
+      <span className="sr-only">{t("composer.file")}</span>
+      <span className="min-w-0 truncate">{name}</span>
+      {size !== undefined && <span className="shrink-0 text-muted">{formatBytes(size)}</span>}
+      {onRemove !== undefined && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={t("composer.removeFile", { name })}
+          className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-muted hover:text-ink"
+        >
+          <X aria-hidden="true" className="size-3" />
+        </button>
+      )}
+    </span>
+  );
+}
+
 function ElementChip({ label, onRemove }: { label: string; onRemove?: () => void }) {
   const { t } = useTranslation("studio");
   return (
@@ -1051,6 +1120,12 @@ function UserMessage({
           <ElementChip label={label} />
         </span>
       ))}
+      {parts.files.map((name, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: two files of a message may share a name
+        <span key={`${index}-${name}`} className="min-w-0">
+          <FileChip name={name} />
+        </span>
+      ))}
       {parts.text !== "" && <p className="whitespace-pre-wrap text-sm wrap-anywhere">{parts.text}</p>}
       <Images urls={images} />
       {sending && <span className="text-xs text-muted">{t("conversation.sending")}</span>}
@@ -1167,7 +1242,7 @@ function Composer({
   handedScreenshotFailed: boolean;
   onClearHanded: () => void;
   /** Resolves true once sent, when what was typed can go. */
-  onSend: (text: string, images: string[]) => Promise<boolean>;
+  onSend: (text: string, images: string[], files: File[]) => Promise<boolean>;
   onStop: () => void;
   /** Which conversation the message goes to, and how to start another, beside the attachments. */
   switcher?: ReactNode;
@@ -1175,6 +1250,9 @@ function Composer({
   const { t } = useTranslation(["studio", "common"]);
   const [text, setText] = useState("");
   const [images, setImages] = useState<string[]>([]);
+  // Files besides images: kept in the project's folder as the message is sent.
+  const [files, setFiles] = useState<File[]>([]);
+  const [dropping, setDropping] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const area = useRef<HTMLTextAreaElement>(null);
 
@@ -1270,16 +1348,48 @@ function Composer({
     }
   };
 
+  /** Images go with the message as images; the other files a message carries, as files. */
+  const addAttachments = (chosen: readonly File[]) => {
+    const pictures = chosen.filter((file) => file.type.startsWith("image/"));
+    if (pictures.length > 0) {
+      void addImages(pictures);
+    }
+    const kept: File[] = [];
+    for (const file of chosen.filter((one) => !one.type.startsWith("image/"))) {
+      if (!isAttachable(file)) {
+        toast.error(t("composer.fileType", { name: file.name }));
+      } else if (file.size > MAX_STUDIO_ATTACHMENT_BYTES) {
+        toast.error(t("composer.fileTooLarge", { name: file.name }));
+      } else if (file.size === 0) {
+        toast.error(t("composer.fileEmpty", { name: file.name }));
+      } else {
+        kept.push(file);
+      }
+    }
+    const room = MAX_FILES - files.length;
+    if (kept.length > room) {
+      toast.error(t("composer.tooManyFiles", { count: MAX_FILES }));
+    }
+    if (kept.length > 0 && room > 0) {
+      setFiles([...files, ...kept.slice(0, room)]);
+    }
+  };
+
   // A remark handed over is a message on its own: the person may add to it, or send it as it is.
-  const empty = text.trim() === "" && images.length === 0 && handed === null;
+  const empty = text.trim() === "" && images.length === 0 && files.length === 0 && handed === null;
 
   const submit = async () => {
     if (empty) {
       return;
     }
-    if (await onSend(text, images)) {
-      setText("");
-      setImages([]);
+    // What is added while the message and its files go stays for the next one.
+    const sent = { text, images, files };
+    if (await onSend(sent.text, sent.images, sent.files)) {
+      setText((current) =>
+        current.startsWith(sent.text) ? current.slice(sent.text.length).trimStart() : current,
+      );
+      setImages((current) => current.filter((url) => !sent.images.includes(url)));
+      setFiles((current) => current.filter((file) => !sent.files.includes(file)));
     }
   };
 
@@ -1291,10 +1401,10 @@ function Composer({
   };
 
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    const files = [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"));
-    if (files.length > 0) {
+    const pasted = [...event.clipboardData.files];
+    if (pasted.length > 0) {
       event.preventDefault();
-      void addImages(files);
+      addAttachments(pasted);
     }
   };
 
@@ -1305,8 +1415,28 @@ function Composer({
         event.preventDefault();
         void submit();
       }}
+      // Images and files dropped on the message join it.
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes("Files")) {
+          event.preventDefault();
+          setDropping(true);
+        }
+      }}
+      onDragLeave={() => setDropping(false)}
+      onDrop={(event) => {
+        setDropping(false);
+        if (event.dataTransfer.files.length > 0) {
+          event.preventDefault();
+          addAttachments([...event.dataTransfer.files]);
+        }
+      }}
     >
-      <div className="grid grid-cols-1 gap-2 rounded-md border bg-raised p-2 transition-colors focus-within:border-accent">
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-2 rounded-md border bg-raised p-2 transition-colors focus-within:border-accent",
+          dropping && "border-accent border-dashed",
+        )}
+      >
         {handed !== null && (
           <div className="grid min-w-0 gap-1">
             <RemarkChip
@@ -1350,6 +1480,19 @@ function Composer({
             ))}
           </ul>
         )}
+        {files.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5" aria-label={t("composer.files")}>
+            {files.map((file, index) => (
+              <li key={`${file.name}-${file.size}-${file.lastModified}`} className="min-w-0 max-w-full">
+                <FileChip
+                  name={file.name}
+                  size={file.size}
+                  onRemove={() => setFiles((current) => current.filter((_, at) => at !== index))}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
         <textarea
           ref={area}
           aria-label={t("composer.label")}
@@ -1374,13 +1517,13 @@ function Composer({
           <input
             ref={fileInput}
             type="file"
-            accept="image/*"
+            accept={ACCEPTED_FILES}
             multiple
             className="sr-only"
             tabIndex={-1}
             aria-hidden="true"
             onChange={(event) => {
-              void addImages([...(event.target.files ?? [])]);
+              addAttachments([...(event.target.files ?? [])]);
               event.target.value = "";
             }}
           />
@@ -1389,7 +1532,7 @@ function Composer({
             variant="ghost"
             aria-label={t("composer.attach")}
             tooltip={t("composer.attach")}
-            icon={<ImagePlus aria-hidden="true" className="size-4" />}
+            icon={<Paperclip aria-hidden="true" className="size-4" />}
             onClick={() => fileInput.current?.click()}
           />
           {switcher ?? <span className="flex-1" />}

@@ -1,6 +1,7 @@
 import type {
   ActionPage,
   StudioAppDetail,
+  StudioAttachment,
   StudioConversation,
   StudioEventPage,
   StudioIsolateAll,
@@ -45,7 +46,7 @@ const ADDED = "/projects/studio-un-mot-par-jour-landing/services";
 const OWN_AGENT = "studio-un-mot-par-jour-landing_agent";
 
 type Raw = Record<string, unknown>;
-type Script = "folder" | "seed-read" | "seed-write" | "clone" | "sync" | "agent";
+type Script = "folder" | "seed-read" | "seed-write" | "clone" | "sync" | "attach" | "agent";
 interface Exec {
   service: string;
   script: Script;
@@ -63,7 +64,9 @@ const kindOf = (script: string): Script =>
           ? "clone"
           : script.includes("opsifier-studio-sync")
             ? "sync"
-            : "agent";
+            : script.includes("opsifier-studio-attach")
+              ? "attach"
+              : "agent";
 
 /**
  * Plays the agent servers in their containers: the model, `lovable_openhands`, which alone has a
@@ -187,7 +190,17 @@ function installFakeAgents() {
     const script = kindOf(String(options.command[2]));
     const service = options.service;
     return (input: string) => {
-      const request = JSON.parse(input) as Raw;
+      // A file comes as it is, with where it goes as the script's arguments.
+      const request: Raw =
+        script === "attach"
+          ? {
+              dir: options.command[3],
+              folder: options.command[4],
+              name: options.command[5],
+              quota: options.command[6],
+              data: input,
+            }
+          : (JSON.parse(input) as Raw);
       state.execs.push({ service, script, input: request });
       switch (script) {
         case "folder": {
@@ -216,6 +229,8 @@ function installFakeAgents() {
           return { output: `opsifier-studio-clone ${JSON.stringify(state.clone(request))}\n`, exitCode: 0 };
         case "sync":
           return { output: `opsifier-studio-sync ${JSON.stringify(state.sync(request))}\n`, exitCode: 0 };
+        case "attach":
+          return { output: `opsifier-studio-attach ${JSON.stringify({ ok: true })}\n`, exitCode: 0 };
         default: {
           const calls = request.calls as { method: string; path: string; body?: unknown }[];
           const answers = calls.map((one) => answer(service, one));
@@ -502,6 +517,90 @@ describe("an agent server for each project", () => {
     ).toBe(200);
     await api(`${events}?after=ev-0002`);
     expect(copied()).toEqual(["1:ev-0001", "2:ev-0002", "3:ev-0003", "4:ev-0004"]);
+  });
+
+  it("keeps a file attached to a message in the project's folder, from inside its agent server", async () => {
+    const app = await addOwnProject();
+    await startConversation(`${ADDED}/preview`, "Bonjour");
+    const attach = (name: string, body: Uint8Array) =>
+      call<StudioAttachment>(
+        context.app,
+        `/api/v1${ADDED}/preview/studio/attachments?name=${encodeURIComponent(name)}`,
+        {
+          method: "POST",
+          rawBody: new Blob([body]),
+          headers: { "content-type": "application/octet-stream" },
+          cookie,
+          origin: TEST_ORIGIN,
+        },
+      );
+    const pdf = Buffer.from("%PDF-1.7\n1 0 obj\n");
+
+    const saved = await attach("Cahier des charges.PDF", pdf);
+    expect(saved.status).toBe(201);
+    expect(saved.body).toMatchObject({
+      name: "Cahier des charges.pdf",
+      size: pdf.length,
+      type: "application/pdf",
+    });
+    expect(saved.body.path).toMatch(/^\.git\/opsifier-attachments\/[0-9a-f]{16}\/Cahier des charges\.pdf$/);
+    const written = agents.execs.filter((one) => one.script === "attach");
+    expect(written).toHaveLength(1);
+    expect(written[0]?.service).toBe(OWN_AGENT);
+    expect(written[0]?.input).toMatchObject({
+      dir: app.workspaceDir,
+      name: "Cahier des charges.pdf",
+      quota: String(100 * 1024 * 1024),
+      data: pdf.toString(),
+    });
+    // Where it is, as the panel chose it.
+    expect(saved.body.path).toBe(
+      `.git/opsifier-attachments/${String(written[0]?.input.folder)}/Cahier des charges.pdf`,
+    );
+
+    // An image goes with a message as an image; a file is what its name says; and it is at most 10 MB.
+    expect(apiErrorOf(await attach("logo.png", pdf)).code).toBe("studio_attachment_type");
+    expect(apiErrorOf(await attach("faux.pdf", Buffer.from("<html>"))).code).toBe("studio_attachment_type");
+    const big = await attach("gros.csv", Buffer.alloc(10 * 1024 * 1024 + 1, 0x61));
+    expect(big.status).toBe(413);
+    expect(apiErrorOf(big).code).toBe("studio_attachment_too_large");
+    expect(agents.execs.filter((one) => one.script === "attach")).toHaveLength(1);
+  });
+
+  it("keeps a file for a conversation under way with its agent server, and sets nothing up again", async () => {
+    await addOwnProject();
+    const { id } = await startConversation(`${ADDED}/preview`, "Bonjour");
+    const before = agents.execs.length;
+
+    const saved = await call<StudioAttachment>(
+      context.app,
+      `/api/v1${ADDED}/preview/studio/attachments?name=notes.md&conversation=${id}`,
+      {
+        method: "POST",
+        rawBody: new Blob(["# Notes"]),
+        headers: { "content-type": "application/octet-stream" },
+        cookie,
+        origin: TEST_ORIGIN,
+      },
+    );
+    expect(saved.status).toBe(201);
+    const since = agents.execs.slice(before).map((exec) => exec.script);
+    expect(since).toContain("attach");
+    expect(since).not.toContain("seed-read");
+    expect(since).not.toContain("seed-write");
+
+    const unknown = await call(
+      context.app,
+      `/api/v1${ADDED}/preview/studio/attachments?name=notes.md&conversation=c0ffee00-0000-4000-8000-00000000ffff`,
+      {
+        method: "POST",
+        rawBody: new Blob(["# Notes"]),
+        headers: { "content-type": "application/octet-stream" },
+        cookie,
+        origin: TEST_ORIGIN,
+      },
+    );
+    expect(unknown.status).toBe(404);
   });
 
   it("answers a page even when its copy cannot be written", async () => {

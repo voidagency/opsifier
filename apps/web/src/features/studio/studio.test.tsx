@@ -792,6 +792,117 @@ describe("a Studio project", () => {
     );
   });
 
+  it("keeps a file attached to a message in the project's folder, and says where in the message", async () => {
+    const attached = {
+      path: ".git/opsifier-attachments/0a1b2c3d4e5f6a7b/Tarifs 2027.pdf",
+      name: "Tarifs 2027.pdf",
+      size: 9,
+      type: "application/pdf",
+    };
+    const names: string[] = [];
+    const conversations: (string | null)[] = [];
+    const server = installFakeServer(
+      base({
+        [`POST ${APP}/attachments`]: (_body: unknown, url: URL) => {
+          names.push(url.searchParams.get("name") ?? "");
+          conversations.push(url.searchParams.get("conversation"));
+          return withStatus(201, attached);
+        },
+        [`POST ${APP}/conversations/${CONVERSATION}/messages`]: conversation,
+      }),
+    );
+    const rendered = renderApp("/studio/lovable/cd-studio-preview");
+    await screen.findByText("Change le titre");
+    const picker = rendered.container.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(picker.accept).toContain(".pdf");
+    expect(picker.accept).toContain(".xlsx");
+
+    fireEvent.change(picker, {
+      target: { files: [new File(["%PDF-1.7"], "Tarifs 2027.pdf", { type: "application/pdf" })] },
+    });
+    const files = await screen.findByRole("list", { name: "Files to send" });
+    expect(within(files).getByText("Tarifs 2027.pdf")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Message to the agent"), {
+      target: { value: "Reprends ces tarifs" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(server.calls.find((call) => call.path.endsWith("/messages"))).toBeTruthy());
+    expect(names).toEqual(["Tarifs 2027.pdf"]);
+    // The file goes to the agent server of the conversation shown.
+    expect(conversations).toEqual([CONVERSATION]);
+    const sent = server.calls.find((call) => call.path.endsWith("/messages"))?.body as { text: string };
+    expect(sent.text).toContain("Reprends ces tarifs");
+    expect(sent.text).toContain(`<attached_files>`);
+    expect(sent.text).toContain(`- ${JSON.stringify(attached.path)} (application/pdf, 9 B)`);
+    // The file went before the message, and leaves the message box with it.
+    const order = server.calls.map((call) => call.path);
+    expect(order.findIndex((path) => path.endsWith("/attachments"))).toBeLessThan(
+      order.findIndex((path) => path.endsWith("/messages")),
+    );
+    await waitFor(() => expect(screen.queryByRole("list", { name: "Files to send" })).toBeNull());
+  });
+
+  it("sends a message again without keeping its files a second time", async () => {
+    let attachments = 0;
+    let messages = 0;
+    const server = installFakeServer(
+      base({
+        [`POST ${APP}/attachments`]: () => {
+          attachments += 1;
+          return withStatus(201, {
+            path: ".git/opsifier-attachments/0a1b2c3d4e5f6a7b/notes.md",
+            name: "notes.md",
+            size: 7,
+            type: "text/markdown",
+          });
+        },
+        [`POST ${APP}/conversations/${CONVERSATION}/messages`]: () => {
+          messages += 1;
+          return messages === 1
+            ? withStatus(503, { error: { code: "studio_agent_unavailable", message: "Unreachable." } })
+            : conversation;
+        },
+      }),
+    );
+    const rendered = renderApp("/studio/lovable/cd-studio-preview");
+    await screen.findByText("Change le titre");
+    const picker = rendered.container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(picker, {
+      target: { files: [new File(["# Notes"], "notes.md", { type: "text/markdown" })] },
+    });
+    fireEvent.change(screen.getByLabelText("Message to the agent"), { target: { value: "Lis mes notes" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(messages).toBe(1));
+    // The message and its file are still there to send again.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(false),
+    );
+    expect(screen.getByRole("list", { name: "Files to send" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(messages).toBe(2));
+    expect(attachments).toBe(1);
+    expect(server.calls.filter((call) => call.path.endsWith("/attachments"))).toHaveLength(1);
+  });
+
+  it("says which files a message cannot carry", async () => {
+    installFakeServer(base());
+    const rendered = renderApp("/studio/lovable/cd-studio-preview");
+    await screen.findByText("Change le titre");
+    const picker = rendered.container.querySelector('input[type="file"]') as HTMLInputElement;
+
+    fireEvent.change(picker, { target: { files: [new File(["MZ"], "setup.exe")] } });
+
+    expect(
+      await screen.findByText(
+        "setup.exe: attach an image, or a PDF, Word, Excel, PowerPoint, CSV or text file.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("list", { name: "Files to send" })).toBeNull();
+  });
+
   it("ignores an address that names no conversation, and sends to the one shown", async () => {
     const server = installFakeServer(
       base({ [`POST ${APP}/conversations/${CONVERSATION}/messages`]: conversation }),

@@ -178,7 +178,7 @@ function bindingOf(body: unknown): string | undefined {
 export interface CallOptions {
   method?: string;
   body?: unknown;
-  rawBody?: string;
+  rawBody?: string | Blob;
   cookie?: string;
   origin?: string;
   headers?: Record<string, string>;

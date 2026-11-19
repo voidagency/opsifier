@@ -67,7 +67,7 @@
     "label": "Message à l'agent",
     "firstPlaceholder": "Décrivez la modification voulue…",
     "placeholder": "Répondez à l'agent… Entrée envoie, Maj+Entrée ajoute une ligne.",
-    "attach": "Ajouter une image",
+    "attach": "Joindre une image ou un fichier",
     "images": "Images à envoyer",
     "imageAlt": "Image envoyée à l'agent",
     "removeImage": "Retirer l'image {{number}}",
@@ -76,7 +76,16 @@
     "send": "Envoyer",
     "elementPlaceholder": "Que faut-il changer dans cet élément ?",
     "remarkPlaceholder": "Ajoutez une consigne pour l'agent, ou envoyez la remarque telle quelle.",
-    "remarkScreenshotFailed": "La capture d'écran de la remarque n'a pas pu être jointe au message."
+    "remarkScreenshotFailed": "La capture d'écran de la remarque n'a pas pu être jointe au message.",
+    "files": "Fichiers à envoyer",
+    "file": "Fichier joint",
+    "removeFile": "Retirer {{name}}",
+    "fileType": "{{name}} : joignez une image, ou un fichier PDF, Word, Excel, PowerPoint, CSV ou texte.",
+    "fileTooLarge": "{{name}} dépasse 10 Mo.",
+    "fileEmpty": "{{name}} est vide.",
+    "tooManyFiles": "{{count}} fichiers au plus par message.",
+    "drop": "Déposez ici des images ou des fichiers",
+    "fileFailed": "{{name}} : {{reason}}"
   },
   "preview": {
     "label": "Aperçu en direct",

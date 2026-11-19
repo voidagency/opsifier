@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 55
+# documented-changes: 57
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -4051,6 +4051,24 @@ PUT /api/v1/projects/{project}/services/{service}/studio
   body workspaceDir!: string
   path project!: string
   path service!: string
+POST /api/v1/projects/{project}/services/{service}/studio/attachments
+  201 name!: string
+  201 path!: string
+  201 size!: integer
+  201 type!: string
+  400
+  401
+  403
+  404
+  408
+  409
+  413
+  429
+  503
+  path project!: string
+  path service!: string
+  query conversation: string
+  query name!: string
 POST /api/v1/projects/{project}/services/{service}/studio/conversations
   201 createdAt!: string
   201 createdBy!: null|string

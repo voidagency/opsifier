@@ -224,7 +224,15 @@
     "studio_project_busy": "Work is still running on this project. Wait for it to finish, then try again.",
     "studio_github_key_exists": "The Studio has a key for this owner already: give it a new token instead.",
     "too_many_github_keys": "The Studio holds as many GitHub keys as it can.",
-    "studio_github_keys_unreadable": "The Studio's GitHub keys cannot be read on this server, so nothing was changed."
+    "studio_github_keys_unreadable": "The Studio's GitHub keys cannot be read on this server, so nothing was changed.",
+    "studio_attachment_type": "Attach a PDF, Word, Excel, PowerPoint, CSV or text file that is what its name says.",
+    "studio_attachment_too_large": "An attached file is at most 10 MB.",
+    "studio_attachment_empty": "The file is empty.",
+    "studio_attachment_no_git": "The project's folder is not a git repository: the file could not be kept there.",
+    "studio_attachment_failed": "The file could not be saved in the project's folder.",
+    "studio_attachment_busy": "Other files are being sent: send this one again in a moment.",
+    "studio_attachment_timeout": "The file stopped arriving: send it again.",
+    "studio_attachments_full": "The project's attached files already take 100 MB: ask the agent to delete those it no longer needs."
   },
   "retention": {
     "removed": "Removed",

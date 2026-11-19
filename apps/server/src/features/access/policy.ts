@@ -106,7 +106,7 @@ function projectRequirement(method: string, project: string, rest: readonly stri
 }
 
 /**
- * A Studio project's conversations, its preview, bringing its folder up to date with GitHub, its links
+ * A Studio project's conversations and the files attached to them, its preview, bringing its folder up to date with GitHub, its links
  * for clients and their remarks are open to the accounts it is shared with. Linking it, taking it out and sharing it are administration.
  */
 function studioRequirement(method: string, project: string, rest: readonly string[]): Requirement {
@@ -119,6 +119,7 @@ function studioRequirement(method: string, project: string, rest: readonly strin
   }
   if (
     section === "conversations" ||
+    section === "attachments" ||
     section === "preview" ||
     section === "sync" ||
     section === "links" ||

@@ -15,6 +15,8 @@ import {
   servicePath,
   setStudioMembersRequest,
   studioAppDetail,
+  studioAttachment,
+  studioAttachmentQuery,
   studioCheck,
   studioConversation,
   studioConversationPath,
@@ -76,6 +78,7 @@ import {
 } from "./remarks";
 import { removeStudioProject } from "./remove";
 import {
+  attachStudioFile,
   checkStudioAgent,
   getStudioApp,
   getStudioEvents,
@@ -470,6 +473,40 @@ const eventsRoute = createRoute({
   },
 });
 
+const attachmentRoute = createRoute({
+  method: "post",
+  path: `${APP}/attachments`,
+  tags,
+  description:
+    "Keeps a file a person attaches to a message in the project's folder, under `.git/opsifier-attachments/`, " +
+    "where git does not track it, in a folder of its own with a random name: a PDF, Word, Excel, PowerPoint, CSV or text " +
+    "file of at most 10 MB, sent as the request's body. The message then says where it is. A project's own agent " +
+    "server that sleeps is started, and the answer is then 409 `studio_agent_starting`: send the file again in a moment. " +
+    "With `conversation`, the file goes to the agent server that conversation runs on.",
+  request: {
+    params: servicePath,
+    query: studioAttachmentQuery,
+    body: {
+      required: true,
+      content: {
+        "application/octet-stream": { schema: z.string().openapi({ type: "string", format: "binary" }) },
+      },
+    },
+  },
+  responses: {
+    201: jsonResponse(studioAttachment, "Kept in the project's folder."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    404: missing,
+    408: errorResponse("The file stopped arriving."),
+    409: blocked,
+    413: errorResponse("The file is larger than 10 MB."),
+    429: errorResponse("Other files are being saved: send this one again in a moment."),
+    503: unreachable,
+  },
+});
+
 const messageRoute = createRoute({
   method: "post",
   path: `${CONVERSATION}/messages`,
@@ -651,13 +688,17 @@ const EXPIRED = previewPage(
 /** Each panel's own, by its dependencies: a second panel in the same process, as in tests, stops only its own. */
 const sweepers = new WeakMap<AppDeps, () => void>();
 
+/** A file attached to a message comes as the body of its own request. */
+const isAttachmentPath = (path: string): boolean =>
+  /^\/api\/v1\/projects\/[^/]+\/services\/[^/]+\/studio\/attachments$/.test(path);
+
 export const feature: Feature = {
   // The hop of a preview's sign-in sends someone signed out to the panel's page that signs them in.
   publicPaths: [PREVIEW_SIGNIN_HOP],
   // Each project's agent server signs in to its git relay with its own token, and pushes stream.
   isPublicPath: isRelayPath,
   readsOwnBearer: isRelayPath,
-  readsOwnBody: isRelayPath,
+  readsOwnBody: (path) => isRelayPath(path) || isAttachmentPath(path),
   ready(deps) {
     // Never in the way of the panel starting: a preview left as it was still builds what it says.
     try {
@@ -978,6 +1019,22 @@ export const feature: Feature = {
           actorOf(requirePrincipal(c)),
         ),
         200,
+      );
+    });
+
+    // The file is the body, far larger than the API's general limit, and is counted as it comes in.
+    app.openapi(attachmentRoute, async (c) => {
+      const length = c.req.header("content-length");
+      return c.json(
+        await attachStudioFile(
+          deps,
+          target(c.req.valid("param")),
+          c.req.valid("query"),
+          c.req.raw.body,
+          length === undefined ? undefined : Number(length),
+          actorOf(requirePrincipal(c)),
+        ),
+        201,
       );
     });
 

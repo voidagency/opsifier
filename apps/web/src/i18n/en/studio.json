@@ -67,7 +67,7 @@
     "label": "Message to the agent",
     "firstPlaceholder": "Describe the change you want…",
     "placeholder": "Reply to the agent… Enter sends, Shift+Enter adds a line.",
-    "attach": "Add an image",
+    "attach": "Attach an image or a file",
     "images": "Images to send",
     "imageAlt": "Image sent to the agent",
     "removeImage": "Remove image {{number}}",
@@ -76,7 +76,16 @@
     "send": "Send",
     "elementPlaceholder": "What should change in this element?",
     "remarkPlaceholder": "Add an instruction for the agent, or send the remark as it is.",
-    "remarkScreenshotFailed": "The remark's screenshot could not be added to the message."
+    "remarkScreenshotFailed": "The remark's screenshot could not be added to the message.",
+    "files": "Files to send",
+    "file": "Attached file",
+    "removeFile": "Remove {{name}}",
+    "fileType": "{{name}}: attach an image, or a PDF, Word, Excel, PowerPoint, CSV or text file.",
+    "fileTooLarge": "{{name}} is larger than 10 MB.",
+    "fileEmpty": "{{name}} is empty.",
+    "tooManyFiles": "At most {{count}} files per message.",
+    "drop": "Drop images or files here",
+    "fileFailed": "{{name}}: {{reason}}"
   },
   "preview": {
     "label": "Live preview",

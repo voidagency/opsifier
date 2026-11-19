@@ -13,6 +13,7 @@ import {
   type StudioMessageRequest,
   type StudioSettings,
   studioAppDetail,
+  studioAttachment,
   studioCheck,
   studioConversation,
   studioEventPage,
@@ -149,6 +150,13 @@ export const studioApi = {
   /** Takes the project out, with what the Studio made for it. Its folder stays. */
   remove: (project: string, service: string, confirm: string) =>
     api.post(`${appPath(project, service)}/remove`, { body: { confirm }, schema: actionEntry }),
+  /** Keeps a file for the next message in the project's folder: where it is, for the message to say. */
+  attach: (project: string, service: string, file: File, conversation: string | null) =>
+    api.post(`${appPath(project, service)}/attachments`, {
+      rawBody: file,
+      query: conversation === null ? { name: file.name } : { name: file.name, conversation },
+      schema: studioAttachment,
+    }),
   start: (project: string, service: string, body: StudioMessageRequest) =>
     api.post(`${appPath(project, service)}/conversations`, { body, schema: studioConversation }),
   send: (project: string, service: string, id: string, body: StudioMessageRequest) =>

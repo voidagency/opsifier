@@ -250,6 +250,49 @@ export const studioImage = z
   .max(1_000_000)
   .regex(/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=*$/, "A PNG, JPEG, WebP or GIF image");
 
+/**
+ * The files a message can carry besides images, by the ending of their name. The panel keeps each in
+ * the project's folder, where git does not track it, and the message says where, for the agent to read.
+ */
+export const STUDIO_ATTACHMENT_TYPES = {
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  odt: "application/vnd.oasis.opendocument.text",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ods: "application/vnd.oasis.opendocument.spreadsheet",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  csv: "text/csv",
+  tsv: "text/tab-separated-values",
+  txt: "text/plain",
+  md: "text/markdown",
+  json: "application/json",
+} as const satisfies Record<string, string>;
+export type StudioAttachmentExtension = keyof typeof STUDIO_ATTACHMENT_TYPES;
+
+/** The largest file a message can carry. */
+export const MAX_STUDIO_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+/** POST .../studio/attachments: the file's name as the person's computer gives it; the body is the file. */
+export const studioAttachmentQuery = z.object({
+  name: z.string().min(1).max(255),
+  /** The conversation the message goes to; left out for a message that starts one. */
+  conversation: z.string().min(1).max(100).optional(),
+});
+
+/** A file a person attached to a message, kept in the project's folder. */
+export const studioAttachment = z.object({
+  /** Where it is, from the project's folder: what the message gives the agent. */
+  path: z.string(),
+  /** Its name, as kept. */
+  name: z.string(),
+  size: z.number().int().nonnegative(),
+  /** Its media type, from its name, checked against its first bytes. */
+  type: z.string(),
+});
+export type StudioAttachment = z.infer<typeof studioAttachment>;
+
 /** POST .../studio/conversations, which starts one, and .../conversations/{conversation}/messages */
 export const studioMessageRequest = z
   .object({

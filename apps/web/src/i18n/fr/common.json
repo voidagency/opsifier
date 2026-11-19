@@ -224,7 +224,15 @@
     "studio_project_busy": "Du travail est encore en cours sur ce projet. Attendez qu'il se termine, puis réessayez.",
     "studio_github_key_exists": "Le Studio a déjà une clé pour ce propriétaire : donnez-lui plutôt un nouveau jeton.",
     "too_many_github_keys": "Le Studio a atteint le nombre maximal de clés GitHub.",
-    "studio_github_keys_unreadable": "Les clés GitHub du Studio ne peuvent pas être lues sur ce serveur : rien n'a été modifié."
+    "studio_github_keys_unreadable": "Les clés GitHub du Studio ne peuvent pas être lues sur ce serveur : rien n'a été modifié.",
+    "studio_attachment_type": "Joignez un fichier PDF, Word, Excel, PowerPoint, CSV ou texte, qui soit bien ce que son nom annonce.",
+    "studio_attachment_too_large": "Un fichier joint fait au plus 10 Mo.",
+    "studio_attachment_empty": "Le fichier est vide.",
+    "studio_attachment_no_git": "Le dossier du projet n'est pas un dépôt git : le fichier n'a pas pu y être rangé.",
+    "studio_attachment_failed": "Le fichier n'a pas pu être enregistré dans le dossier du projet.",
+    "studio_attachment_busy": "D'autres fichiers sont en cours d'envoi : renvoyez celui-ci dans un instant.",
+    "studio_attachment_timeout": "Le fichier a cessé d'arriver : renvoyez-le.",
+    "studio_attachments_full": "Les fichiers joints du projet occupent déjà 100 Mo : demandez à l'agent de supprimer ceux dont il n'a plus besoin."
   },
   "retention": {
     "removed": "Supprimé",

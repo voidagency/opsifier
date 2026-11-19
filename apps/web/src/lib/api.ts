@@ -46,6 +46,8 @@ type QueryValue = string | number | boolean | null | undefined;
 export interface RequestOptions<T> {
   /** JSON-serialized and sent as the request body. */
   body?: unknown;
+  /** Sent as it is, as `application/octet-stream`, in place of `body`: a file, for one. */
+  rawBody?: Blob;
   query?: Record<string, QueryValue>;
   signal?: AbortSignal;
   /** Validates the response body. Without one the body is returned as-is, typed by the caller. */
@@ -166,7 +168,7 @@ async function toApiError(response: Response): Promise<ApiError> {
 }
 
 async function request<T>(method: Method, path: string, options: RequestOptions<T> = {}): Promise<T> {
-  const { body, query, signal, schema } = options;
+  const { body, rawBody, query, signal, schema } = options;
   // Outside the try below: an address refused here is not the server being unreachable.
   const url = buildUrl(path, query);
   let response: Response;
@@ -177,9 +179,13 @@ async function request<T>(method: Method, path: string, options: RequestOptions<
       headers: {
         Accept: "application/json",
         ...bindingHeaders(),
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...(rawBody !== undefined
+          ? { "Content-Type": "application/octet-stream" }
+          : body === undefined
+            ? {}
+            : { "Content-Type": "application/json" }),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: rawBody ?? (body === undefined ? undefined : JSON.stringify(body)),
       signal,
     });
   } catch (cause) {

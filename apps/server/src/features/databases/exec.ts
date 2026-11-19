@@ -6,7 +6,8 @@ import { DockerLogParser } from "../../core/docker/log-parser";
 export interface ExecPlan {
   command: string[];
   env?: string[];
-  stdin?: string;
+  /** Text, or bytes as they are: a file, for one. */
+  stdin?: string | Uint8Array;
   /** Runs in this container instead of a task of the service, as for the proxy's own. */
   containerId?: string;
 }
