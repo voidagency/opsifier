@@ -45,7 +45,7 @@ import {
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { toActionEntry } from "../../core/actions";
 import { requirePrincipal, requireSessionPrincipal } from "../../core/auth";
-import type { Feature } from "../../core/context";
+import type { AppDeps, Feature } from "../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
 import { requestAccess } from "../access/guard";
 import { getPanelDomainSettings } from "../server/settings";
@@ -648,7 +648,8 @@ const EXPIRED = previewPage(
   "Rechargez la page de l'aperçu pour vous connecter de nouveau. Reload the preview to sign in again.",
 );
 
-let stopSweeper: (() => void) | undefined;
+/** Each panel's own, by its dependencies: a second panel in the same process, as in tests, stops only its own. */
+const sweepers = new WeakMap<AppDeps, () => void>();
 
 export const feature: Feature = {
   // The hop of a preview's sign-in sends someone signed out to the panel's page that signs them in.
@@ -667,11 +668,12 @@ export const feature: Feature = {
         "Could not bring Studio previews' Dockerfiles to the current template",
       );
     }
-    stopSweeper = startIdleAgentSweeper(deps);
+    sweepers.get(deps)?.();
+    sweepers.set(deps, startIdleAgentSweeper(deps));
   },
-  shutdown() {
-    stopSweeper?.();
-    stopSweeper = undefined;
+  shutdown(deps) {
+    sweepers.get(deps)?.();
+    sweepers.delete(deps);
   },
   register(app, deps) {
     const signIn = new PreviewSignIn(deps.secrets, deps.now);

@@ -2,6 +2,7 @@ import type {
   ActionPage,
   StudioAppDetail,
   StudioConversation,
+  StudioEventPage,
   StudioIsolateAll,
   StudioIsolated,
   StudioOverview,
@@ -9,6 +10,7 @@ import type {
   StudioSync,
 } from "@opsifier/contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { studioConversationEvents } from "../../core/db/schema";
 import {
   apiErrorOf,
   call,
@@ -19,6 +21,7 @@ import {
   type TestContext,
 } from "../../testing/harness";
 import { AGENT_IDLE_MS, forgetAgentActivity, stopIdleAgents } from "./agents";
+import { keepCopy, readCopy } from "./conversation-copy";
 import { forgetGithubToken } from "./relay";
 
 let context: TestContext;
@@ -70,7 +73,7 @@ const kindOf = (script: string): Script =>
 function installFakeAgents() {
   const state = {
     execs: [] as Exec[],
-    conversations: new Map<string, { service: string; started: Raw; status: string }>(),
+    conversations: new Map<string, { service: string; started: Raw; status: string; events: Raw[] }>(),
     seeded: new Map<string, string>(),
     folders: new Map<string, Raw>(),
     /** What the copy answers; GitHub lets every token in unless a test says otherwise. */
@@ -97,7 +100,22 @@ function installFakeAgents() {
     }),
   };
   let sequence = 0;
+  let stamp = 0;
   const ok = (body: unknown, status = 200) => ({ status, text: JSON.stringify(body) });
+  /** A message as the agent server records it. */
+  const message = (source: "user" | "agent", words: string): Raw => {
+    stamp += 1;
+    return {
+      id: `ev-${String(stamp).padStart(4, "0")}`,
+      kind: "MessageEvent",
+      source,
+      timestamp: new Date(Date.UTC(2026, 10, 19, 12, 0, stamp)).toISOString(),
+      llm_message: {
+        role: source === "user" ? "user" : "assistant",
+        content: [{ type: "text", text: words }],
+      },
+    };
+  };
 
   const answer = (service: string, request: { method: string; path: string; body?: unknown }) => {
     const url = new URL(request.path, "http://127.0.0.1:18000");
@@ -121,7 +139,12 @@ function installFakeAgents() {
     }
     if (request.method === "POST" && url.pathname === "/api/conversations") {
       const id = `c0ffee00-0000-4000-8000-${String(++sequence).padStart(12, "0")}`;
-      state.conversations.set(id, { service, started: request.body as Raw, status: "running" });
+      state.conversations.set(id, {
+        service,
+        started: request.body as Raw,
+        status: "running",
+        events: [message("user", "Bonjour"), message("agent", "Bonjour ! Que changeons-nous ?")],
+      });
       return ok({ id, title: null, execution_status: "running" }, 201);
     }
     const conversation = state.conversations.get(parts[2] ?? "");
@@ -132,10 +155,22 @@ function installFakeAgents() {
       return ok({ id: parts[2], title: null, execution_status: conversation.status, llm: {} });
     }
     if (request.method === "GET" && parts[3] === "events") {
-      return ok({ items: [], next_page_id: null });
+      // A page starts with the event it is given, as the agent server's does.
+      const pageId = url.searchParams.get("page_id");
+      const limit = Number(url.searchParams.get("limit") ?? 100);
+      const from =
+        pageId === null
+          ? 0
+          : Math.max(
+              0,
+              conversation.events.findIndex((one) => one.id === pageId),
+            );
+      const next = conversation.events[from + limit];
+      return ok({ items: conversation.events.slice(from, from + limit), next_page_id: next?.id ?? null });
     }
     if (request.method === "POST" && parts[3] === "events") {
       conversation.status = "running";
+      conversation.events.push(message("user", "Encore"), message("agent", "C'est fait."));
       return ok({ success: true });
     }
     if (request.method === "POST" && parts[3] === "pause") {
@@ -388,6 +423,144 @@ describe("an agent server for each project", () => {
     expect(page.status).toBe(200);
   });
 
+  it("shows a conversation from the panel's copy while its agent server sleeps, then goes on", async () => {
+    await addOwnProject();
+    const { id } = await startConversation(`${ADDED}/preview`, "Bonjour");
+    const events = `${ADDED}/preview/studio/conversations/${id}/events`;
+    const live = await api<StudioEventPage>(events);
+    expect(live.status).toBe(200);
+    expect(live.body).toMatchObject({ asleep: false, cursor: "ev-0002" });
+    expect(live.body.items.map((event) => event.id)).toEqual(["ev-0001", "ev-0002"]);
+
+    expect((await api(`${ADDED}/agent/stop`, "POST")).status).toBe(202);
+    await settle();
+    const before = (await api<ActionPage>("/actions?limit=100")).body.items.length;
+
+    // From the start, as a page opened while it sleeps: the same events, from the copy.
+    const copy = await api<StudioEventPage>(events);
+    expect(copy.status).toBe(200);
+    expect(copy.body).toMatchObject({ asleep: true, status: "idle", model: null, cursor: "ev-0002" });
+    expect(copy.body.items).toEqual(live.body.items);
+    // From where a page already is: nothing new, and it stays there.
+    expect((await api<StudioEventPage>(`${events}?after=ev-0002`)).body).toMatchObject({
+      asleep: true,
+      items: [],
+      cursor: "ev-0002",
+    });
+    // From an event the copy does not know: nothing, and the place is kept.
+    expect((await api<StudioEventPage>(`${events}?after=ev-9999`)).body).toMatchObject({
+      items: [],
+      cursor: "ev-9999",
+    });
+    // None of those reads started the agent server.
+    expect((await api<ActionPage>("/actions?limit=100")).body.items.length).toBe(before);
+
+    // A message wakes it, and the page goes on from the copy's end.
+    expect(
+      apiErrorOf(
+        await api(`${ADDED}/preview/studio/conversations/${id}/messages`, "POST", { text: "Encore" }),
+      ).code,
+    ).toBe("studio_agent_starting");
+    await settle();
+    expect(
+      (await api(`${ADDED}/preview/studio/conversations/${id}/messages`, "POST", { text: "Encore" })).status,
+    ).toBe(200);
+    const next = await api<StudioEventPage>(`${events}?after=ev-0002`);
+    expect(next.body.asleep).toBe(false);
+    expect(next.body.items.map((event) => event.id)).toEqual(["ev-0003", "ev-0004"]);
+
+    // Asleep again, the copy has everything that was read.
+    expect((await api(`${ADDED}/agent/stop`, "POST")).status).toBe(202);
+    await settle();
+    const later = await api<StudioEventPage>(events);
+    expect(later.body.asleep).toBe(true);
+    expect(later.body.items.map((event) => event.id)).toEqual(["ev-0001", "ev-0002", "ev-0003", "ev-0004"]);
+  });
+
+  it("keeps a copy without gaps, and only from a conversation's start or the copy's end", async () => {
+    await addOwnProject();
+    const { id } = await startConversation(`${ADDED}/preview`, "Bonjour");
+    const events = `${ADDED}/preview/studio/conversations/${id}/events`;
+    const copied = () =>
+      context.deps.db
+        .select()
+        .from(studioConversationEvents)
+        .all()
+        .filter((row) => row.conversationId === id)
+        .map((row) => `${row.position}:${row.eventId}`);
+
+    // A page that starts mid-way, with nothing copied before it, is left out.
+    expect((await api(`${events}?after=ev-0001`)).status).toBe(200);
+    expect(copied()).toEqual([]);
+    // From the start, it is kept; read again, nothing doubles.
+    await api(events);
+    await api(events);
+    expect(copied()).toEqual(["1:ev-0001", "2:ev-0002"]);
+    // What follows the copy's end is added after it.
+    expect(
+      (await api(`${ADDED}/preview/studio/conversations/${id}/messages`, "POST", { text: "Encore" })).status,
+    ).toBe(200);
+    await api(`${events}?after=ev-0002`);
+    expect(copied()).toEqual(["1:ev-0001", "2:ev-0002", "3:ev-0003", "4:ev-0004"]);
+  });
+
+  it("answers a page even when its copy cannot be written", async () => {
+    await addOwnProject();
+    const { id } = await startConversation(`${ADDED}/preview`, "Bonjour");
+    context.deps.db.$client.exec("DROP TABLE studio_conversation_events");
+
+    const page = await api<StudioEventPage>(`${ADDED}/preview/studio/conversations/${id}/events`);
+    expect(page.status).toBe(200);
+    expect(page.body.items.map((event) => event.id)).toEqual(["ev-0001", "ev-0002"]);
+  });
+
+  it("serves the copy page after page, and keeps its newest events", async () => {
+    await addOwnProject();
+    const { id } = await startConversation(`${ADDED}/preview`, "Bonjour");
+    const said = (n: number) => ({
+      id: `r${n}`,
+      kind: "MessageEvent",
+      source: "user",
+      timestamp: new Date(Date.UTC(2026, 10, 19, 13, 0, n)).toISOString(),
+      llm_message: { role: "user", content: [{ type: "text", text: `Message ${n}` }] },
+    });
+    keepCopy(context.deps.db, id, undefined, [1, 2, 3, 4].map(said), 5);
+    keepCopy(context.deps.db, id, "r4", [4, 5, 6, 7].map(said), 5);
+    const read = (after: string | undefined) => readCopy(context.deps.db, id, after, null, undefined, 2);
+
+    // The oldest two went past five; what is left comes two by two, as the agent server's pages do.
+    expect(read(undefined)).toMatchObject({ cursor: "r4", more: true, asleep: true });
+    expect(read(undefined).items.map((event) => event.id)).toEqual(["r3", "r4"]);
+    expect(read("r4").items.map((event) => event.id)).toEqual(["r5", "r6"]);
+    expect(read("r6")).toMatchObject({ cursor: "r7", more: false });
+    expect(read("r6").items).toMatchObject([{ kind: "message", role: "user", text: "Message 7" }]);
+    // An event it no longer holds gives nothing, and keeps the reader where it was.
+    expect(read("r1")).toMatchObject({ items: [], cursor: "r1", more: false });
+  });
+
+  it("brings the copy up to date before an unused agent server sleeps", async () => {
+    await addOwnProject();
+    const { id } = await startConversation(`${ADDED}/preview`, "Bonjour");
+    const events = `${ADDED}/preview/studio/conversations/${id}/events`;
+    await api(events);
+    // The agent goes on after the page was closed: nobody reads what follows.
+    expect(
+      (await api(`${ADDED}/preview/studio/conversations/${id}/messages`, "POST", { text: "Encore" })).status,
+    ).toBe(200);
+    const conversation = agents.conversations.get(id);
+    if (conversation !== undefined) {
+      conversation.status = "finished";
+    }
+
+    context.advance(AGENT_IDLE_MS + 1);
+    expect(await stopIdleAgents(context.deps)).toEqual(["studio-un-mot-par-jour-landing/agent"]);
+    await settle();
+
+    const asleep = await api<StudioEventPage>(events);
+    expect(asleep.body.asleep).toBe(true);
+    expect(asleep.body.items.map((event) => event.id)).toEqual(["ev-0001", "ev-0002", "ev-0003", "ev-0004"]);
+  });
+
   it("starts a stopped agent server for a message, never for a read", async () => {
     await addOwnProject();
     const { id } = await startConversation(`${ADDED}/preview`, "Bonjour");
@@ -395,9 +568,10 @@ describe("an agent server for each project", () => {
     await settle();
     const before = (await api<ActionPage>("/actions?limit=100")).body.items.length;
 
-    const read = await api(`${ADDED}/preview/studio/conversations/${id}/events`);
-    expect(read.status).toBe(409);
-    expect(apiErrorOf(read).code).toBe("studio_agent_asleep");
+    // Never read while it ran, the conversation has no copy yet: nothing shows until it wakes.
+    const read = await api<StudioEventPage>(`${ADDED}/preview/studio/conversations/${id}/events`);
+    expect(read.status).toBe(200);
+    expect(read.body).toMatchObject({ asleep: true, status: "idle", items: [], cursor: null });
     expect((await api<ActionPage>("/actions?limit=100")).body.items.length).toBe(before);
 
     const early = await api(`${ADDED}/preview/studio/conversations/${id}/messages`, "POST", {

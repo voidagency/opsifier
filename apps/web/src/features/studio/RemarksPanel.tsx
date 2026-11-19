@@ -201,7 +201,7 @@ export function RemarksPanel({
           {t("links.action")}
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      <div className="relative min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {error !== null && error !== undefined ? (
           <ErrorState message={errorMessage(error, t)} onRetry={onRetry} />
         ) : loading ? (

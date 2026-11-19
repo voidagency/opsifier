@@ -935,3 +935,28 @@ export const studioRemarkScreenshots = sqliteTable("studio_remark_screenshots", 
   data: blob("data", { mode: "buffer" }).notNull(),
   createdAt: millis("created_at").notNull(),
 });
+
+/**
+ * A copy of each conversation with a project's own agent server, kept as it is read and before that
+ * server is put to sleep: a read never wakes it, and its conversations show from this copy until a
+ * message does. The copy only grows from where it ends, so it has no gap, keeps the newest events,
+ * and goes with its conversation.
+ */
+export const studioConversationEvents = sqliteTable(
+  "studio_conversation_events",
+  {
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => studioConversations.id, { onDelete: "cascade" }),
+    /** Its place in the conversation, from 1. */
+    position: integer("position").notNull(),
+    /** The agent server's identifier for the event: what a page that follows it starts from. */
+    eventId: text("event_id").notNull(),
+    /** The event as the agent server gave it, in JSON: the Studio reads it its own way when shown. */
+    data: text("data").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.conversationId, table.position] }),
+    uniqueIndex("studio_conversation_events_event_unique").on(table.conversationId, table.eventId),
+  ],
+);

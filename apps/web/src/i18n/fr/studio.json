@@ -60,7 +60,8 @@
     "readOnly": "Cette conversation a eu lieu avec l'agent partagé par tous les projets. Le projet a maintenant son propre agent : commencez une nouvelle conversation pour continuer.",
     "readOnlyAction": "Nouvelle conversation",
     "agentStarting": "L'agent du projet démarre…",
-    "agentAsleep": "L'agent du projet est en veille. Envoyez un message, ou rouvrez le projet, pour le réveiller."
+    "agentAsleep": "L'agent du projet est en veille : la conversation s'affiche telle qu'il l'a laissée. Un message le réveille.",
+    "agentAsleepEmpty": "L'agent du projet est en veille : cette conversation s'affichera à son réveil. Un message le réveille."
   },
   "composer": {
     "label": "Message à l'agent",

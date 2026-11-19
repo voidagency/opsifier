@@ -15,6 +15,7 @@ import { findService, findServiceById, type ServiceRecord, saveServiceSpec } fro
 import { createService, requireService, type ServiceTarget } from "../services/service";
 import { indexActiveActions } from "../services/status";
 import { callAgent } from "./agent";
+import { catchUpCopies } from "./conversation-copy";
 import { toStudioStatus } from "./events";
 import * as repo from "./repo";
 import { readStudioSettings } from "./settings";
@@ -709,10 +710,13 @@ export async function stopIdleAgents(deps: AppDeps): Promise<string[]> {
     if (now - last < AGENT_IDLE_MS) {
       continue;
     }
-    if (await isWorking(deps, ownAgentOf(settings.agent, record), app.serviceId)) {
+    const agent = ownAgentOf(settings.agent, record);
+    if (await isWorking(deps, agent, app.serviceId)) {
       lastActivity.set(record.id, deps.now());
       continue;
     }
+    // What happened since anyone last looked shows while it sleeps.
+    await catchUpCopies(deps, agent, app.serviceId);
     // Someone may have sent a message while the agent server was asked.
     if (deps.now() - (lastActivity.get(record.id) ?? 0) < AGENT_IDLE_MS) {
       continue;

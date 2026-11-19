@@ -339,6 +339,12 @@ export const studioEventPage = z.object({
   model: studioModel.nullable(),
   /** Whether more events are already waiting: ask again at once, as after reopening a long conversation. */
   more: z.boolean(),
+  /**
+   * The project's own agent server is not running: the events come from the copy the panel keeps of
+   * what was read before, and the conversation goes on once a message wakes the agent server. The
+   * status is then `idle` and the model unknown.
+   */
+  asleep: z.boolean(),
 });
 export type StudioEventPage = z.infer<typeof studioEventPage>;
 

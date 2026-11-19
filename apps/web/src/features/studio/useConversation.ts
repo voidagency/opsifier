@@ -15,6 +15,8 @@ export interface ConversationState {
   model: StudioModel | null;
   error: unknown;
   loaded: boolean;
+  /** The project's agent server sleeps: what shows is the panel's copy, until a message wakes it. */
+  asleep: boolean;
 }
 
 const EMPTY: ConversationState = {
@@ -24,6 +26,7 @@ const EMPTY: ConversationState = {
   model: null,
   error: null,
   loaded: false,
+  asleep: false,
 };
 
 /**
@@ -72,6 +75,7 @@ export function useConversation(project: string, service: string, id: string | n
             model: page.model ?? current.model,
             error: null,
             loaded: true,
+            asleep: page.asleep,
           };
         });
         // A long conversation reopened comes in pages: the next one is asked for at once.

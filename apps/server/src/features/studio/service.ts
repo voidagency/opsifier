@@ -32,6 +32,7 @@ import {
   startOwnAgent,
   wakeService,
 } from "./agents";
+import { keepCopy, readCopy } from "./conversation-copy";
 import { toStudioEvents, toStudioStatus } from "./events";
 import { conversationModel, toStudioModels } from "./models";
 import { PREVIEW_PORT } from "./preview";
@@ -615,7 +616,16 @@ export async function getStudioEvents(
   actorEmail?: string,
 ): Promise<StudioEventPage> {
   const row = requireConversation(deps, target, id);
-  const agent = await conversationAgent(deps, row, actorEmail, false);
+  let agent: StudioAgent;
+  try {
+    agent = await conversationAgent(deps, row, actorEmail, false);
+  } catch (error) {
+    // A sleeping agent server is not woken for a read: the conversation shows from the panel's copy.
+    if (error instanceof AppError && error.code === "studio_agent_asleep") {
+      return readCopy(deps.db, id, after, row.title, row.workspaceDir);
+    }
+    throw error;
+  }
   const query = new URLSearchParams({ limit: String(EVENT_PAGE_SIZE), sort_order: "TIMESTAMP" });
   if (after !== undefined) {
     // The page starts with the event it is given, which the caller already has.
@@ -638,6 +648,15 @@ export async function getStudioEvents(
   if (title !== null && title !== row.title) {
     repo.updateConversation(deps.db, id, { title });
   }
+  // Only a project's own agent server sleeps: the shared one's conversations need no copy. The copy
+  // is a help for later: the page is answered even when it cannot be written, storage failing.
+  if (!row.sharedAgent) {
+    try {
+      keepCopy(deps.db, id, after, raws);
+    } catch (error) {
+      deps.logger.warn({ err: error, conversation: id }, "Could not keep the copy of a Studio conversation");
+    }
+  }
   return {
     items: toStudioEvents(fresh, row.workspaceDir),
     cursor: lastId,
@@ -645,6 +664,7 @@ export async function getStudioEvents(
     title,
     model: isRecord(conversation) ? conversationModel(conversation.llm, profiles) : null,
     more: isRecord(page) && typeof page.next_page_id === "string" && page.next_page_id !== "",
+    asleep: false,
   };
 }
 

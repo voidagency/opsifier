@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 63
+# documented-changes: 55
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -4070,6 +4070,7 @@ POST /api/v1/projects/{project}/services/{service}/studio/conversations
   path project!: string
   path service!: string
 GET /api/v1/projects/{project}/services/{service}/studio/conversations/{conversation}/events
+  200 asleep!: boolean
   200 cursor!: null|string
   200 items![].described!: boolean
   200 items![].detail!: null|string

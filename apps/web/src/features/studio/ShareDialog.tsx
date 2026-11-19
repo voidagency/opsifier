@@ -90,7 +90,7 @@ export function ShareDialog({
         ) : candidates.length === 0 ? (
           <p className="text-sm text-muted">{t("share.none")}</p>
         ) : (
-          <ul aria-label={t("share.accounts")} className="grid max-h-72 gap-2 overflow-y-auto">
+          <ul aria-label={t("share.accounts")} className="relative grid max-h-72 gap-2 overflow-y-auto">
             {candidates.map((user) => (
               <li key={user.id}>
                 <Checkbox

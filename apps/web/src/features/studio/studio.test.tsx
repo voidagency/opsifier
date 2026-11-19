@@ -98,6 +98,7 @@ const page = (overrides: Partial<StudioEventPage> = {}): StudioEventPage => ({
   title: "Titre de la page d'accueil",
   model: QWEN,
   more: false,
+  asleep: false,
   ...overrides,
 });
 
@@ -798,6 +799,81 @@ describe("a Studio project", () => {
       }),
     );
     await waitFor(() => expect(rendered.router.state.location.search).toEqual({ c: started.id }));
+  });
+
+  it("keeps the other conversations one choice away while a new one waits for its first message", async () => {
+    installFakeServer(base());
+    const rendered = renderApp("/studio/lovable/cd-studio-preview?c=new");
+
+    const picker = await screen.findByRole("combobox", { name: "Conversation shown" });
+    expect(picker.textContent).toContain("New conversation");
+    expect(screen.queryByText("Change le titre")).toBeNull();
+    fireEvent.click(picker);
+    fireEvent.click(await screen.findByRole("option", { name: "Titre de la page d'accueil" }));
+
+    await waitFor(() => expect(rendered.router.state.location.search).toEqual({ c: CONVERSATION }));
+    expect(await screen.findByText("Change le titre")).toBeTruthy();
+  });
+
+  it("shows a conversation from the panel's copy while the project's agent sleeps", async () => {
+    installFakeServer(
+      base({
+        [`GET ${APP}`]: detail({ agentMode: "own", agentStatus: "stopped" }),
+        [`GET ${APP}/conversations/${CONVERSATION}/events`]: page({
+          status: "idle",
+          model: null,
+          asleep: true,
+        }),
+      }),
+    );
+    renderApp(`/studio/lovable/cd-studio-preview?c=${CONVERSATION}`);
+
+    expect(await screen.findByText("Change le titre")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "The project's agent is resting: the conversation shows as it left it. A message wakes it.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByLabelText("Message to the agent")).toBeTruthy();
+  });
+
+  it("says nothing of a sleeping agent while it is already starting", async () => {
+    installFakeServer(
+      base({
+        [`GET ${APP}`]: detail({ agentMode: "own", agentStatus: "starting" }),
+        [`GET ${APP}/conversations/${CONVERSATION}/events`]: page({
+          status: "idle",
+          model: null,
+          asleep: true,
+        }),
+      }),
+    );
+    renderApp(`/studio/lovable/cd-studio-preview?c=${CONVERSATION}`);
+
+    expect(await screen.findByText("Change le titre")).toBeTruthy();
+    expect(screen.queryByText(/The project's agent is resting/)).toBeNull();
+  });
+
+  it("says when a sleeping agent's conversation has no copy to show yet", async () => {
+    installFakeServer(
+      base({
+        [`GET ${APP}`]: detail({ agentMode: "own", agentStatus: "stopped" }),
+        [`GET ${APP}/conversations/${CONVERSATION}/events`]: page({
+          items: [],
+          cursor: null,
+          status: "idle",
+          model: null,
+          asleep: true,
+        }),
+      }),
+    );
+    renderApp(`/studio/lovable/cd-studio-preview?c=${CONVERSATION}`);
+
+    expect(
+      await screen.findByText(
+        "The project's agent is resting: this conversation shows once it wakes. A message wakes it.",
+      ),
+    ).toBeTruthy();
   });
 
   it("chooses the model of a new conversation, and says where it runs", async () => {

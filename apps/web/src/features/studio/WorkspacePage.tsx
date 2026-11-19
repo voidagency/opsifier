@@ -516,10 +516,13 @@ function ConversationPane({
           <ArrowLeft aria-hidden="true" className="size-4" />
         </Link>
         <h1 className="min-w-0 flex-1 truncate font-medium">{name}</h1>
-        {options.length > 0 && conversationId !== null && (
+        {options.length > 0 && (
           <Select
             aria-label={t("conversation.pick")}
-            value={conversationId}
+            // A new conversation joins the list with its first message: until then, the others stay
+            // one choice away.
+            value={conversationId ?? ""}
+            placeholder={t("conversation.new")}
             onValueChange={onSelect}
             options={options}
             className="max-w-[45%]"
@@ -618,16 +621,24 @@ function ConversationPane({
           pending={pending !== null && pending.conversationId === conversationId ? pending : null}
         />
 
-        {conversation.error !== null &&
-          (conversation.error instanceof ApiError && conversation.error.code === "studio_agent_asleep" ? (
+        {/* Not while it wakes: opening the project or a message is already starting it. */}
+        {conversation.asleep &&
+          conversation.error === null &&
+          !agentStarting &&
+          app.agentStatus !== "starting" && (
             <p role="status" className="border-t px-3 py-2 text-xs text-muted">
-              {t("conversation.agentAsleep")}
+              {t(
+                conversation.events.length === 0
+                  ? "conversation.agentAsleepEmpty"
+                  : "conversation.agentAsleep",
+              )}
             </p>
-          ) : (
-            <p role="alert" className="border-t px-3 py-2 text-xs text-bad wrap-anywhere">
-              {errorMessage(conversation.error, t)}
-            </p>
-          ))}
+          )}
+        {conversation.error !== null && (
+          <p role="alert" className="border-t px-3 py-2 text-xs text-bad wrap-anywhere">
+            {errorMessage(conversation.error, t)}
+          </p>
+        )}
 
         {agentStarting && (
           <p role="status" className="border-t px-3 py-2 text-xs text-muted">
@@ -774,7 +785,9 @@ function EventList({
             setBehind(false);
           }
         }}
-        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-3 py-4"
+        // Positioned, so that what a message hides for screen readers is cut with the list: it would
+        // otherwise stretch the page below the workspace, and the page would scroll.
+        className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-3 py-4"
       >
         <div ref={content} className="grid grid-cols-1 gap-4">
           {isEmpty ? (

@@ -195,20 +195,21 @@ export function noindexPanelResponses(deps: Pick<AppDeps, "db">): MiddlewareHand
   };
 }
 
-let stopGateCookieRefresh: (() => void) | undefined;
+/** Each panel's own, by its dependencies: a second panel in the same process, as in tests, stops only its own. */
+const refreshers = new WeakMap<AppDeps, () => void>();
 
 export const feature: Feature = {
   boot: reconcileProtection,
 
   // The gate's cookie changes every week, so its routes are brought to the week's values.
   ready(deps) {
-    stopGateCookieRefresh?.();
-    stopGateCookieRefresh = startGateCookieRefresh(deps);
+    refreshers.get(deps)?.();
+    refreshers.set(deps, startGateCookieRefresh(deps));
   },
 
-  shutdown() {
-    stopGateCookieRefresh?.();
-    stopGateCookieRefresh = undefined;
+  shutdown(deps) {
+    refreshers.get(deps)?.();
+    refreshers.delete(deps);
   },
 
   register(app, deps) {

@@ -60,7 +60,8 @@
     "readOnly": "This conversation happened with the agent shared by every project. The project has its own agent now: start a new conversation to go on.",
     "readOnlyAction": "New conversation",
     "agentStarting": "The project's agent is starting…",
-    "agentAsleep": "The project's agent is resting. Send a message, or open the project again, to wake it."
+    "agentAsleep": "The project's agent is resting: the conversation shows as it left it. A message wakes it.",
+    "agentAsleepEmpty": "The project's agent is resting: this conversation shows once it wakes. A message wakes it."
   },
   "composer": {
     "label": "Message to the agent",

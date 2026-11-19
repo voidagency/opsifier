@@ -10,7 +10,7 @@ import {
 } from "@opsifier/contract";
 import { toActionEntry } from "../../core/actions";
 import { requireSessionPrincipal } from "../../core/auth";
-import type { Feature } from "../../core/context";
+import type { AppDeps, Feature } from "../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
 import { createAuthService } from "../auth/service";
 import { resumeServerRestore } from "./restore";
@@ -99,18 +99,20 @@ const keyRoute = createRoute({
   },
 });
 
-let stopSchedule: (() => void) | undefined;
+/** Each panel's own, by its dependencies: a second panel in the same process, as in tests, stops only its own. */
+const schedules = new WeakMap<AppDeps, () => void>();
 
 export const feature: Feature = {
   boot: (deps) => {
     settleInterruptedRun(deps);
-    stopSchedule = startServerBackupSchedule(deps);
+    schedules.get(deps)?.();
+    schedules.set(deps, startServerBackupSchedule(deps));
   },
   // A restore deploys, so it waits for every feature to have booted: some tidy what deployments use.
   ready: resumeServerRestore,
-  shutdown: () => {
-    stopSchedule?.();
-    stopSchedule = undefined;
+  shutdown: (deps) => {
+    schedules.get(deps)?.();
+    schedules.delete(deps);
   },
 
   register(app, deps) {
