@@ -504,6 +504,8 @@ export const studioRemark = z.object({
   point: studioRemarkPoint.nullable(),
   viewport: studioRemarkViewport.nullable(),
   text: z.string(),
+  /** Whether a screenshot of the window came with it: `GET .../remarks/{remark}/screenshot` sends it. */
+  screenshot: z.boolean(),
   /** Who wrote it: who the link was made for, or an account's e-mail. */
   author: z.string(),
   authorKind: z.enum(["guest", "account"]),
@@ -548,6 +550,7 @@ export const studioPreviewRemarks = z.object({
         point: true,
         viewport: true,
         text: true,
+        screenshot: true,
         author: true,
         status: true,
         createdAt: true,

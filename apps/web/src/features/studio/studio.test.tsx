@@ -1118,6 +1118,7 @@ const remark = (overrides: Partial<StudioRemark> = {}): StudioRemark => ({
   point: { x: 0.5, y: 0.5 },
   viewport: { width: 390, height: 844 },
   text: "Le bouton devrait être vert, comme dans la charte.",
+  screenshot: false,
   author: "Karim Benali · Acme",
   authorKind: "guest",
   status: "new",
@@ -1176,6 +1177,85 @@ describe("remarks left on a Studio project's preview", () => {
         conversationId: CONVERSATION,
       }),
     );
+  });
+
+  it("show the screenshot a remark came with, at its size on demand, and hand it to the agent", async () => {
+    const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+    const shotUrl = `data:image/jpeg;base64,${btoa(String.fromCharCode(...JPEG))}`;
+    const server = installFakeServer(
+      base({
+        [`GET ${APP}/remarks`]: { remarks: [remark({ screenshot: true }), DONE] },
+        [`GET ${APP}/remarks/r2/screenshot`]: () =>
+          new Response(JPEG, { status: 200, headers: { "content-type": "image/jpeg" } }),
+        [`POST ${APP}/conversations/${CONVERSATION}/messages`]: conversation,
+        [`PATCH ${APP}/remarks/r2`]: remark({ status: "in_progress", screenshot: true }),
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    await openRemarks();
+    const thumbnail = await screen.findByRole("button", { name: "Show the screenshot of remark 2" });
+    const image = (await within(thumbnail).findByRole("img")) as HTMLImageElement;
+    expect(image.getAttribute("src")).toBe(shotUrl);
+    fireEvent.click(thumbnail);
+    const dialog = await screen.findByRole("dialog", { name: "Screenshot of remark 2" });
+    expect(within(dialog).getByRole("img").getAttribute("src")).toBe(shotUrl);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: "Hand to the agent" }));
+    // The screenshot waits among the message's images, where it can be taken off.
+    const images = await screen.findByRole("list", { name: "Images to send" });
+    await waitFor(() => expect(within(images).getAllByRole("img")).toHaveLength(1));
+    expect(within(images).getByRole("img").getAttribute("src")).toBe(shotUrl);
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      const sent = server.calls.find((call) => call.path.endsWith("/messages"))?.body as
+        | { text: string; images: string[] }
+        | undefined;
+      expect(sent?.images).toEqual([shotUrl]);
+      // The agent is told which image is the client's, inside the remark's block.
+      expect(sent?.text).toContain(
+        "Window: 390 × 844 (mobile)\nScreenshot: image 1 of this message, taken in the client's browser\nText:",
+      );
+    });
+    // Read once, for the card and the message alike.
+    expect(server.calls.filter((call) => call.path.endsWith("/screenshot"))).toHaveLength(1);
+  });
+
+  it("take their screenshot back out of the message when they are left out of it", async () => {
+    const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+    installFakeServer(
+      base({
+        [`GET ${APP}/remarks`]: { remarks: [remark({ screenshot: true })] },
+        [`GET ${APP}/remarks/r2/screenshot`]: () =>
+          new Response(JPEG, { status: 200, headers: { "content-type": "image/jpeg" } }),
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    await openRemarks();
+    fireEvent.click(await screen.findByRole("button", { name: "Hand to the agent" }));
+    const images = await screen.findByRole("list", { name: "Images to send" });
+    await waitFor(() => expect(within(images).getAllByRole("img")).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "Leave this remark out" }));
+
+    await waitFor(() => expect(screen.queryByRole("list", { name: "Images to send" })).toBeNull());
+  });
+
+  it("ask for no screenshot when they came without one", async () => {
+    const server = installFakeServer(base({ [`GET ${APP}/remarks`]: { remarks: [remark()] } }));
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    await openRemarks();
+    expect(await screen.findByText("Le bouton devrait être vert, comme dans la charte.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Hand to the agent" }));
+    expect(await screen.findByText("Remark 2 · /comptes · Phone")).toBeTruthy();
+
+    expect(screen.queryByRole("button", { name: /^Show the screenshot/ })).toBeNull();
+    expect(screen.queryByRole("list", { name: "Images to send" })).toBeNull();
+    expect(server.calls.some((call) => call.path.endsWith("/screenshot"))).toBe(false);
   });
 
   it("are marked done, and shown on the preview when picked", async () => {

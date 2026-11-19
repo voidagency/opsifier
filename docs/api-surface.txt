@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 62
+# documented-changes: 63
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -4242,6 +4242,7 @@ GET /api/v1/projects/{project}/services/{service}/studio/remarks
   200 remarks![].path!: string
   200 remarks![].point!.x!: number
   200 remarks![].point!.y!: number
+  200 remarks![].screenshot!: boolean
   200 remarks![].status!: enum(done|in_progress|new)
   200 remarks![].text!: string
   200 remarks![].updatedAt!: string
@@ -4277,6 +4278,7 @@ PATCH /api/v1/projects/{project}/services/{service}/studio/remarks/{remark}
   200 path!: string
   200 point!.x!: number
   200 point!.y!: number
+  200 screenshot!: boolean
   200 status!: enum(done|in_progress|new)
   200 text!: string
   200 updatedAt!: string
@@ -4288,6 +4290,14 @@ PATCH /api/v1/projects/{project}/services/{service}/studio/remarks/{remark}
   404
   body conversationId: null|string
   body status!: enum(done|in_progress|new)
+  path project!: string
+  path remark!: string
+  path service!: string
+GET /api/v1/projects/{project}/services/{service}/studio/remarks/{remark}/screenshot
+  200
+  400
+  401
+  404
   path project!: string
   path remark!: string
   path service!: string

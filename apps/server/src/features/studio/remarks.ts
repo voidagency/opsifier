@@ -16,7 +16,7 @@ import { and, asc, count, desc, eq, max, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import type { AppDeps } from "../../core/context";
-import { studioApps, studioGuestLinks, studioRemarks } from "../../core/db/schema";
+import { studioApps, studioGuestLinks, studioRemarkScreenshots, studioRemarks } from "../../core/db/schema";
 import { badRequest, conflict, notFound } from "../../core/errors";
 import { externalUrl, listDomainRows } from "../service-tabs/domains/service";
 import type { ServiceTarget } from "../services/service";
@@ -46,6 +46,11 @@ export const MAX_REMARKS_PER_AUTHOR = 100;
 /** How many remarks one person may write in a minute. */
 const REMARKS_PER_MINUTE = 20;
 const MAX_TEXT = 2000;
+/**
+ * The longest screenshot a remark keeps, as a data URL: the inspector's of the window, a JPEG at 1,600
+ * pixels on its longest side, fits under it, and so does every image a message to the agent may hold.
+ */
+export const MAX_SCREENSHOT_CHARS = 240_000;
 /** The attributes the Studio's inspector describes an element by: no other one is kept. */
 const ELEMENT_ATTRIBUTES = new Set([
   "id",
@@ -75,6 +80,7 @@ export function cleanText(value: string, lines = false): string {
 
 type LinkRow = typeof studioGuestLinks.$inferSelect;
 type RemarkRow = typeof studioRemarks.$inferSelect;
+type ScreenshotType = (typeof studioRemarkScreenshots.$inferSelect)["type"];
 type CreateLink = z.infer<typeof createStudioGuestLinkRequest>;
 type Deps = Pick<AppDeps, "db" | "now">;
 
@@ -96,7 +102,7 @@ function toLink(row: LinkRow, now: number, remarkCount: number): StudioGuestLink
   };
 }
 
-function toRemark(row: RemarkRow): StudioRemark {
+function toRemark(row: RemarkRow, screenshot: boolean): StudioRemark {
   return {
     id: row.id,
     number: row.number,
@@ -105,6 +111,7 @@ function toRemark(row: RemarkRow): StudioRemark {
     point: row.point ?? null,
     viewport: row.viewport ?? null,
     text: row.text,
+    screenshot,
     author: row.author,
     authorKind: row.authorKind,
     status: row.status,
@@ -224,6 +231,26 @@ export function removeGuestLink(
   return { id };
 }
 
+/** The remarks of a project that came with a screenshot. */
+function remarksWithScreenshots(deps: Deps, serviceId: string): Set<string> {
+  return new Set(
+    deps.db
+      .select({ id: studioRemarkScreenshots.remarkId })
+      .from(studioRemarkScreenshots)
+      .innerJoin(studioRemarks, eq(studioRemarks.id, studioRemarkScreenshots.remarkId))
+      .where(eq(studioRemarks.serviceId, serviceId))
+      .all()
+      .map((row) => row.id),
+  );
+}
+
+const hasScreenshot = (deps: Deps, remarkId: string): boolean =>
+  deps.db
+    .select({ id: studioRemarkScreenshots.remarkId })
+    .from(studioRemarkScreenshots)
+    .where(eq(studioRemarkScreenshots.remarkId, remarkId))
+    .get() !== undefined;
+
 export function listRemarks(deps: Deps, target: ServiceTarget): StudioRemarkList {
   const { app } = requireLinked(deps, target);
   const rows = deps.db
@@ -232,7 +259,8 @@ export function listRemarks(deps: Deps, target: ServiceTarget): StudioRemarkList
     .where(eq(studioRemarks.serviceId, app.serviceId))
     .orderBy(desc(studioRemarks.number))
     .all();
-  return { remarks: rows.map(toRemark) };
+  const shots = remarksWithScreenshots(deps, app.serviceId);
+  return { remarks: rows.map((row) => toRemark(row, shots.has(row.id))) };
 }
 
 function requireRemark(deps: Deps, target: ServiceTarget, id: string): RemarkRow {
@@ -266,7 +294,25 @@ export function updateRemark(
     .where(eq(studioRemarks.id, row.id))
     .returning()
     .get();
-  return toRemark(updated ?? row);
+  return toRemark(updated ?? row, hasScreenshot(deps, row.id));
+}
+
+/** The screenshot a remark came with, with the remark's number to name it by. */
+export function remarkScreenshot(
+  deps: Deps,
+  target: ServiceTarget,
+  id: string,
+): { type: ScreenshotType; data: Buffer; number: number } {
+  const row = requireRemark(deps, target, id);
+  const shot = deps.db
+    .select()
+    .from(studioRemarkScreenshots)
+    .where(eq(studioRemarkScreenshots.remarkId, row.id))
+    .get();
+  if (shot === undefined) {
+    throw notFound("This remark came without a screenshot.");
+  }
+  return { type: shot.type, data: shot.data, number: row.number };
 }
 
 export function deleteRemark(deps: Deps, target: ServiceTarget, id: string): { id: string } {
@@ -352,7 +398,11 @@ export function redeemGuestToken(
 const isMine = (row: RemarkRow, visitor: PreviewVisitor) =>
   visitor.kind === "guest" ? row.guestLinkId === visitor.link.id : row.userId === visitor.userId;
 
-function toPreviewRemark(row: RemarkRow, visitor: PreviewVisitor): StudioPreviewRemarks["remarks"][number] {
+function toPreviewRemark(
+  row: RemarkRow,
+  visitor: PreviewVisitor,
+  screenshot: boolean,
+): StudioPreviewRemarks["remarks"][number] {
   return {
     id: row.id,
     number: row.number,
@@ -361,6 +411,7 @@ function toPreviewRemark(row: RemarkRow, visitor: PreviewVisitor): StudioPreview
     point: row.point ?? null,
     viewport: row.viewport ?? null,
     text: row.text,
+    screenshot,
     author: row.author,
     status: row.status,
     createdAt: row.createdAt.toISOString(),
@@ -380,12 +431,13 @@ export function remarksForVisitor(
     .where(eq(studioRemarks.serviceId, preview.serviceId))
     .orderBy(asc(studioRemarks.number))
     .all();
+  const shots = remarksWithScreenshots(deps, preview.serviceId);
   return {
     viewer:
       visitor.kind === "guest"
         ? { name: visitor.link.label, kind: "guest" }
         : { name: visitor.email, kind: "account" },
-    remarks: rows.map((row) => toPreviewRemark(row, visitor)),
+    remarks: rows.map((row) => toPreviewRemark(row, visitor, shots.has(row.id))),
   };
 }
 
@@ -447,12 +499,112 @@ export function cleanPath(value: string): string {
   }
 }
 
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const PNG_END = Buffer.from([0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]);
+const SCREENSHOT_URL = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/;
+/** The JPEG markers that start a frame, which says the image's size: SOF0 to SOF15 but DHT, JPG and DAC. */
+const JPEG_FRAMES = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+
+/** A JPEG from its start to its end marker, with a frame of some size before its scan. */
+function isJpeg(bytes: Buffer): boolean {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+    return false;
+  }
+  if (bytes[bytes.length - 2] !== 0xff || bytes[bytes.length - 1] !== 0xd9) {
+    return false;
+  }
+  let at = 2;
+  while (at + 4 <= bytes.length) {
+    if (bytes[at] !== 0xff) {
+      return false;
+    }
+    const marker = bytes[at + 1] ?? 0;
+    if (marker === 0xff) {
+      at += 1;
+      continue;
+    }
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+      at += 2;
+      continue;
+    }
+    if (marker === 0xd9 || marker === 0xda) {
+      return false;
+    }
+    const length = bytes.readUInt16BE(at + 2);
+    if (length < 2 || at + 2 + length > bytes.length) {
+      return false;
+    }
+    if (JPEG_FRAMES.has(marker)) {
+      return length >= 8 && bytes.readUInt16BE(at + 5) > 0 && bytes.readUInt16BE(at + 7) > 0;
+    }
+    at += 2 + length;
+  }
+  return false;
+}
+
+/** A PNG from its signature to its end chunk, whose header gives it a size. */
+function isPng(bytes: Buffer): boolean {
+  return (
+    bytes.length >= 8 + 25 + PNG_END.length &&
+    bytes.subarray(0, 8).equals(PNG_SIGNATURE) &&
+    bytes.readUInt32BE(8) === 13 &&
+    bytes.toString("latin1", 12, 16) === "IHDR" &&
+    bytes.readUInt32BE(16) > 0 &&
+    bytes.readUInt32BE(20) > 0 &&
+    bytes.subarray(bytes.length - PNG_END.length).equals(PNG_END)
+  );
+}
+
+/** A WebP whose RIFF header gives its whole length, starting with one of WebP's own chunks. */
+function isWebp(bytes: Buffer): boolean {
+  return (
+    bytes.length >= 20 &&
+    bytes.toString("latin1", 0, 4) === "RIFF" &&
+    bytes.readUInt32LE(4) + 8 === bytes.length &&
+    bytes.toString("latin1", 8, 12) === "WEBP" &&
+    ["VP8 ", "VP8L", "VP8X"].includes(bytes.toString("latin1", 12, 16))
+  );
+}
+
+/**
+ * What an image is, among the types a screenshot may be, as its own structure says: its start, its
+ * header and its end, not only its first bytes. Never SVG, nor anything else.
+ */
+function imageTypeOf(bytes: Buffer): ScreenshotType | null {
+  if (isJpeg(bytes)) {
+    return "image/jpeg";
+  }
+  if (isPng(bytes)) {
+    return "image/png";
+  }
+  if (isWebp(bytes)) {
+    return "image/webp";
+  }
+  return null;
+}
+
+/**
+ * A screenshot sent as a data URL, as the panel keeps it: a JPEG, PNG or WebP image whose structure
+ * says it is the type the URL names. Null for anything else.
+ */
+export function readScreenshot(value: string): { type: ScreenshotType; data: Buffer } | null {
+  const match = SCREENSHOT_URL.exec(value);
+  if (match === null) {
+    return null;
+  }
+  const data = Buffer.from(match[2] ?? "", "base64");
+  const type = imageTypeOf(data);
+  return type !== null && type === match[1] ? { type, data } : null;
+}
+
 const newRemark = z.object({
   path: z.string().max(2000),
   text: z.string().trim().min(1, "Required").max(MAX_TEXT, `Must be at most ${MAX_TEXT} characters`),
   element: z.unknown().optional(),
   point: studioRemarkPoint.nullable().optional(),
   viewport: studioRemarkViewport.nullable().optional(),
+  /** The window as its writer saw it, as a data URL. */
+  screenshot: z.string().max(MAX_SCREENSHOT_CHARS, "The screenshot is too large").nullable().optional(),
 });
 
 /** Writes a remark on the preview, numbered after the project's last one. */
@@ -465,7 +617,16 @@ export function addRemark(
   const parsed = newRemark.safeParse(body);
   if (!parsed.success) {
     throw badRequest("validation_failed", "The remark is not one the Studio can keep.", {
-      text: parsed.error.issues[0]?.message ?? "Invalid",
+      [String(parsed.error.issues[0]?.path[0] ?? "text")]: parsed.error.issues[0]?.message ?? "Invalid",
+    });
+  }
+  const screenshot =
+    parsed.data.screenshot === undefined || parsed.data.screenshot === null
+      ? null
+      : readScreenshot(parsed.data.screenshot);
+  if (parsed.data.screenshot && screenshot === null) {
+    throw badRequest("validation_failed", "The remark is not one the Studio can keep.", {
+      screenshot: "A JPEG, PNG or WebP image",
     });
   }
   deps.rateLimiter.consume([
@@ -522,7 +683,7 @@ export function addRemark(
       .where(eq(studioApps.serviceId, preview.serviceId))
       .returning({ counter: studioApps.remarkCounter })
       .get();
-    return tx
+    const inserted = tx
       .insert(studioRemarks)
       .values({
         id: nanoid(),
@@ -544,8 +705,14 @@ export function addRemark(
       })
       .returning()
       .get();
+    if (screenshot !== null) {
+      tx.insert(studioRemarkScreenshots)
+        .values({ remarkId: inserted.id, type: screenshot.type, data: screenshot.data, createdAt: at })
+        .run();
+    }
+    return inserted;
   });
-  return toPreviewRemark(row, visitor);
+  return toPreviewRemark(row, visitor, screenshot !== null);
 }
 
 /** Its writer takes a remark back, while nobody has dealt with it yet. */

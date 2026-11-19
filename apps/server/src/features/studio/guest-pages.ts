@@ -32,7 +32,8 @@ import {
  * a link's, or the previews' sign-in's. The host the request names says which preview it is about.
  */
 
-const MAX_BODY_BYTES = 64 * 1024;
+/** A remark, with its element and a screenshot of the window as a data URL. */
+const MAX_BODY_BYTES = 320 * 1024;
 /** Says « show the remarks tool » to the inspector, for the first page a client's link lands on. */
 export const REMARKS_FLAG_COOKIE = "opsifier_studio_remarks";
 const REMARKS_FLAG_SECONDS = 600;

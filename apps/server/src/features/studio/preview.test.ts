@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { call, createTestContext, setupAdmin, TEST_ORIGIN, type TestContext } from "../../testing/harness";
 import { findService } from "../services/repo";
-import { INSPECTOR_PATH, previewDockerfile, refreshPreviewDockerfiles } from "./preview";
+import { INSPECTOR_PATH, previewDockerfile, refreshPreviewDockerfiles, SNAPSHOT_PATH } from "./preview";
 import { saveApp } from "./repo";
 
 let context: TestContext;
@@ -64,9 +64,11 @@ describe("the panel's start", () => {
 describe("the inspector", () => {
   it("may be loaded by a preview's page at its own address, unlike the panel's other files", async () => {
     const inspector = await call(context.app, INSPECTOR_PATH);
+    const snapshot = await call(context.app, SNAPSHOT_PATH);
     const page = await call(context.app, "/");
 
     expect(inspector.headers.get("cross-origin-resource-policy")).toBe("cross-origin");
+    expect(snapshot.headers.get("cross-origin-resource-policy")).toBe("cross-origin");
     expect(page.headers.get("cross-origin-resource-policy")).toBe("same-origin");
   });
 });

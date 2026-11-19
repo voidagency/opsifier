@@ -8,7 +8,8 @@
  *
  * Opened in a browser tab of its own, from a client's link most often, it shows the remarks tool once
  * the address says ?remarks=1, and until one says ?remarks=0: a pin on each remark of the page, the
- * list of them all, and a way to point at an element and write one. The tool talks to the panel at
+ * list of them all, and a way to point at an element and write one, with a screenshot of the window
+ * that the panel's studio-snapshot.js takes when the remark is started. The tool talks to the panel at
  * /__opsifier/studio/remarks, on the preview's own address, with the page's own cookies.
  *
  * The Studio and the page talk with postMessage. From the Studio: { source: "opsifier-studio",
@@ -24,6 +25,15 @@
   window.__opsifierStudioInspector = true;
 
   const framed = window.parent !== window;
+  /** The panel this file came from, which also serves what takes a remark's screenshot. */
+  const PANEL = (() => {
+    try {
+      return document.currentScript?.src ? new URL(document.currentScript.src).origin : null;
+    } catch {
+      return null;
+    }
+  })();
+  const SNAPSHOT_PATH = "/studio-snapshot.js";
   const FROM_STUDIO = "opsifier-studio";
   const TO_STUDIO = "opsifier-studio-preview";
   const ACCENT = "#f97316";
@@ -62,6 +72,17 @@
         remark: "Remarque",
         status: { new: "À traiter", in_progress: "En cours", done: "Traitée" },
         shortcut: "Ctrl+Entrée envoie",
+        shotTaking: "Capture de l'écran…",
+        shotReady: "Capture de l'écran jointe",
+        shotFailed: "La capture n'a pas pu être prise.",
+        shotNone: "Sans capture d'écran",
+        shotRetake: "Reprendre",
+        shotTake: "Prendre une capture",
+        shotRemove: "Retirer",
+        shotChoose: "Choisir une image",
+        shotView: "Agrandir la capture",
+        shotRefused: "La capture n'a pas pu être envoyée : retirez-la, puis réessayez.",
+        withShot: "Avec une capture d'écran",
       }
     : {
         remarks: "Remarks",
@@ -89,6 +110,17 @@
         remark: "Remark",
         status: { new: "To do", in_progress: "In progress", done: "Done" },
         shortcut: "Ctrl+Enter sends",
+        shotTaking: "Taking a screenshot…",
+        shotReady: "Screenshot attached",
+        shotFailed: "The screenshot could not be taken.",
+        shotNone: "No screenshot",
+        shotRetake: "Retake",
+        shotTake: "Take a screenshot",
+        shotRemove: "Remove",
+        shotChoose: "Choose an image",
+        shotView: "Enlarge the screenshot",
+        shotRefused: "The screenshot could not be sent: remove it, then try again.",
+        withShot: "With a screenshot",
       };
   const STATUS_COLORS = { new: ACCENT, in_progress: "#2563eb", done: "#6b7280" };
 
@@ -298,6 +330,21 @@
       padding: 8px 14px; border-radius: 999px; font-size: 13px; pointer-events: none; }
     .notice { position: fixed; right: 16px; bottom: 16px; max-width: min(340px, calc(100vw - 32px)); display: flex; gap: 10px;
       align-items: flex-start; padding: 12px; }
+    .shot { display: flex; gap: 10px; align-items: center; margin: 0 0 10px; }
+    .thumb { flex: none; width: 88px; height: 56px; border-radius: 6px; border: 1px solid #dfe3ec; background: #f6f7fa;
+      overflow: hidden; display: flex; align-items: center; justify-content: center; color: #5b6781; }
+    .thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+    .shot .grow { flex: 1; min-width: 0; display: grid; gap: 2px; font-size: 12px; }
+    .shot .links { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+    .mini { font-size: 12px; color: #16264a; text-decoration: underline; text-underline-offset: 2px; }
+    .mini:hover { color: ${ACCENT}; }
+    .shotline { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+    .shotline svg { width: 14px; height: 14px; }
+    .spin { animation: spin 900ms linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .viewer { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px;
+      background: rgba(15, 23, 42, .78); pointer-events: auto; cursor: zoom-out; }
+    .viewer img { max-width: 100%; max-height: 100%; border-radius: 8px; background: #fff; box-shadow: 0 12px 36px rgba(0, 0, 0, .4); }
     @media (max-width: 560px) {
       .dock .label { display: none; }
       .card, .composer { left: 12px !important; right: 12px; top: auto !important; bottom: 68px; width: auto; }
@@ -311,6 +358,9 @@
     hide: '<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13.2 13.2 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3 7 10 7a9.7 9.7 0 0 0 5.39-1.61"/><path d="m2 2 20 20"/>',
     close: '<path d="M18 6 6 18M6 6l12 12"/>',
     check: '<path d="M20 6 9 17l-5-5"/>',
+    camera:
+      '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+    loader: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
   };
   function icon(name) {
     const span = document.createElement("span");
@@ -876,6 +926,7 @@
       ),
       h("div", { class: "muted", text: `${remark.author} · ${date(remark.createdAt)}` }),
       h("p", { class: "text", text: remark.text }),
+      remark.screenshot ? h("div", { class: "muted shotline" }, icon("camera"), TEXT.withShot) : null,
       h(
         "div",
         { class: "actions" },
@@ -955,13 +1006,14 @@
       x: clamp(box.width > 0 ? (event.clientX - box.left) / box.width : 0.5, 0, 1),
       y: clamp(box.height > 0 ? (event.clientY - box.top) / box.height : 0.5, 0, 1),
     };
-    draft = { element, point, description: describe(element) };
+    draft = { element, point, description: describe(element), shot: null };
     openId = null;
     listOpen = false;
     composerNode = composer();
     render();
     schedule();
     composerNode.querySelector("textarea")?.focus();
+    void takeShot();
   }
 
   function cancelDraft() {
@@ -969,6 +1021,8 @@
     composerNode = null;
     draftPin?.remove();
     draftPin = null;
+    viewerNode?.remove();
+    viewerNode = null;
   }
 
   function placeDraft() {
@@ -989,6 +1043,171 @@
     }
   }
 
+  // ---- The screenshot a remark comes with. ----
+
+  let snapshotLoading = null;
+  const SHOT_TIMEOUT_MS = 20000;
+  /** What takes the screenshot, loaded from the panel the first time someone starts a remark. */
+  function snapshotter() {
+    if (window.__opsifierStudioSnapshot) {
+      return Promise.resolve(window.__opsifierStudioSnapshot);
+    }
+    if (PANEL === null) {
+      return Promise.reject(new Error("unavailable"));
+    }
+    if (!snapshotLoading) {
+      snapshotLoading = new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = `${PANEL}${SNAPSHOT_PATH}`;
+        script.async = true;
+        script.onload = () =>
+          window.__opsifierStudioSnapshot
+            ? resolve(window.__opsifierStudioSnapshot)
+            : reject(new Error("unavailable"));
+        script.onerror = () => {
+          snapshotLoading = null;
+          script.remove();
+          reject(new Error("unavailable"));
+        };
+        document.head.append(script);
+      });
+    }
+    return snapshotLoading;
+  }
+
+  /**
+   * Fills the draft's screenshot from `make`, which gets the tool: the window as it is, or an image the
+   * writer gave. Whatever was there goes once a new one is asked for.
+   */
+  function setShot(make) {
+    const current = draft;
+    if (!current) {
+      return Promise.resolve();
+    }
+    current.shot = { state: "taking", url: null };
+    current.paintShot?.();
+    // However the page or the panel answers, the composer is not kept waiting for long.
+    const late = new Promise((_, reject) => setTimeout(() => reject(new Error("late")), SHOT_TIMEOUT_MS));
+    const pending = Promise.race([snapshotter().then(make), late])
+      .then(
+        (url) => {
+          if (typeof url !== "string" || !url.startsWith("data:image/jpeg;base64,")) {
+            throw new Error("unavailable");
+          }
+          return { state: "ready", url };
+        },
+        () => ({ state: "failed", url: null }),
+      )
+      .then((shot) => {
+        if (draft === current && current.shot?.pending === pending) {
+          current.shot = shot;
+          current.paintShot?.();
+        }
+      });
+    current.shot.pending = pending;
+    return pending;
+  }
+
+  /** The window as the writer sees it, with the element outlined and the pin drawn. */
+  function takeShot() {
+    const current = draft;
+    // The element and the point, not where they are now: a screenshot may wait for another to end.
+    return setShot((tool) =>
+      tool.capture({
+        exclude: [host, overlay, badge].filter(Boolean),
+        element: current?.element ?? null,
+        point: current?.point ?? null,
+      }),
+    );
+  }
+
+  let viewerNode = null;
+  /** The screenshot at its size, over the page: a click or Escape closes it. */
+  function viewShot(url) {
+    layer();
+    viewerNode?.remove();
+    const close = () => {
+      viewerNode?.remove();
+      viewerNode = null;
+    };
+    viewerNode = h(
+      "div",
+      { class: "viewer", role: "dialog", "aria-label": TEXT.shotView, tabindex: "-1", onclick: close },
+      h("img", { src: url, alt: TEXT.shotReady }),
+    );
+    viewerNode.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+      }
+    });
+    shadow.append(viewerNode);
+    viewerNode.focus();
+  }
+
+  /** The composer's line for the screenshot: being taken, attached, failed or taken off. */
+  function shotLine(chooser) {
+    const row = h("div", { class: "shot" });
+    const link = (text, onclick) => h("button", { class: "mini", type: "button", text, onclick });
+    const paint = () => {
+      const shot = draft?.shot;
+      const choose = link(TEXT.shotChoose, () => chooser.click());
+      if (!shot || shot.state === "taking") {
+        row.replaceChildren(
+          h("span", { class: "thumb", "aria-hidden": "true" }, h("span", { class: "spin" }, icon("loader"))),
+          h("span", { class: "grow" }, h("span", { class: "muted", text: TEXT.shotTaking })),
+        );
+      } else if (shot.state === "ready") {
+        row.replaceChildren(
+          h(
+            "button",
+            {
+              class: "thumb",
+              type: "button",
+              "aria-label": TEXT.shotView,
+              onclick: () => viewShot(shot.url),
+            },
+            h("img", { src: shot.url, alt: "" }),
+          ),
+          h(
+            "span",
+            { class: "grow" },
+            h("span", { text: TEXT.shotReady }),
+            h(
+              "span",
+              { class: "links" },
+              link(TEXT.shotRetake, () => void takeShot()),
+              link(TEXT.shotRemove, () => {
+                if (draft) {
+                  draft.shot = { state: "none", url: null };
+                  paint();
+                }
+              }),
+              choose,
+            ),
+          ),
+        );
+      } else {
+        row.replaceChildren(
+          h("span", { class: "thumb", "aria-hidden": "true" }, icon("camera")),
+          h(
+            "span",
+            { class: "grow" },
+            h("span", { class: "muted", text: shot.state === "failed" ? TEXT.shotFailed : TEXT.shotNone }),
+            h(
+              "span",
+              { class: "links" },
+              link(TEXT.shotTake, () => void takeShot()),
+              choose,
+            ),
+          ),
+        );
+      }
+    };
+    return { row, paint };
+  }
+
   function composer() {
     const field = h("textarea", {
       "aria-label": TEXT.placeholder,
@@ -997,23 +1216,63 @@
     });
     const error = h("div", { class: "error", role: "alert" });
     const send = h("button", { class: "button primary", type: "submit", text: TEXT.send });
+    // An image the writer gives replaces the screenshot: chosen, or pasted into the field.
+    const attachImage = (file) => {
+      if (file && /^image\//.test(file.type)) {
+        void setShot((tool) => tool.fromFile(file));
+      }
+    };
+    const chooser = h("input", {
+      type: "file",
+      accept: "image/*",
+      tabindex: "-1",
+      "aria-hidden": "true",
+      style: "display:none",
+      onchange: (event) => {
+        attachImage(event.target.files?.[0]);
+        event.target.value = "";
+      },
+    });
+    const shot = shotLine(chooser);
+    draft.paintShot = shot.paint;
+    shot.paint();
+    field.addEventListener("paste", (event) => {
+      const file = [...(event.clipboardData?.files || [])].find((one) => /^image\//.test(one.type));
+      if (file) {
+        event.preventDefault();
+        attachImage(file);
+      }
+    });
     const submit = async () => {
+      // The remark as it is now: another started meanwhile is another remark.
+      const current = draft;
       const text = field.value.trim();
-      if (!text || !draft || send.disabled) {
+      if (!text || !current || send.disabled) {
         return;
       }
       send.disabled = true;
       error.textContent = "";
+      const path = where();
+      // A screenshot on its way is waited for, the last one asked for: never more than a few seconds.
+      while (draft === current && current.shot?.state === "taking") {
+        await current.shot.pending;
+      }
+      if (draft !== current) {
+        send.disabled = false;
+        return;
+      }
+      const screenshot = current.shot?.state === "ready" ? current.shot.url : null;
       const response = await fetch(API, {
         method: "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify({
-          path: where(),
+          path,
           text,
-          element: draft.description,
-          point: draft.point,
+          element: current.description,
+          point: current.point,
           viewport: { width: Math.round(innerWidth), height: Math.round(innerHeight) },
+          screenshot,
         }),
       }).catch(() => null);
       send.disabled = false;
@@ -1022,14 +1281,27 @@
         if (body?.remark) {
           remarks = [...remarks, body.remark];
         }
-        cancelDraft();
+        if (draft === current) {
+          cancelDraft();
+        }
         render();
         schedule();
         toast(TEXT.sent);
         return;
       }
+      // The screenshot is named only when the panel says it is what it refused, or the remark was too large.
+      const refused = response?.status === 400 ? await response.json().catch(() => null) : null;
+      const shotRefused =
+        screenshot !== null &&
+        (response?.status === 413 || typeof refused?.error?.fields?.screenshot === "string");
       error.textContent =
-        response?.status === 429 ? TEXT.tooMany : response?.status === 409 ? TEXT.full : TEXT.failed;
+        response?.status === 429
+          ? TEXT.tooMany
+          : response?.status === 409
+            ? TEXT.full
+            : shotRefused
+              ? TEXT.shotRefused
+              : TEXT.failed;
     };
     field.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
@@ -1056,6 +1328,8 @@
       h("div", { class: "head" }, h("span", { class: "grow", text: TEXT.add })),
       elementLine({ element }),
       field,
+      shot.row,
+      chooser,
       error,
       h(
         "div",

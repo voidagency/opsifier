@@ -92,6 +92,16 @@ export const studioRemarksQuery = (project: string, service: string) =>
     refetchInterval: REMARKS_REFRESH_MS,
   });
 
+/** The screenshot a remark came with, as a data URL. A remark's screenshot never changes. */
+export const studioRemarkScreenshotQuery = (project: string, service: string, remark: string) =>
+  queryOptions({
+    queryKey: [...studioKey, "remark-screenshot", project, service, remark] as const,
+    queryFn: ({ signal }) =>
+      api.image(`${appPath(project, service)}/remarks/${segment(remark)}/screenshot`, { signal }),
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: 10 * 60 * 1000,
+  });
+
 export const studioLinksQuery = (project: string, service: string) =>
   queryOptions({
     queryKey: [...studioKey, "links", project, service] as const,

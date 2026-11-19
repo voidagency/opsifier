@@ -10,12 +10,14 @@ import type {
   StudioSettings,
 } from "@opsifier/contract";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { studioRemarkScreenshots } from "../../core/db/schema";
 import {
   apiErrorOf,
   authPost,
   type CallResult,
   call,
   createTestContext,
+  credentialHeaders,
   setupAdmin,
   signInMember,
   TEST_EMAIL,
@@ -420,6 +422,153 @@ describe("what a guest writes", () => {
     await api(`${PREVIEW}/studio/links/${links.body.links[0]?.id}?remarks=delete`, "DELETE");
 
     expect((await api<StudioRemarkList>(`${PREVIEW}/studio/remarks`)).body.remarks).toEqual([]);
+  });
+});
+
+describe("a screenshot with a remark", () => {
+  // Two pixels by two, as an image library writes them.
+  const JPEG = Buffer.from(
+    "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAACAAIDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDVooor8wP1Y//Z",
+    "base64",
+  );
+  const PNG = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGP8WSzGwMDAxAAGABMlAYYBfDl/AAAAAElFTkSuQmCC",
+    "base64",
+  );
+  const WEBP = Buffer.from(
+    "UklGRjwAAABXRUJQVlA4IDAAAAAwAgCdASoCAAIAAUAmJaACdLoB+AH4AAShAAD+4ka/9rQHBqv9Oz/7aGdUJf7QAAA=",
+    "base64",
+  );
+  const dataUrl = (type: string, bytes: Buffer) => `data:${type};base64,${bytes.toString("base64")}`;
+  type Written = { remark: StudioPreviewRemarks["remarks"][number] };
+  const post = (guest: string, screenshot: unknown, text = "Le bouton est caché") =>
+    onPreview<Written>("/remarks", {
+      method: "POST",
+      body: { ...remark(text), screenshot },
+      cookie: guest,
+      origin: `https://${HOST}`,
+    });
+  /** The image, as the Studio fetches it: raw bytes, which the harness would read as text. */
+  const fetchShot = async (path: string, as = cookie) => {
+    const response = await context.app.request(`/api/v1${path}`, { headers: credentialHeaders(as) });
+    return { response, bytes: Buffer.from(await response.arrayBuffer()) };
+  };
+  const stored = () => context.deps.db.select().from(studioRemarkScreenshots).all().length;
+
+  it("is kept apart from its remark, flagged in the lists, and sent as the image it is", async () => {
+    const guest = await openLink();
+    const shot = await post(guest, dataUrl("image/jpeg", JPEG));
+    const plain = await post(guest, null, "Sans capture");
+    expect(shot.status).toBe(201);
+    expect(shot.body.remark.screenshot).toBe(true);
+    expect(plain.body.remark.screenshot).toBe(false);
+
+    const seen = await onPreview<StudioPreviewRemarks>("/remarks", { cookie: guest });
+    expect(seen.body.remarks.map((one) => [one.number, one.screenshot])).toEqual([
+      [1, true],
+      [2, false],
+    ]);
+    // Neither list carries the image itself.
+    expect(JSON.stringify(seen.body)).not.toContain(JPEG.toString("base64"));
+    const listed = await api<StudioRemarkList>(`${PREVIEW}/studio/remarks`);
+    expect(listed.body.remarks.map((one) => [one.number, one.screenshot])).toEqual([
+      [2, false],
+      [1, true],
+    ]);
+    expect(JSON.stringify(listed.body)).not.toContain(JPEG.toString("base64"));
+
+    const { response, bytes } = await fetchShot(
+      `${PREVIEW}/studio/remarks/${shot.body.remark.id}/screenshot`,
+    );
+    expect(response.status).toBe(200);
+    expect(bytes.equals(JPEG)).toBe(true);
+    expect(response.headers.get("content-type")).toBe("image/jpeg");
+    expect(response.headers.get("content-disposition")).toBe('inline; filename="remark-1.jpeg"');
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    const none = await fetchShot(`${PREVIEW}/studio/remarks/${plain.body.remark.id}/screenshot`);
+    expect(none.response.status).toBe(404);
+
+    const handed = await api<StudioRemark>(`${PREVIEW}/studio/remarks/${shot.body.remark.id}`, "PATCH", {
+      status: "in_progress",
+    });
+    expect(handed.body.screenshot).toBe(true);
+  });
+
+  it("is a JPEG, a PNG or a WebP image, as its first bytes say, and nothing else", async () => {
+    const guest = await openLink();
+
+    for (const [type, bytes] of [
+      ["image/png", PNG],
+      ["image/webp", WEBP],
+    ] as const) {
+      const sent = await post(guest, dataUrl(type, bytes));
+      expect(sent.status).toBe(201);
+      const { response } = await fetchShot(`${PREVIEW}/studio/remarks/${sent.body.remark.id}/screenshot`);
+      expect(response.headers.get("content-type")).toBe(type);
+    }
+    const refused = [
+      dataUrl(
+        "image/svg+xml",
+        Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>x</script></svg>'),
+      ),
+      // A JPEG that says it is a PNG, and a page that says it is a JPEG.
+      dataUrl("image/png", JPEG),
+      dataUrl("image/jpeg", Buffer.from("<html><script>alert(1)</script></html>")),
+      dataUrl("image/gif", Buffer.from("GIF89a")),
+      // The right first bytes, and nothing an image is made of after them.
+      dataUrl("image/jpeg", Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(96, 7)])),
+      dataUrl("image/jpeg", JPEG.subarray(0, JPEG.length - 2)),
+      dataUrl("image/png", Buffer.concat([PNG.subarray(0, 8), Buffer.alloc(64, 3)])),
+      dataUrl("image/webp", Buffer.concat([WEBP, Buffer.alloc(4)])),
+      "data:image/jpeg;base64,not base64!",
+      "https://evil.example.com/shot.jpg",
+      42,
+    ];
+    for (const screenshot of refused) {
+      const sent = await post(guest, screenshot);
+      expect(sent.status).toBe(400);
+      expect(apiErrorOf(sent).fields).toHaveProperty("screenshot");
+    }
+    // At most a data URL of 240,000 characters, and nothing past the size of a request.
+    const long = `data:image/jpeg;base64,${Buffer.concat([JPEG, Buffer.alloc(180_000)]).toString("base64")}`;
+    expect(long.length).toBeGreaterThan(240_000);
+    expect((await post(guest, long)).status).toBe(400);
+    expect((await post(guest, `${long}${"A".repeat(100_000)}`)).status).toBe(413);
+
+    expect(stored()).toBe(2);
+    const listed = await api<StudioRemarkList>(`${PREVIEW}/studio/remarks`);
+    expect(listed.body.remarks).toHaveLength(2);
+  });
+
+  it("goes with its remark, whoever deletes it", async () => {
+    const guest = await openLink();
+    const write = async () => (await post(guest, dataUrl("image/jpeg", JPEG))).body.remark.id;
+    const takenBack = await write();
+    const deleted = await write();
+    await write();
+    await write();
+    expect(stored()).toBe(4);
+
+    await onPreview(`/remarks/${takenBack}`, { method: "DELETE", cookie: guest, origin: `https://${HOST}` });
+    expect(stored()).toBe(3);
+    await api(`${PREVIEW}/studio/remarks/${deleted}`, "DELETE");
+    expect(stored()).toBe(2);
+    const links = await api<StudioGuestLinkList>(`${PREVIEW}/studio/links`);
+    await api(`${PREVIEW}/studio/links/${links.body.links[0]?.id}?remarks=delete`, "DELETE");
+    expect(stored()).toBe(0);
+  });
+
+  it("is shown to whoever reaches the project only", async () => {
+    const guest = await openLink();
+    const id = (await post(guest, dataUrl("image/jpeg", JPEG))).body.remark.id;
+    const stranger = await signInMember(context.app, cookie, "stranger@example.com", []);
+
+    expect((await fetchShot(`${PREVIEW}/studio/remarks/${id}/screenshot`, stranger)).response.status).toBe(
+      404,
+    );
+    expect((await fetchShot(`${OTHER}/studio/remarks/${id}/screenshot`)).response.status).toBe(404);
+    expect((await fetchShot(`${PREVIEW}/studio/remarks/${id}/screenshot`, "")).response.status).toBe(401);
   });
 });
 

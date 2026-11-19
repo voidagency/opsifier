@@ -1,5 +1,5 @@
 import type { StudioAppDetail, StudioRemark } from "@opsifier/contract";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bot,
   Check,
@@ -11,13 +11,13 @@ import {
   Tablet,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/cn";
 import { formatRelativeTime } from "../../lib/format";
 import { errorMessage } from "../../lib/forms";
-import { Button, ConfirmDialog, ErrorState, Segmented, Skeleton, Tooltip, toast } from "../../ui";
-import { studioApi, studioKey } from "./api";
+import { Button, ConfirmDialog, Dialog, ErrorState, Segmented, Skeleton, Tooltip, toast } from "../../ui";
+import { studioApi, studioKey, studioRemarkScreenshotQuery } from "./api";
 import { deviceOfWidth, elementLabel } from "./selection";
 
 const DEVICE_ICONS = { desktop: Monitor, tablet: Tablet, mobile: Smartphone } as const;
@@ -45,6 +45,79 @@ export function RemarkBubble({ remark, className }: { remark: StudioRemark; clas
 }
 
 type Filter = "open" | "done";
+
+/**
+ * Whether an element has come near the visible part of its list once: a project keeps hundreds of
+ * remarks, whose screenshots are read only as they come into view. Without a way to tell, it has.
+ */
+function useSeen<T extends Element>(): [RefObject<T | null>, boolean] {
+  const ref = useRef<T>(null);
+  const [seen, setSeen] = useState(typeof IntersectionObserver === "undefined");
+  useEffect(() => {
+    const node = ref.current;
+    if (seen || node === null) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setSeen(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [seen]);
+  return [ref, seen];
+}
+
+/**
+ * The screenshot a remark came with, small on its card: the window its writer saw, the element outlined
+ * and the pin where they clicked. A click shows it at its size.
+ */
+function RemarkScreenshot({ app, remark }: { app: StudioAppDetail; remark: StudioRemark }) {
+  const { t } = useTranslation(["studio", "common"]);
+  const [open, setOpen] = useState(false);
+  const [place, seen] = useSeen<HTMLDivElement>();
+  const image = useQuery({
+    ...studioRemarkScreenshotQuery(app.project, app.service, remark.id),
+    enabled: seen,
+  });
+  if (image.isError) {
+    return <p className="text-xs text-muted">{t("remarks.screenshotFailed")}</p>;
+  }
+  if (image.data === undefined) {
+    return (
+      <div ref={place}>
+        <Skeleton className="h-24 w-full" />
+      </div>
+    );
+  }
+  const alt = t("remarks.screenshotAlt", { number: remark.number });
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={t("remarks.screenshotShow", { number: remark.number })}
+        className="block overflow-hidden rounded-sm border bg-wash hover:border-accent"
+      >
+        <img src={image.data} alt={alt} className="block h-24 w-full object-cover object-top" />
+      </button>
+      <Dialog
+        open={open}
+        onOpenChange={setOpen}
+        size="lg"
+        title={t("remarks.screenshotTitle", { number: remark.number })}
+        description={t("remarks.screenshotDescription")}
+      >
+        <img src={image.data} alt={alt} className="mx-auto block h-auto max-w-full rounded-sm border" />
+      </Dialog>
+    </>
+  );
+}
 
 /**
  * What clients and reviewers wrote on the project's preview: the ones to deal with, and those dealt
@@ -197,6 +270,7 @@ export function RemarksPanel({
                       {remark.status === "in_progress" && ` · ${t("remarks.withAgent")}`}
                     </span>
                   </button>
+                  {remark.screenshot && <RemarkScreenshot app={app} remark={remark} />}
                   <div className="flex flex-wrap items-center gap-1.5">
                     {remark.status !== "done" && (
                       <Button

@@ -58,6 +58,10 @@ export function installFakeServer(routes: FakeRoute): FakeServer {
       }
       // A handler can answer later, which is how a test holds a request open.
       const value = await (typeof route === "function" ? (route as Handler)(body, url) : route);
+      // A handler may answer with a response of its own, an image for one.
+      if (value instanceof Response) {
+        return value;
+      }
       const { __status: status, body: payload } = (value as { __status?: number; body?: unknown }) ?? {};
       if (typeof status === "number") {
         return new Response(JSON.stringify(payload), { status });

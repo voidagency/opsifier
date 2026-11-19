@@ -17,6 +17,7 @@ const remark = (overrides: Partial<StudioRemark> = {}): StudioRemark => ({
   point: null,
   viewport: { width: 390, height: 844 },
   text: "Le bouton devrait être vert.",
+  screenshot: false,
   author: "Karim Benali · Acme",
   authorKind: "guest",
   status: "new",

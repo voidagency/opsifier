@@ -7,6 +7,7 @@ import type {
 } from "@opsifier/contract";
 import { sql } from "drizzle-orm";
 import {
+  blob,
   check,
   foreignKey,
   index,
@@ -920,3 +921,17 @@ export const studioRemarks = sqliteTable(
     index("studio_remarks_guest_link_idx").on(table.guestLinkId),
   ],
 );
+
+/**
+ * The screenshot a remark came with: the window its writer saw, with the element outlined and the pin
+ * drawn. Apart from the remark, so that listing remarks never reads it, and gone with it.
+ */
+export const studioRemarkScreenshots = sqliteTable("studio_remark_screenshots", {
+  remarkId: text("remark_id")
+    .primaryKey()
+    .references(() => studioRemarks.id, { onDelete: "cascade" }),
+  /** The image's type, as its first bytes say: JPEG, PNG or WebP. */
+  type: text("type", { enum: ["image/jpeg", "image/png", "image/webp"] }).notNull(),
+  data: blob("data", { mode: "buffer" }).notNull(),
+  createdAt: millis("created_at").notNull(),
+});

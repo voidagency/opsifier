@@ -10,7 +10,7 @@ import { PROXY_PAGES_PREFIX } from "./core/proxy";
 import * as featureModules from "./features";
 import { authorizeRequests, guardPanelHost, strictTransport } from "./features/access/guard";
 import { noindexPanelResponses } from "./features/server-purpose/routes";
-import { INSPECTOR_PATH } from "./features/studio/preview";
+import { INSPECTOR_PATH, SNAPSHOT_PATH } from "./features/studio/preview";
 import { requireTwoFactorSetup } from "./features/two-factor-policy/service";
 
 const API_PREFIX = "/api/v1";
@@ -93,13 +93,15 @@ export function createApp(deps: AppDeps, featureList: Feature[] = features): Api
   app.notFound(notFoundHandler);
 
   app.use("*", logRequests(deps));
-  // Project previews load the Studio's inspector from their own addresses, so it is the one file
-  // another site may load. It holds the inspector's code and nothing else. Set around the headers
-  // below, which would otherwise keep it to the panel's own pages.
-  app.use(INSPECTOR_PATH, async (c, next) => {
-    await next();
-    c.header("Cross-Origin-Resource-Policy", "cross-origin");
-  });
+  // Project previews load the Studio's inspector from their own addresses, and the inspector what takes
+  // a screenshot of the page, so they are the files another site may load. They hold code and nothing
+  // else. Set around the headers below, which would otherwise keep them to the panel's own pages.
+  for (const path of [INSPECTOR_PATH, SNAPSHOT_PATH]) {
+    app.use(path, async (c, next) => {
+      await next();
+      c.header("Cross-Origin-Resource-Policy", "cross-origin");
+    });
+  }
   app.use(
     "*",
     secureHeaders({

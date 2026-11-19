@@ -66,6 +66,8 @@ CMD ["opsifier-studio-preview"]
 
 /** Where the panel serves the Studio's inspector, which project previews load from it. */
 export const INSPECTOR_PATH = "/studio-inspector.js";
+/** Where the panel serves what takes a screenshot of a preview's page, which the inspector loads when needed. */
+export const SNAPSHOT_PATH = "/studio-snapshot.js";
 
 /** What a preview is told to load the inspector from, the panel's own address. */
 export const inspectorEnv = (panel: string | null): string =>

@@ -59,6 +59,7 @@ import {
   studioAppQuery,
   studioKey,
   studioModelsQuery,
+  studioRemarkScreenshotQuery,
   studioRemarksQuery,
 } from "./api";
 import { type ChatItem, changedFiles, type StudioActionEvent, toChatItems, userMessageCount } from "./chat";
@@ -366,6 +367,11 @@ function ConversationPane({
   const [sharing, setSharing] = useState(false);
   const newRemarks = remarks.filter((remark) => remark.status === "new").length;
   const models = useQuery({ ...studioModelsQuery, enabled: conversationId === null });
+  // The screenshot of the remark handed over goes with it, among the message's images.
+  const handedShot = useQuery({
+    ...studioRemarkScreenshotQuery(app.project, app.service, handed?.id ?? ""),
+    enabled: handed?.screenshot === true,
+  });
   const [chosenModel, setChosenModel] = useState<string | null>(null);
   const nextProfile = chosenModel ?? models.data?.active ?? null;
   const nextModel =
@@ -405,9 +411,11 @@ function ConversationPane({
       return false;
     }
     const remark = handed;
+    // The remark's screenshot, when it is still among the images, is named in its block: it is the client's.
+    const screenshot = handedShot.data === undefined ? -1 : images.indexOf(handedShot.data);
     const full = [
       text.trim(),
-      remark === null ? null : remarkBlock(remark),
+      remark === null ? null : remarkBlock(remark, screenshot === -1 ? null : screenshot + 1),
       element === null ? null : elementBlock(element),
     ]
       .filter((part) => part !== null && part !== "")
@@ -666,6 +674,8 @@ function ConversationPane({
             element={element}
             onClearElement={onClearElement}
             handed={handed}
+            handedScreenshot={handed?.screenshot === true ? (handedShot.data ?? null) : null}
+            handedScreenshotFailed={handed?.screenshot === true && handedShot.isError}
             onClearHanded={onClearHanded}
             onSend={send}
             onStop={stop}
@@ -1068,6 +1078,8 @@ function Composer({
   element,
   onClearElement,
   handed,
+  handedScreenshot,
+  handedScreenshotFailed,
   onClearHanded,
   onSend,
   onStop,
@@ -1079,6 +1091,9 @@ function Composer({
   element: SelectedElement | null;
   onClearElement: () => void;
   handed: StudioRemark | null;
+  /** The screenshot the handed remark came with, once read, as a data URL. */
+  handedScreenshot: string | null;
+  handedScreenshotFailed: boolean;
   onClearHanded: () => void;
   /** Resolves true once sent, when what was typed can go. */
   onSend: (text: string, images: string[]) => Promise<boolean>;
@@ -1096,6 +1111,38 @@ function Composer({
       area.current?.focus();
     }
   }, [element, handed]);
+
+  // A remark handed over brings its screenshot, once, as one of the images: seen, and removable. It goes
+  // with the remark: left out, or another handed over, it leaves the images too.
+  const handedImage = useRef<{ id: string; url: string } | null>(null);
+  useEffect(() => {
+    const previous = handedImage.current;
+    if (previous !== null && previous.id !== handed?.id) {
+      handedImage.current = null;
+      if (images.includes(previous.url)) {
+        setImages(images.filter((url) => url !== previous.url));
+        return;
+      }
+    }
+    if (handed === null || handedScreenshot === null || handedImage.current !== null) {
+      return;
+    }
+    handedImage.current = { id: handed.id, url: handedScreenshot };
+    if (images.includes(handedScreenshot)) {
+      return;
+    }
+    if (images.length >= MAX_IMAGES) {
+      toast.error(t("composer.tooManyImages", { count: MAX_IMAGES }));
+      return;
+    }
+    setImages([...images, handedScreenshot]);
+  }, [handed, handedScreenshot, images, t]);
+
+  useEffect(() => {
+    if (handedScreenshotFailed) {
+      toast.error(t("composer.remarkScreenshotFailed"));
+    }
+  }, [handedScreenshotFailed, t]);
 
   // The field grows with what is typed, then scrolls. Empty, it keeps its two rows: a browser counts
   // the placeholder in the height it reports, and the placeholder of a narrow field is tall.

@@ -224,6 +224,53 @@ async function request<T>(method: Method, path: string, options: RequestOptions<
   }
 }
 
+/**
+ * An image the API sends, as a data URL: the panel's pages show images from data URLs only, and the
+ * request needs the session's headers, which an image's own address could not carry.
+ */
+async function image(path: string, options: Pick<RequestOptions<unknown>, "signal"> = {}): Promise<string> {
+  const { signal } = options;
+  const url = buildUrl(path, undefined);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      credentials: "same-origin",
+      headers: { Accept: "image/jpeg, image/png, image/webp", ...bindingHeaders() },
+      signal,
+    });
+  } catch (cause) {
+    if (signal?.aborted) {
+      throw cause;
+    }
+    throw new ApiError(0, clientErrorCode.network, "The server could not be reached");
+  }
+  if (!response.ok) {
+    if (response.status === 401) {
+      onUnauthorized?.();
+    }
+    const error = await toApiError(response);
+    if (error.code === "two_factor_setup_required") {
+      onTwoFactorRequired?.();
+    }
+    throw error;
+  }
+  const type = response.headers.get("content-type") ?? "";
+  if (!/^image\/(jpeg|png|webp)$/.test(type)) {
+    throw new ApiError(
+      response.status,
+      clientErrorCode.badResponse,
+      "The server sent an unexpected response",
+    );
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  let binary = "";
+  // In slices: a whole image as the arguments of one call would be too many for some engines.
+  for (let at = 0; at < bytes.length; at += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+  }
+  return `data:${type};base64,${btoa(binary)}`;
+}
+
 /** The typed REST client. Paths are relative to `/api/v1`. */
 export const api = {
   get: <T>(path: string, options?: RequestOptions<T>) => request<T>("GET", path, options),
@@ -231,4 +278,5 @@ export const api = {
   put: <T>(path: string, options?: RequestOptions<T>) => request<T>("PUT", path, options),
   patch: <T>(path: string, options?: RequestOptions<T>) => request<T>("PATCH", path, options),
   delete: <T>(path: string, options?: RequestOptions<T>) => request<T>("DELETE", path, options),
+  image,
 };

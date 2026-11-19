@@ -74,7 +74,8 @@
     "imageFailed": "Cette image n'a pas pu être lue.",
     "send": "Envoyer",
     "elementPlaceholder": "Que faut-il changer dans cet élément ?",
-    "remarkPlaceholder": "Ajoutez une consigne pour l'agent, ou envoyez la remarque telle quelle."
+    "remarkPlaceholder": "Ajoutez une consigne pour l'agent, ou envoyez la remarque telle quelle.",
+    "remarkScreenshotFailed": "La capture d'écran de la remarque n'a pas pu être jointe au message."
   },
   "preview": {
     "label": "Aperçu en direct",
@@ -320,7 +321,12 @@
     "deleteConfirm": "Supprimer",
     "deleted": "Remarque {{number}} supprimée",
     "chip": "Remarque {{number}}",
-    "unhand": "Ne plus joindre cette remarque"
+    "unhand": "Ne plus joindre cette remarque",
+    "screenshotAlt": "Capture d'écran de la remarque {{number}}",
+    "screenshotShow": "Voir la capture d'écran de la remarque {{number}}",
+    "screenshotTitle": "Capture d'écran de la remarque {{number}}",
+    "screenshotDescription": "La fenêtre que son auteur voyait, avec l'élément entouré et le repère là où il a cliqué.",
+    "screenshotFailed": "La capture d'écran n'a pas pu être chargée."
   },
   "links": {
     "action": "Liens client",

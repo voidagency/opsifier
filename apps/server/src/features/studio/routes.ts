@@ -1,4 +1,4 @@
-import { createRoute } from "@hono/zod-openapi";
+import { createRoute, z } from "@hono/zod-openapi";
 import {
   actionEntry,
   addStudioGithubKeyRequest,
@@ -70,6 +70,7 @@ import {
   listGuestLinks,
   listRemarks,
   liveGuestLink,
+  remarkScreenshot,
   removeGuestLink,
   updateRemark,
 } from "./remarks";
@@ -585,6 +586,29 @@ const updateRemarkRoute = createRoute({
   },
 });
 
+const remarkScreenshotRoute = createRoute({
+  method: "get",
+  path: `${REMARKS}/{remark}/screenshot`,
+  tags,
+  description:
+    "The screenshot a remark came with: the window its writer saw, with the element outlined and the pin drawn. A JPEG, PNG or WebP image, as its first bytes say.",
+  request: { params: studioRemarkPath },
+  responses: {
+    200: {
+      description: "The image.",
+      content: Object.fromEntries(
+        ["image/jpeg", "image/png", "image/webp"].map((type) => [
+          type,
+          { schema: z.string().openapi({ type: "string", format: "binary" }) },
+        ]),
+      ),
+    },
+    400: invalid,
+    401: denied,
+    404: missing,
+  },
+});
+
 const deleteRemarkRoute = createRoute({
   method: "delete",
   path: `${REMARKS}/{remark}`,
@@ -1007,6 +1031,16 @@ export const feature: Feature = {
     app.openapi(updateRemarkRoute, (c) => {
       const params = c.req.valid("param");
       return c.json(updateRemark(deps, target(params), params.remark, c.req.valid("json")), 200);
+    });
+
+    app.openapi(remarkScreenshotRoute, (c) => {
+      const params = c.req.valid("param");
+      const shot = remarkScreenshot(deps, target(params), params.remark);
+      return c.body(new Uint8Array(shot.data), 200, {
+        "Content-Type": shot.type,
+        "Content-Length": String(shot.data.length),
+        "Content-Disposition": `inline; filename="remark-${shot.number}.${shot.type.slice("image/".length)}"`,
+      });
     });
 
     app.openapi(deleteRemarkRoute, (c) => {

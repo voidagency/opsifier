@@ -109,8 +109,11 @@ const REMARK_OPEN = "<client_remark>";
 const REMARK_CLOSE = "</client_remark>";
 const REMARK_BLOCK = /<client_remark>([\s\S]*?)<\/client_remark>/g;
 
-/** The block a message carries to hand the agent a remark: what was written, by whom, where, on what screen. */
-export function remarkBlock(remark: StudioRemark): string {
+/**
+ * The block a message carries to hand the agent a remark: what was written, by whom, where, on what
+ * screen, and which of the message's images is the screenshot the remark came with, counted from 1.
+ */
+export function remarkBlock(remark: StudioRemark, screenshot: number | null = null): string {
   const window =
     remark.viewport === null
       ? []
@@ -123,6 +126,10 @@ export function remarkBlock(remark: StudioRemark): string {
     `From: ${fence(remark.author)}`,
     `Page: ${fence(remark.path)}`,
     ...window,
+    // Before the text, which runs to the end of the block.
+    ...(screenshot === null
+      ? []
+      : [`Screenshot: image ${screenshot} of this message, taken in the client's browser`]),
     "Text:",
     fence(remark.text),
     REMARK_CLOSE,

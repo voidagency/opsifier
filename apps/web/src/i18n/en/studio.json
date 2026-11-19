@@ -74,7 +74,8 @@
     "imageFailed": "This image could not be read.",
     "send": "Send",
     "elementPlaceholder": "What should change in this element?",
-    "remarkPlaceholder": "Add an instruction for the agent, or send the remark as it is."
+    "remarkPlaceholder": "Add an instruction for the agent, or send the remark as it is.",
+    "remarkScreenshotFailed": "The remark's screenshot could not be added to the message."
   },
   "preview": {
     "label": "Live preview",
@@ -320,7 +321,12 @@
     "deleteConfirm": "Delete",
     "deleted": "Remark {{number}} deleted",
     "chip": "Remark {{number}}",
-    "unhand": "Leave this remark out"
+    "unhand": "Leave this remark out",
+    "screenshotAlt": "Screenshot of remark {{number}}",
+    "screenshotShow": "Show the screenshot of remark {{number}}",
+    "screenshotTitle": "Screenshot of remark {{number}}",
+    "screenshotDescription": "The window its writer saw, with the element outlined and the pin where they clicked.",
+    "screenshotFailed": "The screenshot could not be loaded."
   },
   "links": {
     "action": "Client links",
