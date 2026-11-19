@@ -13,6 +13,7 @@ import {
   RotateCw,
   Smartphone,
   Tablet,
+  TextCursorInput,
   X,
 } from "lucide-react";
 import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -21,7 +22,7 @@ import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/forms";
 import { Button, buttonClass, Lamp, Tooltip, toast } from "../../ui";
 import { studioApi, studioAppQuery } from "./api";
-import { type Device, readSelected, type SelectedElement } from "./selection";
+import { type Device, readSelected, readTextEdit, type SelectedElement, type TextEdit } from "./selection";
 import { type ProjectSync, useProjectSync } from "./useProjectSync";
 
 type LampState = "running" | "stopped" | "progress" | "failed" | "unknown";
@@ -147,6 +148,7 @@ export function PreviewPane({
   onStartRequested,
   onStartFailed,
   onSelected,
+  onTextEdited,
   remarks,
   pinsOn,
   onTogglePins,
@@ -163,6 +165,8 @@ export function PreviewPane({
   /** The start asked for came to nothing: no more waiting for it. */
   onStartFailed: () => void;
   onSelected: (element: SelectedElement) => void;
+  /** A text the person changed where it is, in the page: for the next message. */
+  onTextEdited: (edit: TextEdit) => void;
   /** The remarks to pin on the page, when the pins are on. */
   remarks: readonly StudioRemark[];
   pinsOn: boolean;
@@ -188,6 +192,10 @@ export function PreviewPane({
   // Read by the frame's messages as they come: what someone is typing is not replaced under them.
   const editing = useRef(false);
   const [inspectable, setInspectable] = useState(false);
+  // Changing a text where it is, in the page; it stays on across the page's own navigation.
+  const [changingText, setChangingText] = useState(false);
+  const changing = useRef(false);
+  changing.current = changingText;
   const [inspecting, setInspecting] = useState(false);
   const frame = useRef<HTMLIFrameElement>(null);
   // Each page the frame loads says it is ready: its pins are sent again.
@@ -265,6 +273,13 @@ export function PreviewPane({
         if (data.type === "ready") {
           setInspectable(true);
           setLoads((count) => count + 1);
+          // A new page knows nothing of the mode: it is told again.
+          if (changing.current) {
+            frame.current.contentWindow?.postMessage(
+              { source: FROM_STUDIO, type: "edit", on: true },
+              origin ?? "*",
+            );
+          }
         }
         setPath(data.path);
         setAddress((current) => (editing.current ? current : (data.path as string)));
@@ -276,13 +291,20 @@ export function PreviewPane({
         }
       } else if (data.type === "inspect-ended") {
         setInspecting(false);
+      } else if (data.type === "text-edited") {
+        const edit = readTextEdit(data);
+        if (edit !== null) {
+          onTextEdited(edit);
+        }
+      } else if (data.type === "edit-ended") {
+        setChangingText(false);
       } else if (data.type === "remark" && typeof (data as { id?: unknown }).id === "string") {
         onRemarkClicked((data as { id: string }).id);
       }
     };
     window.addEventListener("message", listen);
     return () => window.removeEventListener("message", listen);
-  }, [origin, onSelected, onRemarkClicked]);
+  }, [origin, onSelected, onTextEdited, onRemarkClicked]);
 
   const tell = (message: Record<string, unknown>) => {
     if (origin !== null) {
@@ -339,6 +361,7 @@ export function PreviewPane({
     }
     setInspectable(false);
     setInspecting(false);
+    setChangingText(false);
     setSource(`${origin}${to.startsWith("/") ? to : `/${to}`}`);
     setFrameKey((key) => key + 1);
   };
@@ -346,7 +369,19 @@ export function PreviewPane({
   const toggleInspect = () => {
     const on = !inspecting;
     setInspecting(on);
+    if (on) {
+      setChangingText(false);
+    }
     tell({ type: "inspect", on });
+  };
+
+  const toggleText = () => {
+    const on = !changingText;
+    setChangingText(on);
+    if (on) {
+      setInspecting(false);
+    }
+    tell({ type: "edit", on });
   };
 
   const showFrame = status === "running" && app.previewUrl !== null;
@@ -449,6 +484,18 @@ export function PreviewPane({
                 onClick={toggleInspect}
               >
                 <MousePointerClick aria-hidden="true" className="size-4" />
+              </Button>
+            </Tooltip>
+            <Tooltip content={inspectable ? t("preview.editText") : t("preview.inspectUnavailable")}>
+              <Button
+                size="icon-sm"
+                variant={changingText ? "primary" : "ghost"}
+                aria-label={t("preview.editText")}
+                aria-pressed={changingText}
+                disabled={!inspectable}
+                onClick={toggleText}
+              >
+                <TextCursorInput aria-hidden="true" className="size-4" />
               </Button>
             </Tooltip>
             <Tooltip
@@ -558,6 +605,9 @@ export function PreviewPane({
       )}
       {inspecting && (
         <p className="border-b bg-wash px-3 py-1.5 text-xs text-muted">{t("preview.inspecting")}</p>
+      )}
+      {changingText && (
+        <p className="border-b bg-wash px-3 py-1.5 text-xs text-muted">{t("preview.editingText")}</p>
       )}
       <div ref={box} className="min-h-0 flex-1 overflow-hidden bg-wash">
         {showFrame ? (

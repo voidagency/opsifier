@@ -22,6 +22,7 @@ import {
   MousePointerClick,
   PanelLeftClose,
   Paperclip,
+  PencilLine,
   Plus,
   Sparkles,
   Square,
@@ -86,12 +87,16 @@ import {
   remarkBlock,
   type SelectedElement,
   splitMessage,
+  type TextEdit,
+  textEditBlock,
 } from "./selection";
 import { useConversation } from "./useConversation";
 
 const MAX_IMAGES = 4;
 /** Files besides images a message carries at most. */
 const MAX_FILES = 5;
+/** Texts changed in the preview that a message carries at most. */
+const MAX_TEXT_EDITS = 20;
 const extensionOf = (name: string) => name.slice(name.lastIndexOf(".") + 1).toLowerCase();
 /** A file a message carries besides images, by the ending of its name. */
 const isAttachable = (file: File) =>
@@ -148,6 +153,28 @@ export function WorkspacePage() {
   const chat = useChatPanel();
   const workspace = useRef<HTMLDivElement>(null);
   const showChat = chat.setCollapsed;
+  // The texts changed in the preview, for the next message.
+  const [edits, setEdits] = useState<TextEdit[]>([]);
+  const onTextEdited = useCallback(
+    (edit: TextEdit) => {
+      setEdits((current) => {
+        // The same text changed again: what it said first, and what it says last.
+        const same = current.findIndex(
+          (one) => one.element.selector === edit.element.selector && one.element.path === edit.element.path,
+        );
+        if (same === -1) {
+          return current.length >= MAX_TEXT_EDITS ? current : [...current, edit];
+        }
+        const merged = { ...edit, before: current[same]?.before ?? edit.before };
+        return merged.after === merged.before
+          ? current.filter((_, at) => at !== same)
+          : current.map((one, at) => (at === same ? merged : one));
+      });
+      setTab("conversation");
+      showChat(false);
+    },
+    [showChat],
+  );
   const remarks = useQuery({
     ...studioRemarksQuery(project, service),
     enabled: user !== null && user !== undefined,
@@ -287,6 +314,9 @@ export function WorkspacePage() {
         }}
         onClearHanded={() => setHanded(null)}
         onOpenLinks={() => setLinking(true)}
+        edits={edits}
+        onRemoveEdit={(index) => setEdits((current) => current.filter((_, at) => at !== index))}
+        onClearEdits={() => setEdits([])}
       />
       {!chat.collapsed && <ChatResizer width={chat.width} workspace={workspace} onWidth={chat.setWidth} />}
       <PreviewPane
@@ -299,6 +329,7 @@ export function WorkspacePage() {
         onStartRequested={() => setStartRequested(true)}
         onStartFailed={() => setStartRequested(false)}
         onSelected={onSelected}
+        onTextEdited={onTextEdited}
         remarks={(remarks.data?.remarks ?? []).filter(
           (remark) => remark.status !== "done" || remark.id === selectedRemark,
         )}
@@ -375,6 +406,9 @@ function ConversationPane({
   onClearHanded,
   onOpenLinks,
   onCollapse,
+  edits,
+  onRemoveEdit,
+  onClearEdits,
   className,
 }: {
   app: StudioAppDetail;
@@ -397,6 +431,10 @@ function ConversationPane({
   onOpenLinks: () => void;
   /** Folds the conversation away on a wide screen, for the preview to take the whole width. */
   onCollapse: () => void;
+  /** The texts changed in the preview, for the next message. */
+  edits: readonly TextEdit[];
+  onRemoveEdit: (index: number) => void;
+  onClearEdits: () => void;
   className?: string;
 }) {
   const { t } = useTranslation(["studio", "common"]);
@@ -502,6 +540,7 @@ function ConversationPane({
         text.trim(),
         remark === null ? null : remarkBlock(remark, screenshot === -1 ? null : screenshot + 1),
         element === null ? null : elementBlock(element),
+        ...edits.map(textEditBlock),
         attached.length === 0 ? null : filesBlock(attached),
       ]
         .filter((part) => part !== null && part !== "")
@@ -546,6 +585,7 @@ function ConversationPane({
       }
       onClearElement();
       onClearHanded();
+      onClearEdits();
       return true;
     } catch (reason) {
       if (reason instanceof LeftPage) {
@@ -793,6 +833,8 @@ function ConversationPane({
             onSend={send}
             onStop={stop}
             switcher={switcher}
+            edits={edits}
+            onRemoveEdit={onRemoveEdit}
           />
         )}
       </div>
@@ -973,6 +1015,32 @@ function ModelLine({ model }: { model: StudioModel }) {
   );
 }
 
+/** A text changed in the preview: what it said, and what it should say. */
+function TextEditChip({ before, after, onRemove }: { before: string; after: string; onRemove?: () => void }) {
+  const { t } = useTranslation("studio");
+  return (
+    <span className="inline-flex max-w-full items-center gap-1.5 rounded-sm border border-accent/40 bg-raised px-2 py-0.5 text-xs">
+      <PencilLine aria-hidden="true" className="size-3.5 shrink-0 text-accent" />
+      <span className="sr-only">{t("composer.textEdit")}</span>
+      <span className="min-w-0 truncate text-muted line-through">{before}</span>
+      <span aria-hidden="true" className="shrink-0 text-muted">
+        →
+      </span>
+      <span className="min-w-0 truncate">{after}</span>
+      {onRemove !== undefined && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={t("composer.removeTextEdit", { text: before })}
+          className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-muted hover:text-ink"
+        >
+          <X aria-hidden="true" className="size-3" />
+        </button>
+      )}
+    </span>
+  );
+}
+
 /** A file a message carries besides images: its name, and its size while it is being written. */
 function FileChip({ name, size, onRemove }: { name: string; size?: number; onRemove?: () => void }) {
   const { t } = useTranslation("studio");
@@ -1120,6 +1188,12 @@ function UserMessage({
           <ElementChip label={label} />
         </span>
       ))}
+      {parts.edits.map((edit, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: two changes of a message may read the same
+        <span key={`edit-${index}`} className="min-w-0">
+          <TextEditChip before={edit.before} after={edit.after} />
+        </span>
+      ))}
       {parts.files.map((name, index) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: two files of a message may share a name
         <span key={`${index}-${name}`} className="min-w-0">
@@ -1229,6 +1303,8 @@ function Composer({
   onSend,
   onStop,
   switcher,
+  edits = [],
+  onRemoveEdit,
 }: {
   firstMessage: boolean;
   sending: boolean;
@@ -1246,6 +1322,9 @@ function Composer({
   onStop: () => void;
   /** Which conversation the message goes to, and how to start another, beside the attachments. */
   switcher?: ReactNode;
+  /** The texts changed in the preview that go with the message. */
+  edits?: readonly TextEdit[];
+  onRemoveEdit?: (index: number) => void;
 }) {
   const { t } = useTranslation(["studio", "common"]);
   const [text, setText] = useState("");
@@ -1376,7 +1455,8 @@ function Composer({
   };
 
   // A remark handed over is a message on its own: the person may add to it, or send it as it is.
-  const empty = text.trim() === "" && images.length === 0 && files.length === 0 && handed === null;
+  const empty =
+    text.trim() === "" && images.length === 0 && files.length === 0 && handed === null && edits.length === 0;
 
   const submit = async () => {
     if (empty) {
@@ -1459,6 +1539,19 @@ function Composer({
             <ElementChip label={elementLabel(element)} onRemove={onClearElement} />
           </div>
         )}
+        {edits.length > 0 && (
+          <ul className="grid min-w-0 gap-1" aria-label={t("composer.textEdits")}>
+            {edits.map((edit, index) => (
+              <li key={`${edit.element.path} ${edit.element.selector}`} className="min-w-0">
+                <TextEditChip
+                  before={edit.before}
+                  after={edit.after}
+                  onRemove={onRemoveEdit === undefined ? undefined : () => onRemoveEdit(index)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
         {images.length > 0 && (
           <ul className="flex flex-wrap gap-1.5" aria-label={t("composer.images")}>
             {images.map((url, index) => (
@@ -1499,11 +1592,13 @@ function Composer({
           placeholder={
             handed !== null
               ? t("composer.remarkPlaceholder")
-              : element !== null
-                ? t("composer.elementPlaceholder")
-                : firstMessage
-                  ? t("composer.firstPlaceholder")
-                  : t("composer.placeholder")
+              : edits.length > 0
+                ? t("composer.textEditPlaceholder")
+                : element !== null
+                  ? t("composer.elementPlaceholder")
+                  : firstMessage
+                    ? t("composer.firstPlaceholder")
+                    : t("composer.placeholder")
           }
           value={text}
           rows={2}

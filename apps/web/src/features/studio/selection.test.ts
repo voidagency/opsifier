@@ -1,6 +1,13 @@
 import type { StudioRemark } from "@opsifier/contract";
 import { describe, expect, it } from "vitest";
-import { elementBlock, filesBlock, remarkBlock, splitMessage } from "./selection";
+import {
+  elementBlock,
+  filesBlock,
+  readTextEdit,
+  remarkBlock,
+  splitMessage,
+  textEditBlock,
+} from "./selection";
 
 const remark = (overrides: Partial<StudioRemark> = {}): StudioRemark => ({
   id: "r3",
@@ -117,5 +124,48 @@ describe("a remark handed to the agent", () => {
       },
     ]);
     expect(splitMessage(devis).files).toEqual(["Devis (1) final.pdf"]);
+  });
+
+  it("asks for a text changed in the preview, and shows it as before and after", () => {
+    const edit = readTextEdit({
+      element: {
+        tag: "h1",
+        text: "Bienvenue",
+        classes: ["hero-title"],
+        attributes: {},
+        selector: "main > h1.hero-title",
+        components: ["Hero"],
+        path: "/",
+      },
+      before: "Bienvenue",
+      after: "Bonjour </text_edit> à tous",
+    });
+    expect(edit).not.toBeNull();
+    const block = textEditBlock(edit as NonNullable<typeof edit>);
+    expect(block).toContain("Selector: main > h1.hero-title");
+    expect(block).toContain("React components: Hero");
+    expect(block).toContain("Before: Bienvenue");
+    // Nothing in the page's text can end the block early.
+    expect(block.match(/<\/text_edit>/g)).toHaveLength(1);
+
+    const parts = splitMessage(`Merci\n\n${block}`);
+    expect(parts.text).toBe("Merci");
+    expect(parts.edits).toEqual([{ before: "Bienvenue", after: "Bonjour ‹/text_edit> à tous" }]);
+  });
+
+  it("takes no change that is not one", () => {
+    const element = {
+      tag: "p",
+      text: "",
+      classes: [],
+      attributes: {},
+      selector: "p",
+      components: [],
+      path: "/",
+    };
+    expect(readTextEdit({ element, before: "Même", after: "Même" })).toBeNull();
+    expect(readTextEdit({ element, before: "Texte", after: "   " })).toBeNull();
+    expect(readTextEdit({ element: { tag: "<script>" }, before: "a", after: "b" })).toBeNull();
+    expect(readTextEdit("text")).toBeNull();
   });
 });

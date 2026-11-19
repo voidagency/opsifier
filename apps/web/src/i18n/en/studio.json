@@ -85,7 +85,11 @@
     "fileEmpty": "{{name}} is empty.",
     "tooManyFiles": "At most {{count}} files per message.",
     "drop": "Drop images or files here",
-    "fileFailed": "{{name}}: {{reason}}"
+    "fileFailed": "{{name}}: {{reason}}",
+    "textEdits": "Changed texts to send",
+    "textEdit": "Changed text",
+    "removeTextEdit": "Remove the change to “{{text}}”",
+    "textEditPlaceholder": "Send for the agent to make these changes, or add an instruction."
   },
   "preview": {
     "label": "Live preview",
@@ -152,7 +156,9 @@
         "agent_unavailable": "The agent server does not answer: the changes on GitHub were not brought in.",
         "failed": "The changes on GitHub could not be brought in. Try again in a moment."
       }
-    }
+    },
+    "editText": "Change a text of the page",
+    "editingText": "Click a text of the preview to change it. Enter keeps the change, Esc cancels it; Esc again leaves this mode."
   },
   "settings": {
     "title": "Studio",

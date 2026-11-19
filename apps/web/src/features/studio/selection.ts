@@ -138,6 +138,52 @@ export function remarkBlock(remark: StudioRemark, screenshot: number | null = nu
   ].join("\n");
 }
 
+/** A text the person changed in the preview: where it is, what it said, and what it should say. */
+export interface TextEdit {
+  element: SelectedElement;
+  before: string;
+  after: string;
+}
+
+/** The longest text a change carries, as the page sends it. */
+const MAX_EDIT_TEXT = 2000;
+
+/** What the preview's page sent of a changed text, kept only when it has the shape of one. */
+export function readTextEdit(value: unknown): TextEdit | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const element = readSelected(value.element);
+  const before = short(value.before, MAX_EDIT_TEXT);
+  const after = short(value.after, MAX_EDIT_TEXT);
+  if (element === null || after === "" || after === before) {
+    return null;
+  }
+  return { element, before, after };
+}
+
+const EDIT_OPEN = "<text_edit>";
+const EDIT_CLOSE = "</text_edit>";
+const EDIT_BLOCK = /<text_edit>([\s\S]*?)<\/text_edit>/g;
+
+/** The block a message carries for a text the person changed in the preview: where, from what, to what. */
+export function textEditBlock(edit: TextEdit): string {
+  const classes =
+    edit.element.classes.length === 0 ? "" : ` class="${fence(edit.element.classes.join(" "))}"`;
+  return [
+    EDIT_OPEN,
+    `Page: ${fence(edit.element.path)}`,
+    `Element: <${fence(edit.element.tag)}${classes}>`,
+    ...(edit.element.components.length === 0
+      ? []
+      : [`React components: ${edit.element.components.map(fence).join(" < ")}`]),
+    `Selector: ${fence(edit.element.selector)}`,
+    `Before: ${fence(edit.before)}`,
+    `After: ${fence(edit.after)}`,
+    EDIT_CLOSE,
+  ].join("\n");
+}
+
 const FILES_OPEN = "<attached_files>";
 const FILES_CLOSE = "</attached_files>";
 const FILES_BLOCK = /<attached_files>([\s\S]*?)<\/attached_files>/g;
@@ -184,9 +230,15 @@ export function splitMessage(text: string): {
   elements: string[];
   remarks: RemarkTag[];
   files: string[];
+  edits: { before: string; after: string }[];
 } {
+  const edits: { before: string; after: string }[] = [];
+  const withoutEdits = text.replace(EDIT_BLOCK, (_, body: string) => {
+    edits.push({ before: lineOf(body, "Before:"), after: lineOf(body, "After:") });
+    return "";
+  });
   const files: string[] = [];
-  const withoutFiles = text.replace(FILES_BLOCK, (_, body: string) => {
+  const withoutFiles = withoutEdits.replace(FILES_BLOCK, (_, body: string) => {
     for (const line of body.split("\n")) {
       const literal = /^- ("(?:[^"\\]|\\.)*") \(/.exec(line)?.[1];
       if (literal === undefined) {
@@ -236,5 +288,5 @@ export function splitMessage(text: string): {
     );
     return "";
   });
-  return { text: rest.trim(), elements, remarks, files };
+  return { text: rest.trim(), elements, remarks, files, edits };
 }

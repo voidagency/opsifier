@@ -488,6 +488,45 @@ describe("the conversation beside the preview", () => {
     expect(within(header).queryByRole("combobox")).toBeNull();
   });
 
+  it("asks the agent for the texts changed in the preview, the same text once", async () => {
+    const server = installFakeServer(
+      base({ [`POST ${APP}/conversations/${CONVERSATION}/messages`]: conversation }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+    await screen.findByText("Change le titre");
+    fromPreview({ type: "ready", path: "/" });
+    const change = await screen.findByRole("button", { name: "Change a text of the page" });
+    await waitFor(() => expect(change.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(change);
+    expect(change.getAttribute("aria-pressed")).toBe("true");
+
+    const element = {
+      tag: "h1",
+      text: "Bienvenue",
+      classes: [],
+      attributes: {},
+      selector: "main > h1",
+      components: ["Hero"],
+      path: "/",
+    };
+    fromPreview({ type: "text-edited", element, before: "Bienvenue", after: "Bonjour" });
+    // Changed again before sending: what it said first, and what it says last.
+    fromPreview({ type: "text-edited", element, before: "Bonjour", after: "Bonjour à tous" });
+    const edits = await screen.findByRole("list", { name: "Changed texts to send" });
+    expect(within(edits).getAllByRole("listitem")).toHaveLength(1);
+    expect(within(edits).getByText("Bienvenue")).toBeTruthy();
+    expect(within(edits).getByText("Bonjour à tous")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(server.calls.find((call) => call.path.endsWith("/messages"))).toBeTruthy());
+    const sent = server.calls.find((call) => call.path.endsWith("/messages"))?.body as { text: string };
+    expect(sent.text).toContain("<text_edit>");
+    expect(sent.text).toContain("Selector: main > h1");
+    expect(sent.text).toContain("Before: Bienvenue");
+    expect(sent.text).toContain("After: Bonjour à tous");
+    await waitFor(() => expect(screen.queryByRole("list", { name: "Changed texts to send" })).toBeNull());
+  });
+
   it("still offers the conversations from one kept for reading only", async () => {
     installFakeServer(
       base({

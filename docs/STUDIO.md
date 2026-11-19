@@ -157,7 +157,13 @@ export const studioInspector = () => ({
 
 The panel writes each preview it made from its current template when it starts, so a project whose preview came from an earlier version builds the new one at its next deployment.
 
-The page and the Studio talk with `postMessage`. The Studio sends `{ source: "opsifier-studio", type: "ping" }` and `{ type: "inspect", on }`; the page answers `{ source: "opsifier-studio-preview", type: "ready", path }`, then `location`, `selected` with the element, and `inspect-ended`. The page listens to its parent frame only, and the Studio to its preview's address only.
+The page and the Studio talk with `postMessage`. The Studio sends `{ source: "opsifier-studio", type: "ping" }`, `{ type: "inspect", on }` and `{ type: "edit", on }`; the page answers `{ source: "opsifier-studio-preview", type: "ready", path }`, then `location`, `selected` with the element, `inspect-ended`, `text-edited` with the element and the text before and after, and `edit-ended`. The page listens to its parent frame only, and the Studio to its preview's address only.
+
+## Changing a text in the preview
+
+**Change a text of the page**, beside **Point at an element**, makes the page's texts editable where they are. A click on a text, a title, a paragraph or a button's label, lets you write over it; Enter keeps the change, Escape takes it back, and Escape again leaves the mode. Each change joins the next message as a tag, the same text changed twice as one, and the message asks the agent to change it in the code, where it is written, with the element's page, selector and React components to find it. The page shows the new text at once when the element holds it alone, until the agent's change reaches the preview.
+
+Only an element that holds text and nothing else can be changed: in a paragraph with a word in bold, the bold word, or the paragraph through **Point at an element** and a message. To comment an element rather than change its text, point at it and write the message.
 
 ## The conversation
 

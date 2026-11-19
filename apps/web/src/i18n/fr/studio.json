@@ -85,7 +85,11 @@
     "fileEmpty": "{{name}} est vide.",
     "tooManyFiles": "{{count}} fichiers au plus par message.",
     "drop": "Déposez ici des images ou des fichiers",
-    "fileFailed": "{{name}} : {{reason}}"
+    "fileFailed": "{{name}} : {{reason}}",
+    "textEdits": "Textes modifiés à envoyer",
+    "textEdit": "Texte modifié",
+    "removeTextEdit": "Retirer la modification de « {{text}} »",
+    "textEditPlaceholder": "Envoyez pour que l'agent applique ces modifications, ou ajoutez une consigne."
   },
   "preview": {
     "label": "Aperçu en direct",
@@ -152,7 +156,9 @@
         "agent_unavailable": "Le serveur d'agents ne répond pas : les changements de GitHub n'ont pas été récupérés.",
         "failed": "Impossible de récupérer les changements de GitHub. Réessayez dans un instant."
       }
-    }
+    },
+    "editText": "Modifier un texte de la page",
+    "editingText": "Cliquez sur un texte de l'aperçu pour le modifier. Entrée valide, Échap annule ; Échap quitte ensuite ce mode."
   },
   "settings": {
     "title": "Studio",

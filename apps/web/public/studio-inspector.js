@@ -3,8 +3,10 @@
  *
  * In the Studio's preview frame, it lets the person in the Studio point at one of the page's elements:
  * hovering outlines it, a click sends what it is to the Studio, which joins it to the next message for
- * the agent. It tells the Studio which address the page is at, and pins on the page the remarks the
- * Studio sends it.
+ * the agent. It also lets them change a text where it is: a click on a text makes it editable, Enter
+ * keeps the change and sends it, with the element, to the Studio, which asks the agent to make it in the
+ * code. It tells the Studio which address the page is at, and pins on the page the remarks the Studio
+ * sends it.
  *
  * Opened in a browser tab of its own, from a client's link most often, it shows the remarks tool once
  * the address says ?remarks=1, and until one says ?remarks=0: a pin on each remark of the page, the
@@ -13,9 +15,9 @@
  * /__opsifier/studio/remarks, on the preview's own address, with the page's own cookies.
  *
  * The Studio and the page talk with postMessage. From the Studio: { source: "opsifier-studio",
- * type: "inspect", on }, { type: "ping" }, { type: "remarks", items } and { type: "focus-remark", id }.
- * From the page: { source: "opsifier-studio-preview", type: "ready" | "location" | "selected" |
- * "inspect-ended" | "remark", ... }. Only the frame's parent is listened to, and once it has spoken,
+ * type: "inspect", on }, { type: "edit", on }, { type: "ping" }, { type: "remarks", items } and
+ * { type: "focus-remark", id }. From the page: { source: "opsifier-studio-preview", type: "ready" |
+ * "location" | "selected" | "inspect-ended" | "text-edited" | "edit-ended" | "remark", ... }. Only the frame's parent is listened to, and once it has spoken,
  * only its origin is answered.
  */
 (() => {
@@ -722,6 +724,204 @@
   );
   addEventListener("scroll", () => picker && hovered && outline(hovered), true);
 
+  // ---- Changing a text where it is: for the Studio's message, which asks the agent to make it so. ----
+
+  /** Elements whose text is not the page's to change here. */
+  const NOT_TEXT = new Set([
+    "HTML",
+    "BODY",
+    "SCRIPT",
+    "STYLE",
+    "NOSCRIPT",
+    "TEXTAREA",
+    "INPUT",
+    "SELECT",
+    "OPTION",
+    "SVG",
+    "IFRAME",
+    "CANVAS",
+    "VIDEO",
+    "AUDIO",
+  ]);
+  const MAX_TEXT = 2000;
+  /** Whether a mode for changing texts is on, and the text being changed, with what it held. */
+  let texting = false;
+  let editing = null;
+
+  /** An element that holds text and nothing else: what can be changed here and found again in the code. */
+  function textOnly(element) {
+    if (
+      element?.nodeType !== 1 ||
+      NOT_TEXT.has(element.tagName) ||
+      isOurs(element) ||
+      element.isContentEditable
+    ) {
+      return false;
+    }
+    const nodes = [...element.childNodes];
+    if (nodes.length === 0 || nodes.some((node) => node.nodeType !== 3 && node.nodeType !== 8)) {
+      return false;
+    }
+    const text = nodes
+      .filter((node) => node.nodeType === 3)
+      .map((node) => node.data)
+      .join("");
+    return text.trim() !== "" && text.length <= MAX_TEXT;
+  }
+
+  const flat = (text) => text.replace(/\s+/g, " ").trim();
+
+  function startText() {
+    texting = true;
+    hideOutline();
+  }
+
+  function stopText() {
+    finishEditing(true);
+    texting = false;
+    hideOutline();
+  }
+
+  function beginEditing(element) {
+    // What React or the page holds, as it is, to give back whatever happens while it is changed.
+    const nodes = [...element.childNodes];
+    const saved = nodes.map((node) => (node.nodeType === 3 ? node.data : null));
+    editing = {
+      element,
+      nodes,
+      saved,
+      description: describe(element),
+      before: flat(saved.filter((data) => data !== null).join("")),
+    };
+    hideOutline();
+    element.contentEditable = "plaintext-only";
+    if (element.contentEditable !== "plaintext-only") {
+      element.contentEditable = "true";
+    }
+    element.style.outline = `2px solid ${ACCENT}`;
+    element.style.outlineOffset = "2px";
+    element.focus();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selection = getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }
+
+  /** Ends a change: kept, it goes to the Studio and shows until the code says the same; or not. */
+  function finishEditing(keep) {
+    if (!editing) {
+      return;
+    }
+    const { element, nodes, saved, description, before } = editing;
+    editing = null;
+    // biome-ignore lint/performance/useDomNodeTextContent: the text as the person sees it
+    const after = flat(element.innerText || element.textContent || "").slice(0, MAX_TEXT);
+    element.removeAttribute("contenteditable");
+    element.style.outline = "";
+    element.style.outlineOffset = "";
+    // The page's own nodes go back as they were, so that nothing it renders loses track of them.
+    nodes.forEach((node, index) => {
+      if (saved[index] !== null) {
+        node.data = saved[index];
+      }
+    });
+    element.replaceChildren(...nodes);
+    getSelection()?.removeAllRanges();
+    if (!keep || after === "" || after === before) {
+      return;
+    }
+    // One text: it shows the change at once, until the agent's change to the code comes.
+    const texts = nodes.filter((node) => node.nodeType === 3);
+    if (texts.length === 1) {
+      const node = texts[0];
+      node.data = `${node.data.match(/^\s*/)[0]}${after}${node.data.match(/\s*$/)[0]}`;
+    }
+    post({ type: "text-edited", element: description, before, after });
+  }
+
+  document.addEventListener(
+    "mousemove",
+    (event) => {
+      if (!texting || editing || picker) {
+        return;
+      }
+      const target = document.elementFromPoint(event.clientX, event.clientY);
+      if (target !== hovered) {
+        hovered = target;
+        if (textOnly(target)) {
+          outline(target);
+        } else {
+          hideOutline();
+        }
+      }
+    },
+    true,
+  );
+
+  // While texts can be changed, a click changes one and does nothing else: no link followed.
+  for (const kind of ["pointerdown", "mousedown", "mouseup", "click"]) {
+    document.addEventListener(
+      kind,
+      (event) => {
+        if (!texting || picker || isOurs(event.target)) {
+          return;
+        }
+        if (editing?.element.contains(event.target)) {
+          // Placing the caret is the browser's to do; following a link is not.
+          if (kind === "click") {
+            event.preventDefault();
+          }
+          event.stopPropagation();
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        if (kind === "click") {
+          finishEditing(true);
+          const target = document.elementFromPoint(event.clientX, event.clientY);
+          if (textOnly(target)) {
+            beginEditing(target);
+          }
+        }
+      },
+      true,
+    );
+  }
+
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (!texting) {
+        return;
+      }
+      if (editing && event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        event.stopPropagation();
+        finishEditing(true);
+      } else if (editing && event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        finishEditing(false);
+      } else if (!editing && event.key === "Escape") {
+        event.preventDefault();
+        stopText();
+        post({ type: "edit-ended" });
+      }
+    },
+    true,
+  );
+  document.addEventListener(
+    "focusout",
+    (event) => {
+      if (editing && event.target === editing.element) {
+        finishEditing(true);
+      }
+    },
+    true,
+  );
+
   // ---- In the Studio's frame: the Studio says what to do. ----
 
   if (framed) {
@@ -731,8 +931,16 @@
       }
       studioOrigin = event.origin;
       const data = event.data;
-      if (data.type === "inspect") {
+      if (data.type === "edit") {
         if (data.on) {
+          stopPicking();
+          startText();
+        } else {
+          stopText();
+        }
+      } else if (data.type === "inspect") {
+        if (data.on) {
+          stopText();
           startPicking(
             (element) => post({ type: "selected", element: describe(element) }),
             () => post({ type: "inspect-ended" }),
