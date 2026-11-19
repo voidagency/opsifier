@@ -17,6 +17,8 @@ export interface SelectProps {
   onValueChange?: (value: string) => void;
   options: readonly SelectOption[];
   placeholder?: string;
+  /** `sm` sits in a row of small buttons, such as a toolbar. */
+  size?: "md" | "sm";
   name?: string;
   disabled?: boolean;
   required?: boolean;
@@ -30,6 +32,7 @@ export interface SelectProps {
 export function Select({
   options,
   placeholder,
+  size = "md",
   className,
   id,
   "aria-label": ariaLabel,
@@ -45,7 +48,8 @@ export function Select({
         aria-label={ariaLabel}
         className={cn(
           controlClass,
-          "flex h-9 items-center justify-between gap-2 px-2.5 text-left text-base data-[placeholder]:text-muted",
+          "flex items-center justify-between gap-2 text-left data-[placeholder]:text-muted",
+          size === "sm" ? "h-7 px-2 text-xs" : "h-9 px-2.5 text-base",
           className,
         )}
       >

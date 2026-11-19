@@ -391,6 +391,120 @@ describe("someone who only has the Studio", () => {
   });
 });
 
+const PANEL_KEY = "opsifier.studio.chat-panel";
+
+/** What the inspector in the preview's page says to the Studio. */
+function fromPreview(data: Record<string, unknown>) {
+  const frame = screen.getByTitle("Live preview of cd-studio-preview") as HTMLIFrameElement;
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      data: { source: "opsifier-studio-preview", ...data },
+      origin: "https://lovable-cd-studio-preview.app.example.com",
+      source: frame.contentWindow,
+    }),
+  );
+}
+
+describe("the conversation beside the preview", () => {
+  it("folds away for the preview to take the whole width, and comes back", async () => {
+    installFakeServer(base());
+    renderApp("/studio/lovable/cd-studio-preview");
+    const conversationPane = await screen.findByRole("region", { name: "Conversation" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide the conversation" }));
+    expect(conversationPane.className).toContain("lg:hidden");
+    expect(screen.queryByRole("separator", { name: "Width of the conversation" })).toBeNull();
+    expect(JSON.parse(localStorage.getItem(PANEL_KEY) ?? "{}")).toMatchObject({ collapsed: true });
+
+    fireEvent.click(screen.getByRole("button", { name: "Show the conversation" }));
+    expect(conversationPane.className).not.toContain("hidden");
+    expect(screen.queryByRole("button", { name: "Show the conversation" })).toBeNull();
+  });
+
+  it("comes back, folded away as it was left, for an element pointed at in the preview", async () => {
+    localStorage.setItem(PANEL_KEY, JSON.stringify({ width: 500, collapsed: true }));
+    installFakeServer(base());
+    renderApp("/studio/lovable/cd-studio-preview");
+    const conversationPane = await screen.findByRole("region", { name: "Conversation" });
+    expect(conversationPane.className).toContain("lg:hidden");
+
+    fromPreview({ type: "ready", path: "/" });
+    fromPreview({
+      type: "selected",
+      element: {
+        tag: "h1",
+        text: "Bienvenue",
+        classes: [],
+        attributes: {},
+        selector: "h1",
+        components: [],
+        path: "/",
+      },
+    });
+
+    await waitFor(() => expect(conversationPane.className).not.toContain("hidden"));
+    expect(
+      screen.getByRole("separator", { name: "Width of the conversation" }).getAttribute("aria-valuenow"),
+    ).toBe("500");
+  });
+
+  it("gets wider or narrower from its border with the keyboard, and stays so", async () => {
+    installFakeServer(base());
+    renderApp("/studio/lovable/cd-studio-preview");
+    const border = await screen.findByRole("separator", { name: "Width of the conversation" });
+    const width = () => border.getAttribute("aria-valuenow");
+    expect(width()).toBe("440");
+
+    fireEvent.keyDown(border, { key: "ArrowRight" });
+    expect(width()).toBe("456");
+    fireEvent.keyDown(border, { key: "ArrowLeft", shiftKey: true });
+    expect(width()).toBe("392");
+    fireEvent.keyDown(border, { key: "Home" });
+    expect(width()).toBe("320");
+    fireEvent.keyDown(border, { key: "End" });
+    expect(width()).toBe("720");
+    expect((border.parentElement as HTMLElement).style.getPropertyValue("--studio-chat-width")).toBe("720px");
+    // A double click puts it back where it starts.
+    fireEvent.doubleClick(border);
+    expect(width()).toBe("440");
+    fireEvent.keyDown(border, { key: "ArrowLeft" });
+    expect(JSON.parse(localStorage.getItem(PANEL_KEY) ?? "{}")).toEqual({ width: 424, collapsed: false });
+  });
+
+  it("keeps which conversation a message goes to beside the attachments", async () => {
+    installFakeServer(base());
+    renderApp(`/studio/lovable/cd-studio-preview?c=${CONVERSATION}`);
+
+    const composer = (await screen.findByLabelText("Message to the agent")).closest(
+      "form",
+    ) as HTMLFormElement;
+    expect(within(composer).getByRole("combobox", { name: "Conversation shown" }).textContent).toContain(
+      "Titre de la page d'accueil",
+    );
+    expect(within(composer).getByRole("link", { name: "New conversation" })).toBeTruthy();
+    const header = screen
+      .getByRole("region", { name: "Conversation" })
+      .querySelector("header") as HTMLElement;
+    expect(within(header).queryByRole("combobox")).toBeNull();
+  });
+
+  it("still offers the conversations from one kept for reading only", async () => {
+    installFakeServer(
+      base({
+        [`GET ${APP}`]: detail({
+          agentMode: "own",
+          agentStatus: "running",
+          conversations: [{ ...conversation, readOnly: true }],
+        }),
+      }),
+    );
+    renderApp(`/studio/lovable/cd-studio-preview?c=${CONVERSATION}`);
+
+    expect(await screen.findByText(/happened with the agent shared by every project/)).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Conversation shown" })).toBeTruthy();
+  });
+});
+
 describe("a Studio project", () => {
   it("shows the conversation next to the live preview", async () => {
     installFakeServer(base());

@@ -17,6 +17,7 @@ import {
   Lock,
   MessageSquareText,
   MousePointerClick,
+  PanelLeftClose,
   Plus,
   Sparkles,
   Square,
@@ -25,7 +26,9 @@ import {
 } from "lucide-react";
 import {
   type ClipboardEvent,
+  type CSSProperties,
   type KeyboardEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useId,
@@ -63,6 +66,7 @@ import {
   studioRemarksQuery,
 } from "./api";
 import { type ChatItem, changedFiles, type StudioActionEvent, toChatItems, userMessageCount } from "./chat";
+import { ChatResizer, useChatPanel } from "./chatPanel";
 import { GuestLinksDialog } from "./GuestLinksDialog";
 import { imageToDataUrl } from "./images";
 import { PreviewPane, type RemarkFocus } from "./PreviewPane";
@@ -123,6 +127,10 @@ export function WorkspacePage() {
   const [focus, setFocus] = useState<RemarkFocus | null>(null);
   // The links that open the preview to clients, from the remarks or from the preview's toolbar.
   const [linking, setLinking] = useState(false);
+  // On a wide screen, how wide the conversation is beside the preview, or whether it is folded away.
+  const chat = useChatPanel();
+  const workspace = useRef<HTMLDivElement>(null);
+  const showChat = chat.setCollapsed;
   const remarks = useQuery({
     ...studioRemarksQuery(project, service),
     enabled: user !== null && user !== undefined,
@@ -139,15 +147,20 @@ export function WorkspacePage() {
       showTab("remarks");
       setSelectedRemark(id);
       setPane("chat");
+      showChat(false);
     },
-    [showTab],
+    [showTab, showChat],
   );
-  const onSelected = useCallback((selection: SelectedElement) => {
-    setElement(selection);
-    setTab("conversation");
-    // On a phone, the element pointed at is the start of a message: back to the conversation.
-    setPane("chat");
-  }, []);
+  const onSelected = useCallback(
+    (selection: SelectedElement) => {
+      setElement(selection);
+      setTab("conversation");
+      // The element pointed at is the start of a message: back to the conversation, wherever it was.
+      setPane("chat");
+      showChat(false);
+    },
+    [showChat],
+  );
   const { data, isPending, isError, error, refetch } = useQuery({
     ...studioAppQuery(project, service),
     enabled: user !== null && user !== undefined,
@@ -197,7 +210,16 @@ export function WorkspacePage() {
     navigate({ to: "/studio/$project/$service", params: { project, service }, search: { c: id } });
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-[minmax(340px,440px)_minmax(0,1fr)] lg:grid-rows-1">
+    <div
+      ref={workspace}
+      style={{ "--studio-chat-width": `${chat.width}px` } as CSSProperties}
+      className={cn(
+        "relative grid h-full min-h-0 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] lg:grid-rows-1",
+        chat.collapsed
+          ? "lg:grid-cols-[minmax(0,1fr)]"
+          : "lg:grid-cols-[var(--studio-chat-width)_minmax(0,1fr)]",
+      )}
+    >
       <div className="flex items-center justify-center border-b px-3 py-1.5 lg:hidden">
         <Segmented
           label={t("panes.label")}
@@ -210,7 +232,17 @@ export function WorkspacePage() {
         />
       </div>
       <ConversationPane
-        className={pane === "chat" ? undefined : "hidden lg:flex"}
+        // A phone shows the pane chosen; a wide screen shows the conversation unless it is folded away.
+        className={
+          pane === "chat"
+            ? chat.collapsed
+              ? "lg:hidden"
+              : undefined
+            : chat.collapsed
+              ? "hidden"
+              : "hidden lg:flex"
+        }
+        onCollapse={() => chat.setCollapsed(true)}
         app={data}
         conversationId={selected}
         onSelect={select}
@@ -239,9 +271,12 @@ export function WorkspacePage() {
         onClearHanded={() => setHanded(null)}
         onOpenLinks={() => setLinking(true)}
       />
+      {!chat.collapsed && <ChatResizer width={chat.width} workspace={workspace} onWidth={chat.setWidth} />}
       <PreviewPane
         // Hidden rather than taken away on a phone, so that the preview keeps its page.
         className={pane === "preview" ? undefined : "hidden lg:flex"}
+        chatHidden={chat.collapsed}
+        onShowChat={() => chat.setCollapsed(false)}
         app={data}
         startRequested={startRequested}
         onStartRequested={() => setStartRequested(true)}
@@ -322,6 +357,7 @@ function ConversationPane({
   onHandToAgent,
   onClearHanded,
   onOpenLinks,
+  onCollapse,
   className,
 }: {
   app: StudioAppDetail;
@@ -342,6 +378,8 @@ function ConversationPane({
   onHandToAgent: (remark: StudioRemark) => void;
   onClearHanded: () => void;
   onOpenLinks: () => void;
+  /** Folds the conversation away on a wide screen, for the preview to take the whole width. */
+  onCollapse: () => void;
   className?: string;
 }) {
   const { t } = useTranslation(["studio", "common"]);
@@ -495,6 +533,37 @@ function ConversationPane({
     label: one.title ?? new Date(one.createdAt).toLocaleString(),
   }));
 
+  // The conversations' actions sit with the message being written: which one it goes to, or a new one.
+  const switcher: ReactNode = (
+    <div className="flex min-w-0 flex-1 items-center gap-1">
+      {options.length > 0 && (
+        <div className="min-w-0 max-w-[13rem] flex-1">
+          <Select
+            size="sm"
+            aria-label={t("conversation.pick")}
+            // A new conversation joins the list with its first message: until then, the others stay
+            // one choice away.
+            value={conversationId ?? ""}
+            placeholder={t("conversation.new")}
+            onValueChange={onSelect}
+            options={options}
+          />
+        </div>
+      )}
+      <Tooltip content={t("conversation.new")}>
+        <Link
+          to="/studio/$project/$service"
+          params={{ project: app.project, service: app.service }}
+          search={{ c: "new" }}
+          className={buttonClass("ghost", "icon-sm")}
+          aria-label={t("conversation.new")}
+        >
+          <Plus aria-hidden="true" className="size-4" />
+        </Link>
+      </Tooltip>
+    </div>
+  );
+
   // The agent's suggestions follow its last word, while it waits for the next request.
   const lastMessage = [...conversation.events].reverse().find((event) => event.kind === "message");
   const suggestions =
@@ -516,18 +585,6 @@ function ConversationPane({
           <ArrowLeft aria-hidden="true" className="size-4" />
         </Link>
         <h1 className="min-w-0 flex-1 truncate font-medium">{name}</h1>
-        {options.length > 0 && (
-          <Select
-            aria-label={t("conversation.pick")}
-            // A new conversation joins the list with its first message: until then, the others stay
-            // one choice away.
-            value={conversationId ?? ""}
-            placeholder={t("conversation.new")}
-            onValueChange={onSelect}
-            options={options}
-            className="max-w-[45%]"
-          />
-        )}
         {admin && (
           <Tooltip content={t("share.action")}>
             <Button
@@ -539,17 +596,15 @@ function ConversationPane({
             />
           </Tooltip>
         )}
-        <Tooltip content={t("conversation.new")}>
-          <Link
-            to="/studio/$project/$service"
-            params={{ project: app.project, service: app.service }}
-            search={{ c: "new" }}
-            className={buttonClass("ghost", "icon-sm")}
-            aria-label={t("conversation.new")}
-          >
-            <Plus aria-hidden="true" className="size-4" />
-          </Link>
-        </Tooltip>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          className="hidden lg:inline-flex"
+          aria-label={t("panes.hide")}
+          tooltip={t("panes.hide")}
+          icon={<PanelLeftClose aria-hidden="true" className="size-4" />}
+          onClick={onCollapse}
+        />
       </header>
 
       <Tabs value={tab} onValueChange={(value) => onTab(value as WorkspaceTab)}>
@@ -666,6 +721,7 @@ function ConversationPane({
 
         {readOnly ? (
           <div className="grid gap-2 border-t px-3 py-3 text-sm">
+            <div className="flex min-w-0 items-center">{switcher}</div>
             <p className="text-muted">{t("conversation.readOnly")}</p>
             <Link
               to="/studio/$project/$service"
@@ -690,6 +746,7 @@ function ConversationPane({
             onClearHanded={onClearHanded}
             onSend={send}
             onStop={stop}
+            switcher={switcher}
           />
         )}
       </div>
@@ -1096,6 +1153,7 @@ function Composer({
   onClearHanded,
   onSend,
   onStop,
+  switcher,
 }: {
   firstMessage: boolean;
   sending: boolean;
@@ -1111,6 +1169,8 @@ function Composer({
   /** Resolves true once sent, when what was typed can go. */
   onSend: (text: string, images: string[]) => Promise<boolean>;
   onStop: () => void;
+  /** Which conversation the message goes to, and how to start another, beside the attachments. */
+  switcher?: ReactNode;
 }) {
   const { t } = useTranslation(["studio", "common"]);
   const [text, setText] = useState("");
@@ -1332,7 +1392,7 @@ function Composer({
             icon={<ImagePlus aria-hidden="true" className="size-4" />}
             onClick={() => fileInput.current?.click()}
           />
-          <span className="flex-1" />
+          {switcher ?? <span className="flex-1" />}
           {busy && (
             <Button
               size="sm"

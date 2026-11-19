@@ -224,7 +224,10 @@
   "panes": {
     "label": "Show",
     "chat": "Conversation",
-    "preview": "Preview"
+    "preview": "Preview",
+    "hide": "Hide the conversation",
+    "show": "Show the conversation",
+    "resize": "Width of the conversation"
   },
   "add": {
     "action": "Add a project",

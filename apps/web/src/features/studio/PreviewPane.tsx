@@ -9,6 +9,7 @@ import {
   MessageSquareText,
   Monitor,
   MousePointerClick,
+  PanelLeftOpen,
   RotateCw,
   Smartphone,
   Tablet,
@@ -152,6 +153,8 @@ export function PreviewPane({
   focus,
   onRemarkClicked,
   onShare,
+  chatHidden = false,
+  onShowChat,
   className,
 }: {
   app: StudioAppDetail;
@@ -169,6 +172,9 @@ export function PreviewPane({
   onRemarkClicked: (id: string) => void;
   /** Opens the links that show the preview to a client without an account. */
   onShare: () => void;
+  /** The conversation is folded away on a wide screen: the preview offers it back. */
+  chatHidden?: boolean;
+  onShowChat?: () => void;
   className?: string;
 }) {
   const { t } = useTranslation(["studio", "common"]);
@@ -361,6 +367,17 @@ export function PreviewPane({
   return (
     <section aria-label={t("preview.label")} className={cn("flex min-h-0 min-w-0 flex-col", className)}>
       <header className="flex flex-wrap items-center gap-2 border-b px-3 py-2 text-sm">
+        {chatHidden && onShowChat !== undefined && (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="hidden lg:inline-flex"
+            aria-label={t("panes.show")}
+            tooltip={t("panes.show")}
+            icon={<PanelLeftOpen aria-hidden="true" className="size-4" />}
+            onClick={onShowChat}
+          />
+        )}
         <Lamp state={waiting ? "progress" : lampOf[status]} size="xs" decorative />
         <span className="shrink-0 text-muted">
           {t(waiting ? "preview.status.starting" : `preview.status.${status}`)}
