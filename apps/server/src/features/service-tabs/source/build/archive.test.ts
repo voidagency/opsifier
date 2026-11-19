@@ -375,3 +375,39 @@ describe("unwrapSingleFolder", () => {
     await expect(unwrapSingleFolder(root)).resolves.toBe(root);
   });
 });
+
+describe("the names verifyTree lets through", () => {
+  let folder: string;
+  beforeEach(() => {
+    folder = mkdtempSync(join(tmpdir(), "opsifier-names-"));
+  });
+  afterEach(() => {
+    rmSync(folder, { recursive: true, force: true });
+  });
+
+  it("refuses one with a control character", async () => {
+    mkdirSync(join(folder, "sub"));
+    writeFileSync(join(folder, "sub", "a\nb.txt"), "x");
+
+    await expect(verifyTree(folder)).rejects.toBeInstanceOf(UnsafeArchiveError);
+    await expect(verifyTree(folder)).rejects.toThrow(
+      /not plain UTF-8 text, or that holds a control character/,
+    );
+  });
+
+  // Only Linux keeps a name that is not UTF-8: macOS refuses to make one.
+  it.runIf(process.platform === "linux")(
+    "refuses one that is not UTF-8, which the panel would read back as another entry's name",
+    async () => {
+      writeFileSync(Buffer.concat([Buffer.from(join(folder, "p")), Buffer.from([0xff])]), "x");
+
+      await expect(verifyTree(folder)).rejects.toThrow(/not plain UTF-8 text/);
+    },
+  );
+
+  it("keeps names in any script, as text", async () => {
+    writeFileSync(join(folder, "café 日本.txt"), "x");
+
+    await expect(verifyTree(folder)).resolves.toMatchObject({ entries: 1 });
+  });
+});

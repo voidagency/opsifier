@@ -52,6 +52,9 @@ const denied = errorResponse("Not signed in.");
 const missing = errorResponse("No such service, configuration or backup.");
 const refused = errorResponse("The service is not in a state that allows this.");
 const accepted = jsonResponse(actionEntry, "The Action doing the work.");
+const reachRefused = errorResponse(
+  "The service reaches the server, and only an administrator can restore into it.",
+);
 
 const getRoute = createRoute({
   method: "get",
@@ -146,7 +149,7 @@ const restoreFromPathRoute = createRoute({
   tags,
   description: "Restores a stored file named by hand. It must have a manifest next to it.",
   request: { params: servicePath, body: jsonBody(restoreFromPathRequest) },
-  responses: { 202: accepted, 400: invalid, 401: denied, 404: missing, 409: refused },
+  responses: { 202: accepted, 400: invalid, 401: denied, 403: reachRefused, 404: missing, 409: refused },
 });
 
 const restoreBackupRoute = createRoute({
@@ -155,7 +158,7 @@ const restoreBackupRoute = createRoute({
   tags,
   description: "Restores one recorded backup into this service.",
   request: { params: backupRecordPath, body: jsonBody(restoreBackupRequest) },
-  responses: { 202: accepted, 400: invalid, 401: denied, 404: missing, 409: refused },
+  responses: { 202: accepted, 400: invalid, 401: denied, 403: reachRefused, 404: missing, 409: refused },
 });
 
 const downloadBackupRoute = createRoute({
@@ -308,7 +311,14 @@ export const feature: Feature = {
       const params = c.req.valid("param");
       return c.json(
         toActionEntry(
-          await restoreFromBackup(deps, target(params), params.backup, c.req.valid("json"), actorOf(c)),
+          await restoreFromBackup(
+            deps,
+            target(params),
+            params.backup,
+            c.req.valid("json"),
+            actorOf(c),
+            requestAccess(deps, c),
+          ),
         ),
         202,
       );

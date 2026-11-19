@@ -412,7 +412,9 @@ export const feature: Feature = {
             actorEmail: emailOfIssuer(deps, hook.createdBy),
             detail: deliveryDetail(identity, commit, payload),
           },
-          () => enqueueDeploy(deps, targetOf(record), undefined, { commit }),
+          // The branch's tip, as for any deploy: a signed delivery can name any commit the repository
+          // holds, another branch's or a pull request's, which nobody chose for this service.
+          () => enqueueDeploy(deps, targetOf(record), undefined),
         );
         confirmDelivery(deps.db, key, action.id);
         return c.json(toActionEntry(action), 202);

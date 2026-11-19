@@ -24,6 +24,7 @@ import {
   type ExecSession,
   type ExecState,
   type ExecTarget,
+  HELPER_LABEL,
   type HelperOptions,
   type HelperResult,
   type ImageDetail,
@@ -57,7 +58,6 @@ const DEFAULT_SOCKET = "/var/run/docker.sock";
 const DEFAULT_TCP_PORT = 2375;
 const DEFAULT_TAIL = 100;
 const UPDATE_ATTEMPTS = 3;
-const HELPER_LABEL = "opsifier.helper";
 
 /** Set on every exec, and inherited by what it starts, so that the whole session can be found again. */
 const EXEC_MARKER = "OPSIFIER_EXEC_ID";
@@ -117,6 +117,7 @@ interface RawVolume {
   Mountpoint: string;
   Labels: Record<string, string> | null;
   CreatedAt?: string;
+  Options?: Record<string, string> | null;
 }
 
 interface RawNetwork {
@@ -332,6 +333,7 @@ function toVolumeInfo(raw: RawVolume): VolumeInfo {
     mountpoint: raw.Mountpoint,
     labels: raw.Labels ?? {},
     createdAt: raw.CreatedAt ?? null,
+    options: raw.Options ?? {},
   };
 }
 
@@ -419,6 +421,10 @@ function toComposeContainer(container: Dockerode.ContainerInfo): ComposeContaine
       .map((port) => `${port.PublicPort}:${port.PrivatePort}/${port.Type}`),
     labels,
     networks: Object.keys(container.NetworkSettings?.Networks ?? {}),
+    // What Docker mounted, however it was asked: `Binds` and `Mounts` alike end up here.
+    binds: (container.Mounts ?? [])
+      .filter((mount) => mount.Type === "bind")
+      .map((mount) => ({ source: mount.Source, rw: mount.RW })),
   };
 }
 

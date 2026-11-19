@@ -3,7 +3,8 @@ import type { AppDeps } from "../../core/context";
 import type { DbHandle } from "../../core/db";
 import { settings } from "../../core/db/schema";
 import { conflict } from "../../core/errors";
-import { liveAddressDomain } from "../opsifier-address/repo";
+import { sslipBase } from "../../core/proxy/sslip";
+import { liveAddressDomain, readAddress } from "../opsifier-address/repo";
 import { routesOverlap } from "../service-tabs/domains/repo";
 import { getSystemInfo } from "../system/service";
 
@@ -32,7 +33,7 @@ export function readPanelDomain(db: DbHandle): PanelDomain {
  */
 export function sslipPanelDomain(deps: Pick<AppDeps, "db" | "config">): string | null {
   const { serverIp } = getSystemInfo(deps as AppDeps);
-  return serverIp === null ? null : `panel.${serverIp.replaceAll(":", "-")}.sslip.io`;
+  return serverIp === null ? null : `panel.${sslipBase(serverIp)}`;
 }
 
 /** The generated hostname the panel is known by: under its address, or `panel.<server-ip>.sslip.io`. */
@@ -80,19 +81,44 @@ export function isPanelOwnName(
   return names.some((name) => name !== null && name !== "" && name === host);
 }
 
+/**
+ * The names the panel answers on, or will: its own, the proxy dashboard's, and those of an address the
+ * server asked for and may get at any time, approved while nobody looks. A name taken by a service
+ * first would otherwise be the panel's later.
+ */
+function panelNames(deps: Pick<AppDeps, "db" | "config">): string[] {
+  const { serverIp } = getSystemInfo(deps as AppDeps);
+  const sslip = serverIp === null ? null : sslipBase(serverIp);
+  const address = readAddress(deps.db);
+  const asked = address !== null && "domain" in address ? address.domain : null;
+  return [
+    readPanelDomain(deps.db).customDomain,
+    defaultPanelDomain(deps),
+    sslipPanelDomain(deps),
+    sslip === null ? null : `proxy.${sslip}`,
+    asked === null ? null : `panel.${asked}`,
+    asked === null ? null : `proxy.${asked}`,
+    asked,
+  ].filter((name): name is string => name !== null && name !== "");
+}
+
+/** Whether a name, or a wildcard over it, is one the panel answers on or will. */
+export function isReservedForPanel(
+  deps: Pick<AppDeps, "db" | "config">,
+  host: string,
+  wildcard: boolean,
+): boolean {
+  const claim = { host, path: "/", wildcard };
+  return panelNames(deps).some((name) => routesOverlap(claim, { host: name, path: "/", wildcard: false }));
+}
+
 /** The panel's own names, and any wildcard that would cover them, can't be given to a service. */
 export function assertHostAvailableForPanel(
   deps: Pick<AppDeps, "db" | "config">,
   host: string,
   wildcard: boolean,
 ): void {
-  const reserved = [
-    readPanelDomain(deps.db).customDomain,
-    defaultPanelDomain(deps),
-    sslipPanelDomain(deps),
-  ].filter((name): name is string => name !== null);
-  const claim = { host, path: "/", wildcard };
-  if (reserved.some((name) => routesOverlap(claim, { host: name, path: "/", wildcard: false }))) {
+  if (isReservedForPanel(deps, host, wildcard)) {
     throw conflict("domain_reserved", "This hostname belongs to the panel.", {
       host: "Reserved for the panel",
     });

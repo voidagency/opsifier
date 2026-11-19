@@ -17,6 +17,7 @@ import { requirePrincipal } from "../../../core/auth";
 import type { AppDeps, Feature } from "../../../core/context";
 import { notFound } from "../../../core/errors";
 import { errorResponse, jsonBody, jsonResponse } from "../../../core/openapi";
+import { requestAccess } from "../../access/guard";
 import type { ServiceTarget } from "../../services/service";
 import { findRun, listRuns } from "./repo";
 import { cancelRun, claimRunActions, settleAfterRestart, startRun, toScriptRun } from "./run";
@@ -31,6 +32,9 @@ const denied = errorResponse("Not signed in.");
 const missing = errorResponse("No such service or script.");
 const taken = errorResponse("A script with this name already exists.");
 const forbiddenAnswer = errorResponse("The caller lacks the operator role on this project.");
+const reachRefused = errorResponse(
+  "The caller lacks the operator role on this project, or the service reaches the server and the caller is not an administrator.",
+);
 const list = jsonResponse(scriptList, "The service's scripts.");
 
 const getRoute = createRoute({
@@ -46,7 +50,7 @@ const addRoute = createRoute({
   path: PATH,
   tags,
   request: { params: servicePath, body: jsonBody(scriptSpec) },
-  responses: { 201: list, 400: invalid, 401: denied, 404: missing, 409: taken },
+  responses: { 201: list, 400: invalid, 401: denied, 403: reachRefused, 404: missing, 409: taken },
 });
 
 const updateRoute = createRoute({
@@ -54,7 +58,7 @@ const updateRoute = createRoute({
   path: `${PATH}/{index}`,
   tags,
   request: { params: scriptItemPath, body: jsonBody(scriptSpec) },
-  responses: { 200: list, 400: invalid, 401: denied, 404: missing, 409: taken },
+  responses: { 200: list, 400: invalid, 401: denied, 403: reachRefused, 404: missing, 409: taken },
 });
 
 const removeRoute = createRoute({
@@ -62,7 +66,7 @@ const removeRoute = createRoute({
   path: `${PATH}/{index}`,
   tags,
   request: { params: scriptItemPath },
-  responses: { 200: list, 400: invalid, 401: denied, 404: missing },
+  responses: { 200: list, 400: invalid, 401: denied, 403: reachRefused, 404: missing },
 });
 
 const startRunRoute = createRoute({
@@ -72,13 +76,14 @@ const startRunRoute = createRoute({
   description:
     "Starts a saved script now. Answers 202 at once with the Action doing the work and the run, whose id is also the Action's: poll this run, or the Action, for how it went. " +
     "Authorized like any other change to a project: a session or a write API key holding the operator role. " +
+    "In a service that reaches the server, through a path on the host, an added capability or a confirmed Compose file, only an administrator with a session or a key not narrowed to some projects can start one, and anyone else gets 403 service_reaches_server. " +
     "Running a script that is already queued or running is refused with 409 script_already_running and starts nothing, so a retried request cannot start a second job.",
   request: { params: servicePath, body: jsonBody(startScriptRunRequest) },
   responses: {
     202: jsonResponse(startedScriptRun, "The Action doing the work, and the run it belongs to."),
     400: invalid,
     401: denied,
-    403: forbiddenAnswer,
+    403: reachRefused,
     404: missing,
     409: errorResponse("This script is already running, or the service cannot take new work."),
   },
@@ -167,7 +172,7 @@ export const feature: Feature = {
 
     app.openapi(addRoute, (c) => {
       const serviceTarget = target(c.req.valid("param"));
-      const scripts = addScript(deps, serviceTarget, c.req.valid("json"));
+      const scripts = addScript(deps, serviceTarget, c.req.valid("json"), requestAccess(deps, c));
       recordChange(deps, serviceTarget, actorEmailOf(requirePrincipal(c)));
       return c.json({ scripts }, 201);
     });
@@ -175,7 +180,13 @@ export const feature: Feature = {
     app.openapi(updateRoute, (c) => {
       const params = c.req.valid("param");
       const serviceTarget = target(params);
-      const scripts = updateScript(deps, serviceTarget, params.index, c.req.valid("json"));
+      const scripts = updateScript(
+        deps,
+        serviceTarget,
+        params.index,
+        c.req.valid("json"),
+        requestAccess(deps, c),
+      );
       recordChange(deps, serviceTarget, actorEmailOf(requirePrincipal(c)));
       return c.json({ scripts }, 200);
     });
@@ -183,13 +194,18 @@ export const feature: Feature = {
     app.openapi(removeRoute, (c) => {
       const params = c.req.valid("param");
       const serviceTarget = target(params);
-      const scripts = removeScript(deps, serviceTarget, params.index);
+      const scripts = removeScript(deps, serviceTarget, params.index, requestAccess(deps, c));
       recordChange(deps, serviceTarget, actorEmailOf(requirePrincipal(c)));
       return c.json({ scripts }, 200);
     });
 
     app.openapi(startRunRoute, (c) => {
-      const { action, run } = startRun(deps, target(c.req.valid("param")), c.req.valid("json").script);
+      const { action, run } = startRun(
+        deps,
+        target(c.req.valid("param")),
+        c.req.valid("json").script,
+        requestAccess(deps, c),
+      );
       return c.json({ ...toActionEntry(action), run: toScriptRun(run) }, 202);
     });
 

@@ -44,7 +44,9 @@ const saveDeployRoute = createRoute({
     200: jsonResponse(deploySettings, "Saved. Takes effect at the next deploy."),
     400: invalid,
     401: denied,
-    403: errorResponse("Granting a new capability takes an administrator."),
+    403: errorResponse(
+      "Granting a new capability takes an administrator, and so does changing the command, the init or the groups of a service that reaches the server.",
+    ),
     404: missing,
   },
 });

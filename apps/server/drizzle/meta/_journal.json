@@ -176,6 +176,13 @@
       "when": 1794915640703,
       "tag": "0024_studio_remarks",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1795028246549,
+      "tag": "0025_session_binding",
+      "breakpoints": true
     }
   ]
 }

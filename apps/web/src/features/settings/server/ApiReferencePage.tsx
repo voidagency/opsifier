@@ -6,6 +6,21 @@ import { api } from "../../../lib/api";
 import { errorMessage } from "../../../lib/forms";
 import { Badge, type BadgeTone, EmptyState, ErrorState, Input, MonoValue, Skeleton } from "../../../ui";
 
+/** Hands the browser the document as a file, the way a download link would. */
+function saveDocument(document: unknown): void {
+  if (document === undefined) {
+    return;
+  }
+  const url = URL.createObjectURL(
+    new Blob([JSON.stringify(document, null, 2)], { type: "application/json" }),
+  );
+  const link = window.document.createElement("a");
+  link.href = url;
+  link.download = "openapi.json";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 const DOCUMENT_PATH = "/openapi.json";
 
 interface Parameter {
@@ -233,9 +248,15 @@ export function ApiReferencePage() {
             {t("manageKeys")}
           </Link>
           {" · "}
-          <a href="/api/v1/openapi.json" className="font-mono text-xs underline underline-offset-2">
+          {/* Saved from what the page already read: a plain link would go without the session's second secret. */}
+          <button
+            type="button"
+            disabled={data === undefined}
+            onClick={() => saveDocument(data)}
+            className="cursor-pointer font-mono text-xs underline underline-offset-2 disabled:cursor-default disabled:no-underline"
+          >
             openapi.json
-          </a>
+          </button>
         </p>
       </div>
       <Input

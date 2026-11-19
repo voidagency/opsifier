@@ -160,3 +160,37 @@ describe("the unauthorized handler", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 });
+
+describe("request addresses", () => {
+  it.each([
+    ["a step up", "/projects/../users"],
+    ["a step up the browser decodes", "/projects/%2e%2e/users"],
+    ["a step in place", "/projects/./users"],
+    ["a query cut into the path", "/projects/web/stop?/messages"],
+    ["a fragment", "/projects/web#/messages"],
+    ["a backslash", "/projects\\..\\users"],
+    ["a tab the browser drops, leaving a step up", "/projects/staging/services/web/.\t./.\t./prod"],
+    ["a line break the browser drops", "/projects/.\n./users"],
+    ["a carriage return the browser drops", "/projects/.\r./users"],
+    ["another control character", "/projects/web\u0000/users"],
+    ["a step up the browser makes of a trailing space", "/projects/x/%2e%2e "],
+  ])("never sends a path with %s", async (_, path) => {
+    const fetchMock = stubFetch(jsonResponse(200, {}));
+
+    const error = await failure(api.post(path));
+
+    expect(error.code).toBe("invalid_request");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("sends a query as a query, and a plain path as it is", async () => {
+    const fetchMock = stubFetch(jsonResponse(200, { ok: true }));
+
+    await api.get("/projects/shop/services/web/script-runs", { query: { limit: 25 } });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/projects/shop/services/web/script-runs?limit=25",
+      expect.anything(),
+    );
+  });
+});

@@ -1,4 +1,5 @@
 import { apiError } from "@opsifier/contract";
+import { bindingHeaders } from "./session-binding";
 
 /** Codes the client uses when the failure did not come from an API error body. */
 export const clientErrorCode = {
@@ -6,6 +7,8 @@ export const clientErrorCode = {
   network: "network",
   /** The server answered, but not with the error shape the contract promises. */
   badResponse: "bad_response",
+  /** The request was never sent: its address could have led somewhere other than the route it names. */
+  badRequest: "invalid_request",
 } as const;
 
 /** Every failed API call rejects with this error, so callers can always read `code` and `fields`. */
@@ -72,7 +75,56 @@ export function setTwoFactorRequiredHandler(handler: (() => void) | undefined): 
   onTwoFactorRequired = handler;
 }
 
+const hasControlCharacter = (value: string): boolean =>
+  Array.from(value).some((char) => {
+    const code = char.charCodeAt(0);
+    return code < 0x20 || code === 0x7f;
+  });
+
+/**
+ * A path the browser would read as another route: a `.` or `..` segment, written plainly or
+ * percent-encoded, which the browser resolves before sending; a `?`, `#` or backslash that cuts the
+ * path short; or a control character, since the browser drops tabs and line breaks wherever they are
+ * (`.<tab>.` arrives as `..`). Paths are built from names and ids, some from the address bar or an
+ * outside server: such a path is refused rather than sent with the session to wherever it leads.
+ */
+function isUnsafePath(path: string): boolean {
+  if (/[?#\\]/.test(path) || hasControlCharacter(path)) {
+    return true;
+  }
+  return path.split("/").some((segment) => {
+    let decoded = segment;
+    try {
+      decoded = decodeURIComponent(segment);
+    } catch {
+      return true;
+    }
+    return decoded === "." || decoded === "..";
+  });
+}
+
+/**
+ * The address of an API path, for what the browser sends by other means than this client: an upload
+ * that reports its progress, a download link, a WebSocket. Refused like any request's.
+ */
+export function apiUrl(path: string, query?: RequestOptions<unknown>["query"]): string {
+  return buildUrl(path, query);
+}
+
+/**
+ * Whether the browser, reading the address the way it will, keeps every segment of the path. A step
+ * up it would make of what the checks above let through, such as a trailing space it drops after
+ * `..`, would leave fewer.
+ */
+function resolvesAsBuilt(path: string): boolean {
+  const built = `${basePath}${path}`;
+  return new URL(built, "http://panel.invalid").pathname.split("/").length === built.split("/").length;
+}
+
 function buildUrl(path: string, query: RequestOptions<unknown>["query"]): string {
+  if (isUnsafePath(path) || !resolvesAsBuilt(path)) {
+    throw new ApiError(0, clientErrorCode.badRequest, "This request's address is not valid.");
+  }
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(query ?? {})) {
     if (value !== null && value !== undefined) {
@@ -115,13 +167,16 @@ async function toApiError(response: Response): Promise<ApiError> {
 
 async function request<T>(method: Method, path: string, options: RequestOptions<T> = {}): Promise<T> {
   const { body, query, signal, schema } = options;
+  // Outside the try below: an address refused here is not the server being unreachable.
+  const url = buildUrl(path, query);
   let response: Response;
   try {
-    response = await fetch(buildUrl(path, query), {
+    response = await fetch(url, {
       method,
       credentials: "same-origin",
       headers: {
         Accept: "application/json",
+        ...bindingHeaders(),
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),

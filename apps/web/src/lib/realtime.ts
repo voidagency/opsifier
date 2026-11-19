@@ -1,5 +1,6 @@
 import type { RealtimeClientFrame, RealtimeServerFrame } from "@opsifier/contract";
 import { useEffect, useRef, useSyncExternalStore } from "react";
+import { panelProtocols } from "./session-binding";
 
 /** The subset of the browser WebSocket this client relies on. */
 export interface SocketLike {
@@ -60,7 +61,7 @@ export class RealtimeClient {
 
   constructor(options: RealtimeOptions = {}) {
     this.options = {
-      createSocket: (url) => new WebSocket(url) as unknown as SocketLike,
+      createSocket: (url) => new WebSocket(url, panelProtocols()) as unknown as SocketLike,
       minDelayMs: 500,
       maxDelayMs: 15_000,
       stableAfterMs: 5_000,

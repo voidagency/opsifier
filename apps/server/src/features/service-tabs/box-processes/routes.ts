@@ -11,7 +11,8 @@ import { toActionEntry } from "../../../core/actions";
 import { requirePrincipal } from "../../../core/auth";
 import type { Feature } from "../../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../../core/openapi";
-import { saveBoxProcesses } from "../../box/service";
+import { requestAccess, requireHostAccessNow } from "../../access/guard";
+import { requireBox, saveBoxProcesses } from "../../box/service";
 import { enqueueBoxProcessRestart, getBoxProcessesStatus } from "./service";
 
 const PATH = "/api/v1/projects/{project}/services/{service}/box/processes";
@@ -30,6 +31,7 @@ const putRoute = createRoute({
     200: jsonResponse(boxDetail, "Saved. Used by the next deploy."),
     400: invalid,
     401: denied,
+    403: errorResponse("The box reaches the server, and only an administrator can change what runs in it."),
     404: missing,
   },
 });
@@ -58,6 +60,7 @@ const restartRoute = createRoute({
     202: jsonResponse(actionEntry, "The Action doing it."),
     400: invalid,
     401: denied,
+    403: errorResponse("The box reaches the server, and only an administrator can start what runs in it."),
     404: missing,
     409: errorResponse("The box is in the middle of something else, or is not running."),
   },
@@ -74,15 +77,30 @@ const actorEmailOf = (principal: ReturnType<typeof requirePrincipal>) =>
 export const feature: Feature = {
   register(app, deps) {
     app.openapi(putRoute, (c) =>
-      c.json(saveBoxProcesses(deps, target(c.req.valid("param")), c.req.valid("json").processes), 200),
+      c.json(
+        saveBoxProcesses(
+          deps,
+          target(c.req.valid("param")),
+          c.req.valid("json").processes,
+          requestAccess(deps, c),
+        ),
+        200,
+      ),
     );
 
     app.openapi(statusRoute, async (c) =>
       c.json(await getBoxProcessesStatus(deps, target(c.req.valid("param"))), 200),
     );
 
-    app.openapi(restartRoute, (c) => {
+    app.openapi(restartRoute, async (c) => {
       const params = c.req.valid("param");
+      // A process starts again from the workspace, in the task as it runs now.
+      await requireHostAccessNow(
+        deps,
+        requestAccess(deps, c),
+        target(params),
+        requireBox(deps, target(params)),
+      );
       return c.json(
         toActionEntry(
           enqueueBoxProcessRestart(deps, target(params), params.process, actorEmailOf(requirePrincipal(c))),

@@ -230,6 +230,10 @@ describe("creating a project", () => {
     fireEvent.change(nameField(), { target: { value: "Bad Name!" } });
     submit();
     expect(await screen.findByText(/Use lowercase letters, digits and dashes/)).toBeTruthy();
+
+    fireEvent.change(nameField(), { target: { value: "releases" } });
+    submit();
+    expect(await screen.findByText("This name is reserved for the server.")).toBeTruthy();
     expect(server.calls.filter((call) => call.method === "POST")).toEqual([]);
   });
 

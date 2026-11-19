@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accessFacts, accessFingerprint, inspectResolved } from "./resolved";
+import { accessFacts, confirmationFingerprint, inspectResolved } from "./resolved";
 
 const STACK_DIR = "/var/lib/opsifier/projects/shop/stack/code";
 const SCOPE = {
@@ -107,6 +107,26 @@ describe("what Compose resolved for a stack", () => {
     );
   });
 
+  it("refuses a build that asks for an attestation, and lets one turn them off", () => {
+    const attestations = (extra: Record<string, unknown>) =>
+      inspectResolved(
+        { services: { web: { build: { context: `${STACK_DIR}/sub`, ...extra } } } },
+        SCOPE,
+      ).issues.filter((issue) => issue.code === "build_attestation");
+    expect(
+      attestations({ sbom: "true", provenance: "mode=max,type=sbom,generator=example/scanner:1" }),
+    ).toEqual([
+      { severity: "error", code: "build_attestation", service: "web", detail: "build.sbom: true" },
+      {
+        severity: "error",
+        code: "build_attestation",
+        service: "web",
+        detail: "build.provenance: mode=max,type=sbom,generator=example/scanner:1",
+      },
+    ]);
+    expect(attestations({ sbom: "false", provenance: "false" })).toEqual([]);
+  });
+
   it("takes a volume Compose made for the stack as the stack's own", () => {
     expect(issues.some((issue) => issue.detail === "named")).toBe(false);
     const foreign = inspectResolved(
@@ -119,6 +139,64 @@ describe("what Compose resolved for a stack", () => {
     expect(foreign.map((issue) => [issue.code, issue.service, issue.detail])).toEqual([
       ["external_resource", "web", "data"],
       ["external_resource", null, "data"],
+    ]);
+  });
+
+  it("counts a layout of images a build reads from the disk as reaching the server", () => {
+    const { issues: found } = inspectResolved(
+      {
+        services: {
+          web: {
+            build: {
+              context: `${STACK_DIR}/app`,
+              additional_contexts: { base: "oci-layout:///srv/images@sha256:abc" },
+            },
+          },
+        },
+      },
+      SCOPE,
+    );
+    expect(found).toEqual([
+      {
+        severity: "host",
+        code: "host_path",
+        service: "web",
+        detail: "additional_contexts: oci-layout:///srv/images@sha256:abc",
+      },
+    ]);
+  });
+
+  it.each([
+    ["a list of id=path", ["deploy=/root/.ssh/id"]],
+    ["one id=path", "deploy=/root/.ssh/id"],
+    ["id: path", ["deploy: /root/.ssh/id"]],
+    ["an id and a path", [{ id: "deploy", path: "/root/.ssh/id" }]],
+    ["a mapping", { deploy: "/root/.ssh/id" }],
+    ["paths split at commas", ["deploy=./keys/id,/root/.ssh/id"]],
+  ])("reads the SSH keys a build forwards, written as %s", (_label, ssh) => {
+    const { issues: found } = inspectResolved(
+      { services: { web: { build: { context: STACK_DIR, ssh } } } },
+      SCOPE,
+    );
+    expect(found.map((issue) => [issue.code, issue.detail])).toContainEqual(["host_path", "/root/.ssh/id"]);
+  });
+
+  it("refuses SSH keys written in a form it can't read", () => {
+    const { issues: refused } = inspectResolved(
+      {
+        services: {
+          web: { build: { context: STACK_DIR, ssh: [{ id: "deploy", path: ["/root/.ssh/id"] }] } },
+        },
+      },
+      SCOPE,
+    );
+    expect(refused).toEqual([
+      {
+        severity: "error",
+        code: "escapes_stack",
+        service: "web",
+        detail: 'build.ssh: [{"id":"deploy","path":["/root/.ssh/id"]}]',
+      },
     ]);
   });
 
@@ -159,12 +237,52 @@ describe("what Compose resolved for a stack", () => {
     ]);
   });
 
+  it("refuses every name a child could take from another project or the panel, wherever it came from", () => {
+    const { issues: refused } = inspectResolved(
+      {
+        networks: {
+          default: { name: "shop_stack_default" },
+          opsifier_proxy_network: { name: "opsifier-shop_proxy", external: true },
+          front: { name: "opsifier-shop_proxy", external: true },
+        },
+        services: {
+          beta_web: { image: "nginx" },
+          opsifier: { image: "nginx" },
+          web: {
+            image: "nginx",
+            container_name: "beta_web",
+            networks: {
+              default: { aliases: ["cache", "beta_api"] },
+              opsifier_proxy_network: { aliases: ["shop_stack__web", "beta_web"] },
+              front: { aliases: ["plain"] },
+            },
+          },
+          own: { image: "nginx", container_name: "shop_stack-own-1", hostname: "rabbit" },
+          named: { image: "nginx", hostname: "beta_web" },
+        },
+      },
+      SCOPE,
+    );
+    expect(
+      refused.filter((issue) => issue.code === "foreign_name").map((issue) => [issue.service, issue.detail]),
+    ).toEqual([
+      ["beta_web", "beta_web"],
+      ["opsifier", "opsifier"],
+      ["web", "container_name: beta_web"],
+      ["web", "aliases: beta_api"],
+      ["web", "aliases: beta_web"],
+      ["web", "aliases: plain"],
+      ["named", "hostname: beta_web"],
+    ]);
+    expect(refused.every((issue) => issue.severity === "error")).toBe(true);
+  });
+
   it("finds nothing to confirm in a stack that keeps to itself", () => {
     const { issues: none } = inspectResolved(
       {
         services: {
           web: {
-            build: { context: `${STACK_DIR}`, dockerfile: "Dockerfile" },
+            build: { context: `${STACK_DIR}/app`, dockerfile: "Dockerfile" },
             volumes: [{ type: "bind", source: `${STACK_DIR}/data`, target: "/data" }],
             security_opt: ["no-new-privileges:true"],
             pid: "service:db",
@@ -178,7 +296,8 @@ describe("what Compose resolved for a stack", () => {
 
   it("binds a confirmation to the facts, not to the order they came in", () => {
     const shuffled = [...issues].reverse();
-    expect(accessFingerprint(shuffled)).toBe(accessFingerprint(issues));
+    const fingerprint = (found: typeof issues) => confirmationFingerprint(found, RESOLVED, []);
+    expect(fingerprint(shuffled)).toBe(fingerprint(issues));
     expect(accessFacts(issues)).toContain("privileged|child|");
     const moved = inspectResolved(
       {
@@ -193,6 +312,64 @@ describe("what Compose resolved for a stack", () => {
       },
       SCOPE,
     ).issues;
-    expect(accessFingerprint(moved)).not.toBe(accessFingerprint(issues));
+    expect(fingerprint(moved)).not.toBe(fingerprint(issues));
+  });
+
+  describe("what a confirmation covers besides what the stack reaches", () => {
+    const STACK = {
+      services: {
+        tool: {
+          image: "alpine:3",
+          command: ["sh", "-c", "run"],
+          privileged: true,
+          environment: { MODE: "safe" },
+        },
+        web: { image: "nginx:1", command: null },
+      },
+    };
+    const access = inspectResolved(STACK, SCOPE).issues;
+    const FILES = [
+      ["docker-compose.yml", "a1"],
+      ["parts/more.yml", "b2"],
+    ] as const;
+    const base = confirmationFingerprint(access, STACK, FILES);
+    const changed = (tool: Record<string, unknown>, files = FILES) =>
+      confirmationFingerprint(access, { services: { ...STACK.services, tool } }, files);
+
+    it.each([
+      ["its image", { image: "alpine:3.21" }],
+      ["its command", { command: ["sh", "-c", "something else"] }],
+      ["its entrypoint", { entrypoint: ["/bin/other"] }],
+      ["what builds it", { build: { context: `${STACK_DIR}/tool` } }],
+      ["what it is told", { environment: { MODE: "anything" } }],
+      ["a hook it runs", { post_start: [{ command: ["sh", "-c", "x"] }] }],
+      ["a hook it runs as it stops", { pre_stop: [{ command: ["sh", "-c", "x"] }] }],
+      ["the env files it is told to read", { env_file: [{ path: `${STACK_DIR}/other.env` }] }],
+      ["the folder it starts in", { working_dir: "/elsewhere" }],
+      ["the user it runs as", { user: "0:0" }],
+      ["the command it checks its health with", { healthcheck: { test: ["CMD", "sh", "-c", "x"] } }],
+    ])("changes with %s, in a child that reaches the server", (_label, change) => {
+      expect(changed({ ...STACK.services.tool, ...change })).not.toBe(base);
+    });
+
+    it("changes with any file the stack is read from, and not with their order", () => {
+      expect(confirmationFingerprint(access, STACK, [FILES[0], ["parts/more.yml", "c3"]])).not.toBe(base);
+      expect(confirmationFingerprint(access, STACK, [FILES[1], FILES[0]])).toBe(base);
+    });
+
+    it("stays the same when only a child that reaches nothing changes", () => {
+      const web = { image: "nginx:2", command: ["other"] };
+      expect(confirmationFingerprint(access, { services: { ...STACK.services, web } }, FILES)).toBe(base);
+    });
+
+    it("covers every child when the stack as a whole reaches the server", () => {
+      const secret = [
+        { severity: "host" as const, code: "host_path" as const, service: null, detail: "/etc/x" },
+      ];
+      const web = { image: "nginx:2" };
+      expect(confirmationFingerprint(secret, { services: { ...STACK.services, web } }, FILES)).not.toBe(
+        confirmationFingerprint(secret, STACK, FILES),
+      );
+    });
   });
 });

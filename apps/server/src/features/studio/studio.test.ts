@@ -780,6 +780,33 @@ describe("a Studio conversation", () => {
     await link();
   });
 
+  it("keeps no conversation whose id the agent server made up of anything but letters, digits and dashes", async () => {
+    installFakeAgent();
+    const faked = context.docker.execHandler;
+    context.docker.execHandler = (options) => {
+      const real = faked?.(options);
+      if (typeof real !== "function") {
+        return real;
+      }
+      return (input: string) => {
+        const request = JSON.parse(input) as { calls: Array<{ method: string; path: string }> };
+        if (!request.calls.some((call) => call.method === "POST" && call.path === "/api/conversations")) {
+          return real(input);
+        }
+        // An id that would lead the Studio's own addresses somewhere else.
+        const answers = [{ status: 201, text: JSON.stringify({ id: "../../../stop", title: null }) }];
+        const encoded = Buffer.from(JSON.stringify({ keyFound: true, answers })).toString("base64");
+        return { output: `opsifier-studio ${encoded}\nopsifier-ok\n`, exitCode: 0 };
+      };
+    };
+
+    const started = await start("Bonjour");
+
+    expect(started.status).toBe(503);
+    expect(apiErrorOf(started).code).toBe("studio_agent_error");
+    expect((await api<StudioAppDetail>(`${PREVIEW}/studio`)).body.conversations).toEqual([]);
+  });
+
   it("starts on the project's folder the way the agent server's own interface does", async () => {
     const agent = installFakeAgent();
     const image = "data:image/png;base64,iVBORw0KGgo=";

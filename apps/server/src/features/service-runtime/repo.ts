@@ -1,8 +1,8 @@
-import { type ScriptSpec, scriptSpec } from "@opsifier/contract";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { DbHandle } from "../../core/db";
 import { consoleSessions, services } from "../../core/db/schema";
+import { type StoredScript, storedScript } from "../service-tabs/scripts/stored";
 
 export interface ServiceRef {
   projectName: string;
@@ -20,10 +20,13 @@ export function serviceExists(db: DbHandle, target: ServiceRef): boolean {
   );
 }
 
-const withScripts = z.object({ scripts: z.array(scriptSpec).catch([]) }).catch({ scripts: [] });
+const withScripts = z.object({ scripts: z.array(storedScript).catch([]) }).catch({ scripts: [] });
 
-/** The scripts saved on a service. Only App services have any, the other types answer an empty list. */
-export function listServiceScripts(db: DbHandle, target: ServiceRef): ScriptSpec[] {
+/**
+ * The scripts saved on a service, with who last saved each, which stays on the server. Only App
+ * services have any, the other types answer an empty list.
+ */
+export function listServiceScripts(db: DbHandle, target: ServiceRef): StoredScript[] {
   const row = db
     .select({ spec: services.spec })
     .from(services)

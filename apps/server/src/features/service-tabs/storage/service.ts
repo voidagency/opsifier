@@ -12,7 +12,7 @@ import type { AppDeps } from "../../../core/context";
 import type { SwarmServiceSpec } from "../../../core/docker";
 import { badRequest, conflict, notFound } from "../../../core/errors";
 import { writeFileAtomic } from "../../../core/proxy";
-import { requireHostAccess } from "../../access/guard";
+import { requireHostAccess, requireHostAccessFor } from "../../access/guard";
 import type { Access } from "../../access/rules";
 import {
   bindMountRisk,
@@ -99,8 +99,10 @@ export function getStorage(deps: AppDeps, target: ServiceTarget): StorageDocumen
 }
 
 /**
- * A path on the host is the server's to give, so choosing one takes an administrator. Whoever works
- * on a service may still keep a mount an administrator gave it, or take one away.
+ * A path on the host is the server's to give, so choosing one takes an administrator. Whoever works on
+ * a service may still keep a mount an administrator gave it, or take one away, but in a service that
+ * reaches the server only an administrator adds or changes one: moving a host path to another place in
+ * the container, or making it writable, changes what the server's files do there.
  */
 function assertHostPathAllowed(access: Access, mount: MountSpec, existing?: MountSpec): void {
   if (mount.type === "bind" && !(existing?.type === "bind" && existing.hostPath === mount.hostPath)) {
@@ -115,7 +117,9 @@ export function addMount(
   access: Access,
 ): StorageDocument {
   assertHostPathAllowed(access, mount);
-  const { mounts } = requireService(deps, target).spec;
+  const record = requireService(deps, target);
+  requireHostAccessFor(access, record);
+  const { mounts } = record.spec;
   if (mounts.length >= MAX_MOUNTS) {
     throw badRequest("too_many_mounts", "This service has as many mounts as it can hold.");
   }
@@ -147,6 +151,7 @@ export function updateMount(
   }
   assertNotWorkspace(record, mounts[index]);
   assertHostPathAllowed(access, mount, mounts[index]);
+  requireHostAccessFor(access, record);
   assertPathFree(mounts, mount.mountPath, index);
   const accepted = withAcknowledgement(deps, mount);
   return save(

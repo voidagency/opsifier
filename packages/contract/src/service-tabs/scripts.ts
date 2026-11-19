@@ -127,6 +127,7 @@ export const scriptRunNoteCodes = [
   "console_closed",
   "skipped_overlap",
   "skipped_refused",
+  "reaches_server",
 ] as const;
 export const scriptRunNoteCode = z.enum(scriptRunNoteCodes);
 export type ScriptRunNoteCode = z.infer<typeof scriptRunNoteCode>;

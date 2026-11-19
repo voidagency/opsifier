@@ -348,6 +348,10 @@ const conversationId = z
   .max(64)
   .regex(/^[A-Za-z0-9-]+$/);
 
+/** Whether a value can name a Studio conversation: an id from the address bar or an agent server is checked. */
+export const isStudioConversationId = (value: unknown): value is string =>
+  conversationId.safeParse(value).success;
+
 export const studioConversationPath = servicePath.extend({ conversation: conversationId });
 export const studioEventsQuery = z.object({ after: conversationId.optional() });
 

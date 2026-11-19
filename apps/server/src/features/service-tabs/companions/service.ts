@@ -1,5 +1,4 @@
 import { randomInt } from "node:crypto";
-import { isIP } from "node:net";
 import {
   type CompanionState,
   type CompanionTool,
@@ -10,6 +9,7 @@ import type { ActionContext, ActionRow } from "../../../core/actions";
 import type { AppDeps } from "../../../core/context";
 import { waitForRollout } from "../../../core/docker";
 import { badRequest, conflict, notFound } from "../../../core/errors";
+import { sslipBase } from "../../../core/proxy/sslip";
 import {
   type DatabaseRecord,
   isDatabaseRecord,
@@ -19,6 +19,7 @@ import {
 import { COMPANION_TOKEN_CONTEXT, type StoredCompanion } from "../../databases/spec";
 import { liveAddressDomain } from "../../opsifier-address/repo";
 import { prepareRoutedNetworks, releaseProxyFromProjectNetwork } from "../../projects/network";
+import { isReservedForPanel } from "../../server/panel-host";
 import {
   type CompiledCompanion,
   companionImage,
@@ -52,11 +53,6 @@ const companionTarget = (target: ServiceTarget, tool: CompanionTool): ServiceTar
   serviceName: routeName(target, tool),
 });
 
-function sslipSuffix(ip: string): string {
-  const dashed = isIP(ip) === 6 ? ip.toLowerCase().replaceAll(":", "-") : ip;
-  return `${dashed.startsWith("-") ? `0${dashed}` : dashed}.sslip.io`;
-}
-
 /** The same base as a new service's default domain: the `service_domain` setting, or the server's IP. */
 function baseDomain(deps: AppDeps): string | null {
   const configured = getSetting(deps.db, SERVICE_DOMAIN_KEY);
@@ -68,7 +64,7 @@ function baseDomain(deps: AppDeps): string | null {
     return address;
   }
   const { serverIp } = getSystemInfo(deps);
-  return serverIp === null ? null : sslipSuffix(serverIp);
+  return serverIp === null ? null : sslipBase(serverIp);
 }
 
 /** Picks the tool's own hostname, or says why there is none to give it. */
@@ -84,7 +80,7 @@ function pickCompanionHost(deps: AppDeps, target: ServiceTarget, tool: Companion
   for (let attempt = 1; attempt <= 100; attempt += 1) {
     const suffix = attempt === 1 ? "" : `-${attempt}`;
     const host = `${label.slice(0, MAX_LABEL - suffix.length)}${suffix}.${base}`;
-    if (isHostAvailable(deps.db, target.projectName, host, "/")) {
+    if (isHostAvailable(deps.db, target.projectName, host, "/") && !isReservedForPanel(deps, host, false)) {
       return host;
     }
   }

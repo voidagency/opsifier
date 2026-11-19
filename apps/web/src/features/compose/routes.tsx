@@ -1,6 +1,7 @@
 import { type AnyRoute, createRoute, notFound } from "@tanstack/react-router";
 import type { ComponentType } from "react";
 import { isApiError } from "../../lib/api";
+import { namedParams } from "../../lib/route-params";
 import { serviceQuery } from "../services/api";
 import { type CrumbControlProps, ServiceCrumb } from "../services/Crumbs";
 import { ComposeLayout } from "./ComposeLayout";
@@ -11,6 +12,7 @@ export function createComposeRoutes<TParent extends AnyRoute>(getParentRoute: ()
   const composeRoute = createRoute({
     getParentRoute,
     path: "compose/$service",
+    params: namedParams("service"),
     staticData: {
       crumbControl: ServiceCrumb as ComponentType<CrumbControlProps>,
       crumbParam: "service",

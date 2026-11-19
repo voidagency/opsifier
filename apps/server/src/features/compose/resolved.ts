@@ -1,8 +1,12 @@
 import { createHash } from "node:crypto";
 import { isAbsolute, join, posix } from "node:path";
 import type { ComposeIssue, ComposeIssueCode } from "@opsifier/contract";
+import { composeChildAddress, projectProxyNetworkName } from "../services/compile";
 import { bindMountRisk } from "../services/compile/mounts";
-import { contextImage, isAnotherProjectsImage, isStackImageName } from "./images";
+import { contextImage, isForeignImage, isStackImageName } from "./images";
+import { isReservedName, isStackContainerName } from "./network-names";
+import { fromStackFolder, ownFolderIssues } from "./own-folder";
+import { describeSsh, sshPaths } from "./ssh";
 
 /**
  * What a stack reaches, read from the configuration Compose itself resolved (`docker compose config`):
@@ -18,6 +22,11 @@ export interface ResolvedScope {
   dataDir: string;
   /** The folder Compose read the stack from. A path inside it is the stack's own. */
   projectDirectory: string;
+  /**
+   * The files Compose reads to know what the stack is, as the check of its files found them: those
+   * an `include` or an `extends` brought in leave no trace in what Compose resolved.
+   */
+  stackFiles?: readonly string[];
 }
 
 type Record_ = Record<string, unknown>;
@@ -32,6 +41,12 @@ const isSet = (value: unknown): boolean => value !== undefined && value !== null
 const SEVERITY: Partial<Record<ComposeIssueCode, ComposeIssue["severity"]>> = {
   runs_program: "error",
   foreign_image: "error",
+  foreign_name: "error",
+  mounts_stack: "error",
+  bind_volume: "error",
+  build_attestation: "error",
+  // A build's keys written in a form nothing here reads.
+  escapes_stack: "error",
 };
 
 const issue = (code: ComposeIssueCode, service: string | null, detail: string | null): ComposeIssue => ({
@@ -57,13 +72,89 @@ export interface ResolvedInspection {
   issues: ComposeIssue[];
   /** Paths the stack keeps inside its own folder, which a link inside that folder could still lead out of. */
   insidePaths: LocalPath[];
+  /** What the children mount from the stack's own folder, where Docker will look for it. */
+  mounts: StackBind[];
+  /** The env files Compose reads from the stack's own folder, by absolute path. */
+  files: string[];
+  /** What the builds read or write in the stack's own folder, where the build will look for it. */
+  inputs: ResolvedInput[];
+}
+
+/** A folder or file of the stack a child mounts, by absolute path, and whether it may write there. */
+export interface StackBind extends LocalPath {
+  writable: boolean;
+}
+
+/** Something a build reads or writes in the stack's own folder, by absolute path. */
+export interface ResolvedInput extends LocalPath {
+  /** Which part of the build names it, as Compose calls it. */
+  field: string;
+  /** Whether the build writes there: a local cache it exports. */
+  written: boolean;
 }
 
 class Collector {
   readonly issues: ComposeIssue[] = [];
   readonly insidePaths: LocalPath[] = [];
+  readonly mounts: StackBind[] = [];
+  readonly inputs: ResolvedInput[] = [];
+  /** The files Compose reads to know what the stack is, by absolute path. */
+  readonly files: string[] = [];
 
   constructor(private readonly scope: ResolvedScope) {}
+
+  /**
+   * A path Docker mounts into a child. Inside the stack, the rules of its own folder hold for it. What
+   * Compose resolved is what Docker gets, a `$` included: such a path is taken as it is, and, in case
+   * Compose wrote a `$` as `$$`, as it would be read back too.
+   */
+  mount(service: string | null, raw: string, writable = true): void {
+    const before = this.insidePaths.length;
+    const spellings = raw.includes("$$") ? [raw, raw.replaceAll("$$", "$")] : [raw];
+    for (const spelling of spellings) {
+      this.path(service, spelling, this.scope.projectDirectory, true);
+    }
+    for (const inside of this.insidePaths.slice(before)) {
+      this.mounts.push({ ...inside, writable });
+    }
+  }
+
+  /** Something a build reads, or writes, on the panel's side. Inside the stack, it keeps clear of mounts. */
+  input(service: string, raw: string, field: string, written: boolean, from?: string): void {
+    const before = this.insidePaths.length;
+    this.path(service, raw, from);
+    for (const inside of this.insidePaths.slice(before)) {
+      this.inputs.push({ ...inside, field, written });
+    }
+  }
+
+  /** A file Compose reads to know what the stack is, which no mount may hold. */
+  file(service: string | null, raw: string): void {
+    const before = this.insidePaths.length;
+    this.path(service, raw);
+    for (const inside of this.insidePaths.slice(before)) {
+      this.files.push(inside.path);
+    }
+  }
+
+  /** Everything the children mount, held against the rest and against the stack's files. */
+  ownFolder(): void {
+    const root = posix.normalize(this.scope.projectDirectory).replace(/\/+$/, "") || "/";
+    const inside = (path: string) => fromStackFolder(root, path);
+    const mounts = this.mounts.flatMap(({ service, path }) => {
+      const relative = inside(path);
+      return relative === null ? [] : [{ service, path: relative }];
+    });
+    const files = [...this.files, ...(this.scope.stackFiles ?? [])].flatMap((path) => {
+      const relative = inside(posix.normalize(path));
+      return relative === null ? [] : [relative];
+    });
+    const inputs = this.inputs.flatMap(({ service, path, field, written }) => {
+      const relative = inside(path);
+      return relative === null ? [] : [{ service, path: relative, field, written }];
+    });
+    this.issues.push(...ownFolderIssues(mounts, files, inputs));
+  }
 
   get directory(): string {
     return this.scope.projectDirectory;
@@ -78,8 +169,8 @@ class Collector {
   }
 
   /** A path on the panel's side: the stack's own when it is inside its folder, the server's otherwise. */
-  path(service: string | null, raw: string, from = this.scope.projectDirectory): void {
-    if (raw.includes("$")) {
+  path(service: string | null, raw: string, from = this.scope.projectDirectory, literal = false): void {
+    if (!literal && raw.includes("$")) {
       // Compose leaves nothing to interpolate, so this is a value it was told to keep as it is.
       this.add("host_path", service, raw);
       return;
@@ -100,22 +191,23 @@ class Collector {
 }
 
 /** The host side of a mount, in the long form Compose resolves to, or the short form a test may give. */
-function mountOf(entry: unknown): { type: string; source: string | null } {
+function mountOf(entry: unknown): { type: string; source: string | null; readOnly: boolean } {
   if (isRecord(entry)) {
     return {
       type: String(entry.type ?? "volume"),
       source: typeof entry.source === "string" ? entry.source : null,
+      readOnly: entry.read_only === true,
     };
   }
   const text = String(entry);
-  const separator = text.indexOf(":");
-  if (separator === -1) {
-    return { type: "volume", source: null };
+  const [source = "", , mode = ""] = text.split(":");
+  if (!text.includes(":")) {
+    return { type: "volume", source: null, readOnly: false };
   }
-  const source = text.slice(0, separator);
   return {
     type: source.startsWith("/") || source.startsWith(".") || source.startsWith("~") ? "bind" : "volume",
     source,
+    readOnly: mode.split(",").includes("ro"),
   };
 }
 
@@ -130,35 +222,52 @@ function inspectBuild(name: string, build: unknown, found: Collector): void {
   const context = typeof build.context === "string" ? build.context : ".";
   const local = !FETCHED.test(context);
   if (local) {
-    found.path(name, context);
-    if (typeof build.dockerfile === "string") {
-      found.path(name, build.dockerfile, isAbsolute(context) ? context : join(found.directory, context));
+    found.input(name, context, "context", false);
+    // BuildKit reads `Dockerfile` from the context when nothing else is named, and its ignore file beside it.
+    if (typeof build.dockerfile_inline !== "string") {
+      const from = isAbsolute(context) ? context : join(found.directory, context);
+      found.input(
+        name,
+        typeof build.dockerfile === "string" ? build.dockerfile : "Dockerfile",
+        "dockerfile",
+        false,
+        from,
+      );
     }
   }
   const extra = isRecord(build.additional_contexts) ? Object.values(build.additional_contexts) : [];
   for (const value of extra) {
     if (typeof value === "string" && !FETCHED.test(value)) {
-      found.path(name, value);
+      found.input(name, value, "additional_contexts", false);
+    }
+    // A layout of images BuildKit reads from wherever it names on the panel's disk.
+    if (typeof value === "string" && /^oci-layout:\/\//i.test(value)) {
+      found.add("host_path", name, `additional_contexts: ${value}`);
     }
     const image = typeof value === "string" ? contextImage(value) : null;
-    if (image !== null && isAnotherProjectsImage(image, found.project)) {
+    if (image !== null && isForeignImage(image, found.project)) {
       found.add("foreign_image", name, image);
     }
   }
-  for (const entry of asList(build.ssh).map(String)) {
-    const separator = entry.indexOf("=");
-    if (separator !== -1) {
-      for (const path of entry.slice(separator + 1).split(",")) {
-        found.path(name, path);
-      }
-    }
+  // Whatever form Compose gives the keys back in, every path they may name is read; none is guessed at.
+  const keys = sshPaths(build.ssh);
+  if (keys === null) {
+    found.add("escapes_stack", name, `build.ssh: ${describeSsh(build.ssh)}`);
   }
-  for (const entry of [...asList(build.cache_from), ...asList(build.cache_to)].map(String)) {
-    const fields = entry.split(",").map((field) => field.split("="));
-    if (fields.some(([key, value]) => key === "type" && value === "local")) {
-      for (const [key, value] of fields) {
-        if ((key === "src" || key === "dest") && value !== undefined) {
-          found.path(name, value);
+  for (const path of keys ?? []) {
+    found.input(name, path, "ssh", false);
+  }
+  for (const [field, entries] of [
+    ["cache_from", build.cache_from],
+    ["cache_to", build.cache_to],
+  ] as const) {
+    for (const entry of asList(entries).map(String)) {
+      const fields = entry.split(",").map((part) => part.split("="));
+      if (fields.some(([key, value]) => key === "type" && value === "local")) {
+        for (const [key, value] of fields) {
+          if ((key === "src" || key === "dest") && value !== undefined) {
+            found.input(name, value, field, key === "dest");
+          }
         }
       }
     }
@@ -173,6 +282,9 @@ function inspectBuild(name: string, build: unknown, found: Collector): void {
   if (entitlements.length > 0) {
     found.add("privileged", name, `build.entitlements: ${entitlements.join(", ")}`);
   }
+  for (const request of attestationRequests(build)) {
+    found.add("build_attestation", name, request);
+  }
 }
 
 /** A build names its image within the stack, and nothing runs what only another project has. */
@@ -184,7 +296,7 @@ function inspectImages(name: string, service: Record_, found: Collector, stack: 
         found.add("foreign_image", name, ref);
       }
     }
-  } else if (image !== null && isAnotherProjectsImage(image, found.project)) {
+  } else if (image !== null && isForeignImage(image, found.project)) {
     found.add("foreign_image", name, image);
   }
 }
@@ -197,6 +309,7 @@ function inspectService(
   stack: string,
 ): void {
   inspectImages(name, service, found, stack);
+  inspectNames(name, service, config, found, stack);
   if (isSet(service.privileged)) {
     found.add("privileged", name);
   }
@@ -254,13 +367,14 @@ function inspectService(
 
   const volumes = isRecord(config.volumes) ? config.volumes : {};
   for (const entry of asList(service.volumes)) {
-    const { type, source } = mountOf(entry);
+    const { type, source, readOnly } = mountOf(entry);
     if (type === "bind" && source !== null) {
-      found.path(name, source);
+      // A read-only bind stays so in every container: `volumes_from` can narrow a mode, never widen it.
+      found.mount(name, source, !readOnly);
     } else if (type === "volume" && source !== null && !ownVolume(source, volumes, stack)) {
       found.add("external_resource", name, source);
     } else if (type === "image") {
-      if (source !== null && isAnotherProjectsImage(source, found.project)) {
+      if (source !== null && isForeignImage(source, found.project)) {
         found.add("foreign_image", name, source);
       }
     } else if (type !== "bind" && type !== "volume" && type !== "tmpfs") {
@@ -278,7 +392,7 @@ function inspectService(
   for (const entry of asList(service.env_file)) {
     const path = isRecord(entry) ? entry.path : entry;
     if (typeof path === "string") {
-      found.path(name, path);
+      found.file(name, path);
     }
   }
   if (isRecord(service.credential_spec) && typeof service.credential_spec.file === "string") {
@@ -293,6 +407,97 @@ function inspectService(
   if (service.models !== undefined) {
     found.add("runs_program", name, "models");
   }
+}
+
+/**
+ * Every name a child answers to on its networks, besides the address the panel gives it: its own,
+ * its container's, and its aliases, from whichever file they came. On the proxy's network a child
+ * takes no alias but the panel's.
+ */
+function inspectNames(
+  name: string,
+  service: Record_,
+  config: Record_,
+  found: Collector,
+  stack: string,
+): void {
+  if (isReservedName(name)) {
+    found.add("foreign_name", name, name);
+  }
+  if (typeof service.container_name === "string" && !isStackContainerName(service.container_name, stack)) {
+    found.add("foreign_name", name, `container_name: ${service.container_name}`);
+  }
+  // Docker answers for a container's hostname on every network it joins, as for an alias.
+  if (typeof service.hostname === "string" && isReservedName(service.hostname)) {
+    found.add("foreign_name", name, `hostname: ${service.hostname}`);
+  }
+  if (!isRecord(service.networks)) {
+    return;
+  }
+  const declared = isRecord(config.networks) ? config.networks : {};
+  const own = composeChildAddress(stack, name);
+  for (const [key, attachment] of Object.entries(service.networks)) {
+    const network = declared[key];
+    const proxy =
+      (isRecord(network) && typeof network.name === "string" ? network.name : key) ===
+      projectProxyNetworkName(found.project);
+    for (const alias of isRecord(attachment) ? asList(attachment.aliases).map(String) : []) {
+      if (alias !== own && (proxy || isReservedName(alias))) {
+        found.add("foreign_name", name, `aliases: ${alias}`);
+      }
+    }
+  }
+}
+
+/**
+ * The attestations a build asks for. BuildKit makes one by running an image of its own, the generator
+ * an `sbom` names or its default one, which none of the checks on the build's images ever see; and
+ * Compose hands a `provenance` value over as written, so that one can name a generator too. Only
+ * `false` asks for nothing.
+ */
+export function attestationRequests(build: Record_): string[] {
+  return (["sbom", "provenance"] as const).flatMap((key) => {
+    const value = build[key];
+    return value === undefined || value === false || value === "false"
+      ? []
+      : [`build.${key}: ${String(value)}`];
+  });
+}
+
+/** Options that make Docker's local driver mount folders of the server: a bind, an overlay's layers. */
+const HOST_FOLDER_OPTIONS = new Set(["bind", "rbind", "lowerdir", "upperdir", "workdir"]);
+/** Network shares, whose device names the remote side: `:/export` with `addr=`, or `//server/share`. */
+const NETWORK_TYPES = new Set(["nfs", "nfs4", "cifs"]);
+
+/**
+ * A local volume whose options reach the server's own folders or disks: a bind of its device, an
+ * overlay of host folders, a disk or any other local filesystem. Compose keeps such a volume as it was
+ * made when the file changes, and Docker reports it in a container's mounts by the volume's own folder,
+ * so what it reaches can't be told from either: refused. Only a tmpfs and a network share are taken.
+ */
+export function bindsAFolder(volume: Record_): boolean {
+  const local = volume.driver === undefined || volume.driver === null || volume.driver === "local";
+  if (!local || !isRecord(volume.driver_opts) || Object.keys(volume.driver_opts).length === 0) {
+    return false;
+  }
+  const options = volume.driver_opts;
+  const keys = String(options.o ?? "")
+    .split(",")
+    .map((option) => (option.split("=", 1)[0] ?? "").trim().toLowerCase());
+  if (keys.some((key) => HOST_FOLDER_OPTIONS.has(key))) {
+    return true;
+  }
+  const type = String(options.type ?? "")
+    .trim()
+    .toLowerCase();
+  const device = String(options.device ?? "").trim();
+  if (type === "tmpfs") {
+    return false;
+  }
+  if (NETWORK_TYPES.has(type)) {
+    return !(device.startsWith(":") || device.startsWith("//"));
+  }
+  return true;
 }
 
 /** A named volume Compose made for this stack, rather than one it attaches to by name. */
@@ -327,7 +532,9 @@ export function inspectResolved(config: Record_, scope: ResolvedScope): Resolved
         found.add("external_resource", null, key);
       }
       const device = isRecord(value.driver_opts) ? value.driver_opts.device : undefined;
-      if (device !== undefined) {
+      if (bindsAFolder(value)) {
+        found.add("bind_volume", null, key);
+      } else if (device !== undefined) {
         found.add("host_path", null, String(device));
       }
     }
@@ -342,7 +549,8 @@ export function inspectResolved(config: Record_, scope: ResolvedScope): Resolved
         continue;
       }
       if (typeof value.file === "string") {
-        found.path(null, value.file);
+        // Compose mounts the file into the children that use it, as it mounts a volume's source.
+        found.mount(null, value.file, false);
       }
       if (value.external !== undefined && value.external !== false) {
         found.add("external_resource", null, `${key}: ${name}`);
@@ -354,7 +562,14 @@ export function inspectResolved(config: Record_, scope: ResolvedScope): Resolved
       found.add("runs_program", null, `models: ${model}`);
     }
   }
-  return { issues: found.issues, insidePaths: found.insidePaths };
+  found.ownFolder();
+  return {
+    issues: found.issues,
+    insidePaths: found.insidePaths,
+    mounts: found.mounts,
+    files: found.files,
+    inputs: found.inputs,
+  };
 }
 
 /** One line per thing a person confirms, the same however the configuration was ordered. */
@@ -368,8 +583,66 @@ export function accessFacts(issues: readonly ComposeIssue[]): string[] {
   ].sort();
 }
 
-/** What an administrator's confirmation is bound to: every way the stack reaches the server. */
-export const accessFingerprint = (issues: readonly ComposeIssue[]): string =>
-  createHash("sha256")
-    .update(JSON.stringify(accessFacts(issues)))
+/**
+ * What decides what runs in a child: its image or what builds it, the program it starts, and what it
+ * tells that program. Each of them, changed, runs something else with the same access.
+ */
+const WHAT_RUNS = [
+  "image",
+  "build",
+  "command",
+  "entrypoint",
+  "environment",
+  "env_file",
+  "working_dir",
+  "user",
+  "healthcheck",
+  "post_start",
+  "pre_stop",
+] as const;
+
+/** The same value for the same configuration, whatever order its keys came in. */
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(canonical);
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonical(value[key])]),
+    );
+  }
+  return value;
+}
+
+/** A file the stack is read from, by its path from the stack's folder, and a digest of what it holds. */
+export type FileDigest = readonly [path: string, digest: string];
+
+/**
+ * What an administrator's confirmation is bound to: every way the stack reaches the server, what runs
+ * in each child that reaches it (all of them, for what the stack reaches as a whole, such as a secret
+ * read from the server), and every file the stack is read from. An image, a command, a variable or a
+ * file that changes any of it asks again, though what the stack reaches stays the same.
+ */
+export function confirmationFingerprint(
+  access: readonly ComposeIssue[],
+  config: Record_,
+  files: readonly FileDigest[],
+): string {
+  const reaching = access.filter((entry) => entry.severity === "host");
+  const everyChild = reaching.some((entry) => entry.service === null);
+  const holders = new Set(reaching.map((entry) => entry.service));
+  const services = isRecord(config.services) ? config.services : {};
+  const children = Object.keys(services)
+    .filter((name) => everyChild || holders.has(name))
+    .sort()
+    .map((name) => {
+      const child = isRecord(services[name]) ? services[name] : {};
+      return [name, Object.fromEntries(WHAT_RUNS.map((key) => [key, child[key] ?? null]))];
+    });
+  const sorted = [...files].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return createHash("sha256")
+    .update(JSON.stringify(canonical({ facts: accessFacts(access), children, files: sorted })))
     .digest("hex");
+}

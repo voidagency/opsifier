@@ -33,7 +33,7 @@ import {
 import { insertProject } from "../projects/repo";
 import { putSetting, SERVICE_DOMAIN_KEY } from "../system/repo";
 import { composeChildAddress, qualifiedName } from "./compile";
-import { insertService } from "./repo";
+import { findService, insertService, type ServiceRecord, saveServiceSpec } from "./repo";
 import { appServiceSpec } from "./spec";
 
 let context: TestContext;
@@ -840,12 +840,100 @@ describe("renaming and moving", () => {
 
     const started = await run("/projects/shop/services/renamed/start");
     expect(started.status).toBe("succeeded");
-    expect((await swarm("shop_renamed"))?.spec.TaskTemplate.ContainerSpec.Image).toBe(IMAGE);
+    expect(started.log).toContain(`Pulling image ${IMAGE}`);
+    // Pulled again and pinned, as a deployment does: Swarm is never handed the name alone.
+    expect((await swarm("shop_renamed"))?.spec.TaskTemplate.ContainerSpec.Image).toBe(
+      (await context.docker.inspectImage(IMAGE))?.digests[0],
+    );
 
     await run("/projects/shop/services/renamed/stop");
     await api("/projects/shop/services/renamed/rename", "POST", { projectName: "shop", name: "web" });
     expect((await run(`${SERVICE}/start`)).status).toBe("succeeded");
     expect(await detail()).toMatchObject({ status: "running" });
+  });
+
+  it("pulls a registry image under a new name with the service's own credentials", async () => {
+    const image = "registry.example.com/team/app:1";
+    await createService();
+    await api(`${SERVICE}/source`, "PUT", { image, username: "deployer", password: "hunter2" });
+    expect((await run(`${SERVICE}/deploy`)).status).toBe("succeeded");
+    await run(`${SERVICE}/stop`);
+    await api(`${SERVICE}/rename`, "POST", { projectName: "shop", name: "renamed" });
+    const pull = vi.spyOn(context.docker, "pullImage");
+
+    expect((await run("/projects/shop/services/renamed/start")).status).toBe("succeeded");
+
+    expect(pull).toHaveBeenCalledWith(
+      image,
+      expect.objectContaining({
+        registryAuth: { username: "deployer", password: "hunter2", serveraddress: "registry.example.com" },
+      }),
+    );
+    expect((await swarm("shop_renamed"))?.spec.TaskTemplate.ContainerSpec.Image).toBe(
+      (await context.docker.inspectImage(image))?.digests[0],
+    );
+  });
+
+  it("starts nothing under a new name when the image can't be pulled", async () => {
+    await deployedService();
+    await run(`${SERVICE}/stop`);
+    await api(`${SERVICE}/rename`, "POST", { projectName: "shop", name: "renamed" });
+    context.docker.failNext("pullImage", new DockerDriverError("pull image: pull access denied"));
+
+    const started = await run("/projects/shop/services/renamed/start");
+
+    expect(started.status).toBe("failed");
+    expect(started.error).toContain("pull access denied");
+    expect(await swarm("shop_renamed")).toBeNull();
+  });
+
+  it("starts no image of another project, saved before the rule, under a new name", async () => {
+    await deployedService();
+    await run(`${SERVICE}/stop`);
+    await api(`${SERVICE}/rename`, "POST", { projectName: "shop", name: "renamed" });
+    const record = findService(context.deps.db, "shop", "renamed") as ServiceRecord;
+    saveServiceSpec(
+      context.deps.db,
+      "shop",
+      "renamed",
+      {
+        ...record.spec,
+        source: { type: "image", image: "opsifier/other/web:latest", username: null, sealedPassword: null },
+      },
+      new Date(),
+    );
+    const pull = vi.spyOn(context.docker, "pullImage");
+
+    const started = await run("/projects/shop/services/renamed/start");
+
+    expect(started.status).toBe("failed");
+    expect(started.error).toContain("is an image of another project on this server");
+    expect(pull).not.toHaveBeenCalled();
+    expect(await swarm("shop_renamed")).toBeNull();
+  });
+
+  it("neither starts nor restarts a running spec that names another project's image", async () => {
+    await deployedService();
+    const current = await swarm();
+    if (current === null) {
+      throw new Error("Not deployed.");
+    }
+    await context.docker.updateService("shop_web", {
+      ...current.spec,
+      TaskTemplate: {
+        ...current.spec.TaskTemplate,
+        ContainerSpec: { ...current.spec.TaskTemplate.ContainerSpec, Image: "other_web-app:latest" },
+      },
+    });
+
+    const restarted = await run(`${SERVICE}/restart`);
+    expect(restarted.status).toBe("failed");
+    expect(restarted.error).toContain("is an image of another project on this server");
+
+    await run(`${SERVICE}/stop`);
+    const started = await run(`${SERVICE}/start`);
+    expect(started.status).toBe("failed");
+    expect(started.error).toContain("is an image of another project on this server");
   });
 
   it("moves between projects", async () => {
@@ -1191,6 +1279,91 @@ describe("destroying", () => {
   it("works on a service that was never deployed", async () => {
     await createService();
     expect((await run(SERVICE, "DELETE", { confirm: "web" })).status).toBe("succeeded");
+  });
+
+  it("removes the images built and set aside under its name, which a service of that name would find", async () => {
+    await createService();
+    await api(`${SERVICE}/source`, "PUT", { type: "dockerfile", dockerfile: "FROM alpine:3.20\n" });
+    expect((await run(`${SERVICE}/deploy`)).status).toBe("succeeded");
+    context.docker.addLocalImage("opsifier/shop/web:previous");
+
+    expect((await run(SERVICE, "DELETE", { confirm: "web" })).status).toBe("succeeded");
+
+    expect(await context.docker.inspectImage("opsifier/shop/web:latest")).toBeNull();
+    expect(await context.docker.inspectImage("opsifier/shop/web:previous")).toBeNull();
+  });
+
+  it("removes such a name again once the service's containers have gone, when Docker keeps it at first", async () => {
+    await createService();
+    await api(`${SERVICE}/source`, "PUT", { type: "dockerfile", dockerfile: "FROM alpine:3.20\n" });
+    expect((await run(`${SERVICE}/deploy`)).status).toBe("succeeded");
+    // What Docker answers while a container of the image is still there.
+    context.docker.failNext(
+      "removeImage",
+      new DockerDriverError("conflict: unable to remove repository reference (must force)", 409),
+    );
+
+    const destroyed = await run(SERVICE, "DELETE", { confirm: "web" });
+
+    expect(destroyed.status).toBe("succeeded");
+    expect(destroyed.log).toContain(
+      "Waiting for the service's containers to go, to remove opsifier/shop/web:latest",
+    );
+    expect(destroyed.log).not.toContain("Could not remove");
+    expect(await context.docker.inspectImage("opsifier/shop/web:latest")).toBeNull();
+    expect(
+      context.docker.removedImageReferences.filter((name) => name === "opsifier/shop/web:latest"),
+    ).toHaveLength(2);
+  });
+
+  it("waits for a container the removed service left to go before removing its name again", async () => {
+    await createService();
+    await api(`${SERVICE}/source`, "PUT", { type: "dockerfile", dockerfile: "FROM alpine:3.20\n" });
+    expect((await run(`${SERVICE}/deploy`)).status).toBe("succeeded");
+    const lingering = {
+      id: "stopping",
+      name: "shop_web.1.stopping",
+      image: "opsifier/shop/web:latest",
+      imageId: "sha256:stopping",
+      state: "running",
+      labels: { "com.docker.swarm.service.name": qualifiedName("shop", "web") },
+      sizeBytes: null,
+    };
+    context.docker.containers.push(lingering);
+    context.docker.failNext("removeImage", new DockerDriverError("conflict: image is being used", 409));
+    const removals: boolean[] = [];
+    const remove = context.docker.removeImage.bind(context.docker);
+    vi.spyOn(context.docker, "removeImage").mockImplementation(async (name) => {
+      removals.push(context.docker.containers.includes(lingering));
+      return remove(name);
+    });
+    setTimeout(() => context.docker.containers.splice(context.docker.containers.indexOf(lingering), 1), 200);
+
+    expect((await run(SERVICE, "DELETE", { confirm: "web" })).status).toBe("succeeded");
+
+    // The first try while the container was there, the second once it had gone.
+    expect(removals.slice(0, 2)).toEqual([true, true]);
+    expect(removals.at(-1)).toBe(false);
+    expect(await context.docker.inspectImage("opsifier/shop/web:latest")).toBeNull();
+  });
+
+  it("leaves nothing a later service of the same name would start from after a rename", async () => {
+    // An image left under the name by a service of earlier days, as before images were removed.
+    context.docker.addLocalImage("opsifier/shop/web:latest");
+    await createService("built");
+    const path = "/projects/shop/services/built";
+    await api(`${path}/source`, "PUT", { type: "dockerfile", dockerfile: "FROM alpine:3.20\n" });
+    expect((await run(`${path}/deploy`)).status).toBe("succeeded");
+    await run(`${path}/stop`);
+    // Its own image gone, as an image clean-up does to what no container uses.
+    await context.docker.removeImage("opsifier/shop/built:latest");
+
+    expect((await api(`${path}/rename`, "POST", { projectName: "shop", name: "web" })).status).toBe(200);
+    const started = await run(`${SERVICE}/start`);
+
+    expect(started.status).toBe("failed");
+    expect(started.error).toContain("This service's image is not on this server");
+    expect(await context.docker.inspectImage("opsifier/shop/web:latest")).toBeNull();
   });
 
   it("is refused during a deployment instead of racing it", async () => {

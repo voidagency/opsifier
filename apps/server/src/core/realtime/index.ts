@@ -28,6 +28,30 @@ const MAX_BUFFERED_BYTES = 8 * 1024 * 1024;
 /** Sent when the session behind a connection ends, so the client knows to sign in again. */
 export const CLOSE_SESSION_ENDED = 4401;
 
+/** The subprotocol the panel's pages ask for, and the one the server answers with. */
+export const PANEL_PROTOCOL = "opsifier";
+/**
+ * A WebSocket carries no header of the page's choosing, so a page names the second secret of a
+ * session opened over plain HTTP as a subprotocol of its own.
+ */
+export const BINDING_PROTOCOL_PREFIX = "opsifier-binding.";
+
+function protocolBinding(header: string | string[] | undefined): string | undefined {
+  const value = Array.isArray(header) ? header.join(",") : header;
+  for (const part of value?.split(",") ?? []) {
+    const protocol = part.trim();
+    if (protocol.startsWith(BINDING_PROTOCOL_PREFIX)) {
+      return protocol.slice(BINDING_PROTOCOL_PREFIX.length);
+    }
+  }
+  return undefined;
+}
+
+/** Never echoes the secret back: the answer is the panel's own subprotocol or none. */
+function chooseProtocol(protocols: Set<string>): string | false {
+  return protocols.has(PANEL_PROTOCOL) ? PANEL_PROTOCOL : false;
+}
+
 interface Client {
   socket: WebSocket;
   sessionId: string;
@@ -99,6 +123,7 @@ export class RealtimeHub {
     noServer: true,
     maxPayload: MAX_FRAME_BYTES,
     perMessageDeflate: false,
+    handleProtocols: chooseProtocol,
   });
   private readonly clients = new Set<Client>();
   private readonly topics = new Map<string, Set<Client>>();
@@ -154,6 +179,7 @@ export class RealtimeHub {
         noServer: true,
         maxPayload: route.maxPayload,
         perMessageDeflate: false,
+        handleProtocols: chooseProtocol,
       }),
     });
   }
@@ -227,7 +253,11 @@ export class RealtimeHub {
 
     const cookie = sessionCookieName(scheme);
     const token = parseCookies(request.headers.cookie ?? "", cookie)[cookie];
-    const principal = token === undefined ? null : findSessionPrincipal(this.db, token, this.now());
+    const binding = protocolBinding(request.headers["sec-websocket-protocol"]);
+    const principal =
+      token === undefined
+        ? null
+        : findSessionPrincipal(this.db, token, this.now(), binding, { bound: scheme === "http" });
     if (principal === null || principal.kind !== "session") {
       rejectUpgrade(socket, 401, "unauthenticated", "Sign in to continue.");
       return;

@@ -22,6 +22,7 @@ import {
   call,
   createTestContext,
   setupAdmin,
+  splitCredentials,
   TEST_EMAIL,
   TEST_NAME,
   TEST_ORIGIN,
@@ -254,6 +255,11 @@ describe("accepting", () => {
       cookie: accepted.cookie,
     });
     expect(session.body).toMatchObject({ status: "signed-in", user: { email: "ann@example.com" } });
+    // Opened over plain HTTP: the cookie alone, as another port of the server receives it, opens nothing.
+    const alone = await call<SessionState>(context.app, "/api/v1/auth/session", {
+      cookie: splitCredentials(accepted.cookie ?? "").cookie,
+    });
+    expect(alone.body).toEqual({ status: "signed-out" });
 
     const everyone = await api<UserList>("GET", "/api/v1/users", admin);
     expect(everyone.body.users.find((user) => user.email === "ann@example.com")).toMatchObject({

@@ -464,6 +464,9 @@ describe("SRV-04: changing the purpose", () => {
   });
 });
 
+/** Thirty-odd password checks: seconds alone, longer while the whole suite runs beside them. */
+const SLOW_HASHES = 20_000;
+
 describe("the gate remembering a browser", () => {
   const CHECK = "/api/proxy-pages/gate";
   const TRAEFIK = "10.0.0.2";
@@ -580,46 +583,58 @@ describe("the gate remembering a browser", () => {
     expect(after.some((token) => before.includes(token))).toBe(false);
   });
 
-  it("counts wrong passwords by the address the proxy saw", async () => {
-    const { username, password } = await staging();
-    const wrong = (attempt: number) => basic(username, `wrong-${attempt}`);
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      expect((await asked({ authorization: wrong(attempt) })).status).toBe(401);
-    }
-    // The same wrong password again is not one more guess.
-    expect((await asked({ authorization: wrong(0) })).status).toBe(401);
-    expect((await asked({ authorization: wrong(30) })).status).toBe(429);
-    // Someone else behind the same proxy is not held back.
-    const someoneElse = { authorization: basic(username, password), forwardedFor: "198.51.100.8" };
-    expect((await asked(someoneElse)).status).toBe(200);
-  });
+  it(
+    "counts wrong passwords by the address the proxy saw",
+    async () => {
+      const { username, password } = await staging();
+      const wrong = (attempt: number) => basic(username, `wrong-${attempt}`);
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        expect((await asked({ authorization: wrong(attempt) })).status).toBe(401);
+      }
+      // The same wrong password again is not one more guess.
+      expect((await asked({ authorization: wrong(0) })).status).toBe(401);
+      expect((await asked({ authorization: wrong(30) })).status).toBe(429);
+      // Someone else behind the same proxy is not held back.
+      const someoneElse = { authorization: basic(username, password), forwardedFor: "198.51.100.8" };
+      expect((await asked(someoneElse)).status).toBe(200);
+    },
+    SLOW_HASHES,
+  );
 
-  it("counts a client that asks the panel directly by its own address, whatever it says it is", async () => {
-    const { username } = await staging();
-    const direct = (attempt: number) => ({
-      peer: "198.51.100.9",
-      forwardedFor: `198.51.100.${100 + attempt}`,
-      authorization: basic(username, `wrong-${attempt}`),
-    });
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      expect((await asked(direct(attempt))).status).toBe(401);
-    }
-    expect((await asked(direct(30))).status).toBe(429);
-  });
+  it(
+    "counts a client that asks the panel directly by its own address, whatever it says it is",
+    async () => {
+      const { username } = await staging();
+      const direct = (attempt: number) => ({
+        peer: "198.51.100.9",
+        forwardedFor: `198.51.100.${100 + attempt}`,
+        authorization: basic(username, `wrong-${attempt}`),
+      });
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        expect((await asked(direct(attempt))).status).toBe(401);
+      }
+      expect((await asked(direct(30))).status).toBe(429);
+    },
+    SLOW_HASHES,
+  );
 
-  it("counts an IPv6 /64 as one address, since one subscriber holds it whole", async () => {
-    const { username, password } = await staging();
-    const from = (forwardedFor: string, attempt: number) => ({
-      forwardedFor,
-      authorization: basic(username, `wrong-${attempt}`),
-    });
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      expect((await asked(from(`2001:db8:1:2::${(attempt + 1).toString(16)}`, attempt))).status).toBe(401);
-    }
-    expect((await asked(from("2001:db8:1:2:ffff::1", 30))).status).toBe(429);
-    const next = { forwardedFor: "2001:db8:1:3::1", authorization: basic(username, password) };
-    expect((await asked(next)).status).toBe(200);
-  });
+  it(
+    "counts an IPv6 /64 as one address, since one subscriber holds it whole",
+    async () => {
+      const { username, password } = await staging();
+      const from = (forwardedFor: string, attempt: number) => ({
+        forwardedFor,
+        authorization: basic(username, `wrong-${attempt}`),
+      });
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        expect((await asked(from(`2001:db8:1:2::${(attempt + 1).toString(16)}`, attempt))).status).toBe(401);
+      }
+      expect((await asked(from("2001:db8:1:2:ffff::1", 30))).status).toBe(429);
+      const next = { forwardedFor: "2001:db8:1:3::1", authorization: basic(username, password) };
+      expect((await asked(next)).status).toBe(200);
+    },
+    SLOW_HASHES,
+  );
 
   it("asks a client to come back when too many passwords are being checked at once", async () => {
     await staging();

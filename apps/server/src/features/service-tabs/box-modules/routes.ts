@@ -2,6 +2,7 @@ import { createRoute } from "@hono/zod-openapi";
 import { boxDetail, saveBoxModulesRequest, servicePath } from "@opsifier/contract";
 import type { Feature } from "../../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../../core/openapi";
+import { requestAccess } from "../../access/guard";
 import { saveBoxModules } from "../../box/service";
 
 const putRoute = createRoute({
@@ -15,6 +16,7 @@ const putRoute = createRoute({
     200: jsonResponse(boxDetail, "Saved. Used by the next deploy."),
     400: errorResponse("The request failed validation, or the matrix does not allow this."),
     401: errorResponse("Not signed in."),
+    403: errorResponse("The box reaches the server, and only an administrator can change what runs in it."),
     404: errorResponse("No such box."),
   },
 });
@@ -24,7 +26,12 @@ export const feature: Feature = {
     app.openapi(putRoute, (c) => {
       const { project, service } = c.req.valid("param");
       return c.json(
-        saveBoxModules(deps, { projectName: project, serviceName: service }, c.req.valid("json")),
+        saveBoxModules(
+          deps,
+          { projectName: project, serviceName: service },
+          c.req.valid("json"),
+          requestAccess(deps, c),
+        ),
         200,
       );
     });

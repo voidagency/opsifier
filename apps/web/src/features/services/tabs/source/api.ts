@@ -14,7 +14,8 @@ import {
   sshKeyTestResult,
 } from "@opsifier/contract";
 import { queryOptions } from "@tanstack/react-query";
-import { ApiError, api, clientErrorCode } from "../../../../lib/api";
+import { ApiError, api, apiUrl, clientErrorCode } from "../../../../lib/api";
+import { bindingHeaders } from "../../../../lib/session-binding";
 import { serviceKey } from "../../api";
 
 const base = (project: string, service: string) => `/projects/${project}/services/${service}/source`;
@@ -70,6 +71,9 @@ function sendArchive(
     request.open("PUT", url);
     request.setRequestHeader("Content-Type", "application/octet-stream");
     request.setRequestHeader("Accept", "application/json");
+    for (const [name, value] of Object.entries(bindingHeaders())) {
+      request.setRequestHeader(name, value);
+    }
     request.upload.onprogress = (event) => {
       if (event.lengthComputable) {
         onProgress(event.loaded / event.total);
@@ -129,9 +133,5 @@ export const sourceApi = {
     path: string,
     onProgress: (fraction: number) => void,
   ): Promise<ServiceSource> =>
-    sendArchive(
-      `/api/v1${base(project, service)}/upload?fileName=${encodeURIComponent(file.name)}&path=${encodeURIComponent(path)}`,
-      file,
-      onProgress,
-    ),
+    sendArchive(apiUrl(`${base(project, service)}/upload`, { fileName: file.name, path }), file, onProgress),
 };

@@ -13,21 +13,33 @@ export const sessionUser = z.object({
 });
 export type SessionUser = z.infer<typeof sessionUser>;
 
+const signedIn = z.object({
+  status: z.literal("signed-in"),
+  user: sessionUser,
+  /**
+   * True while this panel requires two-factor sign-in and this account hasn't turned it on: until it
+   * does, turning it on is all it can do.
+   */
+  twoFactorSetupRequired: z.boolean().default(false),
+});
+
 /** GET /api/v1/auth/session */
 export const sessionState = z.discriminatedUnion("status", [
   z.object({ status: z.literal("needs-setup") }),
   z.object({ status: z.literal("signed-out") }),
-  z.object({
-    status: z.literal("signed-in"),
-    user: sessionUser,
-    /**
-     * True while this panel requires two-factor sign-in and this account hasn't turned it on: until it
-     * does, turning it on is all it can do.
-     */
-    twoFactorSetupRequired: z.boolean().default(false),
-  }),
+  signedIn,
 ]);
 export type SessionState = z.infer<typeof sessionState>;
+
+/** The answer that opens a browser's session: first setup, sign-in, an accepted invitation. */
+export const openedSession = signedIn.extend({
+  /**
+   * Over plain HTTP only: a second secret the page keeps for the panel's own address and sends back
+   * with every request, since the cookie also reaches the server's other ports. Given this once.
+   */
+  binding: z.string().optional(),
+});
+export type OpenedSession = z.infer<typeof openedSession>;
 
 /** No address can be longer (RFC 5321), and these end up in rate-limit keys and audit lines. */
 const email = z.email().max(254, "Must be at most 254 characters");

@@ -1,4 +1,4 @@
-import { createProjectRequest } from "@opsifier/contract";
+import { createProjectRequest, isReservedProjectName } from "@opsifier/contract";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
@@ -26,7 +26,14 @@ export function CreateProjectDialog({
       if (parsed.success) {
         return {};
       }
-      return { name: name === "" ? t("create.required") : t("create.invalid") };
+      return {
+        name:
+          name === ""
+            ? t("create.required")
+            : isReservedProjectName(name)
+              ? t("create.reserved")
+              : t("create.invalid"),
+      };
     },
     onSubmit: async ({ name }) => {
       await projectsApi.create({ name });

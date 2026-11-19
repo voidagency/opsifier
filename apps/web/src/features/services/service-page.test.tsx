@@ -85,6 +85,20 @@ const base = (service: ServiceDetail, extra: FakeRoute = {}): FakeRoute => ({
 
 const deployButton = () => screen.findByRole("button", { name: "Deploy" }) as Promise<HTMLButtonElement>;
 
+describe("a name in the address bar", () => {
+  it("opens no page, and calls nothing, when it would step out of its project", async () => {
+    const server = installFakeServer(
+      base(detail(), { "GET /projects/prod/services/web": detail({ projectName: "prod" }) }),
+    );
+    // The router decodes the name to `web/.<tab>./.<tab>./.<tab>./prod/services/web`, and a browser
+    // drops the tabs of an address before sending it.
+    renderApp("/projects/shop/app/web%2F.%09.%2F.%09.%2F.%09.%2Fprod%2Fservices%2Fweb");
+
+    expect(await screen.findByText("There is nothing at this address")).toBeTruthy();
+    expect(server.calls.filter((call) => call.path.includes("prod"))).toEqual([]);
+  });
+});
+
 describe("what the header says about what is running", () => {
   it("says when saved settings have not reached the running version", async () => {
     installFakeServer(base(detail({ pendingChanges: true })));

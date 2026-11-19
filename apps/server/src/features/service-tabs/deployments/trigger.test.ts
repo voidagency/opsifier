@@ -391,7 +391,7 @@ describe("a push webhook", () => {
     expect(apiErrorOf(result).code).toBe("webhook_needs_git_source");
   });
 
-  it("deploys a signed push to the registered repository and branch, at the commit it announced", async () => {
+  it("deploys a signed push to the registered repository and branch, at the branch's tip", async () => {
     const { secret, webhook } = await issueWebhook();
     const body = pushBody();
     const tools = context.deps.tools as FakeTools;
@@ -401,7 +401,7 @@ describe("a push webhook", () => {
     expect(result.status).toBe(202);
     await waitIdle();
     const fetched = tools.callsTo("git").find((request) => request.args.includes("fetch"));
-    expect(fetched?.args.at(-1)).toBe(COMMIT);
+    expect(fetched?.args.at(-1)).toBe("main");
     const [recorded] = await deployments();
     expect(recorded).toMatchObject({ origin: "webhook", status: "succeeded" });
     expect(recorded?.originDetail).toContain("Push to main at 0123456789ab");
@@ -757,7 +757,7 @@ describe("a push webhook", () => {
 });
 
 describe("the commit a deployment builds", () => {
-  it("is the one the latest request announced, when several wait together", async () => {
+  it("is the branch's tip, never one a push names, even when several wait together", async () => {
     await api(SOURCE, "PUT", {
       type: "git",
       url: "https://git.example.com/acme/shop.git",
@@ -804,7 +804,7 @@ describe("the commit a deployment builds", () => {
     expect(second.body.id).toBe(first.body.id);
     const fetched = tools.callsTo("git").filter((request) => request.args.includes("fetch"));
     expect(fetched).toHaveLength(1);
-    expect(fetched[0]?.args.at(-1)).toBe("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    expect(fetched[0]?.args.at(-1)).toBe("main");
   });
 
   it("is the branch's latest for anything that names no commit", async () => {

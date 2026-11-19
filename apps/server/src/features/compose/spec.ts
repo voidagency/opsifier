@@ -26,7 +26,9 @@ export const storedCompose = z.object({
   acknowledgedHash: z.string().nullable().default(null),
   /**
    * SHA-256 of everything the stack reached on the server when someone confirmed it, as Compose
-   * resolved it: included files, variables and all. A deploy that would reach anything else asks again.
+   * resolved it, included files, variables and all; of what ran in each child that reached it (image,
+   * build, command, entrypoint, what it was told); and of every file the stack was read from. A deploy
+   * that changes any of it asks again.
    */
   acknowledgedAccess: z.string().nullable().default(null),
   /** What a deploy found the stack reaching that nobody has confirmed, shown on the Source tab until someone does. */

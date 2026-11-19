@@ -99,6 +99,12 @@ export const sessions = sqliteTable(
     persistent: integer("persistent", { mode: "boolean" }).notNull(),
     ip: text("ip"),
     userAgent: text("user_agent"),
+    /**
+     * For a session opened over plain HTTP: the hash of a second secret the browser keeps for the
+     * panel's own address, port included, and sends with every request. The cookie alone, which a
+     * browser also sends to the server's other ports, does not open the session.
+     */
+    bindingHash: text("binding_hash"),
     createdAt: millis("created_at").notNull(),
     expiresAt: millis("expires_at").notNull(),
   },

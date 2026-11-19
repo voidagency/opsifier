@@ -3,7 +3,7 @@ import type { ActionContext, ActionRow } from "../../core/actions";
 import type { AppDeps } from "../../core/context";
 import type { SwarmServiceSpec } from "../../core/docker";
 import { conflict } from "../../core/errors";
-import { requireHostAccess } from "../access/guard";
+import { requireHostAccess, requireHostAccessFor, requireHostAccessForTask } from "../access/guard";
 import type { Access } from "../access/rules";
 import { noteDeployment } from "../actions/repo";
 import type { Mention } from "../compose/inspect";
@@ -18,6 +18,7 @@ import {
   withImage,
 } from "../services/lifecycle";
 import { inspectOwnedService } from "../services/ownership";
+import { ownFilesDir, specAccess } from "../services/reach";
 import { requireService, type ServiceTarget } from "../services/service";
 import {
   activeNumberOf,
@@ -163,6 +164,8 @@ export async function enqueueRollback(
   actorEmail: string | undefined,
 ): Promise<ActionRow> {
   const record = requireService(deps, target);
+  // Going back changes what runs, which in a service that reaches the server is an administrator's.
+  requireHostAccessFor(access, record);
   const row = requireRelease(deps, record, number);
   if (confirm !== target.serviceName) {
     throw conflict("confirmation_mismatch", "Type the service's exact name to confirm.", {
@@ -184,6 +187,8 @@ export async function enqueueRollback(
   if (swarm !== null && capabilitiesRegained(swarm.spec, snapshot.swarm).length > 0) {
     requireHostAccess(access);
   }
+  // A version that reached the server reaches it again, whatever the settings say today.
+  requireHostAccessForTask(access, specAccess(snapshot.swarm), ownFilesDir(deps, target));
   return deps.actions.enqueue({
     type: rollbackActionType,
     title: `Roll back ${target.projectName}/${target.serviceName} to version ${number}`,

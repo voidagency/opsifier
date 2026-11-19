@@ -19,6 +19,7 @@ import type { Context } from "hono";
 import { requestScheme, requirePrincipal } from "../../../core/auth";
 import type { AppDeps, AppEnv, Feature } from "../../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../../core/openapi";
+import { requestAccess } from "../../access/guard";
 import { setAutoDeploy } from "./auto-deploy";
 import {
   deleteDeployKey,
@@ -37,6 +38,9 @@ const tags = ["Service source"];
 const invalid = errorResponse("The request failed validation.");
 const denied = errorResponse("Not signed in.");
 const missing = errorResponse("No such service.");
+const reachRefused = errorResponse(
+  "The service reaches the server, and only an administrator can change what runs in it.",
+);
 
 const getRoute = createRoute({
   method: "get",
@@ -60,6 +64,7 @@ const putRoute = createRoute({
     200: jsonResponse(serviceSource, "Saved. Takes effect at the next deploy."),
     400: invalid,
     401: denied,
+    403: reachRefused,
     404: missing,
     503: errorResponse("git is not available on this server."),
   },
@@ -74,6 +79,7 @@ const buildRoute = createRoute({
     200: jsonResponse(saveBuildResponse, "Saved. Used by the next build."),
     400: invalid,
     401: denied,
+    403: reachRefused,
     404: missing,
   },
 });
@@ -97,6 +103,7 @@ const uploadRoute = createRoute({
     200: jsonResponse(serviceSource, "Stored. Unpacked and built by the next deploy."),
     400: invalid,
     401: denied,
+    403: reachRefused,
     404: missing,
     413: errorResponse("The archive is larger than the panel accepts."),
     503: errorResponse("bsdtar is not available on this server."),
@@ -186,6 +193,7 @@ const putEnvFileRoute = createRoute({
     200: jsonResponse(envFileSettings, "Saved. Used by the next build."),
     400: invalid,
     401: denied,
+    403: reachRefused,
     404: missing,
   },
 });
@@ -201,9 +209,10 @@ const actorOf = (c: Context<AppEnv>) => {
 };
 
 /** Whoever saves a source decides what the panel's own GitHub token may read for it. */
-const authorOf = (c: Context<AppEnv>) => ({
+const authorOf = (deps: AppDeps, c: Context<AppEnv>) => ({
   actorEmail: actorOf(c),
   isAdmin: requirePrincipal(c).user.role === "admin",
+  access: requestAccess(deps, c),
 });
 
 /** The address this panel was reached on, as far as it can be believed. */
@@ -225,7 +234,7 @@ export const feature: Feature = {
 
     app.openapi(putRoute, async (c) =>
       c.json(
-        await saveServiceSource(deps, target(c.req.valid("param")), c.req.valid("json"), authorOf(c)),
+        await saveServiceSource(deps, target(c.req.valid("param")), c.req.valid("json"), authorOf(deps, c)),
         200,
       ),
     );
@@ -233,7 +242,13 @@ export const feature: Feature = {
     app.openapi(buildRoute, (c) =>
       c.json(
         {
-          build: saveBuildSettings(deps, target(c.req.valid("param")), c.req.valid("json").build, actorOf(c)),
+          build: saveBuildSettings(
+            deps,
+            target(c.req.valid("param")),
+            c.req.valid("json").build,
+            actorOf(c),
+            requestAccess(deps, c),
+          ),
         },
         200,
       ),
@@ -249,6 +264,7 @@ export const feature: Feature = {
           c.req.raw.body,
           length === undefined ? undefined : Number(length),
           actorOf(c),
+          requestAccess(deps, c),
         ),
         200,
       );
@@ -282,7 +298,16 @@ export const feature: Feature = {
     app.openapi(getEnvFileRoute, (c) => c.json(getEnvFile(deps, target(c.req.valid("param"))), 200));
 
     app.openapi(putEnvFileRoute, (c) =>
-      c.json(saveEnvFile(deps, target(c.req.valid("param")), c.req.valid("json"), actorOf(c)), 200),
+      c.json(
+        saveEnvFile(
+          deps,
+          target(c.req.valid("param")),
+          c.req.valid("json"),
+          actorOf(c),
+          requestAccess(deps, c),
+        ),
+        200,
+      ),
     );
   },
 };

@@ -1,6 +1,8 @@
 import { type AnyRoute, createRoute, useSearch } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { namedParams } from "../../lib/route-params";
+import { withBinding } from "../../lib/session-binding";
 import { StudioPage } from "./StudioPage";
 import { StudioSettingsPage } from "./StudioSettingsPage";
 import { WorkspacePage } from "./WorkspacePage";
@@ -12,6 +14,7 @@ export function createStudioRoutes<TParent extends AnyRoute>(getParentRoute: () 
   const workspaceRoute = createRoute({
     getParentRoute: () => studioRoute,
     path: "$project/$service",
+    params: namedParams("project", "service"),
     // `c` names the conversation shown, or is "new" for the next one.
     validateSearch: (search: Record<string, unknown>): { c?: string } =>
       typeof search.c === "string" && search.c !== "" ? { c: search.c } : {},
@@ -46,7 +49,9 @@ function OpenPreviewPage() {
   const { host = "", to = "/" } = useSearch({ strict: false }) as { host?: string; to?: string };
   useEffect(() => {
     if (host !== "") {
-      window.location.replace(`/api/v1/studio/preview-signin?${new URLSearchParams({ host, to })}`);
+      window.location.replace(
+        withBinding(`/api/v1/studio/preview-signin?${new URLSearchParams({ host, to })}`),
+      );
     }
   }, [host, to]);
   return <p className="m-6 text-sm text-muted">{t("preview.opening")}</p>;

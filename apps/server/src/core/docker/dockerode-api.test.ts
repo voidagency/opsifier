@@ -39,6 +39,51 @@ afterEach(async () => {
   rmSync(directory, { recursive: true, force: true });
 });
 
+describe("listComposeContainers", () => {
+  it("reports the host paths a container binds, whether it may write there, and not its volumes", async () => {
+    respond = (_request, response) =>
+      json(response, 200, [
+        {
+          Id: "c1",
+          Names: ["/shop_stack-web-1"],
+          Image: "nginx",
+          State: "running",
+          Status: "Up 2 seconds",
+          Labels: { "com.docker.compose.project": "shop_stack", "com.docker.compose.service": "web" },
+          Ports: [],
+          Mounts: [
+            {
+              Type: "bind",
+              Source: "/var/lib/opsifier/projects/shop/stack/code/data",
+              Destination: "/data",
+              Mode: "",
+              RW: true,
+              Propagation: "rprivate",
+            },
+            {
+              Type: "volume",
+              Name: "shop_stack_db",
+              Source: "/var/lib/docker/volumes/shop_stack_db/_data",
+              Destination: "/db",
+              Driver: "local",
+              Mode: "z",
+              RW: true,
+              Propagation: "",
+            },
+          ],
+          NetworkSettings: { Networks: {} },
+        },
+      ]);
+
+    const [container] = await driver.listComposeContainers("shop_stack");
+
+    expect(container?.binds).toEqual([
+      { source: "/var/lib/opsifier/projects/shop/stack/code/data", rw: true },
+    ]);
+    expect(requests[0]).toMatch(/^GET \/containers\/json\?all=true&filters=/);
+  });
+});
+
 describe("removeVolume", () => {
   it("sends force to Docker", async () => {
     respond = (_request, response) => {

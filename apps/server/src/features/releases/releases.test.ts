@@ -638,6 +638,27 @@ describe("going back to a kept version", () => {
     expect((await rollback(1)).status).toBe(202);
   });
 
+  it("leaves a version that reached the server, and a service that does, to an administrator", async () => {
+    const shared = { type: "bind", hostPath: "/srv/shared", mountPath: "/shared" };
+    expect((await api(`${SERVICE}/storage/mounts`, "POST", shared)).status).toBe(201);
+    await twoVersions();
+    const operator = await member("o@example.com", "operator");
+
+    const refused = await rollback(1, "web", operator);
+    expect(refused.status).toBe(403);
+    expect(apiErrorOf(refused).code).toBe("service_reaches_server");
+
+    // Out of the settings, still in what runs and in what ran: going back still runs with it.
+    expect((await api(`${SERVICE}/storage/mounts/0`, "DELETE")).status).toBe(200);
+    const stillRefused = await rollback(1, "web", operator);
+    expect(stillRefused.status).toBe(403);
+    expect(apiErrorOf(stillRefused).code).toBe("service_reaches_server");
+
+    const allowed = await rollback(1);
+    expect(allowed.status).toBe(202);
+    expect((await waitForAction(allowed.body.id)).status).toBe("succeeded");
+  });
+
   it("refuses a version that does not exist", async () => {
     await twoVersions();
     expect((await rollback(9)).status).toBe(404);

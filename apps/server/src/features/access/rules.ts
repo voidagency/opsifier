@@ -80,6 +80,15 @@ export function hasProjectLevel(access: Access, project: string, level: ProjectL
 /** Only an administrator's own rights, never narrowed to a list of projects, can reach the host. */
 export const canReachHost = (access: Access): boolean => access.admin && !access.scoped;
 
+/**
+ * Whether an account could reach the host now, through its session or a key it did not narrow. Asked
+ * for what it set going earlier and goes on without it, such as a schedule, every time it acts.
+ */
+export function accountCanReachHost(db: DbHandle, userId: string): boolean {
+  const user = findUser(db, userId);
+  return user !== undefined && user.role === "admin" && user.deactivatedAt === null;
+}
+
 /** Null means no restriction at all. */
 export function visibleProjects(access: Access): ReadonlySet<string> | null {
   return access.projects === null ? null : new Set(access.projects.keys());

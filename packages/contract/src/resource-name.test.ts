@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { resourceName } from "./common";
+import { projectName, resourceName } from "./common";
+import { createProjectRequest, projectPath } from "./projects";
 
 const accepted = (name: string) => resourceName.safeParse(name).success;
 
@@ -38,5 +39,20 @@ describe("resourceName", () => {
     expect(messageFor("web-")).toContain("end with");
     expect(messageFor("a__b")).toContain("underscores");
     expect(messageFor("")).toBe("Required");
+  });
+});
+
+describe("a new project's name", () => {
+  it("can't be releases, which the server keeps its versions under", () => {
+    const refused = createProjectRequest.safeParse({ name: "releases" });
+
+    expect(refused.success).toBe(false);
+    expect(refused.error?.issues[0]?.message).toBe("This name is reserved");
+    expect(createProjectRequest.safeParse({ name: "releases-2" }).success).toBe(true);
+  });
+
+  it("is reserved for new projects only: one from before still parses as a name", () => {
+    expect(projectName.safeParse("releases").success).toBe(true);
+    expect(projectPath.safeParse({ project: "releases" }).success).toBe(true);
   });
 });

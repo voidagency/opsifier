@@ -99,6 +99,9 @@ const putEnvRoute = createRoute({
     200: jsonResponse(envSummary, "Saved. Running services keep the old values until redeployed."),
     400: invalid,
     401: denied,
+    403: errorResponse(
+      "One of the project's services reaches the server, and only an administrator can change what runs in it.",
+    ),
     404: missing,
   },
 });
@@ -168,6 +171,7 @@ export const feature: Feature = {
           c.req.valid("param").project,
           c.req.valid("json").env,
           actorEmailOf(requirePrincipal(c)),
+          requestAccess(deps, c),
         ),
         200,
       ),

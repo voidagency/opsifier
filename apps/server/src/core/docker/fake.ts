@@ -179,6 +179,8 @@ export class FakeDriver implements DockerDriver {
   private readonly imageLabels = new Map<string, Record<string, string>>();
   /** How many times a tag has been moved in the registry: the next pull gets something else. */
   private readonly registryMoves = new Map<string, number>();
+  /** The labels a pull of an image brings, for the images the simulated registry describes. */
+  private readonly registryLabels = new Map<string, Record<string, string>>();
   private builds = 0;
   private readonly failures = new Map<Operation, Error>();
   private readonly containerLogSources = new Map<string, LogSource>();
@@ -761,6 +763,7 @@ export class FakeDriver implements DockerDriver {
       mountpoint: `/var/lib/docker/volumes/${options.name}/_data`,
       labels: options.labels ?? {},
       createdAt: new Date().toISOString(),
+      options: { ...(options.driverOptions ?? {}) },
     };
     this.volumes.set(options.name, volume);
     return { ...volume };
@@ -790,6 +793,15 @@ export class FakeDriver implements DockerDriver {
     const id = fakeImageId(`${ref}#${this.registryMoves.get(ref) ?? 0}`);
     this.imageNames.set(ref, id);
     this.imageDigests.set(id, `${imageRepository(ref)}@${id}`);
+    const labels = this.registryLabels.get(ref);
+    if (labels !== undefined) {
+      this.imageLabels.set(id, { ...labels });
+    }
+  }
+
+  /** Describes an image of the simulated registry: a pull of it brings these labels. */
+  publishImage(ref: string, labels: Record<string, string>): void {
+    this.registryLabels.set(ref, { ...labels });
   }
 
   /** Moves a tag in the registry, so that the next pull of it brings a different image. */
@@ -1071,6 +1083,7 @@ export class FakeDriver implements DockerDriver {
 
   async removeImage(id: string): Promise<void> {
     this.removedImageReferences.push(id);
+    this.check("removeImage");
     this.pulledImages.delete(id);
     this.imageNames.delete(id);
     for (const [name, named] of this.imageNames) {

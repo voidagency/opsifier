@@ -1,10 +1,11 @@
-import { isIP } from "node:net";
 import type { DomainEntry } from "@opsifier/contract";
 import { nanoid } from "nanoid";
 import type { AppDeps } from "../../../core/context";
 import type { DbHandle } from "../../../core/db";
 import { assertHostname, InvalidProxyInputError } from "../../../core/proxy";
+import { sslipBase } from "../../../core/proxy/sslip";
 import { liveAddressDomain } from "../../opsifier-address/repo";
+import { isReservedForPanel } from "../../server/panel-host";
 import type { CompileDomain } from "../../services/compile";
 import { composeChildAddress, internalUrl, qualifiedName } from "../../services/compile";
 import type { ServiceTarget } from "../../services/service";
@@ -14,7 +15,6 @@ import { type DomainRow, insertDomain, isHostAvailable, listServiceDomains } fro
 
 const MAX_LABEL = 63;
 const DEFAULT_PORT = 80;
-const SSLIP_SUFFIX = "sslip.io";
 
 export const toCompileDomains = (rows: readonly DomainRow[]): CompileDomain[] =>
   rows.map((row) => ({
@@ -91,15 +91,6 @@ export function primaryUrl(db: DbHandle, target: ServiceTarget): string | null {
   return primary === undefined ? null : externalUrl(primary);
 }
 
-/** sslip.io spells an IPv6 address with dashes, and a label cannot begin with one. */
-function sslipLabel(ip: string): string {
-  if (isIP(ip) !== 6) {
-    return ip;
-  }
-  const dashed = ip.toLowerCase().replaceAll(":", "-");
-  return dashed.startsWith("-") ? `0${dashed}` : dashed;
-}
-
 function isValidHostname(host: string): boolean {
   try {
     assertHostname(host);
@@ -126,19 +117,23 @@ export function defaultBaseDomain(deps: AppDeps, db: DbHandle): string | null {
     return address;
   }
   const { serverIp } = getSystemInfo(deps);
-  return serverIp === null ? null : `${sslipLabel(serverIp)}.${SSLIP_SUFFIX}`;
+  return serverIp === null ? null : sslipBase(serverIp);
 }
 
 /**
  * The hostname a new service gets. `a-b` + `c` and `a` + `b-c` map to one label, as do `x_y` and
- * `x-y`, so a label already taken gets a numeric suffix.
+ * `x-y`, so a label already taken gets a numeric suffix, and so does one of the panel's own names.
  */
-function pickDefaultHost(db: DbHandle, target: ServiceTarget, base: string): string | null {
+function pickDefaultHost(deps: AppDeps, db: DbHandle, target: ServiceTarget, base: string): string | null {
   const label = `${target.projectName}-${target.serviceName}`.replaceAll("_", "-");
   for (let attempt = 1; attempt <= 1000; attempt += 1) {
     const suffix = attempt === 1 ? "" : `-${attempt}`;
     const host = `${label.slice(0, MAX_LABEL - suffix.length)}${suffix}.${base}`;
-    if (isValidHostname(host) && isHostAvailable(db, target.projectName, host, "/")) {
+    if (
+      isValidHostname(host) &&
+      isHostAvailable(db, target.projectName, host, "/") &&
+      !isReservedForPanel(deps, host, false)
+    ) {
       return host;
     }
   }
@@ -163,7 +158,7 @@ export function assignDefaultDomain(
   options: DefaultDomainOptions = {},
 ): string | null {
   const base = defaultBaseDomain(deps, db);
-  const host = base === null ? null : pickDefaultHost(db, target, base);
+  const host = base === null ? null : pickDefaultHost(deps, db, target, base);
   if (host === null) {
     deps.logger.warn(
       { target, base },

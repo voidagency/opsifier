@@ -98,12 +98,22 @@ def shaped(shape, text):
         data = pick(data, ("id", "title", "execution_status"))
         data["llm"] = pick(llm, ("model", "base_url"))
     return json.dumps(data)
+def with_key(body):
+    # The key goes only where the panel asked for it, in the headers the agent server looks its own
+    # secrets up with. Nothing else in a body, such as what a person wrote, is ever read for it.
+    secrets = body.get("secrets") if isinstance(body, dict) else None
+    if isinstance(secrets, dict):
+        for secret in secrets.values():
+            headers = secret.get("headers") if isinstance(secret, dict) else None
+            if isinstance(headers, dict) and headers.get("X-Session-API-Key") == request["placeholder"]:
+                headers["X-Session-API-Key"] = key or ""
+    return body
 answers = []
 for call in request["calls"]:
     body = call.get("body")
     data = None
     if body is not None:
-        data = json.dumps(body).replace(request["placeholder"], key or "").encode()
+        data = json.dumps(with_key(body)).encode()
     headers = {"Content-Type": "application/json"}
     if key:
         headers["X-Session-API-Key"] = key

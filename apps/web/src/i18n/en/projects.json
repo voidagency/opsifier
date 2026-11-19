@@ -6,6 +6,7 @@
     "nameHint": "Lowercase letters, digits and dashes.",
     "required": "Give the project a name.",
     "invalid": "Use lowercase letters, digits and dashes, starting and ending with a letter or digit.",
+    "reserved": "This name is reserved for the server.",
     "submit": "Create",
     "created": "Project {{name}} is ready"
   },

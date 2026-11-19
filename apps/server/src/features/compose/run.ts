@@ -56,7 +56,10 @@ export async function runCompose(
       command: "docker",
       args: [...globalArgs(target, options.files), ...args],
       cwd: options.files?.projectDirectory,
-      env: { ...dockerCliEnv(deps), ...options.variables },
+      // Last, so that nothing a stack is given can set it: Buildx reads a source policy, which can swap
+      // the frontend or any image for another, from the file this names. Compose itself only takes a
+      // name from the stack's `.env`, a `COMPOSE_` one, when this environment doesn't have it already.
+      env: { ...dockerCliEnv(deps), ...options.variables, EXPERIMENTAL_BUILDKIT_SOURCE_POLICY: "" },
       signal: options.signal,
       timeoutMs: options.timeoutMs,
       onLine: options.onLine,

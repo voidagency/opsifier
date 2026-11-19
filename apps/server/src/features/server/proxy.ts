@@ -15,6 +15,7 @@ import type { AppDeps } from "../../core/context";
 import type { SwarmServiceSpec } from "../../core/docker";
 import { DockerDriverError } from "../../core/docker";
 import { badRequest, conflict } from "../../core/errors";
+import { PANEL_ROUTER_PRIORITY } from "../../core/proxy";
 import {
   type AddressChallenge,
   addressChallengeEnv,
@@ -427,6 +428,8 @@ export async function openProxyDashboard(
       routers: {
         dashboard: {
           rule: `Host(\`${host}\`)`,
+          // Above a service that claimed the name first, as the panel's own routers are.
+          priority: PANEL_ROUTER_PRIORITY,
           entryPoints: ["websecure"],
           service: "api@internal",
           middlewares: ["dashboard-auth"],

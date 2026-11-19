@@ -3,6 +3,7 @@ import { databaseAdvancedSettings, saveDatabaseAdvancedRequest, servicePath } fr
 import { requirePrincipal } from "../../../core/auth";
 import type { Feature } from "../../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../../core/openapi";
+import { requestAccess } from "../../access/guard";
 import { getAdvanced, saveAdvanced } from "./service";
 
 const PATH = "/api/v1/projects/{project}/services/{service}/database-advanced";
@@ -35,6 +36,9 @@ const putRoute = createRoute({
     200: jsonResponse(databaseAdvancedSettings, "Saved."),
     400: invalid,
     401: denied,
+    403: errorResponse(
+      "The database reaches the server, and only an administrator can change what runs in it.",
+    ),
     404: missing,
     409: errorResponse("The new image needs a confirmation, or the database is not in a state to take it."),
   },
@@ -57,6 +61,7 @@ export const feature: Feature = {
           target(c.req.valid("param")),
           c.req.valid("json"),
           principal.kind === "session" ? principal.user.email : undefined,
+          requestAccess(deps, c),
         ),
         200,
       );

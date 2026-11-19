@@ -8,9 +8,11 @@ import {
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  BINDING_HEADER,
   createApiToken,
   findTokenPrincipal,
   hashToken,
+  insertSession,
   PLAIN_HTTP_SESSION_TTL_MS,
   REMEMBERED_SESSION_TTL_MS,
   SECURE_SESSION_COOKIE,
@@ -28,6 +30,7 @@ import {
   enrollTwoFactor,
   setupAdmin,
   setupTokenOf,
+  splitCredentials,
   TEST_EMAIL,
   TEST_ORIGIN,
   TEST_PASSWORD,
@@ -358,7 +361,7 @@ describe("login", () => {
 
   it("stores the session token only as a hash", async () => {
     const { cookie } = await login({});
-    const token = cookie?.split("=", 2)[1] as string;
+    const token = splitCredentials(cookie as string).cookie.split("=", 2)[1] as string;
     const rows = context.deps.db
       .select()
       .from(sessions)
@@ -542,6 +545,101 @@ describe("the session cookie", () => {
     expect(result.status).toBe(200);
     expect(result.setCookie).toMatch(new RegExp(`^${SECURE_SESSION_COOKIE}=; Max-Age=0`));
     expect((await overHttps("/api/v1/auth/session", { cookie })).body).toEqual({ status: "signed-out" });
+  });
+});
+
+describe("a session opened over plain HTTP, whose cookie also reaches the server's other ports", () => {
+  /** What a service published on another port of the server receives from the browser. */
+  const cookieAlone = (credentials: string) => splitCredentials(credentials).cookie;
+  const bindingOf = (credentials: string) => splitCredentials(credentials).binding as string;
+  const projects = (options: CallOptions) => call(app, "/api/v1/projects", options);
+
+  it("comes with a second secret, given once along with the cookie", async () => {
+    await setupAdmin(app);
+    const result = await login({});
+
+    expect(result.body).toMatchObject({
+      status: "signed-in",
+      binding: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+    });
+    const session = await sessionOf(result.cookie);
+    expect(session.body).toMatchObject({ status: "signed-in" });
+    expect(session.body).not.toHaveProperty("binding");
+  });
+
+  it("opens nothing with the cookie alone, or with another secret", async () => {
+    const credentials = await setupAdmin(app);
+    const cookie = cookieAlone(credentials);
+
+    expect((await sessionOf(cookie)).body).toEqual({ status: "signed-out" });
+    expect((await projects({ cookie })).status).toBe(401);
+    expect((await projects({ cookie, headers: { [BINDING_HEADER]: "A".repeat(43) } })).status).toBe(401);
+    expect((await projects({ cookie, headers: { [BINDING_HEADER]: bindingOf(credentials) } })).status).toBe(
+      200,
+    );
+  });
+
+  it("takes the secret from the address only for what a browser opens by itself", async () => {
+    const credentials = await setupAdmin(app);
+    const cookie = cookieAlone(credentials);
+    const inAddress = `/api/v1/projects?binding=${encodeURIComponent(bindingOf(credentials))}`;
+
+    expect((await call(app, inAddress, { cookie })).status).toBe(200);
+    const change = await call(app, inAddress, {
+      method: "POST",
+      cookie,
+      origin: TEST_ORIGIN,
+      body: { name: "shop" },
+    });
+    expect(change.status).toBe(401);
+  });
+
+  it("is refused without its secret when sent the way the command line sends a session", async () => {
+    const credentials = await setupAdmin(app);
+    const token = cookieAlone(credentials).split("=", 2)[1] as string;
+    const asCommandLine = (headers: Record<string, string>) =>
+      projects({ headers: { authorization: `Session ${token}`, ...headers } });
+
+    const refused = await asCommandLine({});
+    expect(refused.status).toBe(401);
+    expect(apiErrorOf(refused).code).toBe("invalid_session");
+    expect((await asCommandLine({ [BINDING_HEADER]: bindingOf(credentials) })).status).toBe(200);
+  });
+
+  it("is the only kind the plain-HTTP cookie opens, so another port cannot plant a session", async () => {
+    await setupAdmin(app);
+    // A session that needs no second secret, as the command line's: its owner knows its token.
+    const [user] = context.deps.db.select().from(users).all();
+    const { token } = insertSession(context.deps.db, {
+      userId: user?.id as string,
+      persistent: false,
+      secure: false,
+      ip: null,
+      userAgent: null,
+      now: context.deps.now(),
+    });
+
+    expect((await projects({ cookie: `${SESSION_COOKIE}=${token}` })).status).toBe(401);
+    expect((await projects({ headers: { authorization: `Session ${token}` } })).status).toBe(200);
+  });
+
+  it("is not ended by a sign-out that brings the cookie alone", async () => {
+    const credentials = await setupAdmin(app);
+
+    const caught = await authPost(app, "logout", undefined, cookieAlone(credentials));
+    expect(caught.status).toBe(200);
+    expect((await sessionOf(credentials)).body).toMatchObject({ status: "signed-in" });
+
+    await authPost(app, "logout", undefined, credentials);
+    expect((await sessionOf(credentials)).body).toEqual({ status: "signed-out" });
+  });
+
+  it("is the only kind that has one: over HTTPS the cookie is enough", async () => {
+    await setupAdmin(app);
+    const result = await loginOverHttps();
+
+    expect(result.body).not.toHaveProperty("binding");
+    expect((await overHttps("/api/v1/projects", { cookie: result.cookie })).status).toBe(200);
   });
 });
 

@@ -54,6 +54,12 @@ export function hostMatcher(rule: string): string | null {
   return matchers.length === 1 ? (matchers[0] as string) : `(${matchers.join(" || ")})`;
 }
 
+/**
+ * The panel's own routers, and the proxy's dashboard, rank above any rule's own length, which is what
+ * Traefik ranks a service's route by, and below the routes that answer `/robots.txt` on every host.
+ */
+export const PANEL_ROUTER_PRIORITY = 900_000;
+
 export class InvalidProxyInputError extends Error {
   override readonly name = "InvalidProxyInputError";
 }
@@ -150,6 +156,8 @@ export function renderBaseConfig(input: BaseProxyConfig = {}): string {
   }
 
   [...hosts, ...wildcardHosts].forEach(assertHostname);
+  // Above every service's route on the same name, whenever that name became the panel's: a service may
+  // have claimed it before, while it was not yet one of the panel's names.
   const panelRouters = (name: string, group: readonly string[]) => {
     if (group.length === 0) {
       return {};
@@ -158,12 +166,14 @@ export function renderBaseConfig(input: BaseProxyConfig = {}): string {
     return {
       [`${name}-http`]: {
         rule,
+        priority: PANEL_ROUTER_PRIORITY,
         entryPoints: ["web"],
         middlewares: [REDIRECT_HTTPS_MIDDLEWARE],
         service: PANEL_SERVICE,
       },
       [name]: {
         rule,
+        priority: PANEL_ROUTER_PRIORITY,
         entryPoints: ["websecure"],
         service: PANEL_SERVICE,
         tls: { certResolver: input.certResolver ?? DEFAULT_CERT_RESOLVER },

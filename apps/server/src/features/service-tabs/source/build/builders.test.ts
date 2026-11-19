@@ -1,15 +1,23 @@
 import { buildConfig } from "@opsifier/contract";
 import { describe, expect, it } from "vitest";
 import {
+  type BuildCommand,
   type BuildInput,
+  DOCKERFILE_FRONTEND,
   declaredBuildArgs,
   explainBuildFailure,
   forcedRebuildNote,
   needsBuildx,
+  nixpacksImageCommand,
   planBuild,
+  revisionCommand,
 } from "./builders";
 
+/** The panel's own image, by ID, as a build finds it. */
+const PANEL_IMAGE = `sha256:${"e".repeat(64)}`;
+
 const input = (overrides: Partial<BuildInput> = {}): BuildInput => ({
+  project: "shop",
   image: "opsifier/shop/web:latest",
   context: "/data/projects/shop/web/code/apps/web",
   dockerfile: "/data/projects/shop/web/code/apps/web/Dockerfile",
@@ -20,11 +28,27 @@ const input = (overrides: Partial<BuildInput> = {}): BuildInput => ({
   ],
   secrets: [],
   workDir: "/data/tmp/build-1",
+  toolContainer: { image: PANEL_IMAGE, name: "opsifier-build-1" },
   secretsHash: "hash-of-the-values",
   ...overrides,
 });
 
 const SECRET = { key: "NPM_TOKEN", value: "hunter2-build-secret" };
+
+/** `docker run <options> <image> <args>`: what starts the container, and the tool run in it. */
+function inContainer(command: BuildCommand | undefined) {
+  expect(command?.command).toBe("docker");
+  const args = command?.args ?? [];
+  expect(args[0]).toBe("run");
+  const imageAt = args.indexOf(PANEL_IMAGE);
+  expect(imageAt).toBeGreaterThan(0);
+  const options = args.slice(1, imageAt);
+  return {
+    options,
+    tool: options.find((option) => option.startsWith("--entrypoint="))?.slice("--entrypoint=".length),
+    args: args.slice(imageAt + 1),
+  };
+}
 
 describe("a Dockerfile build", () => {
   it("runs buildx with the tag, the context and the variables by name", () => {
@@ -38,6 +62,11 @@ describe("a Dockerfile build", () => {
       "--load",
       "--tag=opsifier/shop/web:latest",
       "--file=/data/projects/shop/web/code/apps/web/Dockerfile",
+      "--pull",
+      "--build-arg",
+      `BUILDKIT_SYNTAX=${DOCKERFILE_FRONTEND}`,
+      "--build-arg",
+      "BUILDKIT_CACHE_MOUNT_NS=shop",
       "--build-arg",
       "PORT",
       "--build-arg",
@@ -47,15 +76,26 @@ describe("a Dockerfile build", () => {
     ]);
   });
 
-  it("skips the cache and pulls the base images again on a force rebuild", () => {
-    const [command] = planBuild(buildConfig.parse({ type: "dockerfile" }), input({ force: true }));
-    expect(command?.args).toEqual(expect.arrayContaining(["--no-cache", "--pull"]));
-    expect(command?.label).toContain("--pull");
+  it("chooses the frontend itself, Docker's own, so that no file can choose another", () => {
+    const [command] = planBuild(buildConfig.parse({ type: "dockerfile" }), input());
+
+    expect(DOCKERFILE_FRONTEND).toMatch(/^docker\/dockerfile:1\.\d+/);
+    expect(command?.args).toEqual(
+      expect.arrayContaining(["--build-arg", `BUILDKIT_SYNTAX=${DOCKERFILE_FRONTEND}`]),
+    );
   });
 
-  it("leaves the base images alone on an ordinary build", () => {
+  it("skips the cache on a force rebuild, and still pulls the base images", () => {
+    const [command] = planBuild(buildConfig.parse({ type: "dockerfile" }), input({ force: true }));
+    expect(command?.args).toEqual(expect.arrayContaining(["--no-cache", "--pull"]));
+    expect(command?.label).toContain("--no-cache");
+  });
+
+  it("fetches the base images from their registry on an ordinary build too", () => {
     const [command] = planBuild(buildConfig.parse({ type: "dockerfile" }), input());
-    expect(command?.args).not.toContain("--pull");
+    expect(command?.args).toContain("--pull");
+    expect(command?.args).not.toContain("--no-cache");
+    expect(command?.label).toBe("docker buildx build Dockerfile --pull");
   });
 
   it("never lists a value in the arguments", () => {
@@ -99,7 +139,7 @@ describe("what a Dockerfile declares", () => {
 });
 
 describe("a Nixpacks build", () => {
-  it("names the image and passes the overrides, which replace what was detected", () => {
+  it("only writes what it would build, with the overrides, which replace what was detected", () => {
     const config = buildConfig.parse({
       type: "nixpacks",
       version: "1.40.0",
@@ -109,13 +149,15 @@ describe("a Nixpacks build", () => {
       nixPackages: "ffmpeg imagemagick",
       aptPackages: "curl",
     });
-    const [command] = planBuild(config, input({ tool: "/opt/opsifier/builders/nixpacks/1.40.0/nixpacks" }));
+    const commands = planBuild(config, input({ tool: "/opt/opsifier/builders/nixpacks/1.40.0/nixpacks" }));
 
-    expect(command?.command).toBe("/opt/opsifier/builders/nixpacks/1.40.0/nixpacks");
-    expect(command?.args).toEqual([
+    expect(commands).toHaveLength(1);
+    const nixpacks = inContainer(commands[0]);
+    expect(nixpacks.tool).toBe("/opt/opsifier/builders/nixpacks/1.40.0/nixpacks");
+    expect(nixpacks.args).toEqual([
       "build",
       "/data/projects/shop/web/code/apps/web",
-      "--name=opsifier/shop/web:latest",
+      "--out=/data/projects/shop/web/code/apps/web",
       "--env",
       "PORT",
       "--env",
@@ -129,25 +171,127 @@ describe("a Nixpacks build", () => {
       "--apt",
       "curl",
     ]);
-    expect(command?.label).toContain("nixpacks 1.40.0");
+    expect(commands[0]?.label).toContain("nixpacks 1.40.0");
+  });
+
+  it("runs in a container of the panel's image, given the build's copy of the code and nothing else", () => {
+    const tool = "/opt/opsifier/builders/nixpacks/1.40.0/nixpacks";
+    const [command] = planBuild(buildConfig.parse({ type: "nixpacks" }), input({ tool }));
+
+    const code = "/data/projects/shop/web/code/apps/web";
+    expect(inContainer(command).options).toEqual([
+      "--rm",
+      "--name=opsifier-build-1",
+      "--label=opsifier.helper=true",
+      "--network=none",
+      "--cap-drop=ALL",
+      "--security-opt=no-new-privileges",
+      "--no-healthcheck",
+      `--mount="type=bind","source=${code}","target=${code}"`,
+      `--workdir=${code}`,
+      "--env=PORT",
+      "--env=GIT_SHA",
+      `--entrypoint=${tool}`,
+    ]);
+    // Should it outlive the Docker CLI, the build removes it by this name.
+    expect(command?.container).toBe("opsifier-build-1");
+    expect(command?.env).toBeUndefined();
+  });
+
+  it("never runs without its container", () => {
+    for (const type of ["nixpacks", "railpack"]) {
+      expect(() => planBuild(buildConfig.parse({ type }), input({ toolContainer: undefined }))).toThrow(
+        "only run in a container of the panel's own image",
+      );
+    }
+  });
+
+  it("gives no folder whose path holds a line break, which the mount's CSV reader would change", () => {
+    for (const context of ["/data/projects/shop/web/code/x\r\ny", "/data/projects/shop/web/code/x\ny"]) {
+      expect(() => planBuild(buildConfig.parse({ type: "nixpacks" }), input({ context }))).toThrow(
+        "control character",
+      );
+    }
+  });
+
+  it("quotes the folder it is given, so that nothing in its path adds to the mount", () => {
+    const context = '/data/projects/shop/web/code/a,source=/,"b';
+    const [command] = planBuild(buildConfig.parse({ type: "nixpacks" }), input({ context }));
+
+    const quoted = '/data/projects/shop/web/code/a,source=/,""b';
+    expect(inContainer(command).options).toContain(
+      `--mount="type=bind","source=${quoted}","target=${quoted}"`,
+    );
+  });
+
+  it("is built by the panel, from its registry, with the panel's frontend and the arguments by name", () => {
+    const command = nixpacksImageCommand(input(), ["NIXPACKS_METADATA", "PORT"], {
+      NIXPACKS_METADATA: "node",
+    });
+
+    expect(command.command).toBe("docker");
+    expect(command.args).toEqual([
+      "buildx",
+      "build",
+      "--progress=plain",
+      "--load",
+      "--tag=opsifier/shop/web:latest",
+      "--file=/data/projects/shop/web/code/apps/web/.nixpacks/Dockerfile",
+      "--pull",
+      "--build-arg",
+      `BUILDKIT_SYNTAX=${DOCKERFILE_FRONTEND}`,
+      "--build-arg",
+      "BUILDKIT_CACHE_MOUNT_NS=shop",
+      "--build-arg",
+      "NIXPACKS_METADATA",
+      "--build-arg",
+      "PORT",
+      "--",
+      "/data/projects/shop/web/code/apps/web",
+    ]);
+    expect(command.args.join(" ")).not.toContain("node");
+    expect(command.env).toEqual({ NIXPACKS_METADATA: "node" });
   });
 
   it("leaves out what was not set, so detection still applies", () => {
     const [command] = planBuild(buildConfig.parse({ type: "nixpacks" }), input());
 
-    expect(command?.args.some((arg) => arg.startsWith("--install-cmd"))).toBe(false);
-    expect(command?.args).not.toContain("--pkgs");
-    expect(command?.command).toBe("nixpacks");
+    const nixpacks = inContainer(command);
+    expect(nixpacks.args.some((arg) => arg.startsWith("--install-cmd"))).toBe(false);
+    expect(nixpacks.args).not.toContain("--pkgs");
+    expect(nixpacks.tool).toBe("nixpacks");
   });
 
   it("keeps an override that starts with a dash attached to its flag", () => {
     const [command] = planBuild(buildConfig.parse({ type: "nixpacks", startCommand: "--version" }), input());
-    expect(command?.args).toContain("--start-cmd=--version");
+    expect(inContainer(command).args).toContain("--start-cmd=--version");
+  });
+
+  it("passes a value of Nixpacks's own that would steer the tools as an argument, never BuildKit's", () => {
+    const command = nixpacksImageCommand(input(), ["NIXPACKS_METADATA", "BUILDKIT_INLINE_CACHE"], {}, [
+      ["MALLOC_ARENA_MAX", "2"],
+      ["BUILDKIT_SYNTAX", "registry.example.com/frontend:1"],
+    ]);
+
+    expect(command.args.slice(-6)).toEqual([
+      "--build-arg",
+      "NIXPACKS_METADATA",
+      "--build-arg",
+      "MALLOC_ARENA_MAX=2",
+      "--",
+      "/data/projects/shop/web/code/apps/web",
+    ]);
+    expect(command.args.filter((arg) => arg.startsWith("BUILDKIT_"))).toEqual([
+      `BUILDKIT_SYNTAX=${DOCKERFILE_FRONTEND}`,
+      "BUILDKIT_CACHE_MOUNT_NS=shop",
+    ]);
   });
 
   it("skips the cache on a force rebuild", () => {
-    const [command] = planBuild(buildConfig.parse({ type: "nixpacks" }), input({ force: true }));
-    expect(command?.args).toContain("--no-cache");
+    expect(nixpacksImageCommand(input({ force: true }), [], {}).args).toEqual(
+      expect.arrayContaining(["--no-cache", "--pull"]),
+    );
+    expect(nixpacksImageCommand(input(), [], {}).args).not.toContain("--no-cache");
   });
 
   it("is given no build secret, because it writes all it gets into the image", () => {
@@ -180,6 +324,16 @@ describe("a Buildpacks build", () => {
     ]);
   });
 
+  it("runs on the run image the panel read from the builder and pulled", () => {
+    const [command] = planBuild(
+      buildConfig.parse({ type: "buildpacks", builder: "paketobuildpacks/builder-jammy-base:0.4.681" }),
+      input({ runImage: "paketobuildpacks/run-jammy-base:latest" }),
+    );
+
+    expect(command?.args).toContain("--run-image=paketobuildpacks/run-jammy-base:latest");
+    expect(command?.args).toContain("--pull-policy=if-not-present");
+  });
+
   it("clears the cache and pulls the builder again on a force rebuild", () => {
     const [command] = planBuild(buildConfig.parse({ type: "buildpacks" }), input({ force: true }));
     expect(command?.args).toEqual(expect.arrayContaining(["--clear-cache", "--pull-policy=always"]));
@@ -205,13 +359,14 @@ describe("a Railpack build", () => {
   it("writes a plan, with commands and packages as Railpack's own variables, read from its environment", () => {
     const [prepare] = planBuild(config, input({ tool: "railpack" }));
 
-    expect(prepare?.command).toBe("railpack");
-    expect(prepare?.args.slice(0, 3)).toEqual([
+    const railpack = inContainer(prepare);
+    expect(railpack.tool).toBe("railpack");
+    expect(railpack.args.slice(0, 3)).toEqual([
       "prepare",
       "/data/projects/shop/web/code/apps/web",
-      "--plan-out=/data/tmp/build-1/railpack-plan.json",
+      "--plan-out=/data/tmp/build-1/railpack/railpack-plan.json",
     ]);
-    expect(prepare?.args).toEqual(
+    expect(railpack.args).toEqual(
       expect.arrayContaining([
         "--env",
         "RAILPACK_BUILD_CMD",
@@ -228,6 +383,41 @@ describe("a Railpack build", () => {
       RAILPACK_DEPLOY_APT_PACKAGES: "ca-certificates",
     });
     expect(prepare?.label).toBe("railpack 0.16.0 prepare");
+  });
+
+  it("writes it in a container given the code and the plan's own folder, and the network", () => {
+    const [prepare] = planBuild(config, input({ tool: "railpack" }));
+
+    const { options } = inContainer(prepare);
+    const code = "/data/projects/shop/web/code/apps/web";
+    expect(options.filter((option) => option.startsWith("--mount="))).toEqual([
+      `--mount="type=bind","source=${code}","target=${code}"`,
+      '--mount="type=bind","source=/data/tmp/build-1/railpack","target=/data/tmp/build-1/railpack"',
+    ]);
+    expect(options).toEqual(
+      expect.arrayContaining([
+        "--rm",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        "--no-healthcheck",
+      ]),
+    );
+    expect(options).not.toContain("--network=none");
+    // What it reads from its environment: its own settings, the build's values, and the panel's proxy.
+    expect(options.filter((option) => option.startsWith("--env="))).toEqual([
+      "--env=RAILPACK_BUILD_CMD",
+      "--env=RAILPACK_PACKAGES",
+      "--env=RAILPACK_BUILD_APT_PACKAGES",
+      "--env=RAILPACK_DEPLOY_APT_PACKAGES",
+      "--env=PORT",
+      "--env=GIT_SHA",
+      "--env=HTTP_PROXY",
+      "--env=HTTPS_PROXY",
+      "--env=NO_PROXY",
+      "--env=http_proxy",
+      "--env=https_proxy",
+      "--env=no_proxy",
+    ]);
   });
 
   it("never puts a value on a command line", () => {
@@ -249,7 +439,7 @@ describe("a Railpack build", () => {
     expect(build?.args).toEqual(
       expect.arrayContaining([
         "--tag=opsifier/shop/web:latest",
-        "--file=/data/tmp/build-1/railpack-plan.json",
+        "--file=/data/tmp/build-1/railpack/railpack-plan.json",
         "BUILDKIT_SYNTAX=ghcr.io/railwayapp/railpack-frontend:v0.16.0",
         "--secret",
         "id=PORT,env=PORT",
@@ -264,18 +454,41 @@ describe("a Railpack build", () => {
     expect(prepare?.label).not.toContain("hunter2");
   });
 
-  it("skips the cache and pulls the base images again on a force rebuild", () => {
+  it("skips the cache on a force rebuild, and still pulls the base images", () => {
     const [, build] = planBuild(config, input({ force: true }));
     expect(build?.args).toEqual(expect.arrayContaining(["--no-cache", "--pull"]));
+  });
+
+  it("fetches the base images from their registry on an ordinary build too", () => {
+    const [, build] = planBuild(config, input());
+    expect(build?.args).toContain("--pull");
+    expect(build?.args).not.toContain("--no-cache");
+  });
+});
+
+describe("the step that writes the commit into the image", () => {
+  it("starts from the image just built, which no registry has, so it pulls nothing", () => {
+    const command = revisionCommand(input(), "0123456789abcdef0123456789abcdef01234567");
+
+    expect(command.args).not.toContain("--pull");
+    expect(command.args).toEqual(
+      expect.arrayContaining([
+        "--tag=opsifier/shop/web:latest",
+        "--label=org.opencontainers.image.revision=0123456789abcdef0123456789abcdef01234567",
+        "--file=/data/tmp/build-1/revision.Dockerfile",
+      ]),
+    );
   });
 });
 
 describe("what a forced rebuild does", () => {
   it("is stated for each builder, including what stays the same", () => {
-    expect(forcedRebuildNote(buildConfig.parse({ type: "dockerfile" }))).toContain("the base images");
-    expect(forcedRebuildNote(buildConfig.parse({ type: "railpack" }))).toContain("the base images");
+    expect(forcedRebuildNote(buildConfig.parse({ type: "dockerfile" }))).toContain(
+      "The base images are fetched from their registry, as on every build",
+    );
+    expect(forcedRebuildNote(buildConfig.parse({ type: "railpack" }))).toContain("The base images");
     expect(forcedRebuildNote(buildConfig.parse({ type: "buildpacks" }))).toContain(
-      "the builder and run images",
+      "The builder and run images are pulled from their registry, as on every build",
     );
     expect(forcedRebuildNote(buildConfig.parse({ type: "nixpacks" }))).toContain("stays the same");
   });

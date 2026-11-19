@@ -401,6 +401,23 @@ describe("DAT-09: advanced settings", () => {
     expect(apiErrorOf(result).fields?.image).toBe("Enter an image such as name:tag");
   });
 
+  it("refuses an image of another project, or of the server, and stores nothing", async () => {
+    await suite.deployed({ engine: "redis" });
+    const before = await settings();
+
+    for (const image of [
+      "opsifier/other/cache:7.4.9",
+      "other_cache-redis:7.4.9",
+      "opsifier/releases/abc:3",
+    ]) {
+      const result = await suite.api(path(), "PUT", { image });
+      expect(result.status, image).toBe(400);
+      expect(apiErrorOf(result).code).toBe("image_not_allowed");
+      expect(apiErrorOf(result).fields).toHaveProperty("image");
+    }
+    expect(await settings()).toEqual(before);
+  });
+
   it("stores changes without touching a stopped database", async () => {
     await suite.deployed({ engine: "redis" });
     await suite.run(`${suite.service()}/stop`);

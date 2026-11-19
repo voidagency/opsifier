@@ -13,7 +13,8 @@ import {
 import { requirePrincipal } from "../../core/auth";
 import type { Feature } from "../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
-import { requestAccess, requireHostAccess } from "../access/guard";
+import { requestAccess, requireHostAccess, requireHostAccessFor } from "../access/guard";
+import { requireService } from "../services/service";
 import { installComposeSimulation } from "./fake";
 import { createComposeLogsProvider, createComposeMetricsProvider } from "./feeds";
 import {
@@ -65,6 +66,7 @@ const saveSourceRoute = createRoute({
     200: detail,
     400: invalid,
     401: denied,
+    403: errorResponse("The stack reaches the server, and only an administrator can change what it runs."),
     404: missing,
     503: errorResponse("git is not available on this server."),
   },
@@ -91,7 +93,13 @@ const envFileRoute = createRoute({
   path: `${BASE}/env-file`,
   tags,
   request: { params: servicePath, body: jsonBody(composeEnvFileSettings) },
-  responses: { 200: detail, 400: invalid, 401: denied, 404: missing },
+  responses: {
+    200: detail,
+    400: invalid,
+    401: denied,
+    403: errorResponse("The stack reaches the server, and only an administrator can change what it runs."),
+    404: missing,
+  },
 });
 
 const runtimeRoute = createRoute({
@@ -141,17 +149,16 @@ export const feature: Feature = {
       c.json(await getComposeDetail(deps, target(c.req.valid("param"))), 200),
     );
 
-    app.openapi(saveSourceRoute, async (c) =>
-      c.json(
-        await saveComposeSource(
-          deps,
-          target(c.req.valid("param")),
-          c.req.valid("json"),
-          actorEmailOf(requirePrincipal(c)),
-        ),
+    app.openapi(saveSourceRoute, async (c) => {
+      const where = target(c.req.valid("param"));
+      // Where a confirmed stack's file comes from decides what runs with the access it was given.
+      const access = requestAccess(deps, c);
+      requireHostAccessFor(access, requireService(deps, where));
+      return c.json(
+        await saveComposeSource(deps, where, c.req.valid("json"), actorEmailOf(requirePrincipal(c)), access),
         200,
-      ),
-    );
+      );
+    });
 
     app.openapi(acknowledgeRoute, async (c) => {
       requireHostAccess(requestAccess(deps, c));
@@ -166,9 +173,11 @@ export const feature: Feature = {
       );
     });
 
-    app.openapi(envFileRoute, async (c) =>
-      c.json(await setComposeEnvFile(deps, target(c.req.valid("param")), c.req.valid("json").enabled), 200),
-    );
+    app.openapi(envFileRoute, async (c) => {
+      const where = target(c.req.valid("param"));
+      requireHostAccessFor(requestAccess(deps, c), requireService(deps, where));
+      return c.json(await setComposeEnvFile(deps, where, c.req.valid("json").enabled), 200);
+    });
 
     app.openapi(runtimeRoute, async (c) =>
       c.json(await getComposeRuntime(deps, target(c.req.valid("param"))), 200),

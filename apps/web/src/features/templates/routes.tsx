@@ -1,7 +1,13 @@
 import { type AnyRoute, createRoute } from "@tanstack/react-router";
+import { idParams } from "../../lib/route-params";
 import { InstallPage } from "./InstallPage";
 
 /** What a template created, under `/projects/<project>/installs/<id>`, for the router to mount. */
 export function createInstallRoute<TParent extends AnyRoute>(getParentRoute: () => TParent) {
-  return createRoute({ getParentRoute, path: "installs/$install", component: InstallPage });
+  return createRoute({
+    getParentRoute,
+    path: "installs/$install",
+    params: idParams("install"),
+    component: InstallPage,
+  });
 }

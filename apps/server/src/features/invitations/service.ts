@@ -32,7 +32,7 @@ import {
 import type { AppDeps } from "../../core/context";
 import { AppError, badRequest, conflict, notFound } from "../../core/errors";
 import * as accessRepo from "../access/repo";
-import type { SignedIn } from "../auth/service";
+import { bindingField, type SignedIn } from "../auth/service";
 import { findSmtpChannel, sendMailThrough } from "../notifications/service";
 import { getPanelDomainSettings } from "../server/settings";
 import { getSystemInfo } from "../system/service";
@@ -514,7 +514,7 @@ export async function acceptInvitation(
   const timestamp = new Date(deps.now());
   const userId = nanoid();
 
-  const { token, user } = deps.db.transaction(
+  const { token, binding, user } = deps.db.transaction(
     (tx) => {
       // Read again after the slow hash: the link may have been used, replaced or taken back meanwhile.
       const again = repo.findByTokenHash(tx, found.invitation.tokenHash);
@@ -553,11 +553,12 @@ export async function acceptInvitation(
         userId,
         persistent: false,
         secure: meta.secure,
+        bound: !meta.secure,
         ip: meta.ip === UNKNOWN_IP ? null : meta.ip,
         userAgent: meta.userAgent,
         now: deps.now(),
       });
-      return { token: session.token, user: created };
+      return { token: session.token, binding: session.binding, user: created };
     },
     { behavior: "immediate" },
   );
@@ -575,6 +576,7 @@ export async function acceptInvitation(
       status: "signed-in",
       user: toSessionUser(user),
       twoFactorSetupRequired: needsTwoFactorSetup(deps.db, user),
+      ...bindingField(binding),
     },
   };
 }

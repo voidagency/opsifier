@@ -184,21 +184,25 @@ describe("who may give a service a path on the host", () => {
     expect((await asOperator(MOUNTS, "POST", { type: "file", mountPath: "/etc/x.conf" })).status).toBe(201);
   });
 
-  it("lets an operator keep or remove what an administrator gave, but not point it elsewhere", async () => {
+  it("lets an operator remove what an administrator gave, but neither move it nor point it elsewhere", async () => {
     await api(MOUNTS, "POST", { type: "bind", hostPath: "/srv/app", mountPath: "/data" });
     const edit = (hostPath: string, mountPath: string) =>
       asOperator(`${MOUNTS}/0`, "PUT", { type: "bind", hostPath, mountPath });
 
-    expect((await edit("/srv/app", "/moved")).status).toBe(200);
+    const moved = await edit("/srv/app", "/moved");
+    expect(moved.status).toBe(403);
+    expect(apiErrorOf(moved).code).toBe("service_reaches_server");
 
     const repointed = await edit("/etc", "/moved");
     expect(repointed.status).toBe(403);
+    expect(apiErrorOf(repointed).code).toBe("admin_required");
     expect((await api<StorageDocument>(PATH)).body.mounts[0]).toMatchObject({
       hostPath: "/srv/app",
-      mountPath: "/moved",
+      mountPath: "/data",
     });
 
     expect((await asOperator(`${MOUNTS}/0`, "DELETE")).status).toBe(200);
+    expect((await api<StorageDocument>(PATH)).body.mounts).toEqual([]);
   });
 
   it("refuses to turn a volume into a host path for an operator", async () => {

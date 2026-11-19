@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { buildpacksBuilders } from "@opsifier/contract";
 import type { Logger } from "pino";
 import { createApp, features } from "./app";
 import { ActionEngine } from "./core/actions";
@@ -25,6 +26,7 @@ import { addressCertificatesGuard } from "./features/opsifier-address/certificat
 import { restoreInterruptedUpdate } from "./features/panel-update/journal";
 import { gateRemembering } from "./features/server-purpose/gate";
 import { protectionGuard } from "./features/server-purpose/service";
+import { simulatedBuilderLabels } from "./features/service-tabs/source/build/base-images";
 import { sealStoredVariables } from "./features/services/env-store";
 import { actionRedactor } from "./features/services/masking";
 import { SIGNIN_CHECK_PATH, studioSignInGuard } from "./features/studio/signin";
@@ -122,6 +124,9 @@ function assembleRuntime(
   if (deps.tools instanceof FakeTools && deps.docker instanceof FakeDriver) {
     const docker = deps.docker;
     deps.tools.onImageBuilt = (image, labels) => docker.addBuiltImage(image, labels);
+    for (const builder of buildpacksBuilders) {
+      docker.publishImage(builder, simulatedBuilderLabels(builder));
+    }
   }
 
   return {

@@ -6,8 +6,12 @@ import { buildPath, gitRef, gitRemoteUrl, isSafeRelativeFile } from "./service-t
 export const COMPOSE_DEFAULT_FILE = "docker-compose.yml";
 export const MAX_COMPOSE_CHARS = 256 * 1024;
 
-/** A child of a stack, as Compose names it. Also the last part of the address the proxy reaches it on. */
-const COMPOSE_CHILD = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$/;
+/**
+ * A child of a stack, as Compose names it. Also the last part of the address the proxy reaches it on.
+ * Compose gives a child its name on every network it joins, the proxy's included, where the addresses
+ * of other projects' services all hold an underscore: a child's name never does.
+ */
+const COMPOSE_CHILD = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$/;
 
 export const isRoutableComposeChild = (name: string): boolean => COMPOSE_CHILD.test(name);
 
@@ -65,13 +69,18 @@ export const composeIssueSeverity = z.enum(composeIssueSeverities);
 export type ComposeIssueSeverity = z.infer<typeof composeIssueSeverity>;
 
 export const composeIssueCodes = [
-  // Errors: this file can't run as written, or reaches a network its project doesn't own.
+  // Errors: this file can't run as written, or reaches what its project doesn't own: a network, an
+  // image, a name another project answers to, or the folders its own mounts and files depend on.
   "no_services",
   "unknown_dependency",
   "escapes_stack",
   "foreign_network",
   "runs_program",
   "foreign_image",
+  "foreign_name",
+  "mounts_stack",
+  "bind_volume",
+  "build_attestation",
   // Host access: each one reaches past the container boundary.
   "privileged",
   "docker_socket",

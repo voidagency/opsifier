@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { type AnyRoute, createRoute, notFound } from "@tanstack/react-router";
 import type { ComponentType } from "react";
 import { isApiError } from "../../lib/api";
+import { namedParams } from "../../lib/route-params";
 import { serviceQuery } from "../services/api";
 import { type CrumbControlProps, ServiceCrumb } from "../services/Crumbs";
 import { BoxLayout } from "./BoxLayout";
@@ -13,6 +14,7 @@ export function createBoxRoutes<TParent extends AnyRoute>(getParentRoute: () => 
   const boxRoute = createRoute({
     getParentRoute,
     path: "box/$service",
+    params: namedParams("service"),
     staticData: {
       crumbControl: ServiceCrumb as ComponentType<CrumbControlProps>,
       crumbParam: "service",
@@ -43,6 +45,7 @@ export function createIdeRoute<TParent extends AnyRoute>(getParentRoute: () => T
   return createRoute({
     getParentRoute,
     path: "ide/$project/$service",
+    params: namedParams("project", "service"),
     component: IdePage,
   });
 }

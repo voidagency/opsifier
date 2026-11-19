@@ -26,7 +26,7 @@ import { compileDatabaseRecord, requireDatabase } from "../databases/service";
 import { belongsToCurrent } from "../projects/generation";
 import { saveRetainedVolume } from "../retained-volumes/repo";
 import { qualifiedName } from "../services/compile";
-import { writeMountFiles } from "../services/lifecycle";
+import { pullPinned, writeMountFiles } from "../services/lifecycle";
 import { saveServiceSpec } from "../services/repo";
 import { requireService, type ServiceTarget } from "../services/service";
 import type { StorageBackend } from "../storage-providers/backends/types";
@@ -837,6 +837,22 @@ function isolatedServerSpec(
   };
 }
 
+/**
+ * The database's own spec with its image pulled, with the service's credentials, and pinned: the
+ * temporary server must never be handed the image by name, which Swarm would take from the server's
+ * store once its own pull failed.
+ */
+async function pinnedDatabaseSpec(
+  deps: AppDeps,
+  target: ServiceTarget,
+  record: ReturnType<typeof requireDatabase>,
+  compiled: SwarmServiceSpec,
+  ctx: ActionContext,
+): Promise<SwarmServiceSpec> {
+  const { source } = record.spec;
+  return source?.type === "image" ? pullPinned(deps, target, ctx, source, compiled) : compiled;
+}
+
 /** Stops the temporary server and removes it, so that its volume is free. */
 async function removeIsolatedServer(deps: AppDeps, name: string, ctx: ActionContext): Promise<void> {
   const swarm = await deps.docker.inspectService(name);
@@ -982,8 +998,9 @@ export async function performInstanceRestore(
     if (compiled.swarmSpec === null) {
       throw new Error("This database could not be compiled.");
     }
+    const pinned = await pinnedDatabaseSpec(deps, target, record, compiled.swarmSpec, ctx);
     await deps.docker.createService(
-      isolatedServerSpec(compiled.swarmSpec, engine, ops.instance, isolated, restoredVolume, row.id),
+      isolatedServerSpec(pinned, engine, ops.instance, isolated, restoredVolume, row.id),
     );
     isolatedExists = true;
     isolatedWasCreated = true;
@@ -1128,10 +1145,11 @@ export async function importExportIntoVolume(
     throw new Error("This database could not be compiled.");
   }
   await writeMountFiles(compiled.files);
+  const pinned = await pinnedDatabaseSpec(deps, target, record, compiled.swarmSpec, ctx);
 
   ctx.log(`Starting an empty server on the volume ${volume}, with no network`);
   await deps.docker.createService(
-    isolatedServerSpec(compiled.swarmSpec, engine, ops.instance, isolated, volume, restoreId),
+    isolatedServerSpec(pinned, engine, ops.instance, isolated, volume, restoreId),
   );
   try {
     await waitForRollout({

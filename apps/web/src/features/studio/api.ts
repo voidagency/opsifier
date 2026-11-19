@@ -42,9 +42,11 @@ export const studioKey = ["studio"] as const;
 export const studioAppName = (app: Pick<StudioApp, "workspaceDir" | "service">): string =>
   app.workspaceDir.split("/").filter(Boolean).at(-1) ?? app.service;
 
-const appPath = (project: string, service: string) => `/projects/${project}/services/${service}/studio`;
+const segment = encodeURIComponent;
+const appPath = (project: string, service: string) =>
+  `/projects/${segment(project)}/services/${segment(service)}/studio`;
 const conversationPath = (project: string, service: string, id: string) =>
-  `${appPath(project, service)}/conversations/${id}`;
+  `${appPath(project, service)}/conversations/${segment(id)}`;
 
 export const studioGithubKeysQuery = queryOptions({
   queryKey: [...studioKey, "github-keys"] as const,
@@ -118,7 +120,10 @@ export const studioApi = {
     api.post(`${appPath(project, service)}/preview/start`, { schema: studioPreviewStart }),
   /** Brings the project's folder up to date with GitHub, when that loses nothing made here. */
   sync: (project: string, service: string, force = false) =>
-    api.post(`${appPath(project, service)}/sync${force ? "?force=true" : ""}`, { schema: studioSync }),
+    api.post(`${appPath(project, service)}/sync`, {
+      ...(force ? { query: { force: "true" } } : {}),
+      schema: studioSync,
+    }),
   link: (project: string, service: string, body: LinkStudioAppRequest) =>
     api.put(appPath(project, service), { body, schema: studioAppDetail }),
   unlink: (project: string, service: string) =>

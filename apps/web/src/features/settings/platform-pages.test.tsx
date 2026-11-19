@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "../../testing/browser-stubs";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { installFakeServer, renderApp, resetApp, SIGNED_IN, withStatus } from "../../testing/appHarness";
 
 afterEach(resetApp);
@@ -384,5 +384,28 @@ describe("the API reference", () => {
     fireEvent.change(screen.getByLabelText("Search operations"), { target: { value: "users" } });
     await waitFor(() => expect(screen.queryByText("/api/v1/projects")).toBeNull());
     expect(screen.getByText("/api/v1/users")).toBeTruthy();
+  });
+
+  it("saves the document it read, since a plain link would go without the session's second secret", async () => {
+    installFakeServer({
+      "GET /openapi.json": { info: { title: "Opsifier API", version: "1.0.0" }, paths: {} },
+    });
+    const createObjectURL = vi.fn((_blob: Blob) => "blob:opsifier-document");
+    Object.defineProperty(URL, "createObjectURL", { value: createObjectURL, configurable: true });
+    Object.defineProperty(URL, "revokeObjectURL", { value: vi.fn(), configurable: true });
+    const saved: Array<{ href: string; download: string }> = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      saved.push({ href: this.href, download: this.download });
+    });
+    renderApp("/settings/user/api");
+
+    const button = await screen.findByRole("button", { name: "openapi.json" });
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(button);
+
+    expect(saved).toEqual([{ href: "blob:opsifier-document", download: "openapi.json" }]);
+    const [blob] = createObjectURL.mock.calls[0] ?? [];
+    expect(blob).toBeInstanceOf(Blob);
+    expect(JSON.parse(await (blob as Blob).text())).toMatchObject({ info: { title: "Opsifier API" } });
   });
 });

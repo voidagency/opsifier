@@ -83,7 +83,8 @@
     "console_output": "Lancé depuis la console : sa sortie est allée au terminal et n'a pas été conservée.",
     "console_closed": "Lancé depuis la console : la session a été fermée pendant l'exécution.",
     "skipped_overlap": "Non lancé : l'exécution précédente de ce script était encore en cours.",
-    "skipped_refused": "Non lancé : {{message}}"
+    "skipped_refused": "Non lancé : {{message}}",
+    "reaches_server": "Sa tâche atteint le serveur par un chemin de l'hôte ou une capacité ajoutée. Là, seule une exécution lancée par un administrateur, ou un script enregistré en dernier par un administrateur, peut tourner."
   },
   "dialog": {
     "createTitle": "Ajouter un script",

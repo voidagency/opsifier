@@ -11,7 +11,9 @@ const PATH = "/api/v1/projects/{project}/services/{service}/storage";
 const tags = ["Service storage"];
 const invalid = errorResponse("The request failed validation.");
 const denied = errorResponse("Not signed in.");
-const refused = errorResponse("A path on the host takes an administrator.");
+const refused = errorResponse(
+  "A path on the host takes an administrator, and so does any new or changed mount of a service that reaches the server.",
+);
 const missing = errorResponse("No such service or mount.");
 const taken = errorResponse("Another mount already uses this path.");
 const document = jsonResponse(storageDocument, "The service's mounts.");

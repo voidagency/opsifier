@@ -13,6 +13,7 @@ import type { AppDeps } from "../../core/context";
 import { actions, domains } from "../../core/db/schema";
 import { DockerDriverError, type ExecSession } from "../../core/docker";
 import { badRequest, conflict } from "../../core/errors";
+import { sslipBase } from "../../core/proxy/sslip";
 import type { SocketAdmission, SocketRoute } from "../../core/realtime";
 import { releasesKept } from "../releases/service";
 import { rewriteAllRoutes } from "../service-tabs/domains/changes";
@@ -21,6 +22,7 @@ import { detectServerIp, SERVER_IP_KEY } from "../system/service";
 import { needsTwoFactorSetup } from "../two-factor-policy/service";
 import { directorySize, helperImage, PANEL_SERVICE } from "./disk";
 import { readDockerEngine } from "./docker-admin";
+import { isReservedForPanel } from "./panel-host";
 import { proxyStatus } from "./proxy";
 import { getDailyCleanup, writePanelRoutes } from "./settings";
 
@@ -142,16 +144,24 @@ export async function refreshServerIp(deps: AppDeps, actorEmail: string | undefi
   if (changed) {
     putSetting(deps.db, SERVER_IP_KEY, detected, new Date(deps.now()));
     if (typeof previous === "string") {
-      const oldBase = `.${previous}.sslip.io`;
+      // Written the way they were made, IPv6 addresses included.
+      const oldBase = `.${sslipBase(previous)}`;
+      const newBase = `.${sslipBase(detected)}`;
       const now = new Date(deps.now());
       for (const row of deps.db.select().from(domains).all()) {
-        if (row.host.endsWith(oldBase)) {
-          deps.db
-            .update(domains)
-            .set({ host: `${row.host.slice(0, -oldBase.length)}.${detected}.sslip.io`, updatedAt: now })
-            .where(eq(domains.id, row.id))
-            .run();
+        if (!row.host.endsWith(oldBase)) {
+          continue;
         }
+        const host = `${row.host.slice(0, -oldBase.length)}${newBase}`;
+        // A name the panel now answers on stays the panel's: that domain keeps its old, dead name.
+        if (isReservedForPanel(deps, host, row.wildcard)) {
+          deps.logger.warn(
+            { host },
+            "A domain was not moved to the server's new address: the panel answers on it",
+          );
+          continue;
+        }
+        deps.db.update(domains).set({ host, updatedAt: now }).where(eq(domains.id, row.id)).run();
       }
     }
     await writePanelRoutes(deps);

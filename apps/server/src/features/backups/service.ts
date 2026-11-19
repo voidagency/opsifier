@@ -20,6 +20,7 @@ import { nanoid } from "nanoid";
 import type { ActionContext, ActionRow } from "../../core/actions";
 import type { AppDeps } from "../../core/context";
 import { type AppError, badRequest, conflict, notFound } from "../../core/errors";
+import { holdToRequester, requireHostAccessNow } from "../access/guard";
 import { type Access, hasProjectLevel } from "../access/rules";
 import { deployedVolumes } from "../services/applied";
 import { qualifiedName } from "../services/compile";
@@ -562,7 +563,8 @@ function enqueueInstanceRestore(
   target: ServiceTarget,
   source: RestoreSource,
   actorEmail: string | undefined,
-  resolves: RestoreRow | null = null,
+  resolves: RestoreRow | null,
+  stillAllowed: () => Promise<void>,
 ): ActionRow {
   return deps.actions.enqueue({
     type: backupActionTypes.restoreDatabase,
@@ -571,6 +573,7 @@ function enqueueInstanceRestore(
     serviceName: target.serviceName,
     actorEmail,
     run: async (ctx) => {
+      await stillAllowed();
       await performInstanceRestore(deps, { target, source, actorEmail }, ctx);
       if (resolves !== null) {
         updateRestore(deps.db, resolves.id, { unresolved: false });
@@ -583,7 +586,8 @@ function enqueueInstanceRestore(
 function enqueueDatabaseRestore(
   deps: AppDeps,
   request: DatabaseRestoreRequest,
-  resolves: RestoreRow | null = null,
+  resolves: RestoreRow | null,
+  stillAllowed: () => Promise<void>,
 ): ActionRow {
   const { target, scope, databaseName, actorEmail } = request;
   return deps.actions.enqueue({
@@ -593,6 +597,7 @@ function enqueueDatabaseRestore(
     serviceName: target.serviceName,
     actorEmail,
     run: async (ctx) => {
+      await stillAllowed();
       await performDatabaseRestore(deps, request, ctx);
       if (resolves !== null) {
         updateRestore(deps.db, resolves.id, { unresolved: false });
@@ -608,6 +613,7 @@ function enqueueVolumeRestore(
   volumeName: string,
   source: RestoreSource,
   actorEmail: string | undefined,
+  stillAllowed: () => Promise<void>,
 ): ActionRow {
   return deps.actions.enqueue({
     type: backupActionTypes.restoreVolume,
@@ -615,7 +621,10 @@ function enqueueVolumeRestore(
     projectName: target.projectName,
     serviceName: target.serviceName,
     actorEmail,
-    run: (ctx) => performVolumeRestore(deps, { target, volumeName, source, actorEmail }, ctx),
+    run: async (ctx) => {
+      await stillAllowed();
+      await performVolumeRestore(deps, { target, volumeName, source, actorEmail }, ctx);
+    },
   });
 }
 
@@ -626,7 +635,11 @@ export async function restoreFromBackup(
   backupId: string,
   request: { confirm: string; databaseName?: string },
   actorEmail: string | undefined,
+  access: Access,
 ): Promise<ActionRow> {
+  // A volume's files are read by what runs in it, and a dump is played by the database's own client.
+  await requireHostAccessNow(deps, access, target, requireService(deps, target));
+  const stillAllowed = holdToRequester(deps, access, target);
   const backup = requireBackup(deps, target, backupId);
   if (backup.status !== "succeeded" || backup.deletedAt !== null) {
     throw conflict(
@@ -644,7 +657,14 @@ export async function restoreFromBackup(
     if (!backupVolumes(deps, target, record).includes(volumeName)) {
       throw conflict("volume_missing", "This service no longer has this volume.");
     }
-    return enqueueVolumeRestore(deps, target, volumeName, recordedSource(backup, provider), actorEmail);
+    return enqueueVolumeRestore(
+      deps,
+      target,
+      volumeName,
+      recordedSource(backup, provider),
+      actorEmail,
+      stillAllowed,
+    );
   }
 
   if (record.spec.database === null) {
@@ -655,12 +675,22 @@ export async function restoreFromBackup(
   if (scope !== "database") {
     assertConfirmation(request.confirm, target.serviceName);
     return scope === "instance"
-      ? enqueueInstanceRestore(deps, target, source, actorEmail, resolves)
-      : enqueueDatabaseRestore(deps, { target, scope, databaseName: null, source, actorEmail }, resolves);
+      ? enqueueInstanceRestore(deps, target, source, actorEmail, resolves, stillAllowed)
+      : enqueueDatabaseRestore(
+          deps,
+          { target, scope, databaseName: null, source, actorEmail },
+          resolves,
+          stillAllowed,
+        );
   }
   const databaseName = request.databaseName ?? (backup.databaseName as string);
   assertConfirmation(request.confirm, databaseName);
-  return enqueueDatabaseRestore(deps, { target, scope, databaseName, source, actorEmail }, resolves);
+  return enqueueDatabaseRestore(
+    deps,
+    { target, scope, databaseName, source, actorEmail },
+    resolves,
+    stillAllowed,
+  );
 }
 
 function requireProviderOf(deps: Pick<AppDeps, "db">, backup: BackupRow): ProviderRow {
@@ -687,6 +717,8 @@ export async function restoreFromPath(
   access: Access,
   actorEmail: string | undefined,
 ): Promise<ActionRow> {
+  await requireHostAccessNow(deps, access, target, requireService(deps, target));
+  const stillAllowed = holdToRequester(deps, access, target);
   const provider = findProviderRow(deps.db, request.storageProviderId);
   if (provider === undefined || !provider.connected) {
     throw badRequest("validation_failed", "Some fields need attention.", {
@@ -708,20 +740,24 @@ export async function restoreFromPath(
     if (scope !== "database") {
       assertConfirmation(request.confirm, target.serviceName);
       return scope === "instance"
-        ? enqueueInstanceRestore(deps, target, source, actorEmail)
-        : enqueueDatabaseRestore(deps, { target, scope, databaseName: null, source, actorEmail });
+        ? enqueueInstanceRestore(deps, target, source, actorEmail, null, stillAllowed)
+        : enqueueDatabaseRestore(
+            deps,
+            { target, scope, databaseName: null, source, actorEmail },
+            null,
+            stillAllowed,
+          );
     }
     if (request.databaseName === undefined) {
       throw badRequest("validation_failed", "Some fields need attention.", { databaseName: "Required" });
     }
     assertConfirmation(request.confirm, request.databaseName);
-    return enqueueDatabaseRestore(deps, {
-      target,
-      scope,
-      databaseName: request.databaseName,
-      source,
-      actorEmail,
-    });
+    return enqueueDatabaseRestore(
+      deps,
+      { target, scope, databaseName: request.databaseName, source, actorEmail },
+      null,
+      stillAllowed,
+    );
   }
 
   const volume = request.databaseName;
@@ -731,7 +767,7 @@ export async function restoreFromPath(
     });
   }
   assertConfirmation(request.confirm, volume);
-  return enqueueVolumeRestore(deps, target, volume, source, actorEmail);
+  return enqueueVolumeRestore(deps, target, volume, source, actorEmail, stillAllowed);
 }
 
 /** Queues the removal of one stored backup. The record stays, marked as removed. */

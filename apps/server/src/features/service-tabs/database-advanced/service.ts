@@ -9,10 +9,13 @@ import {
 } from "@opsifier/contract";
 import type { AppDeps } from "../../../core/context";
 import { badRequest, conflict } from "../../../core/errors";
+import { requireHostAccessFor } from "../../access/guard";
+import type { Access } from "../../access/rules";
 import { assertCopyPossible } from "../../databases/major-version";
 import { type DatabaseRecord, requireDatabase } from "../../databases/service";
 import { managedEnvKeys, supportsConfigFile } from "../../services/compile/database";
 import { envNames, openEnv, sealEnv, sealRetired, valuesGone } from "../../services/env-store";
+import { assertImageAllowed } from "../../services/foreign-images";
 import { saveServiceSpec } from "../../services/repo";
 import type { ServiceTarget } from "../../services/service";
 
@@ -61,13 +64,36 @@ export function getAdvanced(deps: AppDeps, target: ServiceTarget): DatabaseAdvan
   };
 }
 
+/** Everything this tab saves decides what the database's task runs. */
+function changesWhatRuns(
+  deps: AppDeps,
+  record: DatabaseRecord,
+  settings: SaveDatabaseAdvancedFields,
+): boolean {
+  const { spec } = record;
+  return (
+    settings.image !== imageOf(record) ||
+    (settings.command === "" ? null : settings.command) !== spec.deploy.command ||
+    (settings.env !== undefined && settings.env !== openEnv(deps, spec.sealedEnv)) ||
+    settings.configFile !== spec.database.configFile
+  );
+}
+
 /** Saves only. What this tab changes reaches the database at its next deployment. */
 export function saveAdvanced(
   deps: AppDeps,
   target: ServiceTarget,
   settings: SaveDatabaseAdvancedFields,
   actorEmail: string | undefined,
+  access: Access,
 ): DatabaseAdvancedSettings {
+  const current = requireDatabase(deps, target);
+  if (changesWhatRuns(deps, current, settings)) {
+    requireHostAccessFor(access, current);
+  }
+  if (settings.image !== imageOf(current)) {
+    assertImageAllowed(settings.image, target.projectName, "image");
+  }
   validate(settings, deps, target);
   const record = requireDatabase(deps, target);
   const { spec } = record;

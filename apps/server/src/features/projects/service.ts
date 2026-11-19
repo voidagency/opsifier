@@ -3,16 +3,20 @@ import { join } from "node:path";
 import {
   type CreateProjectRequest,
   type EnvSummary,
+  isReservedProjectName,
   MAX_PROJECTS,
   type ProjectList,
   type ProjectSchemaDocument,
   type ProjectSummary,
   parseEnvText,
+  RESERVED_PROJECT_NAME_MESSAGE,
 } from "@opsifier/contract";
 import type { ActionRow } from "../../core/actions";
 import type { AppDeps } from "../../core/context";
 import { DockerDriverError } from "../../core/docker";
-import { conflict } from "../../core/errors";
+import { badRequest, conflict } from "../../core/errors";
+import { requireHostAccessForProject } from "../access/guard";
+import type { Access } from "../access/rules";
 import { listDomainRows } from "../service-tabs/domains/service";
 import { toPublicSource } from "../service-tabs/source/public";
 import { envNames, openEnv, sealEnv, sealRetired, valuesGone } from "../services/env-store";
@@ -70,6 +74,12 @@ export async function createProject(
   request: CreateProjectRequest,
   actorEmail: string | undefined,
 ): Promise<ProjectSummary> {
+  // The route's schema refuses it already; the Studio and others call this directly.
+  if (isReservedProjectName(request.name)) {
+    throw badRequest("validation_failed", "Some fields need attention.", {
+      name: RESERVED_PROJECT_NAME_MESSAGE,
+    });
+  }
   if (findProject(deps.db, request.name) !== undefined) {
     throw nameTaken();
   }
@@ -138,8 +148,10 @@ export function saveProjectEnv(
   name: string,
   env: string,
   actorEmail: string | undefined,
+  access: Access,
 ): EnvSummary {
   const project = requireProject(deps, name);
+  requireHostAccessForProject(access, listServiceRecords(deps.db, name));
   const gone = valuesGone(parseEnvText(openEnv(deps, project.sealedEnv)), parseEnvText(env));
   updateProjectEnv(
     deps.db,

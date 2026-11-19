@@ -1,5 +1,5 @@
-import { lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { lstat, mkdir, mkdtemp, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, join, relative } from "node:path";
 import { type BuildConfig, buildConfig, isPinnedBuilder, isSshRemote } from "@opsifier/contract";
 import type { ActionContext } from "../../../../core/actions";
 import type { AppDeps } from "../../../../core/context";
@@ -7,10 +7,18 @@ import { assertCliFeature, assertEngineSupported } from "../../../../core/docker
 import { ToolNotFoundError, ToolTimeoutError } from "../../../../core/tools";
 import { getGithubToken } from "../../../github/service";
 import { knownHostLines } from "../../../known-hosts/service";
+import { helperImage } from "../../../server/disk";
 import { rememberBuildCache, snapshotBuildCache } from "../../../server/docker-admin";
 import { resolveEnvPairs } from "../../../services/compile/env";
 import { builtImageName } from "../../../services/compile/names";
 import { BUILD_SECRET_CONTEXT, envNames, openEnv } from "../../../services/env-store";
+import {
+  type DockerfileImages,
+  imageNotAllowed,
+  isOwnBuiltImage,
+  readDockerfileImages,
+  refusalsOf,
+} from "../../../services/foreign-images";
 import { serviceRedactor } from "../../../services/masking";
 import type { ServiceRecord } from "../../../services/repo";
 import { requireProject, type ServiceTarget, serviceDir } from "../../../services/service";
@@ -20,17 +28,31 @@ import { claimDeployKey } from "../key-binding";
 import type { StoredBuildState, StoredGithubSource, StoredGitSource } from "../stored";
 import { unpackArchive, unwrapSingleFolder } from "./archive";
 import {
+  prepareBuilder,
+  projectBuildpackImages,
+  pullBaseImages,
+  railpackBaseImages,
+  readDockerfileText,
+  readNixpacksOutput,
+} from "./base-images";
+import {
   type BuildCommand,
+  type BuildInput,
   type BuildVariable,
   declaredBuildArgs,
   explainBuildFailure,
   forcedRebuildNote,
+  NIXPACKS_FOLDER,
   needsBuildx,
+  nixpacksImageCommand,
   planBuild,
   REVISION_DOCKERFILE,
+  railpackPlanFile,
+  railpackPlanFolder,
   revisionCommand,
+  type ToolContainer,
 } from "./builders";
-import { dockerCliEnv, inheritedEnv, isReservedBuildVariable } from "./environment";
+import { dockerCliEnv, inheritedEnv, isReservedBuildVariable, writeBuildDockerConfig } from "./environment";
 import { checkoutRemote, type GitRemote } from "./git";
 import { assertDirectory, assertFile, isInside, resolveInside, SourcePathError } from "./paths";
 
@@ -266,6 +288,62 @@ function narrowToDockerfile(
   );
 }
 
+/**
+ * Holds what a Dockerfile names to what the project may use, with the values this build passes, before
+ * anything runs. `--pull` is what keeps the build from the images the server holds: this says so first,
+ * in the build's own words.
+ */
+function checkDockerfileImages(
+  dockerfile: string,
+  target: ServiceTarget,
+  variables: readonly BuildVariable[],
+  log: (line: string) => void,
+): DockerfileImages {
+  const read = readDockerfileImages(dockerfile, new Map(variables.map(({ key, value }) => [key, value])));
+  const [refusal] = refusalsOf(read, target.projectName, true);
+  if (refusal !== undefined) {
+    throw imageNotAllowed(refusal);
+  }
+  const onlyHere = read.images.filter((image) => isOwnBuiltImage(image, target.projectName));
+  if (onlyHere.length > 0) {
+    log(
+      `This Dockerfile names ${onlyHere.join(", ")}, which only this server has: a build fetches every image it names from its registry, so it can't start from one built here. Build it in a stage of this Dockerfile instead.`,
+    );
+  }
+  return read;
+}
+
+/**
+ * A reference pinned to a digest. `--pull` sends a tag to its registry, but a store that already holds
+ * the content of a digest may hand it over without asking: so the panel pulls those itself first, with
+ * no credentials, and a registry that won't give one stops the build.
+ */
+const isDigestPinned = (reference: string): boolean => reference.includes("@sha256:");
+
+/**
+ * The build of what Nixpacks wrote, held to the rules first, with the arguments its Dockerfile declares:
+ * the project's own values come from its build variables, as they always do, and the rest from the
+ * script Nixpacks wrote. A name that would steer the tools is left out, as it is from any build.
+ */
+async function nixpacksImage(
+  deps: AppDeps,
+  target: ServiceTarget,
+  input: BuildInput,
+  ctx: ActionContext,
+): Promise<BuildCommand> {
+  const output = await readNixpacksOutput(
+    input.context,
+    target.projectName,
+    new Map(input.variables.map(({ key, value }) => [key, value])),
+  );
+  await pullBaseImages(deps, output.images.filter(isDigestPinned), ctx);
+  const { names, values, literal, steering } = output.arguments;
+  if (steering.length > 0) {
+    ctx.log(`Not passing to the build, these names steer the build tools: ${steering.join(", ")}`);
+  }
+  return nixpacksImageCommand(input, names, values, literal);
+}
+
 function runtimeVariableNames(deps: AppDeps, target: ServiceTarget, record: ServiceRecord): string[] {
   const project = requireProject(deps, target.projectName);
   return [...envNames(openEnv(deps, project.sealedEnv)), ...envNames(openEnv(deps, record.spec.sealedEnv))];
@@ -382,6 +460,25 @@ async function resolveBuilderTool(
   return tool;
 }
 
+/**
+ * Where Nixpacks and Railpack run: a container of the panel's own image, which has their binaries, by
+ * ID or digest. A panel that can't tell which image that is, as one running outside Docker, runs
+ * neither: it never runs them by itself instead.
+ */
+async function toolContainer(
+  deps: AppDeps,
+  name: "nixpacks" | "railpack",
+  workDir: string,
+): Promise<ToolContainer> {
+  const image = await helperImage(deps);
+  if (image === null) {
+    throw new Error(
+      `${BUILDER_NAMES[name]} runs in a container of the panel's own image, and this panel can't tell which image that is. ${NOT_REPLACED} Run the panel as its Docker service, or choose another builder on the Source tab.`,
+    );
+  }
+  return { image, name: `opsifier-${basename(workDir)}` };
+}
+
 const DETECTED_NIXPACKS: BuildConfig = buildConfig.parse({ type: "nixpacks" });
 
 /** What to run. With no settings: the build path's Dockerfile if there is one, otherwise Nixpacks. */
@@ -457,16 +554,14 @@ export async function buildServiceImage(
 
   let dockerfile: string | undefined;
   let variables = values.variables;
+  let pinnedBases: string[] = [];
   if (config.type === "dockerfile") {
     const file = config.file || "Dockerfile";
     dockerfile = await resolveInside(code, join(buildPath, file), "The Dockerfile");
     await assertFile(dockerfile, "The Dockerfile", file);
-    variables = narrowToDockerfile(
-      await readFile(dockerfile, "utf8"),
-      values,
-      runtimeVariableNames(deps, target, record),
-      ctx.log,
-    );
+    const text = await readDockerfileText(dockerfile, file);
+    variables = narrowToDockerfile(text, values, runtimeVariableNames(deps, target, record), ctx.log);
+    pinnedBases = checkDockerfileImages(text, target, variables, ctx.log).images.filter(isDigestPinned);
   }
   announceBuildValues(config, variables, values, ctx.log);
 
@@ -486,16 +581,39 @@ export async function buildServiceImage(
   const workDir = await makeWorkDir(deps, "build-");
   const cacheBefore = await snapshotBuildCache(deps, ctx.signal);
   try {
+    // The Docker CLI and pack would otherwise sign in to registries with whatever the panel's own Docker
+    // configuration holds: a build gets one of its own, with the panel's proxies and nothing else.
+    const dockerConfig = join(workDir, "docker-config");
+    await writeBuildDockerConfig(dockerConfig, dockerCliEnv(deps).HOME ?? deps.config.dataDir);
+    const contained = config.type === "nixpacks" || config.type === "railpack" ? config : undefined;
     const tool =
-      config.type === "nixpacks" || config.type === "railpack"
-        ? await resolveBuilderTool(deps, config.type, config.version, ctx.log)
-        : undefined;
+      contained === undefined
+        ? undefined
+        : await resolveBuilderTool(deps, contained.type, contained.version, ctx.log);
+    const container =
+      contained === undefined ? undefined : await toolContainer(deps, contained.type, workDir);
+    if (config.type === "railpack") {
+      await mkdir(railpackPlanFolder(workDir), { mode: 0o700 });
+    }
     const secrets = config.type === "nixpacks" ? [] : values.secrets;
     const envFile =
       build.envFilePath !== null && !build.envFileInImage
         ? await writeEnvFileOutsideContext(workDir, values, config, ctx.log)
         : undefined;
-    const commands = planBuild(config, {
+    const builder =
+      config.type === "buildpacks"
+        ? await prepareBuilder(deps, config.builder, target.projectName, ctx)
+        : undefined;
+    if (builder !== undefined) {
+      await pullBaseImages(
+        deps,
+        await projectBuildpackImages(context, target.projectName, builder.buildpacks),
+        ctx,
+      );
+    }
+    const runImage = builder?.runImage;
+    const input: BuildInput = {
+      project: target.projectName,
       image,
       context,
       dockerfile,
@@ -505,11 +623,18 @@ export async function buildServiceImage(
       envFile,
       workDir,
       tool,
+      toolContainer: container,
+      runImage,
       secretsHash: deps.secrets.fingerprint(
         JSON.stringify([...variables, ...secrets].sort((a, b) => a.key.localeCompare(b.key))),
         "build-values",
       ),
-    });
+    };
+    const commands = planBuild(config, input);
+    if (config.type === "nixpacks") {
+      // Nixpacks writes here, and the panel only reads a folder it wrote: not a link the code holds.
+      await rm(join(context, NIXPACKS_FOLDER), { recursive: true, force: true });
+    }
     const given = {
       ...Object.fromEntries(variables.map(({ key, value }) => [key, value])),
       ...Object.fromEntries(secrets.map(({ key, value }) => [key, value])),
@@ -524,13 +649,32 @@ export async function buildServiceImage(
           command: command.command,
           args: command.args,
           cwd: context,
-          env: { ...dockerCliEnv(deps), ...command.env, ...given },
+          // Last, so nothing a build is given can set them: Buildx reads a source policy, which can swap
+          // the frontend or an image for any other, from the file this names.
+          env: {
+            ...dockerCliEnv(deps),
+            ...command.env,
+            ...given,
+            DOCKER_CONFIG: dockerConfig,
+            EXPERIMENTAL_BUILDKIT_SOURCE_POLICY: "",
+          },
           signal: ctx.signal,
           timeoutMs: deps.config.buildTimeoutMs,
           redact,
           onLine: ctx.log,
         });
       } catch (error) {
+        if (command.container !== undefined) {
+          // Stopping the Docker CLI leaves the container it started running: it goes too.
+          await deps.tools
+            .run({
+              command: "docker",
+              args: ["rm", "--force", command.container],
+              env: { ...dockerCliEnv(deps), DOCKER_CONFIG: dockerConfig },
+              timeoutMs: 60_000,
+            })
+            .catch(() => undefined);
+        }
         if (error instanceof ToolTimeoutError) {
           throw new Error(`The build ran out of time after ${formatDuration(deps.config.buildTimeoutMs)}.`);
         }
@@ -542,8 +686,20 @@ export async function buildServiceImage(
         );
       }
     };
+    await pullBaseImages(deps, pinnedBases, ctx);
     for (const [step, command] of commands.entries()) {
+      if (config.type === "railpack" && step > 0) {
+        // What it builds from is only known once its plan is written: see base-images.ts.
+        await pullBaseImages(
+          deps,
+          await railpackBaseImages(railpackPlanFile(workDir), target.projectName),
+          ctx,
+        );
+      }
       await run(command, step);
+    }
+    if (config.type === "nixpacks") {
+      await run(await nixpacksImage(deps, target, input, ctx), commands.length);
     }
     if (gitSha !== null) {
       await stampRevision(deps, { image, workDir }, gitSha, run);

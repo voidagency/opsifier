@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { SessionUser, UserRole } from "@opsifier/contract";
 import { and, eq, gt, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -69,13 +69,22 @@ export interface NewSession {
   persistent: boolean;
   /** Whether the session is being opened over HTTPS. */
   secure: boolean;
+  /**
+   * A browser's session over plain HTTP, whose cookie the browser also sends to the server's other
+   * ports: it gets a second secret, which only pages of the panel's own address can read.
+   */
+  bound?: boolean;
   ip: string | null;
   userAgent: string | null;
   now: number;
 }
 
-export function insertSession(db: DbHandle, input: NewSession): { token: string; session: SessionRow } {
+export function insertSession(
+  db: DbHandle,
+  input: NewSession,
+): { token: string; session: SessionRow; binding: string | null } {
   const token = randomToken();
+  const binding = input.bound === true ? randomToken() : null;
   const ttl = sessionTtlMs(input.persistent, input.secure);
   const session: SessionRow = {
     id: nanoid(),
@@ -84,14 +93,37 @@ export function insertSession(db: DbHandle, input: NewSession): { token: string;
     persistent: input.persistent,
     ip: input.ip,
     userAgent: input.userAgent === null ? null : input.userAgent.slice(0, 512),
+    bindingHash: binding === null ? null : hashToken(binding),
     createdAt: new Date(input.now),
     expiresAt: new Date(input.now + ttl),
   };
   db.insert(sessions).values(session).run();
-  return { token, session };
+  return { token, session, binding };
 }
 
-export function findSessionPrincipal(db: DbHandle, token: string, now: number): Principal | null {
+/** Whether a request brought the second secret of a session opened over plain HTTP. */
+function bindingMatches(binding: string | null | undefined, bindingHash: string): boolean {
+  if (binding === null || binding === undefined || !SESSION_TOKEN_PATTERN.test(binding)) {
+    return false;
+  }
+  const given = Buffer.from(hashToken(binding), "hex");
+  const kept = Buffer.from(bindingHash, "hex");
+  return given.length === kept.length && timingSafeEqual(given, kept);
+}
+
+/**
+ * The account a session token opens. A session opened over plain HTTP opens only with its second
+ * secret as well: its cookie alone, which the browser also sends to the server's other ports, does not.
+ * `bound` asks for such a session and no other: the plain-HTTP cookie can be planted from another port,
+ * and must not bring in someone's session that needs no second secret.
+ */
+export function findSessionPrincipal(
+  db: DbHandle,
+  token: string,
+  now: number,
+  binding?: string | null,
+  options: { bound?: boolean } = {},
+): Principal | null {
   if (!SESSION_TOKEN_PATTERN.test(token)) {
     return null;
   }
@@ -107,7 +139,17 @@ export function findSessionPrincipal(db: DbHandle, token: string, now: number): 
       ),
     )
     .get();
-  return row === undefined ? null : { kind: "session", sessionId: row.session.id, user: row.user };
+  if (row === undefined) {
+    return null;
+  }
+  if (
+    row.session.bindingHash === null
+      ? options.bound === true
+      : !bindingMatches(binding, row.session.bindingHash)
+  ) {
+    return null;
+  }
+  return { kind: "session", sessionId: row.session.id, user: row.user };
 }
 
 /** Whether a session is still valid, for connections that outlive their upgrade request. */
@@ -122,22 +164,6 @@ export function isSessionActive(db: DbHandle, sessionId: string, now: number): b
 
 export function deleteSession(db: DbHandle, sessionId: string): void {
   db.delete(sessions).where(eq(sessions.id, sessionId)).run();
-}
-
-export function deleteSessionByToken(db: DbHandle, token: string): string | null {
-  if (!SESSION_TOKEN_PATTERN.test(token)) {
-    return null;
-  }
-  const row = db
-    .select({ id: sessions.id })
-    .from(sessions)
-    .where(eq(sessions.tokenHash, hashToken(token)))
-    .get();
-  if (row === undefined) {
-    return null;
-  }
-  deleteSession(db, row.id);
-  return row.id;
 }
 
 /** Ends every session of a user but one, and returns the ids that were ended. */

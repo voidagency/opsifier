@@ -47,6 +47,10 @@ const HINTS: Record<string, Record<Locale, string>> = {
     en: "This takes an administrator whose key is not limited to some projects.",
     fr: "Cela demande un administrateur dont la clé n'est pas limitée à certains projets.",
   },
+  service_reaches_server: {
+    en: "This service reaches the server, so what runs in it takes an administrator whose key is not limited to some projects.",
+    fr: "Ce service atteint le serveur : ce qui s'y exécute demande un administrateur dont la clé n'est pas limitée à certains projets.",
+  },
   forbidden: {
     en: "The account behind this key does not have the role this needs in the project.",
     fr: "Le compte derrière cette clé n'a pas le rôle nécessaire dans ce projet.",

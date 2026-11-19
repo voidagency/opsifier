@@ -257,6 +257,9 @@ async function carryBuiltImage(
   }
   const image = builtImageName(from.projectName, from.serviceName);
   if ((await deps.docker.inspectImage(image)) === null) {
+    // Whatever still goes by the new name was built for a service that had it before, maybe in a project
+    // destroyed and made again since: the first start must not find it.
+    await deps.docker.removeImage(builtImageName(to.projectName, to.serviceName)).catch(() => undefined);
     return;
   }
   log("Moving the built image to its new name");

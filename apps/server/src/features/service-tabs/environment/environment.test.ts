@@ -237,6 +237,8 @@ describe("build variables and build secrets", () => {
     "BASH_ENV",
     "OPENSSL_CONF",
     "SSL_CERT_FILE",
+    "EXPERIMENTAL_BUILDKIT_SOURCE_POLICY",
+    "OTEL_EXPORTER_OTLP_ENDPOINT",
   ])("refuses %s, which the programs a build runs would act on themselves", async (name) => {
     const variable = await api(BUILD, "PUT", { env: `${name}=value\n` });
     expect(variable.status).toBe(400);

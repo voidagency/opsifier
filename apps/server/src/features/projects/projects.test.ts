@@ -16,7 +16,8 @@ import {
 import { insertService } from "../services/repo";
 import { appServiceSpec } from "../services/spec";
 import { PROXY_SERVICE } from "./network";
-import { enqueueProjectDestroy } from "./service";
+import { insertProject } from "./repo";
+import { createProject, enqueueProjectDestroy } from "./service";
 
 let context: TestContext;
 let cookie: string;
@@ -64,6 +65,32 @@ describe("creating a project", () => {
       expect(apiErrorOf(result).fields).toHaveProperty("name");
     }
     expect((await api<ProjectList>("/projects")).body.projects).toEqual([]);
+  });
+
+  it("keeps releases for the server, whoever asks, and creates nothing", async () => {
+    const result = await api("/projects", "POST", { name: "releases" });
+
+    expect(result.status).toBe(400);
+    expect(apiErrorOf(result)).toMatchObject({
+      code: "validation_failed",
+      fields: { name: "This name is reserved" },
+    });
+    await expect(createProject(context.deps, { name: "releases" }, undefined)).rejects.toMatchObject({
+      status: 400,
+      fields: { name: "This name is reserved" },
+    });
+    expect((await api<ProjectList>("/projects")).body.projects).toEqual([]);
+    expect(await context.docker.inspectNetwork("opsifier-releases")).toBeNull();
+  });
+
+  it("still reaches a project called releases from before the name was reserved", async () => {
+    insertProject(context.deps.db, "releases", new Date());
+
+    const read = await api<ProjectSummary>("/projects/releases");
+    const created = await api("/projects/releases/services", "POST", { name: "web" });
+
+    expect(read.status).toBe(200);
+    expect(created.status).toBe(201);
   });
 
   it("says a missing or empty name is required", async () => {

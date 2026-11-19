@@ -2,7 +2,7 @@ import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
-import { createTestContext, setupAdmin, type TestContext } from "../../testing/harness";
+import { createTestContext, setupAdmin, socketHandshake, type TestContext } from "../../testing/harness";
 import { sessions } from "../db/schema";
 import type { TopicChannel, TopicFeed } from "./index";
 import { REALTIME_PATH } from "./index";
@@ -43,9 +43,8 @@ function url(path: string): string {
 }
 
 function open(path: string = REALTIME_PATH, headers?: Record<string, string>): WebSocket {
-  const socket = new WebSocket(url(path), {
-    headers: headers ?? { Origin: `http://127.0.0.1:${port}`, Cookie: cookie },
-  });
+  const handshake = socketHandshake(headers ?? { Origin: `http://127.0.0.1:${port}`, Cookie: cookie });
+  const socket = new WebSocket(url(path), handshake.protocols, { headers: handshake.headers });
   socket.on("error", () => {});
   sockets.push(socket);
   return socket;

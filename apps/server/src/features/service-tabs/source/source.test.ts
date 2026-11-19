@@ -1,14 +1,19 @@
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
+  rmSync,
   statSync,
   symlinkSync,
+  writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import {
   type ActionEntry,
   defaultBuildpacksBuilder,
@@ -17,18 +22,29 @@ import {
 } from "@opsifier/contract";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { gitKnownHosts, projects, services } from "../../../core/db/schema";
-import { type FakeTools, type ToolRequest, ToolTimeoutError } from "../../../core/tools";
+import { gitKnownHosts, projects, services, users } from "../../../core/db/schema";
+import { DockerDriverError } from "../../../core/docker";
+import {
+  FAKE_NIXPACKS_BASE,
+  FAKE_RAILPACK_BUILDER,
+  FAKE_RAILPACK_RUNTIME,
+  type FakeTools,
+  type ToolRequest,
+  ToolTimeoutError,
+} from "../../../core/tools";
 import {
   apiErrorOf,
   call,
   createTestContext,
+  credentialHeaders,
   setupAdmin,
   TEST_ORIGIN,
   type TestContext,
 } from "../../../testing/harness";
+import { accessOf } from "../../access/rules";
 import { sealStoredVariables } from "../../services/env-store";
 import { findService, type ServiceRecord, saveServiceSpec } from "../../services/repo";
+import { DOCKERFILE_FRONTEND } from "./build/builders";
 import { receiveUpload } from "./service";
 
 const hasBsdtar = spawnSync("bsdtar", ["--version"]).error === undefined;
@@ -37,11 +53,14 @@ const SERVICE = "/projects/shop/services/web";
 const SOURCE = `${SERVICE}/source`;
 const GIT_SOURCE = { type: "git", url: "https://git.example.com/acme/shop.git", ref: "main", path: "/" };
 
+/** The image the panel runs from, which Nixpacks and Railpack run in, as a real panel finds it by ID. */
+const PANEL_IMAGE = `sha256:${"e".repeat(64)}`;
+
 let context: TestContext;
 let cookie: string;
 
 beforeEach(async () => {
-  context = await createTestContext();
+  context = await createTestContext({ env: { OPSIFIER_HELPER_IMAGE: PANEL_IMAGE } });
   cookie = await setupAdmin(context.app);
   await api("/projects", "POST", { name: "shop" });
   await api("/projects/shop/services", "POST", { name: "web" });
@@ -49,6 +68,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   await context.close();
 });
 
@@ -58,9 +78,19 @@ function api<T = unknown>(path: string, method = "GET", body?: unknown) {
 
 const tools = () => context.deps.tools as FakeTools;
 const calls = (command: string) => tools().callsTo(command);
-/** The builder's own run, leaving out the final step that writes the commit into the image's labels. */
+/** The containers Nixpacks and Railpack run in. */
+const containers = () => calls("docker").filter((call) => call.args[0] === "run");
+/**
+ * What builds the image, leaving out the containers tools run in, and the final step that writes the
+ * commit into the image's labels.
+ */
 const builds = () =>
-  calls("docker").filter((call) => !call.args.some((arg) => arg.includes("revision.Dockerfile")));
+  calls("docker").filter(
+    (call) =>
+      call.args[0] !== "run" &&
+      call.args[0] !== "rm" &&
+      !call.args.some((arg) => arg.includes("revision.Dockerfile")),
+  );
 const lastBuild = () => builds().at(-1) as ToolRequest;
 /** The image a built tag stands for: what the Swarm service is really given. */
 const builtImageId = async () => (await context.docker.inspectImage("opsifier/shop/web:latest"))?.id;
@@ -123,7 +153,11 @@ async function saveGit(body: Record<string, unknown> = GIT_SOURCE) {
 async function uploadArchive(file: Buffer, query = "fileName=app.tar") {
   const response = await context.app.request(`/api/v1${SOURCE}/upload?${query}`, {
     method: "PUT",
-    headers: { cookie, origin: TEST_ORIGIN, "content-type": "application/octet-stream" },
+    headers: {
+      ...credentialHeaders(cookie),
+      origin: TEST_ORIGIN,
+      "content-type": "application/octet-stream",
+    },
     body: new Uint8Array(file),
   });
   return { status: response.status, body: (await response.json()) as ServiceSource };
@@ -534,6 +568,242 @@ describe("an inline Dockerfile", () => {
     expect((await swarm())?.spec.TaskTemplate.ContainerSpec.Image).toBe(await builtImageId());
     expect(calls("git")).toHaveLength(0);
   });
+
+  it("gives every build tool an empty Docker configuration of its own, so none signs in to a registry", async () => {
+    // The panel's own Docker configuration, which has nothing a build keeps.
+    const home = mkdtempSync(join(tmpdir(), "opsifier-home-"));
+    mkdirSync(join(home, ".docker"));
+    writeFileSync(
+      join(home, ".docker", "config.json"),
+      JSON.stringify({ auths: { "ghcr.io": { auth: "c2VjcmV0" } } }),
+    );
+    vi.stubEnv("HOME", home);
+    const seen: Array<{ command: string; entries: string[] | null }> = [];
+    const policies = new Set<string | undefined>();
+    tools().handler = (request) => {
+      const config = request.env.DOCKER_CONFIG;
+      seen.push({ command: request.command, entries: config === undefined ? null : readdirSync(config) });
+      if (request.command !== "git") {
+        policies.add(request.env.EXPERIMENTAL_BUILDKIT_SOURCE_POLICY);
+      }
+      return undefined;
+    };
+    for (const build of [
+      { type: "dockerfile" },
+      { type: "nixpacks" },
+      { type: "railpack" },
+      { type: "buildpacks" },
+    ]) {
+      await saveGit({ ...GIT_SOURCE, build });
+      expect((await deploy()).status, build.type).toBe("succeeded");
+    }
+
+    const builders = seen.filter(({ command }) => command !== "git");
+    // Nixpacks and Railpack run in containers, which the Docker CLI starts.
+    expect(new Set(builders.map(({ command }) => command))).toEqual(new Set(["docker", "pack"]));
+    for (const { command, entries } of builders) {
+      expect(entries, command).toEqual([]);
+    }
+    // In there they have no Docker configuration at all, nor anything that leads to the daemon.
+    expect([...nixpacks(), ...railpack()]).toHaveLength(2);
+    for (const tool of [...nixpacks(), ...railpack()]) {
+      expect(Object.keys(tool.env).filter((name) => name.startsWith("DOCKER_"))).toEqual([]);
+    }
+    // Nor any source policy, which could swap the frontend or an image for another.
+    expect(policies).toEqual(new Set([""]));
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it("keeps the proxies of the panel's Docker configuration in a build's, and nothing else of it", async () => {
+    const home = mkdtempSync(join(tmpdir(), "opsifier-home-"));
+    try {
+      mkdirSync(join(home, ".docker"));
+      writeFileSync(
+        join(home, ".docker", "config.json"),
+        JSON.stringify({
+          auths: { "ghcr.io": { auth: "c2VjcmV0" } },
+          credsStore: "desktop",
+          currentContext: "elsewhere",
+          proxies: {
+            default: { httpProxy: "http://proxy.example.test:3128", noProxy: "localhost", extra: 1 },
+          },
+        }),
+      );
+      vi.stubEnv("HOME", home);
+      await api(SOURCE, "PUT", { type: "dockerfile", dockerfile: "FROM busybox:1.36\n" });
+      const configs: unknown[] = [];
+      tools().handler = (request) => {
+        if (request.command === "docker") {
+          configs.push(
+            JSON.parse(readFileSync(join(request.env.DOCKER_CONFIG ?? "", "config.json"), "utf8")),
+          );
+        }
+        return undefined;
+      };
+
+      expect((await deploy()).status).toBe("succeeded");
+
+      expect(configs.length).toBeGreaterThan(0);
+      for (const config of configs) {
+        expect(config).toEqual({
+          proxies: { default: { httpProxy: "http://proxy.example.test:3128", noProxy: "localhost" } },
+        });
+      }
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("pulls what it pins to a digest first, with no credentials, and stops when a registry won't give it", async () => {
+    const digest = `sha256:${"c".repeat(64)}`;
+    const dockerfile = `FROM node:22@${digest}\nCOPY --from=alpine:3.20@${digest} /etc/os-release /\nFROM busybox:1.36\n`;
+    await api(SOURCE, "PUT", { type: "dockerfile", dockerfile });
+    const pull = vi.spyOn(context.docker, "pullImage");
+
+    expect((await deploy()).status).toBe("succeeded");
+    expect(pull.mock.calls.map(([image, options]) => [image, options?.registryAuth])).toEqual([
+      [`node:22@${digest}`, undefined],
+      [`alpine:3.20@${digest}`, undefined],
+    ]);
+
+    context.docker.failNext("pullImage", new Error("pull access denied"));
+    const refused = await deploy();
+    expect(refused.status).toBe("failed");
+    expect(refused.error).toContain(`Could not pull node:22@${digest} from its registry`);
+    expect(builds()).toHaveLength(1);
+  });
+
+  it("is built with the panel's frontend, whatever its syntax line asks for", async () => {
+    await api(SOURCE, "PUT", {
+      type: "dockerfile",
+      dockerfile: "# syntax=docker/dockerfile:1.4\nFROM busybox\n",
+    });
+
+    expect((await deploy()).status).toBe("succeeded");
+    expect(lastBuild().args).toEqual(
+      expect.arrayContaining(["--build-arg", `BUILDKIT_SYNTAX=${DOCKERFILE_FRONTEND}`]),
+    );
+  });
+});
+
+describe("images of another project or of the server", () => {
+  it.each([
+    ["another project's build", "opsifier/other/web:latest", "Belongs to another project"],
+    ["another project's stack", "other_web-app", "Belongs to another project"],
+    ["a release", "docker.io/opsifier/releases/0c6a8f1e:2", "Belongs to this server"],
+  ])("are refused as an image source: %s", async (_name, image, field) => {
+    const refused = await api(SOURCE, "PUT", { image });
+
+    expect(refused.status).toBe(400);
+    expect(apiErrorOf(refused)).toMatchObject({ code: "image_not_allowed", fields: { image: field } });
+    expect((await api<SourceSettings>(SOURCE)).body.source).toBeNull();
+  });
+
+  it("lets the project name its own", async () => {
+    expect((await api(SOURCE, "PUT", { image: "shop_api-worker:latest" })).status).toBe(200);
+  });
+
+  it.each([
+    "FROM opsifier/other/web:latest\n",
+    "FROM alpine\nCOPY --from=opsifier/other/web /app /app\n",
+    "FROM alpine\nRUN --mount=type=bind,from=other_web-app,target=/x cat /x/secret\n",
+    "# syntax=acme/frontend:1\nFROM alpine\n",
+  ])("are refused in an inline Dockerfile: %j", async (dockerfile) => {
+    const refused = await api(SOURCE, "PUT", { type: "dockerfile", dockerfile });
+
+    expect(refused.status).toBe(400);
+    expect(apiErrorOf(refused).code).toBe("image_not_allowed");
+    expect(apiErrorOf(refused).fields).toHaveProperty("dockerfile");
+  });
+
+  it("stop a build that names an image the panel can't work out, which saving let through", async () => {
+    const dockerfile = `ARG X=opsifierZother/web\nFROM \${X/Z//}\n`;
+    expect((await api(SOURCE, "PUT", { type: "dockerfile", dockerfile })).status).toBe(200);
+
+    const deployed = await deploy();
+
+    expect(deployed.status).toBe("failed");
+    expect(deployed.error).toContain("which the panel can't work out");
+    expect(builds()).toHaveLength(0);
+  });
+
+  it("stop a build whose Dockerfile is larger than the panel reads", async () => {
+    await saveGit();
+    tools().checkoutFiles = { Dockerfile: `FROM node:22\n${"# padding\n".repeat(110_000)}` };
+
+    const deployed = await deploy();
+
+    expect(deployed.status).toBe("failed");
+    expect(deployed.error).toContain(
+      "Dockerfile is larger than the 1024 KiB the panel reads in a Dockerfile",
+    );
+    expect(builds()).toHaveLength(0);
+  });
+
+  it("stop a build that reaches one through the values it passes", async () => {
+    const saved = await api(SOURCE, "PUT", {
+      type: "dockerfile",
+      dockerfile: "ARG BASE=alpine:3.20\nFROM $BASE\n",
+    });
+    expect(saved.status).toBe(200);
+    await api(`${SERVICE}/environment/build`, "PUT", { env: "BASE=opsifier/other/web:latest\n" });
+
+    const deployed = await deploy();
+
+    expect(deployed.status).toBe("failed");
+    // The name is a build variable's value, which the log and the error never show.
+    expect(deployed.error).toContain("[redacted] is an image of another project on this server");
+    expect(builds()).toHaveLength(0);
+    expect(await swarm()).toBeNull();
+  });
+
+  it("stop a build from a repository whose Dockerfile names one", async () => {
+    await saveGit();
+    tools().checkoutFiles = {
+      Dockerfile: "FROM node:22 AS build\nFROM alpine\nCOPY --from=opsifier/releases/abc:3 / /\n",
+    };
+
+    const deployed = await deploy();
+
+    expect(deployed.status).toBe("failed");
+    expect(deployed.error).toContain("opsifier/releases/abc:3 is one of this server's own images");
+    expect(builds()).toHaveLength(0);
+  });
+
+  it("say why a build from an image of the project's own can't start", async () => {
+    await saveGit();
+    tools().checkoutFiles = { Dockerfile: "FROM opsifier/shop/base:latest\n" };
+
+    const deployed = await deploy();
+
+    expect(deployed.log).toContain(
+      "This Dockerfile names opsifier/shop/base:latest, which only this server has: a build fetches every image it names from its registry",
+    );
+    expect(lastBuild().args).toContain("--pull");
+  });
+
+  it("stop a deployment of an image saved before the rule", async () => {
+    await api(SOURCE, "PUT", { image: "nginx:1.27" });
+    const record = requireWeb();
+    saveServiceSpec(
+      context.deps.db,
+      "shop",
+      "web",
+      {
+        ...record.spec,
+        source: { type: "image", image: "opsifier/other/web:latest", username: null, sealedPassword: null },
+      },
+      new Date(),
+    );
+    const pull = vi.spyOn(context.docker, "pullImage");
+
+    const deployed = await deploy();
+
+    expect(deployed.status).toBe("failed");
+    expect(deployed.error).toContain("is an image of another project on this server");
+    expect(pull).not.toHaveBeenCalled();
+    expect(await swarm()).toBeNull();
+  });
 });
 
 describe.skipIf(!hasBsdtar)("an uploaded archive", () => {
@@ -593,7 +863,7 @@ describe.skipIf(!hasBsdtar)("an uploaded archive", () => {
     const response = await context.app.request(`/api/v1${SOURCE}/upload?fileName=app.tar`, {
       method: "PUT",
       headers: {
-        cookie,
+        ...credentialHeaders(cookie),
         origin: TEST_ORIGIN,
         "content-type": "application/octet-stream",
         "content-length": String(2 * 1024 ** 3),
@@ -611,6 +881,12 @@ describe.skipIf(!hasBsdtar)("an uploaded archive", () => {
       },
     });
 
+    const owner = context.deps.db.select().from(users).get();
+    if (owner === undefined) {
+      throw new Error("No account was set up");
+    }
+    const access = accessOf(context.deps.db, { kind: "session", sessionId: "test", user: owner });
+
     await expect(
       receiveUpload(
         context.deps,
@@ -619,6 +895,7 @@ describe.skipIf(!hasBsdtar)("an uploaded archive", () => {
         stream,
         undefined,
         undefined,
+        access,
         10 * 1024 * 1024,
       ),
     ).rejects.toMatchObject({ status: 413 });
@@ -628,7 +905,7 @@ describe.skipIf(!hasBsdtar)("an uploaded archive", () => {
   it("refuses a name it will not unpack", async () => {
     const response = await context.app.request(`/api/v1${SOURCE}/upload?fileName=app.exe`, {
       method: "PUT",
-      headers: { cookie, origin: TEST_ORIGIN },
+      headers: { ...credentialHeaders(cookie), origin: TEST_ORIGIN },
       body: "x",
     });
 
@@ -1185,19 +1462,31 @@ describe("a deployment from Git", () => {
     expect(fetch?.args.slice(-3)).toEqual(["--", "https://git.example.com/acme/shop.git", "main"]);
     expect(lastBuild().args.slice(0, 2)).toEqual(["buildx", "build"]);
     expect(lastBuild().args).toContain("--tag=opsifier/shop/web:latest");
+    expect(lastBuild().args).toContain("--pull");
     expect(lastBuild().args).not.toContain("--no-cache");
     expect((await swarm())?.spec.TaskTemplate.ContainerSpec.Image).toBe(await builtImageId());
     expect(deployed.log).toContain("Fetching https://git.example.com/acme/shop.git at main");
-    expect(deployed.log).toContain("docker buildx build Dockerfile");
+    expect(deployed.log).toContain("docker buildx build Dockerfile --pull");
   });
 
-  it("skips the cache on a force rebuild, pulls the base images again, and says so", async () => {
+  it("stamps the commit on the image just built, without asking a registry for it", async () => {
+    const deployed = await deploy();
+
+    expect(deployed.status).toBe("succeeded");
+    const stamp = calls("docker").find((call) =>
+      call.args.some((arg) => arg.includes("revision.Dockerfile")),
+    );
+    expect(stamp?.args).toContain("--tag=opsifier/shop/web:latest");
+    expect(stamp?.args).not.toContain("--pull");
+  });
+
+  it("skips the cache on a force rebuild, and says so", async () => {
     const deployed = await deploy({ force: true });
 
     expect(deployed.status).toBe("succeeded");
     expect(lastBuild().args).toEqual(expect.arrayContaining(["--no-cache", "--pull"]));
     expect(deployed.log).toContain(
-      "Forced rebuild: skipping the build cache and pulling the base images again",
+      "Forced rebuild: skipping the build cache. The base images are fetched from their registry, as on every build",
     );
     expect(deployed.log).toContain("replaced by the new image");
   });
@@ -1208,7 +1497,7 @@ describe("a deployment from Git", () => {
     const deployed = await deploy({ force: true });
 
     expect(deployed.status).toBe("succeeded");
-    expect(nixpacks().at(-1)?.args).toContain("--no-cache");
+    expect(lastBuild().args).toEqual(expect.arrayContaining(["--no-cache", "--pull"]));
     expect(deployed.log).toContain("Nixpacks 1.41.0 fixes its own base image, so that stays the same");
   });
 
@@ -1218,10 +1507,11 @@ describe("a deployment from Git", () => {
     const deployed = await deploy();
 
     expect(deployed.status).toBe("succeeded");
-    expect(builds()).toHaveLength(0);
     expect(nixpacks().at(0)?.args).toEqual(
-      expect.arrayContaining(["build", code(""), "--name=opsifier/shop/web:latest"]),
+      // `--out` writes `.nixpacks/` alone, so into the build's copy of the code, which is the context.
+      expect.arrayContaining(["build", code(""), `--out=${code("")}`]),
     );
+    expect(lastBuild().args).toContain("--tag=opsifier/shop/web:latest");
     expect(deployed.log).toContain("No Dockerfile found");
   });
 
@@ -1268,6 +1558,90 @@ describe("a deployment from Git", () => {
     );
   });
 
+  it("pulls the builder and the run image it names, and gives pack that run image", async () => {
+    await api(`${SOURCE}/build`, "PUT", { build: { type: "buildpacks" } });
+    const pull = vi.spyOn(context.docker, "pullImage");
+
+    const deployed = await deploy();
+
+    expect(deployed.status).toBe("succeeded");
+    const runImage = "heroku/builder-run:latest";
+    expect(pull.mock.calls.map(([image, options]) => [image, options?.registryAuth])).toEqual([
+      [defaultBuildpacksBuilder, undefined],
+      [runImage, undefined],
+    ]);
+    expect(calls("pack").at(-1)?.args).toContain(`--run-image=${runImage}`);
+    expect(deployed.log).toContain(`${defaultBuildpacksBuilder} runs its builds on ${runImage}`);
+  });
+
+  it("pulls a buildpack project.toml names by image first, and refuses one from the Buildpack Registry", async () => {
+    await saveGit({ ...GIT_SOURCE, build: { type: "buildpacks" } });
+    tools().checkoutFiles = {
+      "project.toml": [
+        "[[io.buildpacks.group]]",
+        'uri = "docker://acme/buildpack:1.2.3"',
+        "[[io.buildpacks.group]]",
+        'uri = "registry.example.com/acme/plain:2.0.0"',
+        // One of the builder's own, by its id: nothing to pull.
+        "[[io.buildpacks.group]]",
+        'id = "simulated/procfile"',
+      ].join("\n"),
+    };
+    const pull = vi.spyOn(context.docker, "pullImage");
+
+    expect((await deploy()).status).toBe("succeeded");
+    const pulled = pull.mock.calls.map(([image, options]) => [image, options?.registryAuth]);
+    expect(pulled).toContainEqual(["acme/buildpack:1.2.3", undefined]);
+    expect(pulled).toContainEqual(["registry.example.com/acme/plain:2.0.0", undefined]);
+    expect(pulled.map(([image]) => image)).not.toContain("simulated/procfile");
+
+    for (const registry of ['uri = "urn:cnb:registry:acme/bp@1.0.0"', 'id = "acme/bp"\nversion = "1.0.0"']) {
+      tools().checkoutFiles = { "project.toml": `[[io.buildpacks.group]]\n${registry}\n` };
+      const refused = await deploy();
+      expect(refused.status, registry).toBe("failed");
+      expect(refused.error).toContain("Buildpack Registry");
+    }
+    expect(calls("pack")).toHaveLength(1);
+  });
+
+  it("refuses a buildpack project.toml names on the panel's disk, outside the source", async () => {
+    await saveGit({ ...GIT_SOURCE, build: { type: "buildpacks" } });
+    tools().checkoutFiles = {
+      "project.toml": `[[io.buildpacks.group]]\nuri = "${context.dataDir}"\n`,
+    };
+
+    const refused = await deploy();
+
+    expect(refused.status).toBe("failed");
+    expect(refused.error).toContain("which is outside the source");
+    expect(calls("pack")).toHaveLength(0);
+  });
+
+  it("builds nothing with a builder whose run image belongs to another project", async () => {
+    const builder = "acme/builder:1.2.3";
+    context.docker.publishImage(builder, {
+      "io.buildpacks.builder.metadata": JSON.stringify({ images: [{ image: "other_web-app:latest" }] }),
+    });
+    await api(`${SOURCE}/build`, "PUT", { build: { type: "buildpacks", builder } });
+
+    const deployed = await deploy();
+
+    expect(deployed.status).toBe("failed");
+    expect(deployed.error).toContain("other_web-app:latest is an image of another project on this server");
+    expect(calls("pack")).toHaveLength(0);
+  });
+
+  it("builds nothing with a builder no registry gives this server", async () => {
+    await api(`${SOURCE}/build`, "PUT", { build: { type: "buildpacks" } });
+    context.docker.failNext("pullImage", new DockerDriverError("pull access denied", 404));
+
+    const deployed = await deploy();
+
+    expect(deployed.status).toBe("failed");
+    expect(deployed.error).toContain(`Could not pull ${defaultBuildpacksBuilder} from its registry`);
+    expect(calls("pack")).toHaveLength(0);
+  });
+
   it("runs Railpack in its two steps", async () => {
     await api(`${SOURCE}/build`, "PUT", { build: { type: "railpack" } });
 
@@ -1276,6 +1650,309 @@ describe("a deployment from Git", () => {
     expect(deployed.status).toBe("succeeded");
     expect(railpack().at(0)?.args[0]).toBe("prepare");
     expect(lastBuild().args).toContain("BUILDKIT_SYNTAX=ghcr.io/railwayapp/railpack-frontend:v0.17.1");
+    expect(lastBuild().args).toContain("--pull");
+  });
+
+  it("pulls what Railpack's plan names before carrying it out, and refuses another project's", async () => {
+    await api(`${SOURCE}/build`, "PUT", { build: { type: "railpack" } });
+    const pull = vi.spyOn(context.docker, "pullImage");
+
+    expect((await deploy()).status).toBe("succeeded");
+    expect(pull.mock.calls.map(([image]) => image).sort()).toEqual([
+      FAKE_RAILPACK_BUILDER,
+      FAKE_RAILPACK_RUNTIME,
+    ]);
+
+    tools().railpackPlan = { deploy: { base: { image: "opsifier/other/web:latest" } } };
+    const refused = await deploy();
+    expect(refused.status).toBe("failed");
+    expect(refused.error).toContain("opsifier/other/web:latest is an image of another project");
+    expect(
+      builds().filter((call) =>
+        call.args.includes("BUILDKIT_SYNTAX=ghcr.io/railwayapp/railpack-frontend:v0.17.1"),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("lets Nixpacks write what it would build, and builds that itself, from registries only", async () => {
+    await api(`${SOURCE}/build`, "PUT", { build: { type: "nixpacks" } });
+    await api(`${SERVICE}/environment/build`, "PUT", { env: "API_URL=https://api.example.test\n" });
+
+    const deployed = await deploy();
+
+    expect(deployed.status).toBe("succeeded");
+    // Nixpacks never builds: it only writes, and the panel builds what it wrote.
+    expect(nixpacks()).toHaveLength(1);
+    const out = nixpacks()[0]
+      ?.args.find((arg) => arg.startsWith("--out="))
+      ?.slice("--out=".length);
+    const build = lastBuild();
+    expect(build.args).toEqual(
+      expect.arrayContaining([
+        "--pull",
+        "--build-arg",
+        `BUILDKIT_SYNTAX=${DOCKERFILE_FRONTEND}`,
+        // Its caches are the project's own, never another project's builds'.
+        "BUILDKIT_CACHE_MOUNT_NS=shop",
+        `--file=${out}/.nixpacks/Dockerfile`,
+        "--tag=opsifier/shop/web:latest",
+        "NIXPACKS_METADATA",
+        "NODE_ENV",
+        "API_URL",
+      ]),
+    );
+    expect(build.args.at(-1)).toBe(out);
+    // Values reach the build through its environment, never its arguments.
+    expect(build.args.join(" ")).not.toContain("production");
+    expect(build.env).toMatchObject({
+      NIXPACKS_METADATA: "node",
+      NODE_ENV: "production",
+      API_URL: "https://api.example.test",
+    });
+    // A tag goes to its registry through --pull; only a digest is pulled by the panel first.
+    expect(deployed.log).not.toContain(`Pulling base image ${FAKE_NIXPACKS_BASE}`);
+  });
+
+  it("gives Nixpacks's build the values Nixpacks gives it, spaces, quotes and newlines included", async () => {
+    await api(`${SOURCE}/build`, "PUT", { build: { type: "nixpacks" } });
+    await api(`${SERVICE}/environment/build`, "PUT", {
+      env: "GREETING=it's here --build-arg NODE_ENV=dev\n",
+    });
+    tools().nixpacksVariables = {
+      NIXPACKS_METADATA: "node",
+      NODE_ENV: "production",
+      NODE_OPTIONS: "--max-old-space-size=4096 --enable-source-maps",
+      BANNER: 'it\'s "two"\nlines',
+    };
+
+    expect((await deploy()).status).toBe("succeeded");
+
+    const build = lastBuild();
+    expect(build.args).toEqual(expect.arrayContaining(["BANNER", "GREETING", "NODE_ENV", "NODE_OPTIONS"]));
+    expect(build.env).toMatchObject({
+      BANNER: 'it\'s "two"\nlines',
+      GREETING: "it's here --build-arg NODE_ENV=dev",
+      NODE_ENV: "production",
+      NODE_OPTIONS: "--max-old-space-size=4096 --enable-source-maps",
+    });
+  });
+
+  it("runs Nixpacks in a container of the panel's image, given the code and nothing else of the server", async () => {
+    await api(`${SOURCE}/build`, "PUT", { build: { type: "nixpacks" } });
+    await api(`${SERVICE}/environment/build`, "PUT", { env: "API_URL=https://api.example.test\n" });
+
+    const deployed = await deploy();
+
+    expect(deployed.status).toBe("succeeded");
+    expect(containers()).toHaveLength(1);
+    const run = containers()[0] as ToolRequest;
+    const options = run.args.slice(1, run.args.indexOf(PANEL_IMAGE));
+    expect(options).toEqual(
+      expect.arrayContaining([
+        "--rm",
+        "--network=none",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        `--entrypoint=${builderTool("nixpacks", "1.41.0")}`,
+      ]),
+    );
+    expect(
+      options.filter((option) => /^--(mount|volume|privileged|pid|ipc|userns|device)/.test(option)),
+    ).toEqual([`--mount="type=bind","source=${code("")}","target=${code("")}"`]);
+    expect(run.args.join(" ")).not.toContain("docker.sock");
+    expect(run.args.join(" ")).not.toContain("https://api.example.test");
+    // In there, it has the build's variables and nothing of the panel's environment.
+    expect(Object.keys((nixpacks()[0] as ToolRequest).env).sort()).toEqual(["API_URL", "GIT_SHA", "PORT"]);
+    expect(deployed.log).toContain(`$ nixpacks 1.41.0 build --out`);
+  });
+
+  it("runs Railpack's first step in a container given the code and the folder of its plan", async () => {
+    await api(`${SOURCE}/build`, "PUT", { build: { type: "railpack" } });
+
+    expect((await deploy()).status).toBe("succeeded");
+
+    const run = containers()[0] as ToolRequest;
+    const plan = railpack()[0]
+      ?.args.find((arg) => arg.startsWith("--plan-out="))
+      ?.slice("--plan-out=".length);
+    const folder = dirname(plan ?? "");
+    expect(folder).not.toBe(dirname(folder));
+    expect(run.args.filter((arg) => arg.startsWith("--mount="))).toEqual([
+      `--mount="type=bind","source=${code("")}","target=${code("")}"`,
+      `--mount="type=bind","source=${folder}","target=${folder}"`,
+    ]);
+    expect(run.args).toEqual(
+      expect.arrayContaining(["--rm", "--cap-drop=ALL", "--security-opt=no-new-privileges"]),
+    );
+    expect(lastBuild().args).toContain(`--file=${plan}`);
+  });
+
+  it("runs neither Nixpacks nor Railpack when the panel can't tell which image it runs from", async () => {
+    await context.close();
+    context = await createTestContext();
+    cookie = await setupAdmin(context.app);
+    await api("/projects", "POST", { name: "shop" });
+    await api("/projects/shop/services", "POST", { name: "web" });
+
+    for (const type of ["nixpacks", "railpack"]) {
+      await saveGit({ ...GIT_SOURCE, build: { type } });
+      const deployed = await deploy();
+      expect(deployed.status, type).toBe("failed");
+      expect(deployed.error).toContain(
+        "runs in a container of the panel's own image, and this panel can't tell which image that is",
+      );
+    }
+    expect(containers()).toHaveLength(0);
+    expect([...nixpacks(), ...railpack()]).toHaveLength(0);
+  });
+
+  it("removes the container a tool runs in when its run is cut short", async () => {
+    await api(`${SOURCE}/build`, "PUT", { build: { type: "nixpacks" } });
+    tools().handler = (request) => {
+      if (request.command === "docker" && request.args[0] === "run") {
+        throw new ToolTimeoutError("docker", 3_600_000);
+      }
+      return undefined;
+    };
+
+    const deployed = await deploy();
+
+    expect(deployed.status).toBe("failed");
+    expect(deployed.error).toContain("ran out of time");
+    const name = containers()[0]
+      ?.args.find((arg) => arg.startsWith("--name="))
+      ?.slice("--name=".length);
+    expect(name).toMatch(/^opsifier-build-/);
+    expect(calls("docker").at(-1)?.args).toEqual(["rm", "--force", name]);
+  });
+
+  it("reads only a folder Nixpacks wrote, never a link its container left in its place", async () => {
+    await api(`${SOURCE}/build`, "PUT", { build: { type: "nixpacks" } });
+    const elsewhere = mkdtempSync(join(tmpdir(), "opsifier-nixpacks-left-"));
+    try {
+      tools().handler = (request) => {
+        if (request.command === "docker" && request.args[0] === "run") {
+          symlinkSync(elsewhere, code(".nixpacks"));
+          return { exitCode: 0, tail: [] };
+        }
+        return undefined;
+      };
+
+      const deployed = await deploy();
+
+      expect(deployed.status).toBe("failed");
+      expect(deployed.error).toContain("Nixpacks wrote no .nixpacks folder");
+      expect(builds()).toHaveLength(0);
+    } finally {
+      rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  it("reads only a plan Railpack wrote, never a link its container left in its place", async () => {
+    await api(`${SOURCE}/build`, "PUT", { build: { type: "railpack" } });
+    const elsewhere = mkdtempSync(join(tmpdir(), "opsifier-railpack-left-"));
+    try {
+      writeFileSync(join(elsewhere, "plan.json"), "{}");
+      tools().handler = (request) => {
+        const plan = request.args.find((arg) => arg.startsWith("--plan-out="))?.slice("--plan-out=".length);
+        if (request.command === "docker" && plan !== undefined) {
+          symlinkSync(join(elsewhere, "plan.json"), plan);
+          return { exitCode: 0, tail: [] };
+        }
+        return undefined;
+      };
+
+      const deployed = await deploy();
+
+      expect(deployed.status).toBe("failed");
+      expect(deployed.error).toContain("Railpack's plan can't be read, so nothing was built");
+      expect(builds()).toHaveLength(0);
+    } finally {
+      rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  it("removes a .nixpacks link the code holds, and never writes through it", async () => {
+    const elsewhere = mkdtempSync(join(tmpdir(), "opsifier-nixpacks-link-"));
+    try {
+      tools().checkoutFiles = { "package.json": "{}" };
+      tools().checkoutLinks = { ".nixpacks": elsewhere };
+
+      const deployed = await deploy();
+
+      expect(deployed.status).toBe("succeeded");
+      expect(readdirSync(elsewhere)).toEqual([]);
+      expect(lstatSync(join(code(""), ".nixpacks")).isDirectory()).toBe(true);
+    } finally {
+      rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses what Nixpacks wrote when it names another project's image, before building it", async () => {
+    await api(`${SOURCE}/build`, "PUT", { build: { type: "nixpacks" } });
+    tools().nixpacksDockerfile = `FROM ${FAKE_NIXPACKS_BASE}\nFROM opsifier/other/web:latest\nCOPY --from=0 /app /app\n`;
+
+    const refused = await deploy();
+
+    expect(refused.status).toBe("failed");
+    expect(refused.error).toContain("opsifier/other/web:latest is an image of another project");
+    expect(builds()).toHaveLength(0);
+  });
+
+  it("refuses a phase command that hides a flag behind a line BuildKit reads as a comment", async () => {
+    await api(`${SOURCE}/build`, "PUT", { build: { type: "nixpacks" } });
+    const nextLine = String.fromCharCode(0x85);
+    // What Nixpacks writes, as it is, for a build command ending in a backslash and two more lines.
+    tools().nixpacksDockerfile = `FROM ${FAKE_NIXPACKS_BASE}\nRUN \\\n${nextLine}# x\n--mount=type=bind,from=opsifier/other/web,target=/x cat /x/secret\n`;
+
+    const refused = await deploy();
+
+    expect(refused.status).toBe("failed");
+    expect(refused.error).toContain("opsifier/other/web is an image of another project");
+    expect(builds()).toHaveLength(0);
+  });
+
+  it("gives Nixpacks's build a value of its own that would steer the tools only as an argument", async () => {
+    await api(`${SOURCE}/build`, "PUT", { build: { type: "nixpacks" } });
+    tools().nixpacksVariables = {
+      NIXPACKS_METADATA: "node",
+      MALLOC_ARENA_MAX: "2",
+      DOCKER_HOST: "tcp://203.0.113.9:2375",
+    };
+
+    const deployed = await deploy();
+
+    expect(deployed.status).toBe("succeeded");
+    const build = lastBuild();
+    expect(build.args).toEqual(
+      expect.arrayContaining(["--build-arg", "MALLOC_ARENA_MAX=2", "DOCKER_HOST=tcp://203.0.113.9:2375"]),
+    );
+    // Not in the Docker CLI's environment, where these would act on the CLI itself.
+    expect(build.env.MALLOC_ARENA_MAX).toBeUndefined();
+    expect(build.env.DOCKER_HOST).not.toBe("tcp://203.0.113.9:2375");
+    expect(deployed.log).not.toContain("Not passing to the build");
+  });
+
+  it("leaves out of Nixpacks's build a name of BuildKit's, and says so", async () => {
+    await api(`${SOURCE}/build`, "PUT", { build: { type: "nixpacks" } });
+    tools().nixpacksVariables = {
+      NIXPACKS_METADATA: "node",
+      BUILDKIT_SYNTAX: "registry.example.com/frontend:1",
+      buildkit_cache_mount_ns: "other",
+    };
+
+    const deployed = await deploy();
+
+    expect(deployed.status).toBe("succeeded");
+    const build = lastBuild();
+    expect(build.args.filter((arg) => /^buildkit_/i.test(arg))).toEqual([
+      `BUILDKIT_SYNTAX=${DOCKERFILE_FRONTEND}`,
+      "BUILDKIT_CACHE_MOUNT_NS=shop",
+    ]);
+    expect(build.env.BUILDKIT_SYNTAX).toBeUndefined();
+    expect(deployed.log).toContain(
+      "Not passing to the build, these names steer the build tools: BUILDKIT_SYNTAX, buildkit_cache_mount_ns",
+    );
   });
 
   it("reads the Dockerfile path from the build path", async () => {

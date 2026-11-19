@@ -3,7 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import type { AppDeps } from "../../../../core/context";
 import { ToolTimeoutError } from "../../../../core/tools";
 import { inheritedEnv } from "./environment";
-import { isInside } from "./paths";
+import { exactPath, isInside } from "./paths";
 
 const LIST_TIMEOUT_MS = 60_000;
 const EXTRACT_TIMEOUT_MS = 15 * 60_000;
@@ -161,6 +161,14 @@ export async function verifyTree(
       break;
     }
     const { dir, depth } = current;
+    // Names as the disk has them: one that is not text would be read back as another entry's.
+    for (const name of await readdir(dir, { encoding: "buffer" })) {
+      if (exactPath(name) === null) {
+        throw new UnsafeArchiveError(
+          `This source has a name that is not plain UTF-8 text, or that holds a control character: ${JSON.stringify(name.toString("utf8"))}. Rename it.`,
+        );
+      }
+    }
     for (const entry of await readdir(dir, { withFileTypes: true })) {
       if (depth + 1 > maxDepth) {
         throw new UnsafeArchiveError(TOO_DEEP);

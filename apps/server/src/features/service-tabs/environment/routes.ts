@@ -13,6 +13,7 @@ import type { Context } from "hono";
 import { requirePrincipal } from "../../../core/auth";
 import type { AppEnv, Feature } from "../../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../../core/openapi";
+import { requestAccess } from "../../access/guard";
 import {
   deleteBuildSecret,
   getBuildEnvironment,
@@ -34,6 +35,11 @@ const denied = errorResponse("Not signed in.");
 const missing = errorResponse("No such service.");
 const refused = errorResponse("Too many build secrets.");
 const standard = { 400: invalid, 401: denied, 404: missing };
+const reachRefused = errorResponse(
+  "The service reaches the server, and only an administrator can change what runs in it.",
+);
+/** What a change answers: the same as a read, and a refusal for a service that reaches the server. */
+const change = { ...standard, 403: reachRefused };
 
 const getRoute = createRoute({
   method: "get",
@@ -51,7 +57,7 @@ const putRoute = createRoute({
   request: { params: servicePath, body: jsonBody(saveServiceEnvironment) },
   responses: {
     200: jsonResponse(serviceEnvironment, "Saved. Takes effect at the next deploy."),
-    ...standard,
+    ...change,
   },
 });
 
@@ -79,7 +85,7 @@ const putBuildRoute = createRoute({
   tags,
   description: "Build arguments. They can end up in the image: secrets belong in a build secret.",
   request: { params: servicePath, body: jsonBody(buildVariablesDocument) },
-  responses: { 200: jsonResponse(buildEnvironment, "Saved. Used by the next build."), ...standard },
+  responses: { 200: jsonResponse(buildEnvironment, "Saved. Used by the next build."), ...change },
 });
 
 const revealBuildRoute = createRoute({
@@ -98,7 +104,7 @@ const stopInheritingRoute = createRoute({
   description:
     "Stops passing runtime variables to this service's builds, as it has done since before build variables existed.",
   request: { params: servicePath },
-  responses: { 200: jsonResponse(buildEnvironment, "Stopped. There is no way back."), ...standard },
+  responses: { 200: jsonResponse(buildEnvironment, "Stopped. There is no way back."), ...change },
 });
 
 const putSecretRoute = createRoute({
@@ -107,7 +113,7 @@ const putSecretRoute = createRoute({
   tags,
   description: "Sets a build secret. It can be replaced or removed, and never read back.",
   request: { params: buildSecretPath, body: jsonBody(saveBuildSecretRequest) },
-  responses: { 200: jsonResponse(buildEnvironment, "Saved."), ...standard, 409: refused },
+  responses: { 200: jsonResponse(buildEnvironment, "Saved."), ...change, 409: refused },
 });
 
 const deleteSecretRoute = createRoute({
@@ -115,7 +121,7 @@ const deleteSecretRoute = createRoute({
   path: `${BUILD}/secrets/{name}`,
   tags,
   request: { params: buildSecretPath },
-  responses: { 200: jsonResponse(buildEnvironment, "Removed."), ...standard },
+  responses: { 200: jsonResponse(buildEnvironment, "Removed."), ...change },
 });
 
 const target = (params: { project: string; service: string }) => ({
@@ -133,7 +139,16 @@ export const feature: Feature = {
     app.openapi(getRoute, (c) => c.json(getEnvironment(deps, target(c.req.valid("param"))), 200));
 
     app.openapi(putRoute, (c) =>
-      c.json(saveEnvironment(deps, target(c.req.valid("param")), c.req.valid("json"), actor(c)), 200),
+      c.json(
+        saveEnvironment(
+          deps,
+          target(c.req.valid("param")),
+          c.req.valid("json"),
+          actor(c),
+          requestAccess(deps, c),
+        ),
+        200,
+      ),
     );
 
     app.openapi(revealRoute, (c) => {
@@ -144,7 +159,16 @@ export const feature: Feature = {
     app.openapi(getBuildRoute, (c) => c.json(getBuildEnvironment(deps, target(c.req.valid("param"))), 200));
 
     app.openapi(putBuildRoute, (c) =>
-      c.json(saveBuildVariables(deps, target(c.req.valid("param")), c.req.valid("json").env, actor(c)), 200),
+      c.json(
+        saveBuildVariables(
+          deps,
+          target(c.req.valid("param")),
+          c.req.valid("json").env,
+          actor(c),
+          requestAccess(deps, c),
+        ),
+        200,
+      ),
     );
 
     app.openapi(revealBuildRoute, (c) => {
@@ -153,20 +177,33 @@ export const feature: Feature = {
     });
 
     app.openapi(stopInheritingRoute, (c) =>
-      c.json(stopInheritingRuntime(deps, target(c.req.valid("param")), actor(c)), 200),
+      c.json(
+        stopInheritingRuntime(deps, target(c.req.valid("param")), actor(c), requestAccess(deps, c)),
+        200,
+      ),
     );
 
     app.openapi(putSecretRoute, (c) => {
       const params = c.req.valid("param");
       return c.json(
-        saveBuildSecret(deps, target(params), params.name, c.req.valid("json").value, actor(c)),
+        saveBuildSecret(
+          deps,
+          target(params),
+          params.name,
+          c.req.valid("json").value,
+          actor(c),
+          requestAccess(deps, c),
+        ),
         200,
       );
     });
 
     app.openapi(deleteSecretRoute, (c) => {
       const params = c.req.valid("param");
-      return c.json(deleteBuildSecret(deps, target(params), params.name, actor(c)), 200);
+      return c.json(
+        deleteBuildSecret(deps, target(params), params.name, actor(c), requestAccess(deps, c)),
+        200,
+      );
     });
   },
 };

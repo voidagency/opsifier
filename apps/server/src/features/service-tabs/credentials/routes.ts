@@ -11,7 +11,9 @@ import { toActionEntry } from "../../../core/actions";
 import { requirePrincipal } from "../../../core/auth";
 import type { Feature } from "../../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../../core/openapi";
+import { requestAccess, requireHostAccessNow } from "../../access/guard";
 import { enqueuePasswordChange, enqueueRotationCheck } from "../../databases/rotation";
+import { requireService } from "../../services/service";
 import { getCredentials, revealSecret } from "./service";
 
 const PATH = "/api/v1/projects/{project}/services/{service}/credentials";
@@ -45,6 +47,7 @@ const revealRoute = createRoute({
     200: jsonResponse(revealedSecret, "The secret."),
     400: invalid,
     401: denied,
+    403: errorResponse("The database reaches the server, and only an administrator can reach its superuser."),
     404: missing,
     409: refused,
   },
@@ -56,7 +59,14 @@ const changeRoute = createRoute({
   tags,
   description: "Changes the password inside the running database, then in the panel.",
   request: { params: servicePath, body: jsonBody(changePasswordRequest) },
-  responses: { 202: accepted, 400: invalid, 401: denied, 404: missing, 409: refused },
+  responses: {
+    202: accepted,
+    400: invalid,
+    401: denied,
+    403: errorResponse("The database reaches the server, and only an administrator can reach its superuser."),
+    404: missing,
+    409: refused,
+  },
 });
 
 const checkRoute = createRoute({
@@ -83,11 +93,19 @@ export const feature: Feature = {
     );
 
     app.openapi(revealRoute, async (c) => {
+      const params = c.req.valid("param");
+      // A database's superuser can run programs in its container, which here reaches the server.
+      await requireHostAccessNow(
+        deps,
+        requestAccess(deps, c),
+        target(params),
+        requireService(deps, target(params)),
+      );
       c.header("Cache-Control", "no-store");
       return c.json(
         await revealSecret(
           deps,
-          target(c.req.valid("param")),
+          target(params),
           c.req.valid("json").secret,
           c.req.header("host"),
           auditEmail(requirePrincipal(c)),
@@ -96,19 +114,21 @@ export const feature: Feature = {
       );
     });
 
-    app.openapi(changeRoute, (c) =>
-      c.json(
+    app.openapi(changeRoute, async (c) => {
+      const params = c.req.valid("param");
+      await requireHostAccessNow(
+        deps,
+        requestAccess(deps, c),
+        target(params),
+        requireService(deps, target(params)),
+      );
+      return c.json(
         toActionEntry(
-          enqueuePasswordChange(
-            deps,
-            target(c.req.valid("param")),
-            c.req.valid("json"),
-            auditEmail(requirePrincipal(c)),
-          ),
+          enqueuePasswordChange(deps, target(params), c.req.valid("json"), auditEmail(requirePrincipal(c))),
         ),
         202,
-      ),
-    );
+      );
+    });
 
     app.openapi(checkRoute, (c) =>
       c.json(

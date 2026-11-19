@@ -1,11 +1,11 @@
 import { mkdir, readdir, readFile, rm, rmdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { deployActionType, type RenameServiceRequest } from "@opsifier/contract";
 import type { ActionContext, ActionRow } from "../../core/actions";
 import type { AppDeps } from "../../core/context";
 import type { RuntimeUncertainty } from "../../core/db/schema";
 import {
-  type PullProgress,
   type RegistryAuth,
   type ServiceInfo,
   type SwarmServiceSpec,
@@ -47,9 +47,11 @@ import type { MountFile } from "./compile/mounts";
 import { builtImageName, heldImageName } from "./compile/names";
 import { type DeployRequest, deployRun, joinDeployRun } from "./deploy-request";
 import { assertDeploySpace, buildDiskNeed, imageDiskNeed } from "./disk-check";
+import { assertImageAllowed } from "./foreign-images";
 import { firstPortInUse, PortInUseError } from "./host-ports";
 import { type ImageIdentity, pinnedReference, resolveImage } from "./image-identity";
 import { inspectOwnedService, removeOwnedService } from "./ownership";
+import { logPullProgress } from "./pull-progress";
 import {
   deleteServiceRow,
   findService,
@@ -71,10 +73,6 @@ import { type AppServiceSpec, REGISTRY_PASSWORD_CONTEXT } from "./spec";
 /** The base Docker Hub expects credentials to name, for images with no registry in their reference. */
 const DOCKER_HUB = "https://index.docker.io/v1/";
 
-/** Downloads repeat for every chunk. Only the steps worth reading afterwards are kept in the log. */
-const NOISY_PULL_STATUSES =
-  /^(Downloading|Extracting|Waiting|Verifying Checksum|Pulling fs layer|Download complete)/;
-
 function registryServer(image: string): string {
   const [first = "", ...rest] = image.split("/");
   const isHost = rest.length > 0 && (first.includes(".") || first.includes(":") || first === "localhost");
@@ -89,20 +87,6 @@ function registryAuthFor(deps: AppDeps, source: StoredSource): RegistryAuth | un
     username: source.username,
     password: deps.secrets.unseal(source.sealedPassword, REGISTRY_PASSWORD_CONTEXT),
     serveraddress: registryServer(source.image),
-  };
-}
-
-function logPullProgress(ctx: ActionContext): (progress: PullProgress) => void {
-  const seen = new Set<string>();
-  return ({ status, id }) => {
-    if (NOISY_PULL_STATUSES.test(status)) {
-      return;
-    }
-    const line = id === undefined ? status : `${id}: ${status}`;
-    if (!seen.has(line)) {
-      seen.add(line);
-      ctx.log(line);
-    }
   };
 }
 
@@ -486,6 +470,10 @@ export async function runDeploy(
     requestedRef,
     image: plan.source.type === "image" ? plan.source.image : null,
   });
+  if (plan.source.type === "image") {
+    // Saved before the rule, or by a way that skips the Source tab: a template, a database.
+    assertImageAllowed(plan.source.image, target.projectName);
+  }
 
   await assertProjectBoundaries(deps, target, record);
   const leavingSharedNetwork =
@@ -499,7 +487,7 @@ export async function runDeploy(
   await assertDeploySpace(
     deps,
     plan.source.type === "image"
-      ? await imageDiskNeed(deps, plan.source.image)
+      ? await imageDiskNeed(deps, plan.source.image, record.deployed?.image ?? null)
       : await buildDiskNeed(deps, target),
     ctx,
   );
@@ -621,6 +609,47 @@ async function runStop(deps: AppDeps, target: ServiceTarget, ctx: ActionContext)
   ctx.log("Stopped");
 }
 
+/**
+ * A service, or a server of its own that a restore starts, must not be handed an image by name: Swarm
+ * pulls it on its own, and when that pull fails it runs whatever the server holds under the name, which
+ * another project may have pulled with its own credentials. So the panel pulls it first, with this
+ * service's, stops if that fails, and gives Swarm exactly what it got, as a deployment does.
+ */
+export async function pullPinned(
+  deps: AppDeps,
+  target: ServiceTarget,
+  ctx: ActionContext,
+  source: Extract<StoredSource, { type: "image" }>,
+  swarmSpec: SwarmServiceSpec,
+): Promise<SwarmServiceSpec> {
+  assertImageAllowed(source.image, target.projectName);
+  ctx.log(`Pulling image ${source.image}`);
+  await deps.docker.pullImage(source.image, {
+    registryAuth: registryAuthFor(deps, source),
+    signal: ctx.signal,
+    onProgress: logPullProgress(ctx),
+  });
+  const identity = await resolveImage(deps, source.image, { fromRegistry: true });
+  ctx.log(`${identity.ref} is ${identity.digest ?? identity.id}`);
+  return withImage(swarmSpec, pinnedReference(identity));
+}
+
+/**
+ * Starting or restarting what is deployed pulls nothing again, so only the name it runs under is held to
+ * the rule. The service's own built and held names pass, which a project called `releases` from before
+ * the name was reserved shares with the server's.
+ */
+function assertRunningImageAllowed(target: ServiceTarget, spec: SwarmServiceSpec): void {
+  const image = spec.TaskTemplate.ContainerSpec.Image;
+  const own = [
+    builtImageName(target.projectName, target.serviceName),
+    heldImageName(target.projectName, target.serviceName),
+  ];
+  if (!own.includes(image)) {
+    assertImageAllowed(image, target.projectName);
+  }
+}
+
 async function runStart(deps: AppDeps, target: ServiceTarget, ctx: ActionContext): Promise<void> {
   const record = requireService(deps, target);
   const name = qualifiedName(target.projectName, target.serviceName);
@@ -645,12 +674,16 @@ async function runStart(deps: AppDeps, target: ServiceTarget, ctx: ActionContext
       }
     }
     plan = planDeployment(deps, target, record, 0);
+    if (source?.type === "image") {
+      plan = { ...plan, swarmSpec: await pullPinned(deps, target, ctx, source, plan.swarmSpec) };
+    }
     await prepareNetwork(deps, target, ctx);
     await prepareMounts(deps, target, plan.compiled, ctx.log);
     ctx.log(`Creating the Swarm service ${name}`);
     await deps.docker.createService(plan.swarmSpec, { registryAuth });
     desired = currentReplicas(plan.swarmSpec);
   } else {
+    assertRunningImageAllowed(target, existing.spec);
     desired = record.spec.deploy.replicas;
     ctx.log(`Scaling ${name} to ${desired}`);
     await deps.docker.updateService(name, withReplicas(existing.spec, desired), { registryAuth });
@@ -676,6 +709,7 @@ async function runRestart(deps: AppDeps, target: ServiceTarget, ctx: ActionConte
   const record = requireService(deps, target);
   const name = qualifiedName(target.projectName, target.serviceName);
   const swarm = await requireSwarmService(deps, target);
+  assertRunningImageAllowed(target, swarm.spec);
   const registryAuth = record.spec.source === null ? undefined : registryAuthFor(deps, record.spec.source);
   const previous = await currentTaskIds(deps, name, true);
 
@@ -713,6 +747,62 @@ async function removeServiceFiles(deps: Pick<AppDeps, "config">, target: Service
 }
 
 /**
+ * How often to look whether a removed service's containers have gone, and how many times: two minutes,
+ * far past the ten seconds a task gets to stop unless its service says otherwise.
+ */
+const CONTAINERS_GONE_POLL_MS = 1000;
+const CONTAINERS_GONE_ATTEMPTS = 120;
+
+/** The names Docker would not remove. */
+async function removeImageNames(deps: Pick<AppDeps, "docker">, names: readonly string[]): Promise<string[]> {
+  const left: string[] = [];
+  for (const name of names) {
+    await deps.docker.removeImage(name).catch(() => left.push(name));
+  }
+  return left;
+}
+
+/**
+ * The names the panel built and set aside for a service. Left behind, they would be found by the next
+ * service of that name, in a project of that name made again by anyone. Docker keeps the last name of
+ * an image while a container of it is there, and Swarm stops and removes a removed service's containers
+ * in its own time: a name that stays is removed again once they have gone, and the log says if it still
+ * stays.
+ */
+async function removeBuiltImages(
+  deps: Pick<AppDeps, "docker">,
+  target: ServiceTarget,
+  log: (line: string) => void,
+): Promise<void> {
+  let left = await removeImageNames(deps, [
+    builtImageName(target.projectName, target.serviceName),
+    heldImageName(target.projectName, target.serviceName),
+  ]);
+  if (left.length === 0) {
+    return;
+  }
+  log(`Waiting for the service's containers to go, to remove ${left.join(" and ")}`);
+  const service = qualifiedName(target.projectName, target.serviceName);
+  for (let attempt = 0; attempt < CONTAINERS_GONE_ATTEMPTS; attempt += 1) {
+    // Without sizes: Docker would otherwise work out every container's, each second.
+    const containers = await deps.docker.listContainers({ size: false }).catch(() => null);
+    if (
+      containers !== null &&
+      !containers.some((container) => container.labels["com.docker.swarm.service.name"] === service)
+    ) {
+      break;
+    }
+    await sleep(CONTAINERS_GONE_POLL_MS);
+  }
+  left = await removeImageNames(deps, left);
+  if (left.length > 0) {
+    log(
+      `Could not remove ${left.join(" and ")}, which a service of this name made again would find. Remove ${left.length === 1 ? "it" : "them"} with docker image rm.`,
+    );
+  }
+}
+
+/**
  * Removes a service from Docker, the proxy and the database, with the files that only made sense for
  * it. Named volumes and backups stay: deleting those is always a separate decision.
  */
@@ -738,6 +828,7 @@ export async function removeServiceEverywhere(
   }
   log("Removing the service's files");
   await removeServiceFiles(deps, target);
+  await removeBuiltImages(deps, target, log);
   await removeReleases(deps, record, log);
   await retainServiceVolumes(deps, target, record, log);
   log("Backups stay at their destination");

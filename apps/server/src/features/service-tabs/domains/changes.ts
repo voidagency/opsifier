@@ -190,11 +190,14 @@ export async function updateDomain(
   fields: SaveDomainFields,
 ): Promise<DomainEntry> {
   requireService(deps, target);
-  assertHostAvailableForPanel(deps, fields.host, fields.wildcard);
   assertReadableCertificates(fields.upstreamCa);
   const now = new Date(deps.now());
   const row = await applyRouteChange(deps, target, (tx) => {
     const current = requireDomain(tx, target, id);
+    // A name the service already holds stays editable after the panel came to answer on it too.
+    if (current.host !== fields.host || current.wildcard !== fields.wildcard) {
+      assertHostAvailableForPanel(deps, fields.host, fields.wildcard);
+    }
     if (current.host !== fields.host || current.path !== fields.path) {
       assertRuntimeCertain(deps, target);
     }

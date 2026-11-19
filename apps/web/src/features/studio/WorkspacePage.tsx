@@ -1,4 +1,10 @@
-import type { StudioAppDetail, StudioEvent, StudioModel, StudioRemark } from "@opsifier/contract";
+import {
+  isStudioConversationId,
+  type StudioAppDetail,
+  type StudioEvent,
+  type StudioModel,
+  type StudioRemark,
+} from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
@@ -183,7 +189,9 @@ export function WorkspacePage() {
     return <ErrorState className="m-6" message={errorMessage(error, t)} onRetry={() => refetch()} />;
   }
 
-  const selected = search.c === "new" ? null : (search.c ?? data.conversations[0]?.id ?? null);
+  // The address bar is anyone's to write: a value that cannot be a conversation's id is ignored.
+  const named = isStudioConversationId(search.c) ? search.c : undefined;
+  const selected = search.c === "new" ? null : (named ?? data.conversations[0]?.id ?? null);
   const select = (id: string) =>
     navigate({ to: "/studio/$project/$service", params: { project, service }, search: { c: id } });
 

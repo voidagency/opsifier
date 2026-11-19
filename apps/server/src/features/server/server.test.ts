@@ -7,6 +7,8 @@ import type {
   CleanupPreview,
   DiskUsageListing,
   DockerUpdateCheck,
+  DomainEntry,
+  DomainList,
   DomainsOverview,
   OverviewDomain,
   PanelDomainSettings,
@@ -17,6 +19,7 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
 import { actions } from "../../core/db/schema";
+import { PANEL_ROUTER_PRIORITY } from "../../core/proxy";
 import type { FakeTools } from "../../core/tools";
 import {
   apiErrorOf,
@@ -26,6 +29,9 @@ import {
   TEST_ORIGIN,
   type TestContext,
 } from "../../testing/harness";
+import { saveAddress } from "../opsifier-address/repo";
+import { putSetting, SERVICE_DOMAIN_KEY } from "../system/repo";
+import { SERVER_IP_KEY } from "../system/service";
 import { finishInterruptedReboots, REBOOT_SCRIPT } from "./host";
 import { createDailyCleanupRunner } from "./runtime";
 
@@ -368,6 +374,99 @@ describe("domains of the panel", () => {
     expect(wildcard.status).toBe(409);
   });
 
+  it("reserves the dashboard's name, and the names of an address the server asked for, before they answer", async () => {
+    await createService();
+    saveAddress(
+      context.deps.db,
+      {
+        status: "requested",
+        id: "srv_test",
+        domain: "bcdfghjk.opsifier.dev",
+        sealedSecret: "sealed",
+        requestedAt: new Date(0).toISOString(),
+      },
+      new Date(),
+    );
+
+    for (const host of [
+      "proxy.203.0.113.10.sslip.io",
+      "panel.bcdfghjk.opsifier.dev",
+      "proxy.bcdfghjk.opsifier.dev",
+      "bcdfghjk.opsifier.dev",
+    ]) {
+      const claimed = await api("POST", "/api/v1/projects/shop/services/web/domains", { host });
+      expect(claimed.status, host).toBe(409);
+      expect(apiErrorOf(claimed).code, host).toBe("domain_reserved");
+    }
+    expect(
+      (
+        await api("POST", "/api/v1/projects/shop/services/web/domains", {
+          host: "shop.bcdfghjk.opsifier.dev",
+        })
+      ).status,
+    ).toBe(201);
+  });
+
+  it("gives a new service's name a suffix rather than one of the panel's names", async () => {
+    putSetting(context.deps.db, SERVICE_DOMAIN_KEY, "example.com", new Date());
+    await api("PUT", "/api/v1/server/panel-domain", {
+      customDomain: "shop-web.example.com",
+      serveOnIp: true,
+    });
+    await createService();
+
+    const listed = await api<DomainList>("GET", "/api/v1/projects/shop/services/web/domains");
+    expect(listed.body.domains.map((domain) => domain.host)).toEqual(["shop-web-2.example.com"]);
+  });
+
+  it("lets a service edit a name it held before the panel came to answer on it", async () => {
+    await createService();
+    const held = await api<DomainEntry>("POST", "/api/v1/projects/shop/services/web/domains", {
+      host: "panel.bcdfghjk.opsifier.dev",
+    });
+    expect(held.status).toBe(201);
+    saveAddress(
+      context.deps.db,
+      {
+        status: "requested",
+        id: "srv_test",
+        domain: "bcdfghjk.opsifier.dev",
+        sealedSecret: "sealed",
+        requestedAt: new Date(0).toISOString(),
+      },
+      new Date(),
+    );
+    const path = `/api/v1/projects/shop/services/web/domains/${held.body.id}`;
+
+    const edited = await api<DomainEntry>("PUT", path, { host: "panel.bcdfghjk.opsifier.dev", port: 8080 });
+    expect(edited.status).toBe(200);
+    expect(edited.body.port).toBe(8080);
+    const moved = await api("PUT", path, { host: "proxy.bcdfghjk.opsifier.dev", port: 8080 });
+    expect(moved.status).toBe(409);
+    expect(apiErrorOf(moved).code).toBe("domain_reserved");
+  });
+
+  it("moves the sslip names of services to a new IPv6 address, but none onto the panel's", async () => {
+    await context.close();
+    context = await createTestContext({ env: { OPSIFIER_SERVER_IP: "2001:db8::2" } });
+    cookie = await setupAdmin(context.app);
+    await createService();
+    putSetting(context.deps.db, SERVER_IP_KEY, "203.0.113.10", new Date());
+    for (const host of ["shop.2001-db8--1.sslip.io", "panel.2001-db8--1.sslip.io"]) {
+      expect((await api("POST", "/api/v1/projects/shop/services/web/domains", { host })).status, host).toBe(
+        201,
+      );
+    }
+    putSetting(context.deps.db, SERVER_IP_KEY, "2001:db8::1", new Date());
+
+    expect((await api("POST", "/api/v1/server/panel/refresh-ip")).status).toBe(200);
+
+    const listed = await api<DomainList>("GET", "/api/v1/projects/shop/services/web/domains");
+    expect(listed.body.domains.map((domain) => domain.host)).toEqual(
+      expect.arrayContaining(["shop.2001-db8--2.sslip.io", "panel.2001-db8--1.sslip.io"]),
+    );
+  });
+
   it("does not take a name a route already answers on, or that a wildcard covers", async () => {
     await createService();
     await api("POST", "/api/v1/projects/shop/services/web/domains", { host: "used.example.com" });
@@ -549,6 +648,8 @@ describe("the proxy", () => {
     const file = readFileSync(join(context.dataDir, "traefik", "dynamic", "_dashboard.yaml"), "utf8");
     expect(file).toContain("api@internal");
     expect(file).not.toContain(opened.body.password);
+    // Above a service that would answer on the same name.
+    expect(parse(file).http.routers.dashboard.priority).toBe(PANEL_ROUTER_PRIORITY);
 
     const status = await api<{ open: boolean }>("GET", "/api/v1/server/proxy/dashboard");
     expect(status.body.open).toBe(true);

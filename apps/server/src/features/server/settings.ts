@@ -5,6 +5,7 @@ import type { z } from "zod";
 import type { AppDeps } from "../../core/context";
 import { users } from "../../core/db/schema";
 import { conflict } from "../../core/errors";
+import { sslipBase } from "../../core/proxy/sslip";
 import { isCoveredByWildcard } from "../opsifier-address/certificates";
 import { liveAddressDomain, registeredDomain } from "../opsifier-address/repo";
 import { overlappingRoutes } from "../service-tabs/domains/repo";
@@ -14,11 +15,6 @@ import { defaultPanelDomain, PANEL_DOMAIN_KEY, readPanelDomain, sslipPanelDomain
 
 export const LETS_ENCRYPT_EMAIL_KEY = "letsencrypt_email";
 export const DAILY_CLEANUP_KEY = "daily_docker_cleanup";
-const SSLIP_SUFFIX = "sslip.io";
-
-function sslipLabel(ip: string): string {
-  return ip.includes(":") ? ip.toLowerCase().replaceAll(":", "-").replace(/^-/, "0-") : ip;
-}
 
 /** The server's address, or `<server-ip>.sslip.io`. Null while neither is known. */
 export function generatedServiceBase(deps: AppDeps): string | null {
@@ -27,7 +23,7 @@ export function generatedServiceBase(deps: AppDeps): string | null {
     return address;
   }
   const { serverIp } = getSystemInfo(deps);
-  return serverIp === null ? null : `${sslipLabel(serverIp)}.${SSLIP_SUFFIX}`;
+  return serverIp === null ? null : sslipBase(serverIp);
 }
 
 export function getPanelDomainSettings(deps: AppDeps): PanelDomainSettings {

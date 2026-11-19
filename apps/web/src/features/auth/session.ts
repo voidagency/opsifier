@@ -7,6 +7,8 @@ import {
   cliLoginRequest,
   invitationPreview,
   type LoginRequest,
+  type OpenedSession,
+  openedSession,
   type SessionState,
   type SessionUser,
   type SetupRequest,
@@ -19,6 +21,7 @@ import {
 } from "@opsifier/contract";
 import { type QueryClient, queryOptions, useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api";
+import { keepSessionBinding } from "../../lib/session-binding";
 
 /** Long enough to survive a slow link, short enough that a dead server shows an error instead of a blank page. */
 const sessionTimeoutMs = 10_000;
@@ -35,6 +38,16 @@ export const sessionQuery = queryOptions({
   retry: false,
 });
 
+/**
+ * A sign-in over plain HTTP answers with the session's second secret, kept for this address only and
+ * not in the cached session; any other sign-in forgets the previous one.
+ */
+function keepBinding(opened: OpenedSession): SessionState {
+  const { binding, ...state } = opened;
+  keepSessionBinding(binding);
+  return state;
+}
+
 /** Every auth endpoint answers with the resulting session, which replaces the cached one. */
 export function applySession(queryClient: QueryClient, session: SessionState): void {
   queryClient.setQueryData(sessionQuery.queryKey, session);
@@ -47,9 +60,10 @@ export function useCurrentUser(): SessionUser | null {
 }
 
 export const authApi = {
-  setup: (body: SetupRequest) => api.post("/auth/setup", { body, schema: sessionState }),
-  login: (body: LoginRequest) => api.post("/auth/login", { body, schema: sessionState }),
-  logout: () => api.post("/auth/logout", { schema: sessionState }),
+  setup: (body: SetupRequest) => api.post("/auth/setup", { body, schema: openedSession }).then(keepBinding),
+  login: (body: LoginRequest) => api.post("/auth/login", { body, schema: openedSession }).then(keepBinding),
+  logout: () =>
+    api.post("/auth/logout", { schema: sessionState }).finally(() => keepSessionBinding(undefined)),
   changeCredentials: (body: ChangeCredentialsRequest) =>
     api.post("/auth/credentials", { body, schema: sessionState }),
   beginTwoFactor: (body: TwoFactorBegin) =>
@@ -67,5 +81,5 @@ export const authApi = {
   checkInvitation: (body: CheckInvitationRequest) =>
     api.post("/auth/invitation/check", { body, schema: invitationPreview }),
   acceptInvitation: (body: AcceptInvitationRequest) =>
-    api.post("/auth/invitation/accept", { body, schema: sessionState }),
+    api.post("/auth/invitation/accept", { body, schema: openedSession }).then(keepBinding),
 };

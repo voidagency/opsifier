@@ -16,8 +16,10 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { backupConfigs, backupRestores, backups } from "../../core/db/schema";
 import { FakeDriver } from "../../core/docker";
-import { authPost, call, TEST_ORIGIN, TEST_PASSWORD } from "../../testing/harness";
+import { authPost, browserLink, call, TEST_ORIGIN, TEST_PASSWORD } from "../../testing/harness";
+import { requireDatabase } from "../databases/service";
 import { apiErrorOf, type DatabaseTestContext, PROJECT, setupDatabaseTests } from "../databases/testing";
+import { saveServiceSpec } from "../services/repo";
 import { findProviderRow } from "../storage-providers/repo";
 import { BUILT_IN_PROVIDER_ID, backendForProvider } from "../storage-providers/service";
 import { updateRestore } from "./repo";
@@ -325,10 +327,11 @@ describe("downloading a backup", () => {
     fakeEngine(suite.context);
   });
 
-  const download = (id: string) =>
-    suite.context.app.request(`/api/v1${backupsPath}/${id}/download`, {
-      headers: { cookie: suite.cookie },
-    });
+  /** As the browser follows the panel's link: the session's second secret is in the address. */
+  const download = (id: string) => {
+    const link = browserLink(`/api/v1${backupsPath}/${id}/download`, suite.cookie);
+    return suite.context.app.request(link.url, { headers: link.headers });
+  };
 
   const run = async (name?: string): Promise<BackupEntry> => {
     const config = (await createConfig()).body;
@@ -686,6 +689,13 @@ describe("what a backup holds (REQ-667)", () => {
       expect(isolated?.TaskTemplate.Networks).toEqual([]);
       expect(isolated?.EndpointSpec).toEqual({ Mode: "dnsrr" });
       expect(isolated?.TaskTemplate.ContainerSpec.Env).toContain("POSTGRES_DB=postgres");
+      // Pulled again for it and pinned: never handed to Swarm by name.
+      const { image } = requireDatabase(suite.context.deps, { projectName: PROJECT, serviceName: "db" }).spec
+        .source as { image: string };
+      expect(isolated?.TaskTemplate.ContainerSpec.Image).toBe(
+        (await docker().inspectImage(image))?.digests[0],
+      );
+      expect(action.log).toContain(`Pulling image ${image}`);
       const volumeMount = isolated?.TaskTemplate.ContainerSpec.Mounts?.find(
         (mount) => mount.Target === "/var/lib/postgresql/data",
       );
@@ -717,6 +727,40 @@ describe("what a backup holds (REQ-667)", () => {
       expect(doc.restores[0]).toMatchObject({ scope: "instance", status: "succeeded", phase: "done" });
       expect(doc.backups[0]).toMatchObject({ origin: "safety", scope: "instance" });
       expect(tmpEntries()).toEqual([]);
+    });
+
+    it("starts no temporary server from an image it can't pull, or one of another project", async () => {
+      const { backup } = await instanceBackup();
+      const created = vi.spyOn(docker(), "createService");
+      docker().failNext("pullImage", new Error("pull access denied"));
+
+      const unpulled = await suite.waitFor((await restoreOf(backup.id)).body.id);
+
+      expect(unpulled.status).toBe("failed");
+      expect(unpulled.error).toContain("pull access denied");
+      expect(created).not.toHaveBeenCalled();
+
+      const target = { projectName: PROJECT, serviceName: "db" };
+      const { spec } = requireDatabase(suite.context.deps, target);
+      saveServiceSpec(
+        suite.context.deps.db,
+        PROJECT,
+        "db",
+        {
+          ...spec,
+          source: { type: "image", image: "opsifier/other/db:17", username: null, sealedPassword: null },
+        },
+        new Date(),
+      );
+
+      const foreign = await suite.waitFor((await restoreOf(backup.id)).body.id);
+
+      expect(foreign.status).toBe("failed");
+      expect(foreign.error).toContain("is an image of another project on this server");
+      expect(created).not.toHaveBeenCalled();
+      expect(
+        (await docker().inspectService("shop_db"))?.spec.TaskTemplate.ContainerSpec.Mounts?.[0]?.Source,
+      ).toBe("shop_db_data");
     });
 
     it("leaves the service on its own volume when the import fails, and removes what it prepared", async () => {

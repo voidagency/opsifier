@@ -13,12 +13,16 @@ import { nanoid } from "nanoid";
 import { type ActionContext, type ActionRow, currentSource, runAs } from "../../../core/actions";
 import type { AppDeps } from "../../../core/context";
 import { actions } from "../../../core/db/schema";
-import type { ExecSession, ExecState, TaskInfo } from "../../../core/docker";
+import type { ExecSession, ExecState, TaskAccess, TaskInfo } from "../../../core/docker";
 import { DockerLogParser } from "../../../core/docker/log-parser";
 import { conflict, notFound } from "../../../core/errors";
+import { requireHostAccessFor } from "../../access/guard";
+import { type Access, accountCanReachHost, canReachHost } from "../../access/rules";
 import { listServiceScripts } from "../../service-runtime/repo";
 import { qualifiedName } from "../../services/compile";
-import type { ServiceTarget } from "../../services/service";
+import { ownFilesDir, reachesServer, taskReachesServer } from "../../services/reach";
+import { findService } from "../../services/repo";
+import { requireService, type ServiceTarget } from "../../services/service";
 import {
   activeRunOf,
   findRun,
@@ -29,6 +33,7 @@ import {
   type ScriptRunRow,
   updateRun,
 } from "./repo";
+import type { StoredScript } from "./stored";
 
 export const SCRIPT_ACTION_TYPE = "service.script";
 
@@ -81,6 +86,24 @@ const CONSOLE_CLOSED = note(
   "console_closed",
   "Run from the console: the session was closed while it was running.",
 );
+const REACHES_SERVER = note(
+  "reaches_server",
+  "Its task reaches the server through a path on the host or an added capability. There, only a run an administrator starts, or a script an administrator saved last, may run.",
+);
+const UNATTENDED_REFUSED = note(
+  "skipped_refused",
+  "This service reaches the server, where a script only runs by itself when the last to save it is an administrator. An administrator has to save it again.",
+);
+
+/**
+ * Whether a run may go on in a task that reaches the server, asked of the script as it is when the run
+ * starts. A person or a key was answered at the request; a schedule or a hook has only the script.
+ */
+type Clearance = (script: StoredScript) => boolean;
+
+/** Nobody asked for an automatic run, so it goes on the rights of whoever saved the script last. */
+const savedByHostAdmin = (deps: AppDeps, script: StoredScript): boolean =>
+  script.savedBy !== null && accountCanReachHost(deps.db, script.savedBy);
 
 const timeLimitNote = (seconds: number) =>
   note("time_limit", `It was still running at its limit of ${seconds} seconds, so the panel ended it.`);
@@ -293,7 +316,7 @@ async function confirmEnded(
 }
 
 /** The work of a run's Action. Its row exists by now, and the Action's id is the run's. */
-async function performRun(deps: AppDeps, ctx: ActionContext): Promise<void> {
+async function performRun(deps: AppDeps, ctx: ActionContext, clearance: Clearance): Promise<void> {
   const run = findRunById(deps.db, ctx.id);
   if (run === undefined) {
     throw new Error("This run no longer exists.");
@@ -333,6 +356,22 @@ async function performRun(deps: AppDeps, ctx: ActionContext): Promise<void> {
   }
   if (task === undefined) {
     fail({ status: "failed", exitCode: null, note: NO_RUNNING_TASK });
+    return;
+  }
+  // The settings say what the next deploy gives; the task says what this process would hold.
+  let reach: TaskAccess | null;
+  try {
+    reach = await deps.docker.taskAccess(task.id);
+  } catch (error) {
+    failToStart(error);
+    return;
+  }
+  if (reach === null) {
+    fail({ status: "failed", exitCode: null, note: NO_RUNNING_TASK });
+    return;
+  }
+  if (taskReachesServer(reach, ownFilesDir(deps, targetOf(run))) && !clearance(script)) {
+    fail({ status: "failed", exitCode: null, note: REACHES_SERVER });
     return;
   }
 
@@ -486,15 +525,16 @@ export interface RunSource {
 function enqueueRun(
   deps: AppDeps,
   target: ServiceTarget,
-  script: ScriptSpec,
+  script: StoredScript,
   source: RunSource,
+  clearance: Clearance,
 ): { action: ActionRow; run: ScriptRunRow } {
   const action = deps.actions.enqueue({
     type: SCRIPT_ACTION_TYPE,
     title: `Run ${script.name} on ${target.projectName}/${target.serviceName}`,
     ...target,
     actorEmail: source.actorEmail,
-    run: (ctx) => performRun(deps, ctx),
+    run: (ctx) => performRun(deps, ctx, clearance),
   });
   const run = insertRun(deps.db, {
     id: action.id,
@@ -511,15 +551,20 @@ function enqueueRun(
   return { action, run };
 }
 
-const lookUpScript = (deps: AppDeps, target: ServiceTarget, name: string): ScriptSpec | undefined =>
+const lookUpScript = (deps: AppDeps, target: ServiceTarget, name: string): StoredScript | undefined =>
   listServiceScripts(deps.db, target).find((script) => script.name === name);
 
-/** A person or an API key asking for a run. Refused while one is already in progress, on any panel. */
+/**
+ * A person or an API key asking for a run. Refused while one is already in progress, on any panel, and
+ * in a service that reaches the server to anyone who could not have given it that.
+ */
 export function startRun(
   deps: AppDeps,
   target: ServiceTarget,
   scriptName: string,
+  access: Access,
 ): { action: ActionRow; run: ScriptRunRow } {
+  requireHostAccessFor(access, requireService(deps, target));
   const script = lookUpScript(deps, target, scriptName);
   if (script === undefined) {
     throw notFound("This script does not exist.");
@@ -531,18 +576,28 @@ export function startRun(
     );
   }
   const source = currentSource();
-  return enqueueRun(deps, target, script, {
-    origin: source?.origin === "api_key" ? "api" : "manual",
-    actorEmail: source?.actorEmail,
-    originDetail: source?.detail,
-  });
+  // Whoever asked could reach the server for the script as they saw it. When the run starts, behind
+  // other work on the service, both must still hold: the same account, and the same words.
+  const requester = canReachHost(access) ? access.principal.user.id : null;
+  const asked = script.script;
+  return enqueueRun(
+    deps,
+    target,
+    script,
+    {
+      origin: source?.origin === "api_key" ? "api" : "manual",
+      actorEmail: source?.actorEmail,
+      originDetail: source?.detail,
+    },
+    (current) => requester !== null && accountCanReachHost(deps.db, requester) && current.script === asked,
+  );
 }
 
 /** A due time that was not started, recorded so that it did not simply fail to happen. */
 function recordSkip(
   deps: AppDeps,
   target: ServiceTarget,
-  script: ScriptSpec,
+  script: StoredScript,
   source: RunSource,
   reason: Note,
 ): void {
@@ -569,19 +624,28 @@ function recordSkip(
  * A schedule or a hook asking for a run. The policy on an overlap is to skip: nothing starts, and the
  * skip goes on record, so a due time that finds the script still running never starts a second job.
  * It holds across a restart because it reads rows: a run left over from an earlier panel is still one.
+ *
+ * In a service that reaches the server, a script runs by itself only on the rights of the administrator
+ * who saved it last, for as long as they have them. Otherwise it is skipped the same way, with no
+ * Action, so that a schedule every minute does not fill the activity log or anyone's notifications.
  */
 export function startAutomaticRun(
   deps: AppDeps,
   target: ServiceTarget,
-  script: ScriptSpec,
+  script: StoredScript,
   source: RunSource,
 ): boolean {
+  const record = findService(deps.db, target.projectName, target.serviceName);
+  if (record !== undefined && reachesServer(record) && !savedByHostAdmin(deps, script)) {
+    recordSkip(deps, target, script, source, UNATTENDED_REFUSED);
+    return false;
+  }
   if (activeRunOf(deps.db, target, script.name) !== undefined) {
     recordSkip(deps, target, script, source, SKIPPED_OVERLAP);
     return false;
   }
   try {
-    enqueueRun(deps, target, script, source);
+    enqueueRun(deps, target, script, source, (current) => savedByHostAdmin(deps, current));
     return true;
   } catch (error) {
     // The service is being deleted, the panel is updating itself: the reason belongs in the history.

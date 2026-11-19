@@ -6,6 +6,7 @@
     "nameHint": "Lettres minuscules, chiffres et tirets.",
     "required": "Donnez un nom au projet.",
     "invalid": "Utilisez des lettres minuscules, des chiffres et des tirets, en commençant et finissant par une lettre ou un chiffre.",
+    "reserved": "Ce nom est réservé au serveur.",
     "submit": "Créer",
     "created": "Le projet {{name}} est prêt"
   },

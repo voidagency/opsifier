@@ -381,6 +381,8 @@ export interface VolumeInfo {
   mountpoint: string;
   labels: Record<string, string>;
   createdAt: string | null;
+  /** The driver's options it was made with. Left out by simulations that have none to report. */
+  options?: Record<string, string>;
 }
 
 export interface CreateVolumeOptions {
@@ -567,7 +569,18 @@ export interface ComposeContainerInfo {
   labels?: Record<string, string>;
   /** The networks it is attached to, by name. Left out by simulations that have none to report. */
   networks?: string[];
+  /**
+   * What it mounts with bind mounts: the host path, and whether the container may write there. Left out
+   * by simulations that have none to report.
+   */
+  binds?: Array<{ source: string; rw: boolean }>;
 }
+
+/**
+ * Marks a container the panel runs for itself and throws away: a helper, or a build's tool. One still
+ * there when the panel starts was left by the run before, and is removed.
+ */
+export const HELPER_LABEL = "opsifier.helper";
 
 export interface HelperOptions {
   image: string;

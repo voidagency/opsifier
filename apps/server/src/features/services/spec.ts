@@ -5,13 +5,13 @@ import {
   portSpec,
   redirectsSpec,
   resourcesSpec,
-  scriptSpec,
   storedBasicAuthEntry,
 } from "@opsifier/contract";
 import { z } from "zod";
 import { storedBox } from "../box/spec";
 import { storedCompose } from "../compose/spec";
 import { type StoredDatabase, storedDatabase } from "../databases/spec";
+import { storedScript } from "../service-tabs/scripts/stored";
 import { type StoredImageSource, storedBuildState, storedSource } from "../service-tabs/source/stored";
 import { storedReferences, storedTemplateRef } from "../templates/spec";
 
@@ -45,7 +45,7 @@ export const appServiceSpec = z.object({
   resources: resourcesSpec.prefault({}),
   mounts: z.array(mountSpec).default([]),
   ports: z.array(portSpec).default([]),
-  scripts: z.array(scriptSpec).default([]),
+  scripts: z.array(storedScript).default([]),
   /** Set on database services, which reuse every other field here. */
   database: storedDatabase.nullable().default(null),
   /** Set on Compose stacks, which reuse every other field here. */

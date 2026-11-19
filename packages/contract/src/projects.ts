@@ -5,8 +5,21 @@ import { serviceSummary } from "./services";
 
 export const projectPath = z.object({ project: projectName });
 
+/**
+ * Names no new project can take. The server keeps every version it deploys as an image under
+ * `opsifier/releases/`, where a project's own builds would go too. A project that took one before it
+ * was reserved keeps it, so only creating a project checks this, never `projectName`.
+ */
+export const reservedProjectNames: readonly string[] = ["releases"];
+
+export const isReservedProjectName = (name: string): boolean => reservedProjectNames.includes(name);
+
+export const RESERVED_PROJECT_NAME_MESSAGE = "This name is reserved";
+
 /** POST /api/v1/projects */
-export const createProjectRequest = z.object({ name: projectName });
+export const createProjectRequest = z.object({
+  name: projectName.refine((name) => !isReservedProjectName(name), RESERVED_PROJECT_NAME_MESSAGE),
+});
 export type CreateProjectRequest = z.infer<typeof createProjectRequest>;
 
 /** One project and its services. Environment variables are fetched separately. */

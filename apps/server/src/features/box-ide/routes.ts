@@ -19,7 +19,7 @@ import type { AppDeps, AppEnv, Feature } from "../../core/context";
 import { AppError, badRequest, conflict, forbidden, notFound, unauthorized } from "../../core/errors";
 import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
 import { boxWorkspaceDir, requireBox } from "../box/service";
-import { checkBoxIdeToken } from "../service-tabs/box-ide/service";
+import { checkBoxIdeToken, ideTaskReachesServer } from "../service-tabs/box-ide/service";
 import type { ServiceTarget } from "../services/service";
 import {
   createWorkspaceDirectory,
@@ -35,7 +35,12 @@ const PATH = "/api/v1/ide/{project}/{service}";
 const tags = ["Box IDE"];
 const invalid = errorResponse("The request failed validation.");
 const denied = errorResponse("No valid token for this IDE.");
-const refused = errorResponse("Refused: the path leaves the workspace, or goes through a symbolic link.");
+const refused = errorResponse(
+  "Refused: the path leaves the workspace or goes through a symbolic link, or the box reaches the server and the token's account is no longer an administrator.",
+);
+const reachRefused = errorResponse(
+  "The box reaches the server, and the account that issued this token is no longer an administrator.",
+);
 const missing = errorResponse("Nothing is at this path.");
 const clash = errorResponse("Something is already there, or the file changed since it was read.");
 
@@ -46,7 +51,12 @@ const sessionRoute = createRoute({
   description:
     "Checks a token and says what it opens. Every route here takes this IDE's own bearer token and nothing else.",
   request: { params: boxIdePath },
-  responses: { 200: jsonResponse(boxIdeSession, "What this token opens."), 400: invalid, 401: denied },
+  responses: {
+    200: jsonResponse(boxIdeSession, "What this token opens."),
+    400: invalid,
+    401: denied,
+    403: reachRefused,
+  },
 });
 
 const treeRoute = createRoute({
@@ -152,24 +162,25 @@ function ideGate(deps: AppDeps): MiddlewareHandler<AppEnv> {
       { key: `ide:${requestMeta(c, deps.config).ip}`, rule: deps.authLimits.idePerAddress },
     ]);
     const token = BEARER.exec(c.req.header("authorization") ?? "")?.[1];
-    const verdict =
-      token === undefined
-        ? "refused"
-        : checkBoxIdeToken(
-            deps,
-            { projectName: c.req.param("project") ?? "", serviceName: c.req.param("service") ?? "" },
-            token,
-          );
+    const where = { projectName: c.req.param("project") ?? "", serviceName: c.req.param("service") ?? "" };
+    const verdict = token === undefined ? "refused" : checkBoxIdeToken(deps, where, token);
     if (verdict === "expired") {
       throw unauthorized(
         "ide_token_expired",
         "This IDE token has expired. Issue a new one on the box's IDE tab.",
       );
     }
-    if (verdict !== "valid") {
+    if (verdict !== "valid" && verdict !== "reaches_server") {
       throw unauthorized("ide_unauthorized", REFUSED_MESSAGE);
     }
+    // The right token: only what it may open has changed since it was issued.
     attempt.refund();
+    if (verdict === "reaches_server" || (await ideTaskReachesServer(deps, where))) {
+      throw forbidden(
+        "service_reaches_server",
+        "This box reaches the server, so its IDE only opens with a token an administrator issued. Ask one for a new token.",
+      );
+    }
     return next();
   };
 }

@@ -202,6 +202,12 @@ describe("the install page", () => {
     expect(await screen.findByText("s3cret-value")).toBeTruthy();
   });
 
+  it("opens for an id that starts with an underscore or a dash, as generated ids may", async () => {
+    installFakeServer(base({ "GET /projects/shop/templates/_Uxzd67nolTG": install }));
+    renderApp("/projects/shop/installs/_Uxzd67nolTG");
+    expect(await screen.findByText("gotify")).toBeTruthy();
+  });
+
   it("explains a failure to load", async () => {
     installFakeServer(
       base({

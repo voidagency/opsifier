@@ -30,14 +30,19 @@ async function sizeOnDaemon(deps: Pick<AppDeps, "docker">, ref: string): Promise
   }
 }
 
-/** What pulling this image is expected to add to Docker's disk. */
-export async function imageDiskNeed(deps: Pick<AppDeps, "docker">, ref: string): Promise<DiskNeed> {
-  const size = await sizeOnDaemon(deps, ref);
+/**
+ * What pulling this image is expected to add to Docker's disk. Only the image the service itself last
+ * deployed is weighed: the log would otherwise tell anyone who names an image whether another project
+ * has it on this server, and how large it is.
+ */
+export async function imageDiskNeed(
+  deps: Pick<AppDeps, "docker">,
+  ref: string,
+  lastDeployed: string | null,
+): Promise<DiskNeed> {
+  const size = ref === lastDeployed ? await sizeOnDaemon(deps, ref) : null;
   return size === null
-    ? {
-        bytes: PULL_ALLOWANCE_BYTES,
-        basis: `an allowance for ${ref}, which is not on this server yet`,
-      }
+    ? { bytes: PULL_ALLOWANCE_BYTES, basis: `an allowance for ${ref}` }
     : {
         bytes: Math.ceil(size * CHANGED_LAYERS_RATIO),
         basis: `half of the ${formatSize(size)} that ${ref} takes on this server`,
@@ -54,28 +59,18 @@ export async function buildDiskNeed(deps: Pick<AppDeps, "docker">, target: Servi
     : { bytes: BUILD_ALLOWANCE_BYTES, basis: "an allowance for a build" };
 }
 
-/** Everything a stack's file asks for. Images nothing is known about share one allowance. */
+/**
+ * Everything a stack's file asks for: its images share one allowance, and its builds another. Images
+ * are not weighed by what the server holds under their names, which may be another project's.
+ */
 export async function stackDiskNeed(
-  deps: Pick<AppDeps, "docker">,
+  _deps: Pick<AppDeps, "docker">,
   children: ReadonlyArray<{ image?: unknown; build?: unknown }>,
 ): Promise<DiskNeed> {
-  let known = 0;
-  let unknownImages = false;
-  let builds = false;
-  for (const child of children) {
-    if (child.build !== undefined) {
-      builds = true;
-    } else if (typeof child.image === "string") {
-      const size = await sizeOnDaemon(deps, child.image);
-      if (size === null) {
-        unknownImages = true;
-      } else {
-        known += Math.ceil(size * CHANGED_LAYERS_RATIO);
-      }
-    }
-  }
+  const builds = children.some((child) => child.build !== undefined);
+  const images = children.some((child) => child.build === undefined && typeof child.image === "string");
   return {
-    bytes: known + (unknownImages ? PULL_ALLOWANCE_BYTES : 0) + (builds ? BUILD_ALLOWANCE_BYTES : 0),
+    bytes: (images ? PULL_ALLOWANCE_BYTES : 0) + (builds ? BUILD_ALLOWANCE_BYTES : 0),
     basis: `the ${children.length} service${children.length === 1 ? "" : "s"} in its Compose file`,
   };
 }

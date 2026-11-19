@@ -47,6 +47,21 @@ export const defaultAuthLimits: AuthLimits = {
   idePerAddress: { limit: 30, windowMs: FIFTEEN_MINUTES },
 };
 
+/**
+ * The second secret of a session opened over plain HTTP. The panel's pages send it with every call;
+ * a download or a page the browser opens by itself names it in the address instead.
+ */
+export const BINDING_HEADER = "x-opsifier-binding";
+export const BINDING_QUERY = "binding";
+
+function requestBinding(c: Context<AppEnv>): string | undefined {
+  const header = c.req.header(BINDING_HEADER);
+  if (header !== undefined) {
+    return header;
+  }
+  return c.req.method === "GET" || c.req.method === "HEAD" ? c.req.query(BINDING_QUERY) : undefined;
+}
+
 const BEARER = /^Bearer\s+(\S+)$/i;
 /** A session the command line received from `opsifier login --web`, sent the way an API key is. */
 const SESSION = /^Session\s+(\S+)$/i;
@@ -100,7 +115,7 @@ export function authenticate(
     if (authorization !== undefined) {
       const session = SESSION.exec(authorization)?.[1];
       if (session !== undefined) {
-        principal = findSessionPrincipal(deps.db, session, deps.now());
+        principal = findSessionPrincipal(deps.db, session, deps.now(), requestBinding(c));
         if (principal === null) {
           throw unauthorized(
             "invalid_session",
@@ -115,9 +130,12 @@ export function authenticate(
         }
       }
     } else {
-      const token = getCookie(c, sessionCookieName(requestScheme(c, deps.config)));
+      const scheme = requestScheme(c, deps.config);
+      const token = getCookie(c, sessionCookieName(scheme));
       if (token !== undefined) {
-        principal = findSessionPrincipal(deps.db, token, deps.now());
+        principal = findSessionPrincipal(deps.db, token, deps.now(), requestBinding(c), {
+          bound: scheme === "http",
+        });
       }
     }
 

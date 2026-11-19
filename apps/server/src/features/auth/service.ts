@@ -6,6 +6,7 @@ import {
   type CliLoginStart,
   type CliLoginStarted,
   type LoginRequest,
+  type OpenedSession,
   type SessionState,
   type SessionUser,
   type SetupRequest,
@@ -19,7 +20,6 @@ import {
   buildOtpauthUri,
   deleteOtherSessions,
   deleteSession,
-  deleteSessionByToken,
   ensureSetupToken,
   generateRecoveryCodes,
   generateTotpSecret,
@@ -59,7 +59,12 @@ import * as repo from "./repo";
 export interface SignedIn {
   token: string;
   persistent: boolean;
-  state: SessionState;
+  state: OpenedSession;
+}
+
+/** Given to the browser once, with the cookie, and never shown again. */
+export function bindingField(binding: string | null): { binding?: string } {
+  return binding === null ? {} : { binding };
 }
 
 type SessionPrincipal = Extract<Principal, { kind: "session" }>;
@@ -114,15 +119,23 @@ export function createAuthService(deps: AppDeps) {
     return rateLimiter.consume([{ key: `sensitive:${userId}`, rule: authLimits.sensitivePerUser }]);
   }
 
-  function openSession(handle: DbHandle, user: UserRow, persistent: boolean, meta: RequestMeta): string {
-    return insertSession(handle, {
+  /** A browser's session. Over plain HTTP it comes with the second secret its pages send back. */
+  function openSession(
+    handle: DbHandle,
+    user: UserRow,
+    persistent: boolean,
+    meta: RequestMeta,
+  ): { token: string; binding: string | null } {
+    const { token, binding } = insertSession(handle, {
       userId: user.id,
       persistent,
       secure: meta.secure,
+      bound: !meta.secure,
       ip: meta.ip === UNKNOWN_IP ? null : meta.ip,
       userAgent: meta.userAgent,
       now: now(),
-    }).token;
+    });
+    return { token, binding };
   }
 
   /**
@@ -225,8 +238,8 @@ export function createAuthService(deps: AppDeps) {
             createdAt: timestamp,
             updatedAt: timestamp,
           });
-          const token = openSession(tx, user, false, meta);
-          return { token, user };
+          const opened = openSession(tx, user, false, meta);
+          return { ...opened, user };
         },
         { behavior: "immediate" },
       );
@@ -246,8 +259,13 @@ export function createAuthService(deps: AppDeps) {
       return {
         token: signedIn.token,
         persistent: false,
-        // No rule can exist before the panel has its first account.
-        state: { status: "signed-in", user: toSessionUser(signedIn.user), twoFactorSetupRequired: false },
+        state: {
+          status: "signed-in",
+          user: toSessionUser(signedIn.user),
+          // No rule can exist before the panel has its first account.
+          twoFactorSetupRequired: false,
+          ...bindingField(signedIn.binding),
+        },
       };
     },
 
@@ -302,7 +320,7 @@ export function createAuthService(deps: AppDeps) {
         rateLimiter.rememberSignIn(email, meta.ip);
       }
       purgeExpiredSessions(db, now());
-      const token = openSession(db, user, input.rememberMe, meta);
+      const { token, binding } = openSession(db, user, input.rememberMe, meta);
       const signedIn = usedRecoveryCode ? "Signed in with a recovery code" : "Signed in";
       actions.record({
         type: "auth.login",
@@ -316,21 +334,12 @@ export function createAuthService(deps: AppDeps) {
           status: "signed-in",
           user: toSessionUser(user),
           twoFactorSetupRequired: needsTwoFactorSetup(db, user),
+          ...bindingField(binding),
         },
       };
     },
 
     /** Ends the session carried by the request. Safe to call with none. */
-    logout(sessionToken: string | undefined): void {
-      if (sessionToken === undefined) {
-        return;
-      }
-      const sessionId = deleteSessionByToken(db, sessionToken);
-      if (sessionId !== null) {
-        realtime.disconnectSessions([sessionId]);
-      }
-    },
-
     async changeCredentials(
       principal: SessionPrincipal,
       input: ChangeCredentialsRequest,

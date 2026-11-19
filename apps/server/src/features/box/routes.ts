@@ -10,6 +10,7 @@ import {
 import { requirePrincipal } from "../../core/auth";
 import type { Feature } from "../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
+import { requestAccess } from "../access/guard";
 import { listServiceRecords } from "../services/repo";
 import { installBoxSimulation } from "./fake";
 import { applyBoxPreset, createBox, getBoxDetail, refreshBoxDockerfiles } from "./service";
@@ -19,6 +20,9 @@ const invalid = errorResponse("The request failed validation.");
 const denied = errorResponse("Not signed in.");
 const missing = errorResponse("No such project or box.");
 const detail = jsonResponse(boxDetail, "This box's modules, processes, hooks and build history.");
+const reachRefused = errorResponse(
+  "The box reaches the server, and only an administrator can change what runs in it.",
+);
 
 const createBoxRoute = createRoute({
   method: "post",
@@ -51,7 +55,7 @@ const presetRoute = createRoute({
   description:
     "Replaces this box's modules, processes and hooks with a preset's. No file in its workspace is changed or removed: only files that don't exist yet are added. Takes effect at the next deploy.",
   request: { params: servicePath, body: jsonBody(applyBoxPresetRequest) },
-  responses: { 200: detail, 400: invalid, 401: denied, 404: missing },
+  responses: { 200: detail, 400: invalid, 401: denied, 403: reachRefused, 404: missing },
 });
 
 const target = (params: { project: string; service: string }) => ({
@@ -91,6 +95,7 @@ export const feature: Feature = {
           target(c.req.valid("param")),
           c.req.valid("json").preset,
           actorEmailOf(requirePrincipal(c)),
+          requestAccess(deps, c),
         ),
         200,
       ),

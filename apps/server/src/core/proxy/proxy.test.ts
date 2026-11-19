@@ -9,6 +9,7 @@ import {
   BAD_GATEWAY_MIDDLEWARE,
   BASE_FILE,
   InvalidProxyInputError,
+  PANEL_ROUTER_PRIORITY,
   ProxyFiles,
   renderBaseConfig,
   STOPPED_MIDDLEWARE,
@@ -96,6 +97,26 @@ describe("the base configuration", () => {
     expect(config.http.services["opsifier-panel"].loadBalancer.servers).toEqual([
       { url: "http://host.docker.internal:3202" },
     ]);
+  });
+
+  it("ranks the panel's own routers above any service's route on the same name", () => {
+    const config = parse(
+      renderBaseConfig({
+        panelHost: "panel.example.com",
+        wildcardCertificateHosts: ["panel.abc.opsifier.dev"],
+      }),
+    );
+
+    for (const name of [
+      "opsifier-panel",
+      "opsifier-panel-http",
+      "opsifier-panel-address",
+      "opsifier-panel-address-http",
+    ]) {
+      expect(config.http.routers[name]?.priority, name).toBe(PANEL_ROUTER_PRIORITY);
+    }
+    // Below the routes that answer robots.txt on every host.
+    expect(PANEL_ROUTER_PRIORITY).toBeLessThan(1_000_000);
   });
 
   it("routes the panel's host to the panel over HTTPS, and redirects HTTP", () => {

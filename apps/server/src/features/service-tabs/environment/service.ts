@@ -2,6 +2,8 @@ import type { BuildEnvironment, SaveServiceEnvironment, ServiceEnvironment } fro
 import { MAX_BUILD_SECRETS, parseEnvText } from "@opsifier/contract";
 import type { AppDeps } from "../../../core/context";
 import { badRequest, conflict, notFound } from "../../../core/errors";
+import { requireHostAccessFor } from "../../access/guard";
+import type { Access } from "../../access/rules";
 import {
   BUILD_SECRET_CONTEXT,
   envNames,
@@ -53,8 +55,11 @@ export function saveEnvironment(
   target: ServiceTarget,
   changes: SaveServiceEnvironment,
   actorEmail: string | undefined,
+  access: Access,
 ): ServiceEnvironment {
-  const { spec } = requireService(deps, target);
+  const record = requireService(deps, target);
+  requireHostAccessFor(access, record);
+  const { spec } = record;
   const before = openEnv(deps, spec.sealedEnv);
   const env = changes.env ?? before;
   const envInterpolation = changes.interpolation ?? spec.envInterpolation;
@@ -124,13 +129,20 @@ function assertNotReserved(names: readonly string[], field: string): void {
   }
 }
 
+/** What a build is given shapes the image, so it is held to the same rule as the service's variables. */
+function requireBuildInputs(deps: AppDeps, target: ServiceTarget, access: Access): ServiceRecord {
+  requireHostAccessFor(access, requireService(deps, target));
+  return requireBuildable(deps, target);
+}
+
 export function saveBuildVariables(
   deps: AppDeps,
   target: ServiceTarget,
   env: string,
   actorEmail: string | undefined,
+  access: Access,
 ): BuildEnvironment {
-  const record = requireBuildable(deps, target);
+  const record = requireBuildInputs(deps, target, access);
   const { build } = record.spec;
   assertNotReserved(envNames(env), "env");
   const held = envNames(env).find((name) => build.secrets[name] !== undefined);
@@ -162,8 +174,9 @@ export function saveBuildSecret(
   name: string,
   value: string,
   actorEmail: string | undefined,
+  access: Access,
 ): BuildEnvironment {
-  const record = requireBuildable(deps, target);
+  const record = requireBuildInputs(deps, target, access);
   const { build } = record.spec;
   assertNotReserved([name], "name");
   if (envNames(openEnv(deps, build.sealedVariables)).includes(name)) {
@@ -202,8 +215,9 @@ export function deleteBuildSecret(
   target: ServiceTarget,
   name: string,
   actorEmail: string | undefined,
+  access: Access,
 ): BuildEnvironment {
-  const record = requireBuildable(deps, target);
+  const record = requireBuildInputs(deps, target, access);
   const { build } = record.spec;
   const secret = build.secrets[name];
   if (secret === undefined) {
@@ -232,8 +246,9 @@ export function stopInheritingRuntime(
   deps: AppDeps,
   target: ServiceTarget,
   actorEmail: string | undefined,
+  access: Access,
 ): BuildEnvironment {
-  const record = requireBuildable(deps, target);
+  const record = requireBuildInputs(deps, target, access);
   saveServiceSpec(
     deps.db,
     target.projectName,

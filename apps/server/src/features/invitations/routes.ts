@@ -7,9 +7,9 @@ import {
   invitationList,
   invitationPath,
   invitationPreview,
+  openedSession,
   resendInvitationRequest,
   resentInvitation,
-  sessionState,
 } from "@opsifier/contract";
 import type { Context } from "hono";
 import { requestMeta, requestScheme, requireSessionPrincipal, setSessionCookie } from "../../core/auth";
@@ -129,7 +129,10 @@ const acceptRoute = createRoute({
     "Creates the account with the name and password given, uses the link up and signs the account in.",
   request: { body: jsonBody(acceptInvitationRequest) },
   responses: {
-    201: jsonResponse(sessionState, "The session of the new account."),
+    201: jsonResponse(
+      openedSession,
+      "The session of the new account, and over plain HTTP its second secret.",
+    ),
     400: invalid,
     404: unusable,
     409: errorResponse("The address has an account already."),

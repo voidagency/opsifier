@@ -31,7 +31,8 @@ export const installsQuery = (project: string) =>
 export const installQuery = (project: string, install: string) =>
   queryOptions({
     queryKey: [...installsKey(project), install] as const,
-    queryFn: ({ signal }) => api.get(`${base(project)}/${install}`, { schema: templateInstall, signal }),
+    queryFn: ({ signal }) =>
+      api.get(`${base(project)}/${encodeURIComponent(install)}`, { schema: templateInstall, signal }),
     staleTime: 0,
   });
 
@@ -41,11 +42,11 @@ export const templatesApi = {
   install: (project: string, body: InstallTemplateRequest) =>
     api.post(base(project), { body, schema: templateInstall }),
   deploy: (project: string, install: string, body: DeployTemplateRequest) =>
-    api.post(`${base(project)}/${install}/deploy`, { body, schema: actionEntry }),
+    api.post(`${base(project)}/${encodeURIComponent(install)}/deploy`, { body, schema: actionEntry }),
   remove: (project: string, install: string, confirm: string) =>
-    api.delete(`${base(project)}/${install}`, { body: { confirm }, schema: actionEntry }),
+    api.delete(`${base(project)}/${encodeURIComponent(install)}`, { body: { confirm }, schema: actionEntry }),
   reveal: (project: string, install: string, service: string, name: string) =>
-    api.post(`${base(project)}/${install}/secrets/reveal`, {
+    api.post(`${base(project)}/${encodeURIComponent(install)}/secrets/reveal`, {
       body: { service, name },
       schema: revealedTemplateSecret,
     }),

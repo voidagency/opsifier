@@ -677,6 +677,27 @@ describe("a Studio project", () => {
     );
   });
 
+  it("ignores an address that names no conversation, and sends to the one shown", async () => {
+    const server = installFakeServer(
+      base({ [`POST ${APP}/conversations/${CONVERSATION}/messages`]: conversation }),
+    );
+    // A link that would turn the next message into a request to another route.
+    renderApp(
+      "/studio/lovable/cd-studio-preview?c=..%2F..%2F..%2F..%2F..%2F..%2Fprojects%2Fprod%2Fservices%2Fdb%2Fstop%3F",
+    );
+    await screen.findByText("Change le titre");
+
+    fireEvent.change(screen.getByLabelText("Message to the agent"), { target: { value: "Bonjour" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(server.calls.find((call) => call.path.endsWith("/messages"))?.path).toBe(
+        `${APP}/conversations/${CONVERSATION}/messages`,
+      ),
+    );
+    expect(server.calls.some((call) => call.path.includes("/stop"))).toBe(false);
+  });
+
   it("offers a few first requests for a new conversation", async () => {
     const started = { ...conversation, id: "c0ffee00-0000-4000-8000-000000000004", title: null };
     const server = installFakeServer(

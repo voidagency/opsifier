@@ -17,6 +17,8 @@ import {
 } from "@opsifier/contract";
 import type { AppDeps } from "../../core/context";
 import { badRequest, conflict, notFound } from "../../core/errors";
+import { requireHostAccessFor, requireHostAccessNow } from "../access/guard";
+import type { Access } from "../access/rules";
 import { seedWorkspaceFiles } from "../box-ide/confined";
 import { assignDefaultDomain } from "../service-tabs/domains/service";
 import { assertNameFreeInDocker } from "../services/ownership";
@@ -187,18 +189,47 @@ export async function createBox(
   return getServiceDetail(deps, target);
 }
 
-export function saveBoxModules(deps: AppDeps, target: ServiceTarget, modules: BoxModulesConfig): BoxDetail {
+/** What a box builds and starts is what runs in it, so in one that reaches the server it is an administrator's. */
+export function requireBoxControl(
+  deps: Pick<AppDeps, "db">,
+  target: ServiceTarget,
+  access: Access,
+): BoxRecord {
+  const record = requireBox(deps, target);
+  requireHostAccessFor(access, record);
+  return record;
+}
+
+export function saveBoxModules(
+  deps: AppDeps,
+  target: ServiceTarget,
+  modules: BoxModulesConfig,
+  access: Access,
+): BoxDetail {
+  requireBoxControl(deps, target, access);
   assertModulesSupported(modules);
   saveBox(deps, target, (box) => ({ ...box, modules }));
   return getBoxDetail(deps, target);
 }
 
-export function saveBoxProcesses(deps: AppDeps, target: ServiceTarget, processes: BoxProcess[]): BoxDetail {
+export function saveBoxProcesses(
+  deps: AppDeps,
+  target: ServiceTarget,
+  processes: BoxProcess[],
+  access: Access,
+): BoxDetail {
+  requireBoxControl(deps, target, access);
   saveBox(deps, target, (box) => ({ ...box, processes }));
   return getBoxDetail(deps, target);
 }
 
-export function saveBoxHooks(deps: AppDeps, target: ServiceTarget, hooks: BoxHooks): BoxDetail {
+export function saveBoxHooks(
+  deps: AppDeps,
+  target: ServiceTarget,
+  hooks: BoxHooks,
+  access: Access,
+): BoxDetail {
+  requireBoxControl(deps, target, access);
   saveBox(deps, target, (box) => ({ ...box, hooks }));
   return getBoxDetail(deps, target);
 }
@@ -212,8 +243,10 @@ export async function applyBoxPreset(
   target: ServiceTarget,
   presetId: BoxPresetId,
   actorEmail: string | undefined,
+  access: Access,
 ): Promise<BoxDetail> {
-  requireBox(deps, target);
+  // Its starter files land in the workspace the running task reads at once, not at the next deploy.
+  await requireHostAccessNow(deps, access, target, requireBox(deps, target));
   const preset = boxPreset(presetId);
   const directory = await ensureWorkspace(deps, target);
   const added = await seedWorkspaceFiles(directory, preset.starterFiles);

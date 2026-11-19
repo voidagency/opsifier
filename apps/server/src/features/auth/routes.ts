@@ -11,6 +11,7 @@ import {
   cliLoginStart,
   cliLoginStarted,
   loginRequest,
+  openedSession,
   sessionState,
   setupRequest,
   twoFactorBegin,
@@ -19,14 +20,11 @@ import {
   twoFactorEnabled,
   twoFactorSetup,
 } from "@opsifier/contract";
-import { getCookie } from "hono/cookie";
 import {
   clearSessionCookie,
   prepareDecoyHash,
   requestMeta,
-  requestScheme,
   requireSessionPrincipal,
-  sessionCookieName,
   setSessionCookie,
 } from "../../core/auth";
 import type { Feature } from "../../core/context";
@@ -37,6 +35,7 @@ const PREFIX = "/api/v1/auth";
 const tags = ["Authentication"];
 
 const stateResponse = jsonResponse(sessionState, "The session after this request.");
+const openedResponse = jsonResponse(openedSession, "The new session, and over plain HTTP its second secret.");
 const invalid = errorResponse("The request failed validation.");
 const denied = errorResponse("Not signed in.");
 const rateLimited = errorResponse("Too many attempts.");
@@ -56,7 +55,7 @@ const setupRoute = createRoute({
   security: [],
   request: { body: jsonBody(setupRequest) },
   responses: {
-    201: stateResponse,
+    201: openedResponse,
     400: invalid,
     403: errorResponse("The setup code is not the one this server issued."),
     409: errorResponse("A user already exists."),
@@ -71,7 +70,7 @@ const loginRoute = createRoute({
   security: [],
   request: { body: jsonBody(loginRequest) },
   responses: {
-    200: stateResponse,
+    200: openedResponse,
     400: invalid,
     401: errorResponse("Wrong credentials, or `two_factor_required` when a code is needed."),
     429: rateLimited,
@@ -257,12 +256,10 @@ export const feature: Feature = {
 
     app.openapi(logoutRoute, (c) => {
       const principal = c.get("principal");
-      const cookie = getCookie(c, sessionCookieName(requestScheme(c, deps.config)));
-      if (cookie === undefined && principal?.kind === "session") {
-        // The command line's session, sent in a header.
+      // Only the session this request opens ends, the command line's included: a cookie caught on
+      // another port of the server, without the page's second secret, opens nothing and ends nothing.
+      if (principal?.kind === "session") {
         service.endSession(principal.sessionId);
-      } else {
-        service.logout(cookie);
       }
       clearSessionCookie(c, deps.config);
       return c.json({ status: "signed-out" as const }, 200);

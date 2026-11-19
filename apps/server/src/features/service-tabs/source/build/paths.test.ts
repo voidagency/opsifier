@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { assertDirectory, assertFile, resolveInside, SourcePathError } from "./paths";
+import { assertDirectory, assertFile, exactPath, resolveInside, SourcePathError } from "./paths";
 
 let root: string;
 let code: string;
@@ -21,7 +21,40 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
+describe("exactPath", () => {
+  it("gives a path as text only when the text is exactly its bytes, with no control character", () => {
+    expect(exactPath(Buffer.from("/data/code/caf\u00e9/\ufffd"))).toBe("/data/code/caf\u00e9/\ufffd");
+    expect(exactPath(Buffer.from([0x2f, 0x70, 0xff]))).toBeNull();
+    // An overlong `/`, which a lenient reader would take for one.
+    expect(exactPath(Buffer.from([0x2f, 0xc0, 0xaf]))).toBeNull();
+    expect(exactPath(Buffer.from("/a\r\nb"))).toBeNull();
+    expect(exactPath(Buffer.from("/a\u0000b"))).toBeNull();
+    expect(exactPath(Buffer.from("/a\u007fb"))).toBeNull();
+  });
+});
+
 describe("resolveInside", () => {
+  it("refuses a path through a name with a line break, which the mount's CSV reader would change", async () => {
+    mkdirSync(join(code, "x\r\ny"));
+    symlinkSync("x\r\ny", join(code, "app"));
+    await expect(resolveInside(code, "app", "The build path")).rejects.toThrow(/control character/);
+  });
+
+  // Only Linux keeps a name that is not UTF-8: macOS refuses to make one.
+  it.runIf(process.platform === "linux")(
+    "refuses a path through a name that is not UTF-8, which reads back as another entry's name",
+    async () => {
+      const bytes = (path: string, ...tail: number[]) =>
+        Buffer.concat([Buffer.from(path), Buffer.from(tail)]);
+      mkdirSync(bytes(join(code, "p"), 0xff));
+      // The name the first one reads back as, a link out of the source.
+      symlinkSync(join(root, "outside"), join(code, "p\ufffd"));
+      symlinkSync(bytes("p", 0xff), join(code, "app"));
+
+      await expect(resolveInside(code, "app", "The build path")).rejects.toThrow(/not plain UTF-8/);
+    },
+  );
+
   it("resolves paths that stay inside", async () => {
     await expect(resolveInside(code, "", "The build path")).resolves.toMatch(/code$/);
     await expect(resolveInside(code, "apps/web", "The build path")).resolves.toMatch(/apps\/web$/);

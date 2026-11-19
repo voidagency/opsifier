@@ -10,6 +10,8 @@ import { toActionEntry } from "../../../core/actions";
 import { requirePrincipal } from "../../../core/auth";
 import type { Feature } from "../../../core/context";
 import { errorResponse, jsonResponse } from "../../../core/openapi";
+import { requestAccess, requireHostAccessNow } from "../../access/guard";
+import { requireService } from "../../services/service";
 import {
   enqueueDisableCompanion,
   enqueueEnableCompanion,
@@ -43,7 +45,14 @@ const enableRoute = createRoute({
   path: `${BASE}/{tool}`,
   tags,
   request: { params: companionPath },
-  responses: { 202: accepted, 400: invalid, 401: denied, 404: missing, 409: refused },
+  responses: {
+    202: accepted,
+    400: invalid,
+    401: denied,
+    403: errorResponse("The database reaches the server, and only an administrator can reach its superuser."),
+    404: missing,
+    409: refused,
+  },
 });
 
 const disableRoute = createRoute({
@@ -64,6 +73,7 @@ const revealRoute = createRoute({
     200: jsonResponse(revealedCompanionToken, "The access token."),
     400: invalid,
     401: denied,
+    403: errorResponse("The database reaches the server, and only an administrator can reach its superuser."),
     404: missing,
     409: refused,
   },
@@ -82,8 +92,15 @@ export const feature: Feature = {
       c.json({ companions: listCompanions(deps, target(c.req.valid("param"))) }, 200),
     );
 
-    app.openapi(enableRoute, (c) => {
+    app.openapi(enableRoute, async (c) => {
       const params = c.req.valid("param");
+      // A tool signs in to the database as its superuser, which can run programs in its container.
+      await requireHostAccessNow(
+        deps,
+        requestAccess(deps, c),
+        target(params),
+        requireService(deps, target(params)),
+      );
       return c.json(
         toActionEntry(
           enqueueEnableCompanion(deps, target(params), params.tool, auditEmail(requirePrincipal(c))),
@@ -102,8 +119,14 @@ export const feature: Feature = {
       );
     });
 
-    app.openapi(revealRoute, (c) => {
+    app.openapi(revealRoute, async (c) => {
       const params = c.req.valid("param");
+      await requireHostAccessNow(
+        deps,
+        requestAccess(deps, c),
+        target(params),
+        requireService(deps, target(params)),
+      );
       c.header("Cache-Control", "no-store");
       return c.json(
         revealCompanionToken(deps, target(params), params.tool, auditEmail(requirePrincipal(c))),

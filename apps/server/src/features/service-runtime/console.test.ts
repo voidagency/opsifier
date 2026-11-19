@@ -10,13 +10,16 @@ import {
   apiErrorOf,
   call,
   createTestContext,
+  credentialsOf,
   setupAdmin,
+  socketHandshake,
   TEST_EMAIL,
   TEST_ORIGIN,
   type TestContext,
 } from "../../testing/harness";
+import { reachesServer } from "../services/reach";
 import { putSetting } from "../system/repo";
-import { consoleCommand, reachesServer } from "./console";
+import { consoleCommand } from "./console";
 
 const SERVICE = "/api/v1/projects/shop/services/web";
 
@@ -65,8 +68,9 @@ function open(
   headers: Record<string, string> = {},
   path = "/api/v1/terminal/shop/web",
 ): WebSocket {
-  const socket = new WebSocket(`ws://127.0.0.1:${port}${path}?${query}`, {
-    headers: { Origin: origin(), Cookie: cookie, ...headers },
+  const handshake = socketHandshake({ Origin: origin(), Cookie: cookie, ...headers });
+  const socket = new WebSocket(`ws://127.0.0.1:${port}${path}?${query}`, handshake.protocols, {
+    headers: handshake.headers,
   });
   socket.on("error", () => {});
   sockets.push(socket);
@@ -145,15 +149,16 @@ async function addMember(id = "member-1", email = "member@example.com"): Promise
       updatedAt: now,
     })
     .run();
-  const { token } = insertSession(context.deps.db, {
+  const { token, binding } = insertSession(context.deps.db, {
     userId: id,
     persistent: false,
     secure: false,
+    bound: true,
     ip: null,
     userAgent: null,
     now: context.deps.now(),
   });
-  return `opsifier_session=${token}`;
+  return credentialsOf(`opsifier_session=${token}`, binding);
 }
 
 beforeEach(async () => {

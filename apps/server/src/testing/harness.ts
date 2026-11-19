@@ -4,10 +4,11 @@ import { join } from "node:path";
 import { type HttpBindings, serve } from "@hono/node-server";
 import type { ApiError, SessionState, TwoFactorEnabled, TwoFactorSetup } from "@opsifier/contract";
 import { TOTP } from "otpauth";
-import { type AuthLimits, defaultAuthLimits } from "../core/auth";
+import { type AuthLimits, BINDING_HEADER, defaultAuthLimits } from "../core/auth";
 import { loadConfig } from "../core/config";
 import type { ApiApp, AppDeps } from "../core/context";
 import { FakeDriver, type RolloutTiming } from "../core/docker";
+import { BINDING_PROTOCOL_PREFIX, PANEL_PROTOCOL } from "../core/realtime";
 import { seedProtection } from "../features/server-purpose/repo";
 import { createRuntime, type Runtime } from "../runtime";
 
@@ -108,6 +109,72 @@ export async function createTestContext(options: TestContextOptions = {}): Promi
   };
 }
 
+/**
+ * Not a cookie: how a test keeps a session's second secret next to its cookie. Every test request
+ * goes over plain HTTP, so every session a test opens through the API has one, and `call` sends it
+ * the way the panel's pages do.
+ */
+const BINDING_PAIR = "test-binding=";
+
+/** A session's credentials as tests keep them, for one a test opens itself with `insertSession`. */
+export function credentialsOf(cookie: string, binding: string | null): string {
+  return binding === null ? cookie : `${cookie}; ${BINDING_PAIR}${binding}`;
+}
+
+/** The session cookie and the second secret a test's credentials hold. */
+export function splitCredentials(credentials: string): { cookie: string; binding: string | undefined } {
+  const pairs = credentials.split(/;\s*/);
+  return {
+    cookie: pairs.filter((pair) => !pair.startsWith(BINDING_PAIR)).join("; "),
+    binding: pairs.find((pair) => pair.startsWith(BINDING_PAIR))?.slice(BINDING_PAIR.length),
+  };
+}
+
+/** The headers a page of the panel sends with these credentials, for a test that builds its own request. */
+export function credentialHeaders(credentials: string): Record<string, string> {
+  const { cookie, binding } = splitCredentials(credentials);
+  return binding === undefined ? { cookie } : { cookie, [BINDING_HEADER]: binding };
+}
+
+/**
+ * A link the browser opens by itself, a download, as the panel's pages write it: the session's second
+ * secret in the address, and the cookie on its own.
+ */
+export function browserLink(
+  url: string,
+  credentials: string,
+): { url: string; headers: Record<string, string> } {
+  const { cookie, binding } = splitCredentials(credentials);
+  if (binding === undefined) {
+    return { url, headers: { cookie } };
+  }
+  const separator = url.includes("?") ? "&" : "?";
+  return { url: `${url}${separator}binding=${encodeURIComponent(binding)}`, headers: { cookie } };
+}
+
+/**
+ * What a page of the panel sends when it opens a WebSocket with these headers: the session cookie,
+ * and the session's second secret as a subprotocol.
+ */
+export function socketHandshake(headers: Record<string, string>): {
+  protocols: string[];
+  headers: Record<string, string>;
+} {
+  const { Cookie: credentials, ...rest } = headers;
+  const { cookie, binding } = splitCredentials(credentials ?? "");
+  return {
+    protocols: binding === undefined ? [] : [PANEL_PROTOCOL, `${BINDING_PROTOCOL_PREFIX}${binding}`],
+    headers: cookie === "" ? rest : { ...rest, Cookie: cookie },
+  };
+}
+
+function bindingOf(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null || !("binding" in body)) {
+    return undefined;
+  }
+  return typeof body.binding === "string" ? body.binding : undefined;
+}
+
 export interface CallOptions {
   method?: string;
   body?: unknown;
@@ -123,7 +190,10 @@ export interface CallResult<T> {
   status: number;
   body: T;
   headers: Headers;
-  /** `name=value` from Set-Cookie, ready to send back. */
+  /**
+   * `name=value` from Set-Cookie, ready to send back, followed by the second secret when the answer
+   * opened a session over plain HTTP.
+   */
   cookie: string | undefined;
   setCookie: string | null;
 }
@@ -141,7 +211,13 @@ export async function call<T = unknown>(
     headers.set("content-type", "application/json");
   }
   if (options.cookie !== undefined) {
-    headers.set("cookie", options.cookie);
+    const { cookie, binding } = splitCredentials(options.cookie);
+    if (cookie !== "") {
+      headers.set("cookie", cookie);
+    }
+    if (binding !== undefined && !headers.has(BINDING_HEADER)) {
+      headers.set(BINDING_HEADER, binding);
+    }
   }
   if (options.origin !== undefined) {
     headers.set("origin", options.origin);
@@ -168,11 +244,13 @@ export async function call<T = unknown>(
   }
 
   const setCookie = response.headers.get("set-cookie");
+  const cookie = setCookie?.split(";", 1)[0];
+  const binding = bindingOf(body);
   return {
     status: response.status,
     body: body as T,
     headers: response.headers,
-    cookie: setCookie?.split(";", 1)[0],
+    cookie: cookie === undefined || binding === undefined ? cookie : `${cookie}; ${BINDING_PAIR}${binding}`,
     setCookie,
   };
 }

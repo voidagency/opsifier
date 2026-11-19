@@ -2,10 +2,24 @@ import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
-import { authPost, createTestContext, setupAdmin, type TestContext } from "../../testing/harness";
+import {
+  authPost,
+  createTestContext,
+  credentialsOf,
+  setupAdmin,
+  socketHandshake,
+  splitCredentials,
+  type TestContext,
+} from "../../testing/harness";
 import { insertSession, SECURE_SESSION_COOKIE, SESSION_COOKIE, SESSION_TTL_MS } from "../auth";
 import { users } from "../db/schema";
-import { CLOSE_SESSION_ENDED, REALTIME_PATH, RealtimeHub } from "./index";
+import {
+  BINDING_PROTOCOL_PREFIX,
+  CLOSE_SESSION_ENDED,
+  PANEL_PROTOCOL,
+  REALTIME_PATH,
+  RealtimeHub,
+} from "./index";
 
 let context: TestContext;
 let server: ReturnType<typeof serve>;
@@ -24,8 +38,12 @@ function origin(): string {
   return `http://127.0.0.1:${port}`;
 }
 
+/** Opens a socket the way the panel's pages do: a session's second secret goes as a subprotocol. */
 function open(headers: Record<string, string>, path: string = REALTIME_PATH): WebSocket {
-  const socket = new WebSocket(`ws://127.0.0.1:${port}${path}`, { headers });
+  const handshake = socketHandshake(headers);
+  const socket = new WebSocket(`ws://127.0.0.1:${port}${path}`, handshake.protocols, {
+    headers: handshake.headers,
+  });
   // Terminating a socket whose upgrade was refused reports an error we do not care about.
   socket.on("error", () => {});
   sockets.push(socket);
@@ -96,11 +114,21 @@ describe("authentication at upgrade", () => {
     expect(await outcome(open({ Origin: origin() }))).toBe(401);
   });
 
-  it("refuses an invalid session token", async () => {
-    expect(await outcome(open({ Origin: origin(), Cookie: `opsifier_session=${"x".repeat(43)}` }))).toBe(401);
+  it("refuses the cookie of a plain-HTTP session without its second secret, or with another", async () => {
+    const { cookie: alone } = splitCredentials(cookie);
+    expect(await outcome(open({ Origin: origin(), Cookie: alone }))).toBe(401);
+
+    const forged = new WebSocket(
+      `ws://127.0.0.1:${port}${REALTIME_PATH}`,
+      [PANEL_PROTOCOL, `${BINDING_PROTOCOL_PREFIX}${"A".repeat(43)}`],
+      { headers: { Origin: origin(), Cookie: alone } },
+    );
+    forged.on("error", () => {});
+    sockets.push(forged);
+    expect(await outcome(forged)).toBe(401);
   });
 
-  it("refuses an expired session", async () => {
+  it("opens only a session that has the second secret from the plain-HTTP cookie", async () => {
     const [user] = context.deps.db.select().from(users).all();
     const { token } = insertSession(context.deps.db, {
       userId: user?.id as string,
@@ -108,9 +136,34 @@ describe("authentication at upgrade", () => {
       secure: false,
       ip: null,
       userAgent: null,
-      now: context.deps.now() - 48 * 60 * 60 * 1000,
+      now: context.deps.now(),
     });
     expect(await outcome(open({ Origin: origin(), Cookie: `opsifier_session=${token}` }))).toBe(401);
+  });
+
+  it("answers with the panel's own subprotocol, never with the secret", async () => {
+    const socket = await connect();
+    expect(socket.protocol).toBe(PANEL_PROTOCOL);
+  });
+
+  it("refuses an invalid session token", async () => {
+    expect(await outcome(open({ Origin: origin(), Cookie: `opsifier_session=${"x".repeat(43)}` }))).toBe(401);
+  });
+
+  it("refuses an expired session", async () => {
+    const [user] = context.deps.db.select().from(users).all();
+    // With its second secret, so that only the expiry can refuse it.
+    const { token, binding } = insertSession(context.deps.db, {
+      userId: user?.id as string,
+      persistent: false,
+      secure: false,
+      bound: true,
+      ip: null,
+      userAgent: null,
+      now: context.deps.now() - 48 * 60 * 60 * 1000,
+    });
+    const expired = credentialsOf(`opsifier_session=${token}`, binding);
+    expect(await outcome(open({ Origin: origin(), Cookie: expired }))).toBe(401);
   });
 
   it("refuses another origin even with a valid cookie", async () => {
@@ -137,8 +190,9 @@ describe("authentication at upgrade", () => {
 
     const openProxied = (headers: Record<string, string>) => {
       const address = proxiedServer.address() as AddressInfo;
-      const socket = new WebSocket(`ws://127.0.0.1:${address.port}${REALTIME_PATH}`, {
-        headers: { Host: secureHost, "X-Forwarded-Proto": "https", ...headers },
+      const handshake = socketHandshake({ Host: secureHost, "X-Forwarded-Proto": "https", ...headers });
+      const socket = new WebSocket(`ws://127.0.0.1:${address.port}${REALTIME_PATH}`, handshake.protocols, {
+        headers: handshake.headers,
       });
       socket.on("error", () => {});
       sockets.push(socket);
@@ -219,8 +273,9 @@ describe("authentication at upgrade", () => {
     hub.attach(other);
     const otherPort = (other.address() as AddressInfo).port;
 
-    const socket = new WebSocket(`ws://127.0.0.1:${otherPort}${REALTIME_PATH}`, {
-      headers: { Origin: `http://127.0.0.1:${otherPort}`, Cookie: cookie },
+    const handshake = socketHandshake({ Origin: `http://127.0.0.1:${otherPort}`, Cookie: cookie });
+    const socket = new WebSocket(`ws://127.0.0.1:${otherPort}${REALTIME_PATH}`, handshake.protocols, {
+      headers: handshake.headers,
     });
     sockets.push(socket);
     expect(await outcome(socket)).toBe(101);

@@ -83,7 +83,8 @@
     "console_output": "Run from the console: its output went to the terminal and was not kept.",
     "console_closed": "Run from the console: the session was closed while it was running.",
     "skipped_overlap": "Not started: the previous run of this script was still in progress.",
-    "skipped_refused": "Not started: {{message}}"
+    "skipped_refused": "Not started: {{message}}",
+    "reaches_server": "Its task reaches the server through a path on the host or an added capability. There, only a run an administrator starts, or a script an administrator saved last, may run."
   },
   "dialog": {
     "createTitle": "Add a script",

@@ -25,6 +25,7 @@ import { actions, apiTokens, projectMembers, users } from "../../core/db/schema"
 import {
   apiErrorOf,
   authPost,
+  browserLink,
   call,
   createTestContext,
   setupAdmin,
@@ -626,7 +627,8 @@ describe("per-project access", () => {
         { project: "secret", role: "operator" },
       ]);
 
-      const allowed = await request(urlOf("shop", id), { cookie: owner.cookie });
+      const link = browserLink(urlOf("shop", id), owner.cookie);
+      const allowed = await request(link.url, link.headers);
       expect(allowed.status).toBe(200);
       expect(Buffer.from(await allowed.arrayBuffer()).equals(contents)).toBe(true);
 

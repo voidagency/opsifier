@@ -9,6 +9,7 @@ import {
 import { requirePrincipal } from "../../../core/auth";
 import type { Feature } from "../../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../../core/openapi";
+import { requestAccess } from "../../access/guard";
 import { getBoxIdeStatus, issueBoxIdeToken, revokeBoxIdeToken, setBoxIdeEnabled } from "./service";
 
 const PATH = "/api/v1/projects/{project}/services/{service}/box/ide";
@@ -16,6 +17,9 @@ const tags = ["Box"];
 const invalid = errorResponse("The request failed validation.");
 const denied = errorResponse("Not signed in.");
 const missing = errorResponse("No such box.");
+const reachRefused = errorResponse(
+  "The box reaches the server, and only an administrator can open its workspace to an editor.",
+);
 const status = jsonResponse(
   boxIdeStatus,
   "Whether the IDE can be reached, and what is known about its token.",
@@ -36,7 +40,7 @@ const putRoute = createRoute({
   description:
     "Turns the IDE on or off. Turning it off ends the token: nothing can get in until a new one is issued.",
   request: { params: servicePath, body: jsonBody(saveBoxIdeRequest) },
-  responses: { 200: status, 400: invalid, 401: denied, 404: missing },
+  responses: { 200: status, 400: invalid, 401: denied, 403: reachRefused, 404: missing },
 });
 
 const issueRoute = createRoute({
@@ -50,6 +54,7 @@ const issueRoute = createRoute({
     200: jsonResponse(issuedBoxIdeToken, "The new token, shown once."),
     400: invalid,
     401: denied,
+    403: reachRefused,
     404: missing,
   },
 });
@@ -73,23 +78,30 @@ export const feature: Feature = {
   register(app, deps) {
     app.openapi(getRoute, (c) => c.json(getBoxIdeStatus(deps, target(c.req.valid("param"))), 200));
 
-    app.openapi(putRoute, (c) => {
+    app.openapi(putRoute, async (c) => {
       const { user } = requirePrincipal(c);
       return c.json(
-        setBoxIdeEnabled(deps, target(c.req.valid("param")), c.req.valid("json").enabled, user.email),
+        await setBoxIdeEnabled(
+          deps,
+          target(c.req.valid("param")),
+          c.req.valid("json").enabled,
+          user.email,
+          requestAccess(deps, c),
+        ),
         200,
       );
     });
 
-    app.openapi(issueRoute, (c) => {
+    app.openapi(issueRoute, async (c) => {
       const { user } = requirePrincipal(c);
       return c.json(
-        issueBoxIdeToken(
+        await issueBoxIdeToken(
           deps,
           target(c.req.valid("param")),
           user.id,
           c.req.valid("json").expiresInHours,
           user.email,
+          requestAccess(deps, c),
         ),
         200,
       );

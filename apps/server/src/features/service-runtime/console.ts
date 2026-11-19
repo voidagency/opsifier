@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import {
   type ConsoleInfo,
   type ConsoleProgram,
@@ -16,7 +15,7 @@ import { type RawData, WebSocket } from "ws";
 import type { Principal } from "../../core/auth";
 import type { AppDeps } from "../../core/context";
 import { actions } from "../../core/db/schema";
-import type { ExecOptions, ExecSession, TaskAccess } from "../../core/docker";
+import type { ExecOptions, ExecSession } from "../../core/docker";
 import type { SocketAdmission, SocketRoute } from "../../core/realtime";
 import { meetsLevel, membershipsOf } from "../access/rules";
 import { composeProject } from "../compose/names";
@@ -28,7 +27,8 @@ import {
   hasActiveRun,
 } from "../service-tabs/scripts/run";
 import { qualifiedName } from "../services/compile";
-import { findService, type ServiceRecord } from "../services/repo";
+import { ownFilesDir, reachesServer, taskReachesServer } from "../services/reach";
+import { findService } from "../services/repo";
 import { needsTwoFactorSetup } from "../two-factor-policy/service";
 import {
   type ConsoleSessionRow,
@@ -89,32 +89,6 @@ export interface ConsoleRefusal {
   status: 403 | 404;
   code: string;
   message: string;
-}
-
-/**
- * Whether a service reaches the server through something only an administrator can give it: a path on
- * the host, an added capability, or a Compose file whose access to the host someone confirmed. A shell
- * in it reaches the server too, so it stays an administrator's.
- */
-export function reachesServer(record: Pick<ServiceRecord, "spec">): boolean {
-  const { compose, mounts, deploy } = record.spec;
-  if (compose !== null) {
-    return compose.acknowledgedHash !== null || compose.acknowledgedAccess !== null;
-  }
-  return mounts.some((mount) => mount.type === "bind") || deploy.capAdd.length > 0;
-}
-
-/** The service's own files, which the panel binds into it itself, one by one. */
-const ownFilesOf = (deps: Pick<AppDeps, "config">, target: ServiceRef): string =>
-  join(deps.config.dataDir, "projects", target.projectName, target.serviceName, "files");
-
-/**
- * Whether a running task reaches the server, judged on what its container was given when it was made,
- * which outlives a mount or a capability taken out of the service's settings until the next deploy:
- * a host path other than the service's own files, or an added capability.
- */
-export function taskReachesServer(access: TaskAccess, ownFiles: string): boolean {
-  return access.capabilityAdd.length > 0 || access.binds.some((source) => !source.startsWith(`${ownFiles}/`));
 }
 
 const CONSOLE_REACHES_SERVER =
@@ -187,7 +161,7 @@ async function sessionPlace(
       if (access === null) {
         throw new Error("This task is not running.");
       }
-      if (taskReachesServer(access, ownFilesOf(deps, target))) {
+      if (taskReachesServer(access, ownFilesDir(deps, target))) {
         throw new Error(CONSOLE_REACHES_SERVER);
       }
     }
@@ -745,7 +719,7 @@ export async function getConsoleInfo(
   const running = (await deps.docker.listTasks({ service: name })).filter(
     (task) => task.state === "running" && task.desiredState === "running",
   );
-  const ownFiles = ownFilesOf(deps, target);
+  const ownFiles = ownFilesDir(deps, target);
   const offered = guarded
     ? (
         await Promise.all(

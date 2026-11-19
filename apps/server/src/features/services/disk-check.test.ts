@@ -99,6 +99,26 @@ describe("the space check before a deployment", () => {
     expect(again.log).toContain("half of the 1.0 KB that traefik/whoami:v1.10 takes on this server");
   });
 
+  it("says nothing of an image only another project has on this server", async () => {
+    dockerDiskHasFree(1024 * MEBIBYTE);
+    // Pulled by another project, with credentials of its own.
+    context.docker.images.push({
+      id: "sha256:private",
+      tags: ["registry.example.com/acme/private:1"],
+      sizeBytes: 3 * 1024 * MEBIBYTE,
+      labels: {},
+      createdAt: null,
+    });
+    await api(`${SERVICE}/source`, "PUT", { image: "registry.example.com/acme/private:1" });
+    context.docker.failNext("pullImage", new Error("pull access denied"));
+
+    const finished = await deploy();
+
+    expect(finished.status).toBe("failed");
+    expect(finished.log).toContain("an allowance for registry.example.com/acme/private:1");
+    expect(finished.log).not.toMatch(/3\.\d GB|takes on this server|not on this server/);
+  });
+
   it("goes ahead, and says so, when Docker's disk can't be measured", async () => {
     context.docker.helperResult = () => ({ exitCode: 1, stdout: "", stderr: "no" });
 

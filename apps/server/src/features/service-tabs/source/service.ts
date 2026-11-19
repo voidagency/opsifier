@@ -21,10 +21,13 @@ import {
 import type { AppDeps } from "../../../core/context";
 import { AppError, badRequest, conflict, notFound } from "../../../core/errors";
 import { ToolNotFoundError } from "../../../core/tools";
+import { requireHostAccessFor } from "../../access/guard";
+import type { Access } from "../../access/rules";
 import { deleteRepositoryHook } from "../../github/hooks";
 import { isGithubConfigured } from "../../github/service";
 import { isHostKnown } from "../../known-hosts/service";
 import { type RetiredValue, SECRET_VALUE, sealRetired } from "../../services/env-store";
+import { assertDockerfileAllowed, assertImageAllowed } from "../../services/foreign-images";
 import { type ServiceRecord, saveServiceSpec } from "../../services/repo";
 import { requireService, type ServiceTarget } from "../../services/service";
 import { REGISTRY_PASSWORD_CONTEXT } from "../../services/spec";
@@ -231,9 +234,15 @@ function persist(
   deps: AppDeps,
   target: ServiceTarget,
   update: (record: ServiceRecord) => { source?: StoredSource | null; build?: StoredBuildState },
+  access?: Access,
 ): StoredBuildState {
   // Read again: the work before this may have taken seconds, and nothing else's edit may be lost.
   const record = requireService(deps, target);
+  // Nor may the service have come to reach the server meanwhile, given a path on the host by an
+  // administrator while a remote that the author picked took its time to answer.
+  if (access !== undefined) {
+    requireHostAccessFor(access, record);
+  }
   const change = update(record);
   const spec = {
     ...record.spec,
@@ -315,6 +324,8 @@ export interface SourceAuthor {
   actorEmail: string | undefined;
   /** Only an administrator can point the panel's own GitHub token at a repository. */
   isAdmin: boolean;
+  /** What the service builds or pulls is what runs in it, and on the server when it reaches it. */
+  access: Access;
 }
 
 /**
@@ -329,6 +340,7 @@ export async function saveServiceSource(
 ): Promise<ServiceSource> {
   const { actorEmail } = author;
   const record = requireService(deps, target);
+  requireHostAccessFor(author.access, record);
   if (record.spec.database !== null) {
     throw conflict(
       "database_image_managed",
@@ -366,6 +378,8 @@ export async function saveServiceSource(
       break;
     }
     case "dockerfile":
+      // The build reads it again with the values it passes, which can still change before then.
+      assertDockerfileAllowed(request.dockerfile, target.projectName, { field: "dockerfile" });
       source = { type: "dockerfile", dockerfile: request.dockerfile };
       break;
     case "upload": {
@@ -376,25 +390,31 @@ export async function saveServiceSource(
       break;
     }
     default:
+      assertImageAllowed(request.image, target.projectName, "image");
       source = { type: "image", image: request.image, ...resolveCredentials(deps, previous, request) };
   }
 
   const hookRemoved = await dropStaleHook(deps, previous, source);
   const build = "build" in request ? request.build : undefined;
   let withdrawn = false;
-  persist(deps, target, (current) => {
-    const settled = withdrawAuthority(
-      withKeyBinding(
-        { ...current.spec.build, ...(build === undefined ? {} : { config: build }) },
-        keyed.sshKey,
-      ),
-      sourceIdentity(current.spec),
-      sourceIdentity({ source, compose: null }),
-      hookRemoved,
-    );
-    withdrawn = settled.withdrawn;
-    return { source, build: settled.build };
-  });
+  persist(
+    deps,
+    target,
+    (current) => {
+      const settled = withdrawAuthority(
+        withKeyBinding(
+          { ...current.spec.build, ...(build === undefined ? {} : { config: build }) },
+          keyed.sshKey,
+        ),
+        sourceIdentity(current.spec),
+        sourceIdentity({ source, compose: null }),
+        hookRemoved,
+      );
+      withdrawn = settled.withdrawn;
+      return { source, build: settled.build };
+    },
+    author.access,
+  );
   recordSourceChange(deps, target, actorEmail);
   if (withdrawn) {
     recordWithdrawal(deps, target, actorEmail);
@@ -408,12 +428,15 @@ export function saveBuildSettings(
   target: ServiceTarget,
   config: BuildConfig | null,
   actorEmail: string | undefined,
+  access: Access,
 ): BuildConfig | null {
-  const { source } = requireService(deps, target).spec;
+  const record = requireService(deps, target);
+  requireHostAccessFor(access, record);
+  const { source } = record.spec;
   if (source === null || !isBuildableSourceType(source.type)) {
     throw badRequest("source_not_buildable", "This kind of source has no build settings.");
   }
-  persist(deps, target, (current) => ({ build: { ...current.spec.build, config } }));
+  persist(deps, target, (current) => ({ build: { ...current.spec.build, config } }), access);
   recordSourceChange(deps, target, actorEmail);
   return config;
 }
@@ -492,16 +515,24 @@ export function saveEnvFile(
   target: ServiceTarget,
   settings: SaveEnvFileRequest,
   actorEmail: string | undefined,
+  access: Access,
 ): EnvFileSettings {
-  const { source } = requireService(deps, target).spec;
+  const record = requireService(deps, target);
+  requireHostAccessFor(access, record);
+  const { source } = record.spec;
   if (settings.path !== null && (source === null || source.type === "image")) {
     throw badRequest("source_not_buildable", "A Docker image has no source tree to write to.");
   }
   // Having no file decides nothing, so the next one is asked again.
   const inImage = settings.path !== null && settings.inImage === true;
-  persist(deps, target, (current) => ({
-    build: { ...current.spec.build, envFilePath: settings.path, envFileInImage: inImage },
-  }));
+  persist(
+    deps,
+    target,
+    (current) => ({
+      build: { ...current.spec.build, envFilePath: settings.path, envFileInImage: inImage },
+    }),
+    access,
+  );
   deps.actions.record({
     type: "service.env",
     title: `Update the environment of ${target.projectName}/${target.serviceName}`,
@@ -528,9 +559,12 @@ export async function receiveUpload(
   body: ReadableStream<Uint8Array> | null,
   declaredBytes: number | undefined,
   actorEmail: string | undefined,
+  access: Access,
   maxBytes: number = MAX_UPLOAD_BYTES,
 ): Promise<ServiceSource> {
   const record = requireService(deps, target);
+  // Before a byte is read: what the archive holds is what the service will run.
+  requireHostAccessFor(access, record);
   assertNotBox(record);
   if (declaredBytes !== undefined && declaredBytes > maxBytes) {
     throw uploadTooLarge();
@@ -569,6 +603,8 @@ export async function receiveUpload(
       }
       throw error;
     }
+    // The upload took as long as its sender wanted: the service may have come to reach the server.
+    requireHostAccessFor(access, requireService(deps, target));
     await rename(incoming, file);
   } catch (error) {
     if (error instanceof UploadTooLargeError) {
@@ -588,16 +624,21 @@ export async function receiveUpload(
   };
   const hookRemoved = await dropStaleHook(deps, record.spec.source, source);
   let withdrawn = false;
-  persist(deps, target, (current) => {
-    const settled = withdrawAuthority(
-      current.spec.build,
-      sourceIdentity(current.spec),
-      sourceIdentity({ source, compose: null }),
-      hookRemoved,
-    );
-    withdrawn = settled.withdrawn;
-    return { source, build: settled.build };
-  });
+  persist(
+    deps,
+    target,
+    (current) => {
+      const settled = withdrawAuthority(
+        current.spec.build,
+        sourceIdentity(current.spec),
+        sourceIdentity({ source, compose: null }),
+        hookRemoved,
+      );
+      withdrawn = settled.withdrawn;
+      return { source, build: settled.build };
+    },
+    access,
+  );
   recordSourceChange(deps, target, actorEmail);
   if (withdrawn) {
     recordWithdrawal(deps, target, actorEmail);

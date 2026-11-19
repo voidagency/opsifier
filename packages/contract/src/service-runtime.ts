@@ -15,7 +15,7 @@ export const servicesMetricsTopic = "metrics:services";
 
 /** Terminals are binary, so they have a socket of their own instead of a topic. */
 export const terminalPath = (project: string, service: string): string =>
-  `/api/v1/terminal/${project}/${service}`;
+  `/api/v1/terminal/${encodeURIComponent(project)}/${encodeURIComponent(service)}`;
 
 /** `connecting` has not looked yet, `waiting` found nothing running, `error` could not read Docker. */
 export const logFeedState = z.enum(["connecting", "waiting", "streaming", "error"]);

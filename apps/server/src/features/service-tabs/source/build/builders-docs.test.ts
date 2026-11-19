@@ -65,6 +65,32 @@ describe("the published builder matrix", () => {
     expect(forced).toMatch(/--clear-cache/);
   });
 
+  it("says a Dockerfile fetches its base images from their registry on every build", () => {
+    const forced = section("## Forced rebuilds");
+    const dockerfile = forced.split("\n").find((line) => line.startsWith("| Dockerfile"));
+    expect(dockerfile).toMatch(/as on every build \(`--pull`\)/);
+    expect(forced).toMatch(/never takes an image the server already holds/);
+    expect(forced).toMatch(/even one of its own project's/);
+    for (const step of ["nixpacks build --out", "Railpack's plan", "--run-image"]) {
+      expect(forced).toContain(step);
+    }
+  });
+
+  it("says which images a project can't use, and where that is checked", () => {
+    const foreign = section("## Images from other projects");
+    for (const words of [
+      "image_not_allowed",
+      "opsifier/releases/",
+      "<project>_",
+      "docker/dockerfile",
+      "when it is saved",
+      "every build",
+      "`releases`",
+    ]) {
+      expect(foreign).toContain(words);
+    }
+  });
+
   it("says how each builder can be overridden and how it fails", () => {
     for (const heading of ["## Overrides", "## When a build fails"]) {
       const part = section(heading);

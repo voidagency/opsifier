@@ -1,16 +1,17 @@
-import type {
-  LinkStudioAppRequest,
-  StudioAgent,
-  StudioAgentMode,
-  StudioApp,
-  StudioAppDetail,
-  StudioCheck,
-  StudioConversation,
-  StudioEventPage,
-  StudioMembers,
-  StudioModels,
-  StudioOverview,
-  StudioSettings,
+import {
+  isStudioConversationId,
+  type LinkStudioAppRequest,
+  type StudioAgent,
+  type StudioAgentMode,
+  type StudioApp,
+  type StudioAppDetail,
+  type StudioCheck,
+  type StudioConversation,
+  type StudioEventPage,
+  type StudioMembers,
+  type StudioModels,
+  type StudioOverview,
+  type StudioSettings,
 } from "@opsifier/contract";
 import type { AppDeps } from "../../core/context";
 import { AppError, badRequest, conflict, notFound, serviceUnavailable } from "../../core/errors";
@@ -495,6 +496,8 @@ export async function startStudioConversation(
     {
       method: "POST",
       path: "/api/conversations",
+      // Only what the panel reads comes back: the answer could repeat what was sent, the key included.
+      shape: "conversation",
       body: {
         agent_profile_id: profileId,
         agent_launch_additions: {
@@ -518,7 +521,9 @@ export async function startStudioConversation(
     },
   ]);
   const conversation = expectJson(started.replies[0], started.keyFound);
-  const id = isRecord(conversation) ? stringOrNull(conversation.id) : null;
+  const given = isRecord(conversation) ? stringOrNull(conversation.id) : null;
+  // The id goes into the Studio's addresses: one an agent server made up of anything else is not kept.
+  const id = isStudioConversationId(given) ? given : null;
   if (id === null) {
     throw serviceUnavailable(
       "studio_agent_error",

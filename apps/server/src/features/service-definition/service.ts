@@ -31,7 +31,7 @@ export async function createFromDefinition(
   await createService(deps, project, { name: definition.name, type: "app" }, actorEmail);
 
   try {
-    await saveServiceSource(deps, target, definition.source, { actorEmail, isAdmin });
+    await saveServiceSource(deps, target, definition.source, { actorEmail, isAdmin, access });
 
     const record = requireService(deps, target);
     if (definition.env !== "" || definition.resources !== undefined) {

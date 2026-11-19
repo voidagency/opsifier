@@ -4,18 +4,22 @@ import type { Context, MiddlewareHandler } from "hono";
 import { HOST_ADMIN_ONLY, holdsHostAdmin, requestScheme } from "../../core/auth";
 import type { AppDeps, AppEnv } from "../../core/context";
 import type { DbHandle } from "../../core/db";
+import type { TaskAccess } from "../../core/docker";
 import { AppError, forbidden, notFound } from "../../core/errors";
 import { PROXY_PAGES_PREFIX } from "../../core/proxy";
 import type { TopicGuard } from "../../core/realtime";
 import { findAction } from "../actions/repo";
 import { belongsToCurrent } from "../projects/generation";
 import { isPanelHostAllowed, isPanelOwnName } from "../server/panel-host";
+import { anyTaskReachesServer, reachesServer, taskReachesServer } from "../services/reach";
+import { findService, type ServiceRecord } from "../services/repo";
 import { needsTwoFactorSetup } from "../two-factor-policy/service";
 import { type ProjectLevel, type Requirement, requirementFor } from "./policy";
 import { isStudioMember } from "./repo";
 import {
   type Access,
   accessOf,
+  accountCanReachHost,
   canReachHost,
   type canSeeAction,
   findUser,
@@ -72,6 +76,77 @@ export function requireHostAccess(access: Access): void {
   if (!canReachHost(access)) {
     throw forbidden("admin_required", "Only an administrator can give a service access to the server.");
   }
+}
+
+const SERVICE_REACHES_SERVER =
+  "Only an administrator can change what runs in this service, because it can reach the server.";
+const PROJECT_REACHES_SERVER =
+  "Only an administrator can change this project's variables, because one of its services can reach the server.";
+
+function refuseUnlessHost(access: Access, reaches: boolean, message: string): void {
+  if (reaches && !canReachHost(access)) {
+    throw forbidden("service_reaches_server", message);
+  }
+}
+
+/**
+ * A service given a path on the host, an added capability or a confirmed Compose file reaches the server,
+ * and so does whatever runs in it. Deciding what that is, its code, command, variables, mounts or
+ * scripts, takes the same rights as giving it that access: an administrator's own, never narrowed.
+ */
+export function requireHostAccessFor(access: Access, record: Pick<ServiceRecord, "spec">): void {
+  refuseUnlessHost(access, reachesServer(record), SERVICE_REACHES_SERVER);
+}
+
+/**
+ * The same for what acts on the tasks running now, a process, the workspace, a restore or a database's
+ * own superuser: judged on the settings and on each of those tasks, which keep a mount or a capability
+ * taken out of the settings until a deploy replaces them.
+ */
+export async function requireHostAccessNow(
+  deps: Pick<AppDeps, "docker" | "config">,
+  access: Access,
+  target: { projectName: string; serviceName: string },
+  record: Pick<ServiceRecord, "spec">,
+): Promise<void> {
+  requireHostAccessFor(access, record);
+  if (!canReachHost(access) && (await anyTaskReachesServer(deps, target))) {
+    throw forbidden("service_reaches_server", SERVICE_REACHES_SERVER);
+  }
+}
+
+/**
+ * For work queued now that acts on the service later, such as a restore: asked again when it starts,
+ * since the service may have come to reach the server while it waited, or the person lost the right.
+ */
+export function holdToRequester(
+  deps: Pick<AppDeps, "db" | "docker" | "config">,
+  access: Access,
+  target: { projectName: string; serviceName: string },
+): () => Promise<void> {
+  const requester = canReachHost(access) ? access.principal.user.id : null;
+  return async () => {
+    if (requester !== null && accountCanReachHost(deps.db, requester)) {
+      return;
+    }
+    const record = findService(deps.db, target.projectName, target.serviceName);
+    if (record !== undefined && (reachesServer(record) || (await anyTaskReachesServer(deps, target)))) {
+      throw forbidden("service_reaches_server", SERVICE_REACHES_SERVER);
+    }
+  };
+}
+
+/** The same, judged on what a task is or would be given rather than on the settings. */
+export function requireHostAccessForTask(access: Access, task: TaskAccess, ownFiles: string): void {
+  refuseUnlessHost(access, taskReachesServer(task, ownFiles), SERVICE_REACHES_SERVER);
+}
+
+/** A project's variables go to each of its services, so one service reaching the server is enough. */
+export function requireHostAccessForProject(
+  access: Access,
+  records: ReadonlyArray<Pick<ServiceRecord, "spec">>,
+): void {
+  refuseUnlessHost(access, records.some(reachesServer), PROJECT_REACHES_SERVER);
 }
 
 function assertWriteAllowed(access: Access, method: string): void {

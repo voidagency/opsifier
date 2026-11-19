@@ -47,6 +47,7 @@ import { createStudioRoutes, createStudioSettingsRoute } from "../features/studi
 import { isStudioOnlyAccount } from "../features/studio/studioOnly";
 import { createInstallRoute } from "../features/templates/routes";
 import { isApiError } from "../lib/api";
+import { namedParams } from "../lib/route-params";
 import { BootScreen, NotFoundPage, RootError } from "./RouteStates";
 import { AppShell } from "./shell/AppShell";
 
@@ -288,6 +289,7 @@ const settingsKnownHostsRoute = createRoute({
 const projectRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "projects/$project",
+  params: namedParams("project"),
   staticData: { crumbControl: ProjectCrumb, crumbParam: "project" },
   component: Outlet,
 });
@@ -315,6 +317,7 @@ const createServiceRoute = createRoute({
 const serviceRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "app/$service",
+  params: namedParams("service"),
   staticData: { crumbControl: ServiceCrumb, crumbParam: "service" },
   beforeLoad: async ({ context, params, location }) => {
     const detail = await context.queryClient

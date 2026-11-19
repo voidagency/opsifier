@@ -3,7 +3,11 @@ import { type ComposeIssue, type ComposeIssueCode, isRoutableComposeChild } from
 import { parseDocument } from "yaml";
 import { projectNetworkName, projectProxyNetworkName } from "../services/compile";
 import { bindMountRisk } from "../services/compile/mounts";
-import { contextImage, isAnotherProjectsImage, isStackImageName } from "./images";
+import { contextImage, isForeignImage, isStackImageName } from "./images";
+import { isReservedName, isStackContainerName } from "./network-names";
+import { type BuildInput, ownFolderIssues, type StackMount, stackRelative } from "./own-folder";
+import { attestationRequests, bindsAFolder } from "./resolved";
+import { describeSsh, sshPaths } from "./ssh";
 
 export interface ComposeInspection {
   /** The services the file defines, in file order. */
@@ -11,6 +15,12 @@ export interface ComposeInspection {
   issues: ComposeIssue[];
   /** What the YAML parser said, in its own words. Null for a file it could read. */
   parseError: string | null;
+  /** What the file mounts from the stack's own folder, from that folder. */
+  mounts: StackMount[];
+  /** What its builds read or write in the stack's own folder, from that folder. */
+  inputs: BuildInput[];
+  /** The files it has Compose read, `.env` among them, from the stack's folder. */
+  files: string[];
 }
 
 /** Whose networks a file may name: its own project's, and the ones Compose makes for the stack. */
@@ -30,6 +40,8 @@ export interface InspectOptions extends NetworkScope {
    * relative paths start from there, and still have to stay inside the stack.
    */
   base?: string;
+  /** Where the file the stack starts from sits in its folder, when this is that file. */
+  file?: string;
 }
 
 type YamlRecord = Record<string, unknown>;
@@ -48,6 +60,10 @@ const SEVERITY: Record<ComposeIssueCode, ComposeIssue["severity"]> = {
   foreign_network: "error",
   runs_program: "error",
   foreign_image: "error",
+  foreign_name: "error",
+  mounts_stack: "error",
+  bind_volume: "error",
+  build_attestation: "error",
   privileged: "host",
   docker_socket: "host",
   data_directory: "host",
@@ -66,11 +82,43 @@ const SEVERITY: Record<ComposeIssueCode, ComposeIssue["severity"]> = {
   unroutable_name: "warning",
 };
 
+/** A path on the panel's side that Compose takes from the stack's folder, as written. */
+const isLocalPath = (path: string): boolean =>
+  !path.includes("$") && !REMOTE.test(path) && !path.startsWith("/") && !path.startsWith("~");
+
 class IssueList {
   readonly issues: ComposeIssue[] = [];
+  readonly mounts: StackMount[] = [];
+  readonly inputs: BuildInput[] = [];
+  readonly files = new Set<string>();
 
   add(code: ComposeIssueCode, service: string | null, detail: string | null = null): void {
     this.issues.push({ severity: SEVERITY[code], code, service, detail });
+  }
+
+  /** A folder or file of the stack a child mounts. One that leaves the stack is refused elsewhere. */
+  mount(service: string | null, path: string, options: InspectOptions): void {
+    const inside = isLocalPath(path) ? stackRelative(path, options.base) : null;
+    if (inside !== null) {
+      this.mounts.push({ service, path: inside });
+    }
+  }
+
+  /** Something a build reads or writes, other than a stage, a service or an image it names. */
+  input(service: string, path: string, field: string, written: boolean, options: InspectOptions): void {
+    const inside =
+      isLocalPath(path) && !/^(?:service|target):/i.test(path) ? stackRelative(path, options.base) : null;
+    if (inside !== null) {
+      this.inputs.push({ service, path: inside, field, written });
+    }
+  }
+
+  /** A file Compose reads to know what the stack is. */
+  file(path: string, options: InspectOptions): void {
+    const inside = isLocalPath(path) ? stackRelative(path, options.base) : null;
+    if (inside !== null) {
+      this.files.add(inside);
+    }
   }
 }
 
@@ -78,6 +126,9 @@ const HOST_NAMESPACE_KEYS = ["pid", "ipc", "uts", "userns_mode", "cgroup"] as co
 
 /** An address Compose or BuildKit would fetch from elsewhere: a URL, or Git's `user@host:path`. */
 const REMOTE = /^(?:[a-z][a-z0-9+.-]*:\/\/|[^\s/:@]+@[^\s/:]+:)/i;
+
+/** A layout of images BuildKit reads from wherever it names on the panel's disk. */
+const OCI_LAYOUT = /^oci-layout:\/\//i;
 
 /** The one security option that only ever tightens a container. */
 const TIGHTENING_OPTION = /^no-new-privileges(?:[:=](?:true|false))?$/;
@@ -237,6 +288,13 @@ function publishedPort(entry: unknown): { port: number | null; shown: string } {
 }
 
 /** A path, a list of them, or entries that carry one under `key`, as Compose lets most fields say. */
+function filePaths(value: unknown, key = "path"): string[] {
+  return asList(value).flatMap((entry) => {
+    const path = isRecord(entry) ? entry[key] : entry;
+    return typeof path === "string" ? [path] : [];
+  });
+}
+
 function checkFileReference(
   value: unknown,
   list: IssueList,
@@ -244,11 +302,47 @@ function checkFileReference(
   options: InspectOptions,
   key = "path",
 ): void {
-  for (const entry of asList(value)) {
-    const path = isRecord(entry) ? entry[key] : entry;
-    if (typeof path === "string") {
-      checkPath(path, list, service, options);
+  for (const path of filePaths(value, key)) {
+    checkPath(path, list, service, options);
+  }
+}
+
+/**
+ * A file Compose brings in, or the folder it reads it from, named through a variable: Compose fills it
+ * in, then reads or fetches what it says while it loads the stack, before anything here could look at
+ * it or follow it. Refused, whatever the variable says now.
+ */
+function refuseInterpolated(value: unknown, list: IssueList, service: string | null, what: string): boolean {
+  const named = filePaths(value).filter((path) => path.includes("$"));
+  for (const path of named) {
+    list.add("escapes_stack", service, `${what}: ${path}`);
+  }
+  return named.length > 0;
+}
+
+/**
+ * The folder an included file's paths start from. Compose takes an absolute one, or one under `~`, as
+ * it is, and only a relative one from the folder of the file that includes it: a folder outside the
+ * stack is refused, whatever confirms what, since the files read from there are the stack's too.
+ */
+function checkProjectDirectory(value: unknown, list: IssueList, options: InspectOptions): void {
+  for (const path of filePaths(value)) {
+    if (/^[/~]/.test(path) || REMOTE.test(path) || !staysInside(path, options.base)) {
+      list.add("escapes_stack", null, `include project_directory: ${path}`);
     }
+  }
+}
+
+/** A file Compose reads to know what the stack is: checked like any path, and kept out of every mount. */
+function checkStackFile(
+  value: unknown,
+  list: IssueList,
+  service: string | null,
+  options: InspectOptions,
+): void {
+  checkFileReference(value, list, service, options);
+  for (const path of filePaths(value)) {
+    list.file(path, options);
   }
 }
 
@@ -306,12 +400,13 @@ function checkHostAccess(name: string, child: YamlRecord, list: IssueList, optio
   if (isSet(child.runtime)) {
     list.add("security_options", name, `runtime: ${String(child.runtime)}`);
   }
-  checkFileReference(child.label_file, list, name, options);
+  checkStackFile(child.label_file, list, name, options);
   checkFileReference(child.credential_spec, list, name, options, "file");
   for (const entry of asList(child.volumes)) {
     const source = bindSource(entry);
     if (source !== null) {
       checkPath(source, list, name, options);
+      list.mount(name, source, options);
     }
   }
   // Another container's volumes or links: what they hold is not this stack's to reach.
@@ -337,19 +432,85 @@ function checkPorts(name: string, child: YamlRecord, list: IssueList, options: I
   }
 }
 
+/** What a file says about the networks its children join, for the names they answer to there. */
+interface FileNetworks {
+  /** The keys that stand for the project's proxy network, which the proxy reaches every upstream on. */
+  proxy: ReadonlySet<string>;
+}
+
+/** The generated override's key for the proxy network. A file can name it too. */
+const OVERRIDE_PROXY_KEY = "opsifier_proxy_network";
+
+function fileNetworks(file: YamlRecord, { project }: NetworkScope): FileNetworks {
+  const proxy = new Set([OVERRIDE_PROXY_KEY]);
+  if (isRecord(file.networks)) {
+    for (const [key, value] of Object.entries(file.networks)) {
+      if (attachedNetworkName(key, value) === projectProxyNetworkName(project)) {
+        proxy.add(key);
+      }
+    }
+  }
+  return { proxy };
+}
+
+/**
+ * The names a child takes besides the address the panel gives it: its own, its container's, and the
+ * aliases it asks for. None may be one the proxy could be looking for elsewhere. A value Compose fills
+ * in from a variable is judged once it has, before the deploy.
+ */
+function checkNames(
+  name: string,
+  child: YamlRecord,
+  list: IssueList,
+  options: InspectOptions,
+  networks: FileNetworks,
+): void {
+  if (isReservedName(name)) {
+    list.add("foreign_name", name, name);
+  } else if (!isRoutableComposeChild(name)) {
+    list.add("unroutable_name", name, name);
+  }
+  if (child.container_name !== undefined) {
+    const value = String(child.container_name);
+    if (isInterpolated(value) || isStackContainerName(value, options.stack)) {
+      list.add("container_name", name, value);
+    } else {
+      list.add("foreign_name", name, `container_name: ${value}`);
+    }
+  }
+  // Docker answers for a container's hostname on every network it joins, as for an alias.
+  if (
+    typeof child.hostname === "string" &&
+    !isInterpolated(child.hostname) &&
+    isReservedName(child.hostname)
+  ) {
+    list.add("foreign_name", name, `hostname: ${child.hostname}`);
+  }
+  if (!isRecord(child.networks)) {
+    return;
+  }
+  for (const [key, attachment] of Object.entries(child.networks)) {
+    for (const alias of isRecord(attachment) ? asList(attachment.aliases).map(String) : []) {
+      // The proxy's network takes no alias at all: the panel gives each child the one it needs there.
+      if (networks.proxy.has(key) || (!isInterpolated(alias) && isReservedName(alias))) {
+        list.add("foreign_name", name, `aliases: ${alias}`);
+      }
+    }
+  }
+}
+
 function checkChild(
   name: string,
   child: YamlRecord,
   known: ReadonlySet<string>,
   list: IssueList,
   options: InspectOptions,
+  networks: FileNetworks,
 ): void {
   checkHostAccess(name, child, list, options);
   checkPorts(name, child, list, options);
+  checkNames(name, child, list, options, networks);
 
-  if (child.container_name !== undefined) {
-    list.add("container_name", name, String(child.container_name));
-  }
   if (child.network_mode === "host") {
     list.add("host_namespace", name, "network_mode: host");
   } else if (typeof child.network_mode === "string" && keepsNetworkToStack(child.network_mode)) {
@@ -364,9 +525,6 @@ function checkChild(
   const profiles = asList(child.profiles);
   if (profiles.length > 0) {
     list.add("profiles", name, profiles.map(String).join(", "));
-  }
-  if (!isRoutableComposeChild(name)) {
-    list.add("unroutable_name", name, name);
   }
 
   const dependencies = Array.isArray(child.depends_on)
@@ -384,9 +542,9 @@ function checkChild(
 
   // Everything else a service can point the Compose CLI at on disk.
   checkBuild(name, child.build, list, options);
-  checkFileReference(child.env_file, list, name, options);
-  if (isRecord(child.extends)) {
-    checkFileReference(child.extends.file, list, name, options);
+  checkStackFile(child.env_file, list, name, options);
+  if (isRecord(child.extends) && !refuseInterpolated(child.extends.file, list, name, "extends file")) {
+    checkStackFile(child.extends.file, list, name, options);
   }
 
   // Compose hands these to a program of its own, run where the panel runs rather than in a container.
@@ -412,19 +570,19 @@ function checkImages(name: string, child: YamlRecord, list: IssueList, options: 
         list.add("foreign_image", name, image);
       }
     }
-  } else if (known(child.image) && isAnotherProjectsImage(child.image, options.project)) {
+  } else if (known(child.image) && isForeignImage(child.image, options.project)) {
     list.add("foreign_image", name, child.image);
   }
   for (const entry of asList(child.volumes)) {
     if (isRecord(entry) && entry.type === "image" && known(entry.source)) {
-      if (isAnotherProjectsImage(entry.source, options.project)) {
+      if (isForeignImage(entry.source, options.project)) {
         list.add("foreign_image", name, entry.source);
       }
     }
   }
   for (const value of isRecord(child.build) ? namedValues(child.build.additional_contexts) : []) {
     const image = known(value) ? contextImage(value) : null;
-    if (image !== null && isAnotherProjectsImage(image, options.project)) {
+    if (image !== null && isForeignImage(image, options.project)) {
       list.add("foreign_image", name, image);
     }
   }
@@ -444,9 +602,14 @@ function namedValues(value: unknown): unknown[] {
 
 /** What a build reads from the panel's side, and what it is allowed to do while it runs. */
 function checkBuild(name: string, build: unknown, list: IssueList, options: InspectOptions): void {
-  const context = isRecord(build) ? build.context : build;
+  if (build === undefined || build === null) {
+    return;
+  }
+  // A build written as a mapping without a context builds from the stack's folder.
+  const context = isRecord(build) ? (build.context ?? ".") : build;
   if (typeof context === "string") {
     checkPath(context, list, name, options, "context");
+    list.input(name, context, "context", false, options);
   }
   if (!isRecord(build)) {
     return;
@@ -462,29 +625,40 @@ function checkBuild(name: string, build: unknown, list: IssueList, options: Insp
       checkPath(dockerfile, list, name, options);
     } else if (fromContext !== null) {
       checkPath(fromContext, list, name, options);
+      list.input(name, fromContext, "dockerfile", false, options);
     }
   }
   for (const value of namedValues(build.additional_contexts)) {
     if (typeof value === "string") {
       checkPath(value, list, name, options, "context");
-    }
-  }
-  // `default` forwards an agent the panel doesn't run. `id=path` reads a key from the panel's disk.
-  for (const entry of asList(build.ssh).map(String)) {
-    const separator = entry.indexOf("=");
-    if (separator !== -1) {
-      for (const path of entry.slice(separator + 1).split(",")) {
-        checkPath(path, list, name, options);
+      list.input(name, value, "additional_contexts", false, options);
+      if (OCI_LAYOUT.test(value)) {
+        list.add("host_path", name, `additional_contexts: ${value}`);
       }
     }
   }
+  // `default` forwards an agent the panel doesn't run. `id=path` reads a key from the panel's disk.
+  const keys = sshPaths(build.ssh);
+  if (keys === null) {
+    list.add("escapes_stack", name, `build.ssh: ${describeSsh(build.ssh)}`);
+  }
+  for (const path of keys ?? []) {
+    checkPath(path, list, name, options);
+    list.input(name, path, "ssh", false, options);
+  }
   // A local cache is read from, or written to, the panel's own disk.
-  for (const entry of [...asList(build.cache_from), ...asList(build.cache_to)].map(String)) {
-    const fields = entry.split(",").map((field) => field.split("="));
-    if (fields.some(([key, value]) => key === "type" && value === "local")) {
-      for (const [key, value] of fields) {
-        if ((key === "src" || key === "dest") && value !== undefined) {
-          checkPath(value, list, name, options);
+  for (const [field, entries] of [
+    ["cache_from", build.cache_from],
+    ["cache_to", build.cache_to],
+  ] as const) {
+    for (const entry of asList(entries).map(String)) {
+      const fields = entry.split(",").map((part) => part.split("="));
+      if (fields.some(([key, value]) => key === "type" && value === "local")) {
+        for (const [key, value] of fields) {
+          if ((key === "src" || key === "dest") && value !== undefined) {
+            checkPath(value, list, name, options);
+            list.input(name, value, field, key === "dest", options);
+          }
         }
       }
     }
@@ -495,6 +669,9 @@ function checkBuild(name: string, build: unknown, list: IssueList, options: Insp
   const entitlements = asList(build.entitlements).map(String);
   if (entitlements.length > 0) {
     list.add("privileged", name, `build.entitlements: ${entitlements.join(", ")}`);
+  }
+  for (const request of attestationRequests(build)) {
+    list.add("build_attestation", name, request);
   }
 }
 
@@ -509,7 +686,9 @@ function checkTopLevel(file: YamlRecord, list: IssueList, options: InspectOption
           list.add("external_resource", null, name);
         }
         const device = isRecord(value) && isRecord(value.driver_opts) ? value.driver_opts.device : undefined;
-        if (device !== undefined) {
+        if (key === "volumes" && isRecord(value) && bindsAFolder(value)) {
+          list.add("bind_volume", null, name);
+        } else if (device !== undefined) {
           list.add("host_path", null, String(device));
         }
       }
@@ -521,18 +700,37 @@ function checkTopLevel(file: YamlRecord, list: IssueList, options: InspectOption
       for (const value of Object.values(section)) {
         if (isRecord(value)) {
           checkFileReference(value.file, list, null, options);
+          // Compose mounts the file into the children that use it, as it mounts a volume's source.
+          for (const path of filePaths(value.file)) {
+            list.mount(null, path, options);
+          }
         }
       }
     }
   }
   // Read, or fetched, as the file is loaded: before anything else here sees what they bring.
   for (const entry of asList(file.include)) {
-    if (isRecord(entry)) {
-      checkFileReference(entry.path, list, null, options);
-      checkFileReference(entry.env_file, list, null, options);
-      checkFileReference(entry.project_directory, list, null, options);
-    } else {
-      checkFileReference(entry, list, null, options);
+    const record = isRecord(entry) ? entry : { path: entry };
+    const interpolated = [
+      refuseInterpolated(record.path, list, null, "include"),
+      refuseInterpolated(record.env_file, list, null, "include env_file"),
+      refuseInterpolated(record.project_directory, list, null, "include project_directory"),
+    ].some(Boolean);
+    if (interpolated) {
+      continue;
+    }
+    checkStackFile(record.path, list, null, options);
+    checkStackFile(record.env_file, list, null, options);
+    checkProjectDirectory(record.project_directory, list, options);
+    // An included file takes its variables from the `.env` of its own folder unless it names others.
+    const folders =
+      typeof record.project_directory === "string"
+        ? [record.project_directory]
+        : filePaths(record.path).map((path) => posix.dirname(path));
+    if (record.env_file === undefined) {
+      for (const folder of folders) {
+        list.file(posix.join(folder, ".env"), options);
+      }
     }
   }
   if (isRecord(file.models)) {
@@ -547,40 +745,59 @@ function checkTopLevel(file: YamlRecord, list: IssueList, options: InspectOption
  * not a failure: the Source tab shows the parser's own words and a deploy refuses to go ahead.
  */
 export function inspectComposeFile(text: string, options: InspectOptions): ComposeInspection {
+  const unread = (parseError: string | null, issues: ComposeIssue[] = []): ComposeInspection => ({
+    services: [],
+    issues,
+    parseError,
+    mounts: [],
+    inputs: [],
+    files: [],
+  });
   const document = parseDocument(text, { merge: true });
   if (document.errors.length > 0) {
-    return { services: [], issues: [], parseError: document.errors.map((error) => error.message).join("\n") };
+    return unread(document.errors.map((error) => error.message).join("\n"));
   }
 
   let value: unknown;
   try {
     value = document.toJS({ maxAliasCount: 200 });
   } catch (error) {
-    return { services: [], issues: [], parseError: error instanceof Error ? error.message : String(error) };
+    return unread(error instanceof Error ? error.message : String(error));
   }
 
   const list = new IssueList();
   if (!isRecord(value) || !isRecord(value.services) || Object.keys(value.services).length === 0) {
     list.add("no_services", null);
-    return { services: [], issues: list.issues, parseError: null };
+    return unread(null, list.issues);
   }
 
   const children = Object.entries(value.services).filter((entry): entry is [string, YamlRecord] =>
     isRecord(entry[1]),
   );
   const known = new Set(children.map(([name]) => name));
+  const networks = fileNetworks(value, options);
   for (const [name, child] of children) {
-    checkChild(name, child, known, list, options);
+    checkChild(name, child, known, list, options, networks);
   }
   checkTopLevel(value, list, options);
   for (const { service, detail } of foreignNetworks(value, options)) {
     list.add("foreign_network", service, detail);
   }
+  // Compose reads the `.env` of the stack's folder for its variables, and the file it starts from.
+  list.files.add(".env");
+  if (options.file !== undefined) {
+    list.file(options.file, { ...options, base: "." });
+  }
+  const files = [...list.files];
+  list.issues.push(...ownFolderIssues(list.mounts, files, list.inputs));
 
   return {
     services: children.map(([name]) => name),
     issues: [...list.issues].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]),
     parseError: null,
+    mounts: list.mounts,
+    inputs: list.inputs,
+    files,
   };
 }
 

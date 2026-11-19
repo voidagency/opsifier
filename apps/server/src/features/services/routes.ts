@@ -13,7 +13,7 @@ import { toActionEntry } from "../../core/actions";
 import { requirePrincipal } from "../../core/auth";
 import type { Feature } from "../../core/context";
 import { errorResponse, jsonBody, jsonResponse, optionalJsonBody } from "../../core/openapi";
-import { requestAccess, requireProjectLevel } from "../access/guard";
+import { requestAccess, requireHostAccessFor, requireProjectLevel } from "../access/guard";
 import { redactForViewer } from "../access/rules";
 import {
   enqueueDeploy,
@@ -24,7 +24,7 @@ import {
   renameService,
 } from "./lifecycle";
 import { assignMissingServiceIds } from "./repo";
-import { createService, getServiceDetail } from "./service";
+import { createService, getServiceDetail, requireService } from "./service";
 
 const tags = ["Services"];
 const PATH = "/api/v1/projects/{project}/services/{service}";
@@ -98,6 +98,9 @@ const renameRoute = createRoute({
     200: detail,
     400: invalid,
     401: denied,
+    403: errorResponse(
+      "The service reaches the server, and only an administrator can move it, with what runs in it, into another project.",
+    ),
     404: missing,
     409: errorResponse("The service must be stopped, or the new name is taken."),
   },
@@ -190,14 +193,15 @@ export const feature: Feature = {
 
     app.openapi(renameRoute, async (c) => {
       const request = c.req.valid("json");
+      const params = c.req.valid("param");
+      const access = requestAccess(deps, c);
       // The table checked the project in the path. A move also writes into the one in the body.
-      requireProjectLevel(requestAccess(deps, c), c.req.method, request.projectName, "operator");
-      const to = await renameService(
-        deps,
-        target(c.req.valid("param")),
-        request,
-        actorEmailOf(requirePrincipal(c)),
-      );
+      requireProjectLevel(access, c.req.method, request.projectName, "operator");
+      if (request.projectName !== params.project) {
+        // It then gets that project's variables, which its people decide.
+        requireHostAccessFor(access, requireService(deps, target(params)));
+      }
+      const to = await renameService(deps, target(params), request, actorEmailOf(requirePrincipal(c)));
       return c.json(await getServiceDetail(deps, to), 200);
     });
   },

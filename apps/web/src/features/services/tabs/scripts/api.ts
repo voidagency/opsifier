@@ -31,7 +31,7 @@ export const scriptRunsQuery = (project: string, service: string) =>
   queryOptions({
     queryKey: runsKey(project, service),
     queryFn: ({ signal }) =>
-      api.get(`${runsPath(project, service)}?limit=25`, { schema: scriptRunPage, signal }),
+      api.get(runsPath(project, service), { query: { limit: 25 }, schema: scriptRunPage, signal }),
     staleTime: 0,
     refetchInterval: ({ state }) =>
       state.data?.items.some((run) => run.status === "queued" || run.status === "running")

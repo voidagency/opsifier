@@ -23,6 +23,7 @@ import {
   type SwarmInfo,
   type SwarmServiceSpec,
 } from "../core/docker";
+import { sslipBase } from "../core/proxy/sslip";
 import type { ToolRunner } from "../core/tools";
 import { addressChallengeEnv } from "../features/opsifier-address/proxy-env";
 import type { AddressForProxy, SetupAddress } from "./address";
@@ -536,7 +537,7 @@ async function waitForToken(deps: SetupDeps): Promise<string | null> {
   }
 }
 
-const generatedDomain = (ip: string) => `panel.${ip.replaceAll(":", "-")}.sslip.io`;
+const generatedDomain = (ip: string) => `panel.${sslipBase(ip)}`;
 
 function buildUrls(ip: string | null, token: string | null, addressDomain: string | null): string[] {
   const suffix = token === null ? "" : `/setup?token=${token}`;

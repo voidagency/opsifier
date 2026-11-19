@@ -12,7 +12,8 @@ import {
   storageProviderOptions,
 } from "@opsifier/contract";
 import { queryOptions } from "@tanstack/react-query";
-import { api } from "../../lib/api";
+import { api, apiUrl } from "../../lib/api";
+import { withBinding } from "../../lib/session-binding";
 import { serviceKey } from "../services/api";
 
 const base = (project: string, service: string) => `/projects/${project}/services/${service}/backups`;
@@ -44,9 +45,12 @@ export const databasesQuery = (project: string, service: string) =>
     retry: false,
   });
 
-/** Where a browser fetches one stored file from. It is a plain link, so the session cookie goes with it. */
+/**
+ * Where a browser fetches one stored file from. It is a plain link: the session cookie goes with it,
+ * and over plain HTTP the session's second secret is in the address.
+ */
 export const backupDownloadUrl = (project: string, service: string, id: string): string =>
-  `/api/v1${base(project, service)}/${id}/download`;
+  withBinding(apiUrl(`${base(project, service)}/${encodeURIComponent(id)}/download`));
 
 export const backupsApi = {
   createConfig: (project: string, service: string, body: SaveBackupConfigRequest) =>

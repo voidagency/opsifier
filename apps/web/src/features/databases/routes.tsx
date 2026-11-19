@@ -2,6 +2,7 @@ import { isDatabaseEngine } from "@opsifier/contract";
 import { type AnyRoute, createRoute, notFound } from "@tanstack/react-router";
 import type { ComponentType } from "react";
 import { isApiError } from "../../lib/api";
+import { namedParams } from "../../lib/route-params";
 import { serviceQuery } from "../services/api";
 import { type CrumbControlProps, ServiceCrumb } from "../services/Crumbs";
 import { DatabaseLayout } from "./DatabaseLayout";
@@ -12,6 +13,7 @@ export function createDatabaseRoutes<TParent extends AnyRoute>(getParentRoute: (
   const databaseRoute = createRoute({
     getParentRoute,
     path: "$engine/$service",
+    params: namedParams("engine", "service"),
     staticData: {
       crumbControl: ServiceCrumb as ComponentType<CrumbControlProps>,
       crumbParam: "service",

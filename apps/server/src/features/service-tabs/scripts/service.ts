@@ -2,11 +2,14 @@ import { MAX_SCRIPTS, type ScriptEntry, type ScriptSpec } from "@opsifier/contra
 import type { AppDeps } from "../../../core/context";
 import type { DbHandle } from "../../../core/db";
 import { badRequest, conflict, notFound } from "../../../core/errors";
+import { requireHostAccessFor } from "../../access/guard";
+import { type Access, canReachHost } from "../../access/rules";
 import { saveServiceSpec } from "../../services/repo";
 import { requireService, type ServiceTarget } from "../../services/service";
 import { deleteSchedule, latestRunOf, listSchedulesOf, renameRuns, saveSchedule } from "./repo";
 import { toScriptRun } from "./run";
 import { nextRunOf } from "./schedule";
+import type { StoredScript } from "./stored";
 
 function assertNameFree(scripts: readonly ScriptSpec[], name: string, except?: number): void {
   const taken = scripts.some(
@@ -56,7 +59,7 @@ function syncSchedules(
 function save(
   deps: AppDeps,
   target: ServiceTarget,
-  scripts: ScriptSpec[],
+  scripts: StoredScript[],
   rename?: { from: string; to: string },
 ): ScriptEntry[] {
   const record = requireService(deps, target);
@@ -76,13 +79,29 @@ function save(
   return listScripts(deps, target);
 }
 
+/** A script runs in the service's task, so in one that reaches the server it is an administrator's. */
+function editableScripts(deps: AppDeps, target: ServiceTarget, access: Access): StoredScript[] {
+  const record = requireService(deps, target);
+  requireHostAccessFor(access, record);
+  return record.spec.scripts;
+}
+
+/**
+ * The script as saved, with whoever saved it when they could reach the server. Anyone else saving it
+ * takes that away, so a schedule or a hook never runs words an administrator did not keep.
+ */
+const savedBy = (script: ScriptSpec, access: Access): StoredScript => ({
+  ...script,
+  savedBy: canReachHost(access) ? access.principal.user.id : null,
+});
+
 /** Every script of the service with what it is doing: its next due time and its latest run. */
 export function listScripts(deps: AppDeps, target: ServiceTarget): ScriptEntry[] {
   const { scripts } = requireService(deps, target).spec;
   const nextRuns = new Map(
     listSchedulesOf(deps.db, target).map((schedule) => [schedule.scriptName, schedule.nextRunAt]),
   );
-  return scripts.map((script) => {
+  return scripts.map(({ savedBy: _kept, ...script }) => {
     const lastRun = latestRunOf(deps.db, target, script.name);
     return {
       ...script,
@@ -92,13 +111,18 @@ export function listScripts(deps: AppDeps, target: ServiceTarget): ScriptEntry[]
   });
 }
 
-export function addScript(deps: AppDeps, target: ServiceTarget, script: ScriptSpec): ScriptEntry[] {
-  const { scripts } = requireService(deps, target).spec;
+export function addScript(
+  deps: AppDeps,
+  target: ServiceTarget,
+  script: ScriptSpec,
+  access: Access,
+): ScriptEntry[] {
+  const scripts = editableScripts(deps, target, access);
   if (scripts.length >= MAX_SCRIPTS) {
     throw badRequest("too_many_scripts", "This service has as many scripts as it can hold.");
   }
   assertNameFree(scripts, script.name);
-  return save(deps, target, [...scripts, script]);
+  return save(deps, target, [...scripts, savedBy(script, access)]);
 }
 
 export function updateScript(
@@ -106,8 +130,9 @@ export function updateScript(
   target: ServiceTarget,
   index: number,
   script: ScriptSpec,
+  access: Access,
 ): ScriptEntry[] {
-  const { scripts } = requireService(deps, target).spec;
+  const scripts = editableScripts(deps, target, access);
   const existing = scripts[index];
   if (existing === undefined) {
     throw notFound("This script does not exist.");
@@ -116,13 +141,18 @@ export function updateScript(
   return save(
     deps,
     target,
-    scripts.map((item, position) => (position === index ? script : item)),
+    scripts.map((item, position) => (position === index ? savedBy(script, access) : item)),
     { from: existing.name, to: script.name },
   );
 }
 
-export function removeScript(deps: AppDeps, target: ServiceTarget, index: number): ScriptEntry[] {
-  const { scripts } = requireService(deps, target).spec;
+export function removeScript(
+  deps: AppDeps,
+  target: ServiceTarget,
+  index: number,
+  access: Access,
+): ScriptEntry[] {
+  const scripts = editableScripts(deps, target, access);
   if (index >= scripts.length) {
     throw notFound("This script does not exist.");
   }

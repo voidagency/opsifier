@@ -9,7 +9,7 @@ import { z } from "zod";
 import type { AppDeps } from "../../../core/context";
 import { services } from "../../../core/db/schema";
 import { badRequest, conflict, notFound } from "../../../core/errors";
-import { requireHostAccess } from "../../access/guard";
+import { requireHostAccess, requireHostAccessFor } from "../../access/guard";
 import type { Access } from "../../access/rules";
 import { isDatabaseRecord } from "../../databases/service";
 import { firstPortInUse } from "../../services/host-ports";
@@ -27,6 +27,15 @@ export function getAdvanced(deps: AppDeps, target: ServiceTarget): AdvancedDocum
   return { deploy, ports, stopped };
 }
 
+const sameGroups = (a: readonly string[], b: readonly string[]): boolean =>
+  [...a].sort().join(",") === [...b].sort().join(",");
+
+/** What the task starts, how, and which groups it may use, a socket's included: what runs in it. */
+const changesWhatRuns = (before: DeploySettings, after: DeploySettings): boolean =>
+  before.command !== after.command ||
+  before.tiniInit !== after.tiniInit ||
+  !sameGroups(before.groups, after.groups);
+
 const replicasError = () =>
   badRequest("validation_failed", "Some fields need attention.", { replicas: "Run at least one replica" });
 
@@ -40,6 +49,9 @@ export function saveDeploySettings(
   // Some capabilities are a way out of the container, so granting a new one is the server's to decide.
   if (settings.capAdd.some((name) => !record.spec.deploy.capAdd.includes(name))) {
     requireHostAccess(access);
+  }
+  if (changesWhatRuns(record.spec.deploy, settings)) {
+    requireHostAccessFor(access, record);
   }
   if (isDatabaseRecord(record) && settings.replicas !== 1) {
     // Saving a number that would then be ignored is how a topology that can't exist looks like it does.

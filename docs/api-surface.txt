@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 51
+# documented-changes: 62
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -155,9 +155,8 @@ GET /api/v1/auth/identity
   200 user!.role!: enum(admin|member)
   401
 POST /api/v1/auth/invitation/accept
-  201 status!: enum(needs-setup)
+  201 binding: string
   201 status!: enum(signed-in)
-  201 status!: enum(signed-out)
   201 twoFactorSetupRequired: boolean
   201 user!.email!: string
   201 user!.hostAdmin: boolean
@@ -181,9 +180,8 @@ POST /api/v1/auth/invitation/check
   429
   body token!: string
 POST /api/v1/auth/login
-  200 status!: enum(needs-setup)
+  200 binding: string
   200 status!: enum(signed-in)
-  200 status!: enum(signed-out)
   200 twoFactorSetupRequired: boolean
   200 user!.email!: string
   200 user!.hostAdmin: boolean
@@ -219,9 +217,8 @@ GET /api/v1/auth/session
   200 user!.role!: enum(admin|member)
   200 user!.twoFactorEnabled!: boolean
 POST /api/v1/auth/setup
-  201 status!: enum(needs-setup)
+  201 binding: string
   201 status!: enum(signed-in)
-  201 status!: enum(signed-out)
   201 twoFactorSetupRequired: boolean
   201 user!.email!: string
   201 user!.hostAdmin: boolean
@@ -598,6 +595,7 @@ GET /api/v1/ide/{project}/{service}/session
   200 service!: string
   400
   401
+  403
   path project!: string
   path service!: string
 GET /api/v1/ide/{project}/{service}/tree
@@ -1106,6 +1104,7 @@ PUT /api/v1/projects/{project}/env
   200 names![]: string
   400
   401
+  403
   404
   body env!: string
   path project!: string
@@ -1693,6 +1692,7 @@ POST /api/v1/projects/{project}/services/{service}/backups/restore
   202 type!: string
   400
   401
+  403
   404
   409
   body confirm!: string
@@ -1806,6 +1806,7 @@ POST /api/v1/projects/{project}/services/{service}/backups/{backup}/restore
   202 type!: string
   400
   401
+  403
   404
   409
   body confirm!: string
@@ -1963,6 +1964,7 @@ PUT /api/v1/projects/{project}/services/{service}/box/hooks
   200 runtime!.workspaceVolume!: string
   400
   401
+  403
   404
   body build: string
   body start: string
@@ -1987,6 +1989,7 @@ PUT /api/v1/projects/{project}/services/{service}/box/ide
   200 path!: string
   400
   401
+  403
   404
   body enabled!: boolean
   path project!: string
@@ -2011,6 +2014,7 @@ POST /api/v1/projects/{project}/services/{service}/box/ide/token
   200 token!: string
   400
   401
+  403
   404
   body expiresInHours: integer
   path project!: string
@@ -2063,6 +2067,7 @@ PUT /api/v1/projects/{project}/services/{service}/box/modules
   200 runtime!.workspaceVolume!: string
   400
   401
+  403
   404
   body nginx.documentRoot: string
   body node.extensions[]: string
@@ -2123,6 +2128,7 @@ POST /api/v1/projects/{project}/services/{service}/box/preset
   200 runtime!.workspaceVolume!: string
   400
   401
+  403
   404
   body preset!: enum(node-service|php-site|python-service|ruby-service|static-site)
   path project!: string
@@ -2175,6 +2181,7 @@ PUT /api/v1/projects/{project}/services/{service}/box/processes
   200 runtime!.workspaceVolume!: string
   400
   401
+  403
   404
   body processes![].command!: string
   body processes![].directory: string
@@ -2213,6 +2220,7 @@ POST /api/v1/projects/{project}/services/{service}/box/processes/{process}/resta
   202 type!: string
   400
   401
+  403
   404
   409
   path process!: string
@@ -2269,6 +2277,7 @@ POST /api/v1/projects/{project}/services/{service}/companions/{tool}
   202 type!: string
   400
   401
+  403
   404
   409
   path project!: string
@@ -2278,6 +2287,7 @@ POST /api/v1/projects/{project}/services/{service}/companions/{tool}/reveal
   200 token!: string
   400
   401
+  403
   404
   409
   path project!: string
@@ -2288,7 +2298,7 @@ GET /api/v1/projects/{project}/services/{service}/compose
   200 acknowledgementRequired!: boolean
   200 content!: null|string
   200 envFile!: boolean
-  200 issues![].code!: enum(capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_image|foreign_network|host_namespace|host_path|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|runs_program|security_options|unknown_dependency|unroutable_name)
+  200 issues![].code!: enum(bind_volume|build_attestation|capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_image|foreign_name|foreign_network|host_namespace|host_path|mounts_stack|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|runs_program|security_options|unknown_dependency|unroutable_name)
   200 issues![].detail!: null|string
   200 issues![].service!: null|string
   200 issues![].severity!: enum(error|host|warning)
@@ -2313,7 +2323,7 @@ POST /api/v1/projects/{project}/services/{service}/compose/acknowledge
   200 acknowledgementRequired!: boolean
   200 content!: null|string
   200 envFile!: boolean
-  200 issues![].code!: enum(capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_image|foreign_network|host_namespace|host_path|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|runs_program|security_options|unknown_dependency|unroutable_name)
+  200 issues![].code!: enum(bind_volume|build_attestation|capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_image|foreign_name|foreign_network|host_namespace|host_path|mounts_stack|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|runs_program|security_options|unknown_dependency|unroutable_name)
   200 issues![].detail!: null|string
   200 issues![].service!: null|string
   200 issues![].severity!: enum(error|host|warning)
@@ -2357,7 +2367,7 @@ PUT /api/v1/projects/{project}/services/{service}/compose/env-file
   200 acknowledgementRequired!: boolean
   200 content!: null|string
   200 envFile!: boolean
-  200 issues![].code!: enum(capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_image|foreign_network|host_namespace|host_path|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|runs_program|security_options|unknown_dependency|unroutable_name)
+  200 issues![].code!: enum(bind_volume|build_attestation|capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_image|foreign_name|foreign_network|host_namespace|host_path|mounts_stack|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|runs_program|security_options|unknown_dependency|unroutable_name)
   200 issues![].detail!: null|string
   200 issues![].service!: null|string
   200 issues![].severity!: enum(error|host|warning)
@@ -2374,6 +2384,7 @@ PUT /api/v1/projects/{project}/services/{service}/compose/env-file
   200 sshPublicKey!: null|string
   400
   401
+  403
   404
   body enabled!: boolean
   path project!: string
@@ -2383,7 +2394,7 @@ PUT /api/v1/projects/{project}/services/{service}/compose/source
   200 acknowledgementRequired!: boolean
   200 content!: null|string
   200 envFile!: boolean
-  200 issues![].code!: enum(capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_image|foreign_network|host_namespace|host_path|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|runs_program|security_options|unknown_dependency|unroutable_name)
+  200 issues![].code!: enum(bind_volume|build_attestation|capabilities|container_name|data_directory|devices|docker_socket|escapes_stack|external_resource|foreign_image|foreign_name|foreign_network|host_namespace|host_path|mounts_stack|network_mode|no_restart_policy|no_services|port_taken|privileged|profiles|published_port|runs_program|security_options|unknown_dependency|unroutable_name)
   200 issues![].detail!: null|string
   200 issues![].service!: null|string
   200 issues![].severity!: enum(error|host|warning)
@@ -2400,6 +2411,7 @@ PUT /api/v1/projects/{project}/services/{service}/compose/source
   200 sshPublicKey!: null|string
   400
   401
+  403
   404
   503
   body content!: string
@@ -2458,6 +2470,7 @@ PUT /api/v1/projects/{project}/services/{service}/credentials
   202 type!: string
   400
   401
+  403
   404
   409
   body password: string
@@ -2490,6 +2503,7 @@ POST /api/v1/projects/{project}/services/{service}/credentials/reveal
   200 value!: string
   400
   401
+  403
   404
   409
   body secret!: enum(externalUrl|internalUrl|password|rootPassword)
@@ -2529,6 +2543,7 @@ PUT /api/v1/projects/{project}/services/{service}/database-advanced
   200 image!: string
   400
   401
+  403
   404
   409
   body command: string
@@ -2886,6 +2901,7 @@ PUT /api/v1/projects/{project}/services/{service}/environment
   200 names![]: string
   400
   401
+  403
   404
   body env: string
   body interpolation: boolean
@@ -2908,6 +2924,7 @@ PUT /api/v1/projects/{project}/services/{service}/environment/build
   200 variables![]: string
   400
   401
+  403
   404
   body env!: string
   path project!: string
@@ -2919,6 +2936,7 @@ DELETE /api/v1/projects/{project}/services/{service}/environment/build/inherited
   200 variables![]: string
   400
   401
+  403
   404
   path project!: string
   path service!: string
@@ -2936,6 +2954,7 @@ DELETE /api/v1/projects/{project}/services/{service}/environment/build/secrets/{
   200 variables![]: string
   400
   401
+  403
   404
   path name!: string
   path project!: string
@@ -2947,6 +2966,7 @@ PUT /api/v1/projects/{project}/services/{service}/environment/build/secrets/{nam
   200 variables![]: string
   400
   401
+  403
   404
   409
   body value!: string
@@ -3250,6 +3270,7 @@ POST /api/v1/projects/{project}/services/{service}/rename
   200 wake![]: enum(cancelled|failed|running|succeeded|uncertain)
   400
   401
+  403
   404
   409
   body name!: string
@@ -3310,7 +3331,7 @@ GET /api/v1/projects/{project}/services/{service}/script-runs
   200 items![].finishedAt!: null|string
   200 items![].id!: string
   200 items![].maxDurationSeconds!: integer
-  200 items![].note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
+  200 items![].note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|reaches_server|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
   200 items![].note!.message!: string
   200 items![].origin!: enum(api|console|hook|manual|schedule)
   200 items![].originDetail!: null|string
@@ -3349,7 +3370,7 @@ POST /api/v1/projects/{project}/services/{service}/script-runs
   202 run!.finishedAt!: null|string
   202 run!.id!: string
   202 run!.maxDurationSeconds!: integer
-  202 run!.note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
+  202 run!.note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|reaches_server|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
   202 run!.note!.message!: string
   202 run!.origin!: enum(api|console|hook|manual|schedule)
   202 run!.originDetail!: null|string
@@ -3381,7 +3402,7 @@ GET /api/v1/projects/{project}/services/{service}/script-runs/{id}
   200 finishedAt!: null|string
   200 id!: string
   200 maxDurationSeconds!: integer
-  200 note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
+  200 note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|reaches_server|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
   200 note!.message!: string
   200 origin!: enum(api|console|hook|manual|schedule)
   200 originDetail!: null|string
@@ -3408,7 +3429,7 @@ POST /api/v1/projects/{project}/services/{service}/script-runs/{id}/cancel
   200 finishedAt!: null|string
   200 id!: string
   200 maxDurationSeconds!: integer
-  200 note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
+  200 note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|reaches_server|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
   200 note!.message!: string
   200 origin!: enum(api|console|hook|manual|schedule)
   200 originDetail!: null|string
@@ -3435,7 +3456,7 @@ GET /api/v1/projects/{project}/services/{service}/scripts
   200 scripts![].lastRun.finishedAt!: null|string
   200 scripts![].lastRun.id!: string
   200 scripts![].lastRun.maxDurationSeconds!: integer
-  200 scripts![].lastRun.note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
+  200 scripts![].lastRun.note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|reaches_server|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
   200 scripts![].lastRun.note!.message!: string
   200 scripts![].lastRun.origin!: enum(api|console|hook|manual|schedule)
   200 scripts![].lastRun.originDetail!: null|string
@@ -3466,7 +3487,7 @@ POST /api/v1/projects/{project}/services/{service}/scripts
   201 scripts![].lastRun.finishedAt!: null|string
   201 scripts![].lastRun.id!: string
   201 scripts![].lastRun.maxDurationSeconds!: integer
-  201 scripts![].lastRun.note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
+  201 scripts![].lastRun.note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|reaches_server|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
   201 scripts![].lastRun.note!.message!: string
   201 scripts![].lastRun.origin!: enum(api|console|hook|manual|schedule)
   201 scripts![].lastRun.originDetail!: null|string
@@ -3486,6 +3507,7 @@ POST /api/v1/projects/{project}/services/{service}/scripts
   201 scripts![].script: string
   400
   401
+  403
   404
   409
   body maxDurationSeconds: integer
@@ -3504,7 +3526,7 @@ DELETE /api/v1/projects/{project}/services/{service}/scripts/{index}
   200 scripts![].lastRun.finishedAt!: null|string
   200 scripts![].lastRun.id!: string
   200 scripts![].lastRun.maxDurationSeconds!: integer
-  200 scripts![].lastRun.note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
+  200 scripts![].lastRun.note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|reaches_server|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
   200 scripts![].lastRun.note!.message!: string
   200 scripts![].lastRun.origin!: enum(api|console|hook|manual|schedule)
   200 scripts![].lastRun.originDetail!: null|string
@@ -3524,6 +3546,7 @@ DELETE /api/v1/projects/{project}/services/{service}/scripts/{index}
   200 scripts![].script: string
   400
   401
+  403
   404
   path index!: integer
   path project!: string
@@ -3536,7 +3559,7 @@ PUT /api/v1/projects/{project}/services/{service}/scripts/{index}
   200 scripts![].lastRun.finishedAt!: null|string
   200 scripts![].lastRun.id!: string
   200 scripts![].lastRun.maxDurationSeconds!: integer
-  200 scripts![].lastRun.note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
+  200 scripts![].lastRun.note!.code!: enum(connection_lost|console_closed|console_output|end_unconfirmed|no_running_task|not_started|panel_restarted|panel_restarted_finished|panel_restarted_running|panel_restarted_unknown|reaches_server|script_deleted|skipped_overlap|skipped_refused|start_failed|time_limit)
   200 scripts![].lastRun.note!.message!: string
   200 scripts![].lastRun.origin!: enum(api|console|hook|manual|schedule)
   200 scripts![].lastRun.originDetail!: null|string
@@ -3556,6 +3579,7 @@ PUT /api/v1/projects/{project}/services/{service}/scripts/{index}
   200 scripts![].script: string
   400
   401
+  403
   404
   409
   body maxDurationSeconds: integer
@@ -3632,6 +3656,7 @@ PUT /api/v1/projects/{project}/services/{service}/source
   200 username!: null|string
   400
   401
+  403
   404
   503
   body build.aptPackages: string
@@ -3709,6 +3734,7 @@ PUT /api/v1/projects/{project}/services/{service}/source/build
   200 build!: null
   400
   401
+  403
   404
   body build!.aptPackages: string
   body build!.buildAptPackages: string
@@ -3741,6 +3767,7 @@ PUT /api/v1/projects/{project}/services/{service}/source/env-file
   200 path!: null|string
   400
   401
+  403
   404
   body inImage: boolean
   body path!: null|string
@@ -3827,6 +3854,7 @@ PUT /api/v1/projects/{project}/services/{service}/source/upload
   200 username!: null|string
   400
   401
+  403
   404
   413
   503

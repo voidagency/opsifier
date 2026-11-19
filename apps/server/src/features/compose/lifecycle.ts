@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { deployActionType, firstInvalidEnvLine } from "@opsifier/contract";
 import { type ActionContext, type ActionRow, RETAINED_ACTIONS } from "../../core/actions";
@@ -6,7 +6,7 @@ import type { AppDeps } from "../../core/context";
 import { conflict } from "../../core/errors";
 import { Redactor } from "../../core/tools";
 import { assertProjectBoundaries } from "../projects/isolation";
-import { foreignNetworkRefusal, releaseProxyFromProjectNetwork } from "../projects/network";
+import { releaseProxyFromProjectNetwork } from "../projects/network";
 import { rememberBuildCache, snapshotBuildCache } from "../server/docker-admin";
 import { effectiveOf, recordApplied } from "../services/applied";
 import { deployRun, joinDeployRun } from "../services/deploy-request";
@@ -19,10 +19,14 @@ import {
   saveServiceSpec,
 } from "../services/repo";
 import { requireService, type ServiceTarget, writeProxyConfig } from "../services/service";
+import { hasEntry, readPlainFile } from "./checkout";
 import { deployStack, hashCompose, prepareStack, type StackDeployOptions, watchStack } from "./deploy";
-import { hasBlockingError, hasHostAccess, stackChildren } from "./inspect";
+import { hasHostAccess, stackChildren } from "./inspect";
+import { composeCodeDir, composeProject } from "./names";
+import { fileRefusal } from "./refusals";
 import { assertComposeSucceeded, type ComposeFiles, runCompose } from "./run";
-import { inspectStackFile, requireCompose, unmarkedStackContainers } from "./service";
+import { inspectStackFile, requireCompose, stackFileOf, unmarkedStackContainers } from "./service";
+import type { StoredCompose } from "./spec";
 
 function enqueueOn(
   deps: AppDeps,
@@ -96,7 +100,7 @@ function assertDeployable(deps: AppDeps, target: ServiceTarget, record: ServiceR
     throw conflict("service_has_no_source", "Save a Compose file before deploying.");
   }
   if (compose.source.type === "inline") {
-    assertFileAllowed(deps, target, compose.source.content, compose.acknowledgedHash);
+    assertFileAllowed(deps, target, compose.source.content, compose);
   }
 }
 
@@ -105,22 +109,18 @@ function assertFileAllowed(
   deps: AppDeps,
   target: ServiceTarget,
   content: string,
-  acknowledgedHash: string | null,
+  { acknowledgedHash, source }: StoredCompose,
 ): void {
-  const inspection = inspectStackFile(deps, target, content);
+  const inspection = inspectStackFile(deps, target, content, stackFileOf(source));
   if (inspection.parseError !== null) {
     throw conflict("compose_invalid", "This Compose file is not valid YAML. See the Source tab.");
   }
-  const foreign = inspection.issues.find((issue) => issue.code === "foreign_network");
-  if (foreign !== undefined) {
-    throw foreignNetworkRefusal(foreign.detail ?? "another network");
-  }
-  if (hasBlockingError(inspection)) {
-    const first = inspection.issues.find((issue) => issue.severity === "error");
-    throw conflict(
-      "compose_invalid",
-      `This Compose file can't run: ${first?.code ?? "invalid"}. See the Source tab.`,
-    );
+  // Another project's network first: its refusal offers the way to reach a database there.
+  const blocking =
+    inspection.issues.find((issue) => issue.code === "foreign_network") ??
+    inspection.issues.find((issue) => issue.severity === "error");
+  if (blocking !== undefined) {
+    throw fileRefusal(blocking, composeProject(target));
   }
   if (hasHostAccess(inspection) && hashCompose(content) !== acknowledgedHash) {
     throw conflict(
@@ -143,7 +143,7 @@ export async function runComposeDeploy(
   const compose = requireCompose(record);
   const prepared = await prepareStack(deps, target, record, compose, ctx, options.commit);
   // A Git file arrives only now, so this is the first time anyone could look at it.
-  assertFileAllowed(deps, target, prepared.content, compose.acknowledgedHash);
+  assertFileAllowed(deps, target, prepared.content, compose);
   await assertProjectBoundaries(deps, target, requireService(deps, target));
   await assertDeploySpace(deps, await stackDiskNeed(deps, stackChildren(prepared.content)), ctx);
 
@@ -173,6 +173,9 @@ export async function runComposeDeploy(
   ctx.log("Deployed");
 }
 
+/** As much as the editor takes for a service's variables. */
+const MAX_ENV_EXAMPLE_BYTES = 128 * 1024;
+
 /**
  * A repository that ships `.env.example` is telling you what it needs. On a stack with no variables
  * of its own yet, it fills the editor and turns the `.env` file on, once.
@@ -192,11 +195,14 @@ async function seedEnvFromExample(
   ) {
     return null;
   }
+  // The stack writes its folder too, and a link it left there could point at another project's `.env`:
+  // only a plain file of the repository's own counts, reached through folders alone.
+  const code = await realpath(composeCodeDir(deps, target));
   const [example, existing] = await Promise.all([
-    readFile(join(projectDirectory, ".env.example"), "utf8").catch(() => null),
-    readFile(join(projectDirectory, ".env"), "utf8").catch(() => null),
+    readPlainFile(code, join(projectDirectory, ".env.example"), MAX_ENV_EXAMPLE_BYTES),
+    hasEntry(code, join(projectDirectory, ".env")),
   ]);
-  if (example === null || existing !== null || firstInvalidEnvLine(example) !== null) {
+  if (example === null || existing || firstInvalidEnvLine(example) !== null) {
     return null;
   }
   // Fetching a repository takes a while, and someone may have typed their own variables since.

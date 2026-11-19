@@ -112,7 +112,10 @@ function normalizeService(child: Record<string, unknown>, from: string): Record<
   }
   const build = child.build;
   if (typeof build === "string") {
-    service.build = { context: absolute(build, from), dockerfile: "Dockerfile" };
+    service.build = {
+      context: /:\/\//.test(build) ? build : absolute(build, from),
+      dockerfile: "Dockerfile",
+    };
   } else if (isRecord(build)) {
     const context = typeof build.context === "string" ? build.context : ".";
     service.build = { ...build, context: /:\/\//.test(context) ? context : absolute(context, from) };
@@ -185,6 +188,39 @@ async function dotEnv(directory: string | undefined): Promise<Record<string, str
   );
 }
 
+/** A build's arguments as a mapping, whichever form a file writes them in. */
+function argsOf(args: unknown): Record<string, unknown> {
+  if (isRecord(args)) {
+    return args;
+  }
+  return Object.fromEntries(
+    asList(args).map((entry) => {
+      const [key = "", ...rest] = String(entry).split("=");
+      return [key, rest.length === 0 ? null : rest.join("=")];
+    }),
+  );
+}
+
+/**
+ * A later file's child over an earlier one's, as Compose merges them: key by key, a build's settings
+ * and arguments too, the later file winning.
+ */
+function mergeService(before: Record<string, unknown> | undefined, after: Record<string, unknown>) {
+  const merged = { ...before, ...after };
+  if (before?.build !== undefined && after.build !== undefined) {
+    const build = (value: unknown) => (isRecord(value) ? value : { context: value });
+    const [earlier, later] = [build(before.build), build(after.build)];
+    merged.build = {
+      ...earlier,
+      ...later,
+      ...(earlier.args !== undefined || later.args !== undefined
+        ? { args: { ...argsOf(earlier.args), ...argsOf(later.args) } }
+        : {}),
+    };
+  }
+  return merged;
+}
+
 /**
  * What `docker compose config --format json` makes of the stack's files, for the parts the panel
  * reads: files merged in order, includes and extends brought in, variables filled in and paths made
@@ -204,7 +240,7 @@ async function resolveConfig(
     Object.assign(merged.networks ?? {}, file.networks ?? {});
     Object.assign(merged.volumes ?? {}, file.volumes ?? {});
     for (const [name, child] of Object.entries(file.services ?? {})) {
-      merged.services = { ...merged.services, [name]: { ...merged.services?.[name], ...child } };
+      merged.services = { ...merged.services, [name]: mergeService(merged.services?.[name], child) };
     }
   }
   return {
@@ -227,12 +263,27 @@ async function overrideNetworks(args: readonly string[], project: string, child:
   return keys.map((key) => resolved.networks?.[key]?.name ?? key);
 }
 
+/** The host paths a child binds, as Docker would report them once it runs. */
+async function childBinds(
+  args: readonly string[],
+  project: string,
+  child: string,
+): Promise<Array<{ source: string; rw: boolean }>> {
+  const resolved = await resolveConfig(args, project);
+  return asList(resolved.services?.[child]?.volumes).flatMap((entry) =>
+    isRecord(entry) && entry.type === "bind" && typeof entry.source === "string"
+      ? [{ source: entry.source, rw: entry.read_only !== true }]
+      : [],
+  );
+}
+
 function simulatedContainer(
   project: string,
   child: string,
   image: string,
   labels: Record<string, string>,
   networks: string[],
+  binds: Array<{ source: string; rw: boolean }>,
 ): ComposeContainerInfo {
   return {
     id: `fake-${project}-${child}-1`,
@@ -248,6 +299,7 @@ function simulatedContainer(
     ports: [],
     labels,
     networks,
+    binds,
   };
 }
 
@@ -290,6 +342,24 @@ export function installComposeSimulation(deps: AppDeps): void {
 
     switch (verb) {
       case "up": {
+        // Compose makes the volumes a stack declares once, and keeps them as they were made.
+        const declared = (await resolveConfig(args, project)).volumes ?? {};
+        for (const [key, value] of Object.entries(declared)) {
+          const volume = isRecord(value) ? value : {};
+          const name = typeof volume.name === "string" ? volume.name : `${project}_${key}`;
+          if (volume.external === undefined && (await docker.inspectVolume(name)) === null) {
+            await docker.createVolume({
+              name,
+              driver: typeof volume.driver === "string" ? volume.driver : "local",
+              driverOptions: Object.fromEntries(
+                Object.entries(isRecord(volume.driver_opts) ? volume.driver_opts : {}).map(
+                  ([option, setting]) => [option, String(setting)],
+                ),
+              ),
+              labels: { "com.docker.compose.project": project, "com.docker.compose.volume": key },
+            });
+          }
+        }
         const children = await childrenOf(args);
         const wanted = new Set(children);
         remove(
@@ -300,25 +370,21 @@ export function installComposeSimulation(deps: AppDeps): void {
           ),
         );
         for (const child of children) {
-          if (!own().some((container) => container.child === child)) {
-            docker.composeContainers.push(
-              simulatedContainer(
-                project,
-                child,
-                "fake:latest",
-                await overrideLabels(args, child),
-                await overrideNetworks(args, project, child),
-              ),
-            );
-          }
           const labels = await overrideLabels(args, child);
           const networks = await overrideNetworks(args, project, child);
+          const binds = await childBinds(args, project, child);
+          if (!own().some((container) => container.child === child)) {
+            docker.composeContainers.push(
+              simulatedContainer(project, child, "fake:latest", labels, networks, binds),
+            );
+          }
           for (const container of own().filter((item) => item.child === child)) {
             container.state = "running";
             container.status = "Up 2 seconds";
             container.exitCode = null;
             container.labels = labels;
             container.networks = networks;
+            container.binds = binds;
           }
         }
         request.onLine?.(`Simulating docker compose up for ${project}`);

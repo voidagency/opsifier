@@ -3,6 +3,7 @@ import { type TerminalClientFrame, terminalPath, terminalServerFrame } from "@op
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
+import { panelProtocols } from "../../lib/session-binding";
 import { useResolvedTheme } from "../../lib/theme";
 
 /** Terminals carry more than one screenful. Past this much, xterm's memory is the thing at stake. */
@@ -114,6 +115,7 @@ export default function TerminalPane(props: TerminalPaneProps) {
 
     const socket = new WebSocket(
       socketUrl({ project, service, task, socketPath, target: JSON.parse(targetKey) }, term.cols, term.rows),
+      panelProtocols(),
     );
     socket.binaryType = "arraybuffer";
     let ended = false;

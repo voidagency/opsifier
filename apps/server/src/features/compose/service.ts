@@ -1,4 +1,4 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type ComposeDetail,
@@ -15,6 +15,8 @@ import { domains } from "../../core/db/schema";
 import type { ComposeContainerInfo } from "../../core/docker";
 import { AppError, conflict, notFound } from "../../core/errors";
 import { ToolNotFoundError } from "../../core/tools";
+import { requireHostAccessFor } from "../access/guard";
+import type { Access } from "../access/rules";
 import { assignDefaultDomain } from "../service-tabs/domains/service";
 import { probeRemote } from "../service-tabs/source/build/git";
 import { resolveInside } from "../service-tabs/source/build/paths";
@@ -43,7 +45,9 @@ import {
   writeProxyConfig,
 } from "../services/service";
 import { appServiceSpec } from "../services/spec";
+import { readPlainFile } from "./checkout";
 import {
+  applyEnvFile,
   hashCompose,
   readStackAccess,
   stackFilesOnDisk,
@@ -52,11 +56,11 @@ import {
   writeStackOverride,
 } from "./deploy";
 import { type ComposeInspection, hasHostAccess, inspectComposeFile } from "./inspect";
-import { composeCodeDir, composeProject } from "./names";
+import { COMPOSE_INLINE_FILE, composeCodeDir, composeProject } from "./names";
 import { takenPorts } from "./ports";
-import { accessFingerprint } from "./resolved";
 import type { StoredCompose } from "./spec";
 import { toComposeChildren } from "./status";
+import { MAX_STACK_FILE_BYTES } from "./tree";
 
 export const isComposeRecord = (record: Pick<ServiceRecord, "spec">): boolean => record.spec.compose !== null;
 
@@ -67,16 +71,22 @@ export function requireCompose(record: ServiceRecord): StoredCompose {
   return record.spec.compose;
 }
 
+/** Where the file a stack starts from sits in the folder Compose reads it from. */
+export const stackFileOf = (source: StoredCompose["source"]): string =>
+  source?.type === "git" ? source.file : COMPOSE_INLINE_FILE;
+
 export function inspectStackFile(
   deps: Pick<AppDeps, "config" | "db">,
   target: ServiceTarget,
   content: string,
+  file: string = COMPOSE_INLINE_FILE,
 ): ComposeInspection {
   return inspectComposeFile(content, {
     dataDir: deps.config.dataDir,
     takenPorts: takenPorts(deps, target),
     project: target.projectName,
     stack: composeProject(target),
+    file,
   });
 }
 
@@ -96,7 +106,9 @@ export async function currentContent(
   try {
     const code = composeCodeDir(deps, target);
     const directory = await resolveInside(code, source.path.replace(/^\/+/, ""), "The build path");
-    return await readFile(await resolveInside(directory, source.file, "The Compose file"), "utf8");
+    const file = await resolveInside(directory, source.file, "The Compose file");
+    // A plain file only, so that a pipe left in the folder can't hold the page.
+    return await readPlainFile(await realpath(code), file, MAX_STACK_FILE_BYTES);
   } catch {
     // Not fetched yet, or no longer where it was: the next deploy finds out properly.
     return null;
@@ -109,8 +121,8 @@ export async function getComposeDetail(deps: AppDeps, target: ServiceTarget): Pr
   const content = await currentContent(deps, target, compose);
   const inspection =
     content === null
-      ? { services: [], issues: [], parseError: null }
-      : inspectStackFile(deps, target, content);
+      ? { services: [], issues: [], parseError: null, mounts: [], inputs: [], files: [] }
+      : inspectStackFile(deps, target, content, stackFileOf(compose.source));
   // What the last deploy found the stack reaching beyond the file on the page, waiting for a person.
   const shown = new Set(inspection.issues.map((issue) => `${issue.code}|${issue.service}|${issue.detail}`));
   const pending = compose.pendingAccess.filter(
@@ -172,12 +184,20 @@ function persistCompose(
   return requireService(deps, target);
 }
 
+/**
+ * Where a file comes from, apart from what it holds: another repository, branch, path or file builds
+ * and runs other code, even with the same file, so a confirmation given for one is not for another.
+ */
+const originOf = (source: StoredCompose["source"]): string | null =>
+  source === null ? null : source.type === "inline" ? "inline" : JSON.stringify(source);
+
 /** Saves the source. Nothing that is running changes until the next deploy. */
 export async function saveComposeSource(
   deps: AppDeps,
   target: ServiceTarget,
   request: SaveComposeSourceRequest,
   actorEmail: string | undefined,
+  access: Access,
 ): Promise<ComposeDetail> {
   const record = requireService(deps, target);
   requireCompose(record);
@@ -191,6 +211,8 @@ export async function saveComposeSource(
   }
 
   let withdrawn = false;
+  // The remote took its time: the stack may have been confirmed meanwhile.
+  requireHostAccessFor(access, requireService(deps, target));
   const updated = persistCompose(deps, target, (compose, spec) => {
     const settled = withdrawAuthority(
       withKeyBinding(spec.build, sshKey),
@@ -199,8 +221,17 @@ export async function saveComposeSource(
       false,
     );
     withdrawn = settled.withdrawn;
+    const moved = originOf(compose.source) !== originOf(source);
     // What a deploy found waiting was about the file before this one.
-    return { compose: { ...compose, source, pendingAccess: [] }, build: settled.build };
+    return {
+      compose: {
+        ...compose,
+        source,
+        pendingAccess: [],
+        ...(moved ? { acknowledgedHash: null, acknowledgedAccess: null } : {}),
+      },
+      build: settled.build,
+    };
   });
   if (source.type === "inline") {
     await mkdir(serviceDir(deps, target.projectName, target.serviceName), { recursive: true, mode: 0o700 });
@@ -249,16 +280,19 @@ async function resolvedAccessFingerprint(
   content: string,
 ): Promise<string> {
   const files = await stackFilesOnDisk(deps, target, compose);
+  const variables = stackVariables(deps, target, record, () => undefined);
+  // The `.env` the next deploy writes is among the files a confirmation covers: as it will be, then.
+  await applyEnvFile(files.projectDirectory, compose.envFile, variables);
   await writeStackOverride(deps, target, record, content);
   try {
-    const { access } = await readStackAccess(
+    const { fingerprint } = await readStackAccess(
       deps,
       target,
       files,
-      stackVariables(deps, target, record, () => undefined),
+      variables,
       serviceRedactor(deps, target),
     );
-    return accessFingerprint(access);
+    return fingerprint;
   } catch (error) {
     throw conflict(
       "compose_invalid",
@@ -306,15 +340,22 @@ export async function acknowledgeCompose(
   if (current === null || current !== content) {
     throw conflict("compose_changed", "This Compose file has changed. Read it again before confirming.");
   }
+  const shown = JSON.stringify(compose.source);
   const access = await resolvedAccessFingerprint(deps, target, record, compose, content);
-  persistCompose(deps, target, (stored) => ({
-    compose: {
-      ...stored,
-      acknowledgedHash: hashCompose(content),
-      acknowledgedAccess: access,
-      pendingAccess: [],
-    },
-  }));
+  persistCompose(deps, target, (stored) => {
+    // A save that landed while the stack was read for this would have it confirm another file.
+    if (JSON.stringify(stored.source) !== shown) {
+      throw conflict("compose_changed", "This Compose file has changed. Read it again before confirming.");
+    }
+    return {
+      compose: {
+        ...stored,
+        acknowledgedHash: hashCompose(content),
+        acknowledgedAccess: access,
+        pendingAccess: [],
+      },
+    };
+  });
   deps.actions.record({
     type: "service.source",
     title: `Confirm the host access of ${target.projectName}/${target.serviceName}`,
