@@ -14,6 +14,7 @@ import { scriptPrelude } from "./git-scripts";
 import type * as repo from "./repo";
 import { requireLinked } from "./service";
 import { readStudioSettings } from "./settings";
+import { refuseWhilePaused } from "./viewing";
 
 /**
  * Opening a project brings its folder up to date with its branch on GitHub, so that the preview and
@@ -459,6 +460,10 @@ export function syncStudioProject(
   wake = true,
 ): Promise<StudioSync> {
   const { record, app } = requireLinked(deps, target);
+  // A project on pause has its agent server stopped: nothing wakes it for an update.
+  if (wake) {
+    refuseWhilePaused(app);
+  }
   const key = `${record.projectName}/${record.name}/${app.serviceId}`;
   const known = updates.get(key);
   if (

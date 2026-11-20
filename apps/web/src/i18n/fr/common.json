@@ -243,7 +243,8 @@
     "studio_version_unknown": "Cette version du projet n'existe pas.",
     "studio_version_overwrite": "Cette version écraserait des fichiers que git ne garde pas, comme les réglages du site : elle n'est pas affichée.",
     "studio_version_unsafe": "Les réglages git propres au projet lancent des commandes quand des fichiers sont lus ou écrits : le panel laisse son dossier tel quel.",
-    "studio_version_busy": "La version affichée est en train de changer. Réessayez dans un instant."
+    "studio_version_busy": "La version affichée est en train de changer. Réessayez dans un instant.",
+    "studio_project_paused": "Ce projet est en pause : reprenez-le d'abord."
   },
   "retention": {
     "removed": "Supprimé",

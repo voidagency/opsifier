@@ -65,6 +65,7 @@ import {
 } from "./github-keys";
 import { linkGonePage, registerGuestPages } from "./guest-pages";
 import { isolateAllStudioApps, isolateStudioApp } from "./isolate";
+import { pauseStudioProject, resumeStudioProject } from "./pause";
 import { refreshPreviewDockerfiles } from "./preview";
 import { addStudioProject } from "./projects";
 import { isRelayPath, relayGit } from "./relay";
@@ -530,6 +531,41 @@ const currentVersionRoute = createRoute({
     404: missing,
     409: blocked,
     503: unreachable,
+  },
+});
+
+const pauseRoute = createRoute({
+  method: "post",
+  path: `${APP}/pause`,
+  tags,
+  description:
+    "Puts the project on pause, for an administrator: its preview and its own agent server stop, and nothing " +
+    "wakes them, opening the project included, until someone resumes it. Refused while its agent is at work.",
+  request: { params: servicePath },
+  responses: {
+    200: jsonResponse(studioAppDetail, "The project, on pause."),
+    401: denied,
+    403: refused,
+    404: missing,
+    409: blocked,
+  },
+});
+
+const resumeRoute = createRoute({
+  method: "post",
+  path: `${APP}/resume`,
+  tags,
+  description:
+    "Resumes a project on pause, for anyone the project is shared with: its preview starts again, from what is " +
+    "on GitHub, and its own agent server with it.",
+  request: { params: servicePath },
+  responses: {
+    200: jsonResponse(studioPreviewStart, "Whether a start was asked for."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    404: missing,
+    409: blocked,
   },
 });
 
@@ -1096,6 +1132,17 @@ export const feature: Feature = {
 
     app.openapi(currentVersionRoute, async (c) =>
       c.json(await showCurrentVersion(deps, target(c.req.valid("param")), actorOf(requirePrincipal(c))), 200),
+    );
+
+    app.openapi(pauseRoute, async (c) =>
+      c.json(await pauseStudioProject(deps, target(c.req.valid("param")), actorOf(requirePrincipal(c))), 200),
+    );
+
+    app.openapi(resumeRoute, async (c) =>
+      c.json(
+        await resumeStudioProject(deps, target(c.req.valid("param")), actorOf(requirePrincipal(c))),
+        200,
+      ),
     );
 
     // The file is the body, far larger than the API's general limit, and is counted as it comes in.

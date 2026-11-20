@@ -36,6 +36,7 @@ const app = (overrides: Partial<StudioApp> = {}): StudioApp => ({
   agentStatus: null,
   lastConversation: conversation,
   viewing: null,
+  paused: null,
   ...overrides,
 });
 
@@ -149,6 +150,54 @@ describe("the Studio's list", () => {
     renderApp("/studio");
 
     expect(await screen.findByText("Waiting for its own agent")).toBeTruthy();
+  });
+
+  it("puts a project on pause for an administrator, once asked", async () => {
+    const server = installFakeServer(
+      base({
+        [`POST ${APP}/pause`]: detail({
+          paused: { at: "2026-11-20T09:00:00.000Z", by: "admin@example.com" },
+        }),
+      }),
+    );
+    renderApp("/studio");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Put cd-studio on pause" }));
+    const dialog = await screen.findByRole("dialog", { name: "Put cd-studio on pause?" });
+    expect(within(dialog).getByText(/nothing starts them again, not even opening the project/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Put on pause" }));
+
+    await waitFor(() =>
+      expect(server.calls.some((call) => call.method === "POST" && call.path === `${APP}/pause`)).toBe(true),
+    );
+    expect(await screen.findByText("cd-studio is on pause.")).toBeTruthy();
+  });
+
+  it("shows a project on pause, which anyone who works on it can resume", async () => {
+    const paused = { at: "2026-11-20T09:00:00.000Z", by: "karim@example.com" };
+    const server = installFakeServer(
+      base({
+        "GET /studio": {
+          enabled: true,
+          agentConfigured: true,
+          canAddProjects: false,
+          agentPerProject: false,
+          apps: [app({ paused, previewStatus: "stopped" })],
+        },
+        [`POST ${APP}/resume`]: { started: true, agentStarted: false },
+      }),
+    );
+    renderApp("/studio");
+
+    expect(await screen.findByText("On pause")).toBeTruthy();
+    expect(screen.getByText(/by karim@example.com/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Put cd-studio on pause" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Resume cd-studio" }));
+
+    await waitFor(() =>
+      expect(server.calls.some((call) => call.method === "POST" && call.path === `${APP}/resume`)).toBe(true),
+    );
+    expect(await screen.findByText("cd-studio resumes: its preview is starting.")).toBeTruthy();
   });
 
   it("shows the linked projects and opens one", async () => {
@@ -1432,6 +1481,44 @@ describe("a Studio project", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stop" }));
 
     await waitFor(() => expect(server.calls.some((call) => call.path.endsWith("/stop"))).toBe(true));
+  });
+
+  it("leaves a project on pause stopped as it opens, and resumes it on demand", async () => {
+    let paused: { at: string; by: string | null } | null = {
+      at: "2026-11-20T09:00:00.000Z",
+      by: "karim@example.com",
+    };
+    const server = installFakeServer(
+      base({
+        [`GET ${APP}`]: () => detail({ paused, previewStatus: "stopped" }),
+        [`POST ${APP}/preview/start`]: { started: true, agentStarted: false },
+        [`POST ${APP}/resume`]: () => {
+          paused = null;
+          return { started: true, agentStarted: false };
+        },
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    const preview = await screen.findByRole("region", { name: "Live preview" });
+    expect(await within(preview).findByText("This project is on pause")).toBeTruthy();
+    expect(within(preview).getByText(/karim@example.com put it on pause on/)).toBeTruthy();
+    // What would be sent waits for the project to be resumed.
+    expect(screen.getByText("This project is on pause: resume it to write to the agent.")).toBeTruthy();
+    fireEvent.change(screen.getByRole("textbox", { name: "Message to the agent" }), {
+      target: { value: "Encore" },
+    });
+    expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByRole("list", { name: "Suggestions" })).toBeNull();
+    // Opening it started nothing.
+    expect(server.calls.some((call) => call.path === `${APP}/preview/start`)).toBe(false);
+
+    fireEvent.click(within(preview).getByRole("button", { name: "Resume" }));
+    await waitFor(() =>
+      expect(server.calls.some((call) => call.method === "POST" && call.path === `${APP}/resume`)).toBe(true),
+    );
+    await waitFor(() => expect(within(preview).queryByText("This project is on pause")).toBeNull());
+    expect(screen.queryByText("This project is on pause: resume it to write to the agent.")).toBeNull();
   });
 
   it("builds a preview that never ran as the project opens, for whoever opens it", async () => {

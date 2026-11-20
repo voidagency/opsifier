@@ -119,6 +119,10 @@ export const studioVersions = z.object({
 });
 export type StudioVersions = z.infer<typeof studioVersions>;
 
+/** When a project was put on pause, and by whom. */
+export const studioPause = z.object({ at: z.iso.datetime(), by: z.string().nullable() });
+export type StudioPause = z.infer<typeof studioPause>;
+
 export const studioApp = z.object({
   project: z.string(),
   service: z.string(),
@@ -132,6 +136,8 @@ export const studioApp = z.object({
   lastConversation: studioConversation.nullable(),
   /** An earlier version shown in the preview: no message goes to the agent until the current one is back. */
   viewing: studioViewing.nullable(),
+  /** Put on pause: its preview and its own agent server are stopped until someone resumes it. */
+  paused: studioPause.nullable(),
 });
 export type StudioApp = z.infer<typeof studioApp>;
 

@@ -114,7 +114,9 @@
     "studio.github-key": "Studio GitHub key changed",
     "studio.guest-link": "Studio client link made or taken back",
     "studio.sync": "Studio project brought up to date with GitHub",
-    "studio.version": "Studio project version shown in the preview"
+    "studio.version": "Studio project version shown in the preview",
+    "studio.pause": "Studio project put on pause",
+    "studio.resume": "Studio project resumed"
   },
   "healthLabel": "Recent actions by outcome",
   "noMatch": "Nothing with this outcome in the entries shown.",

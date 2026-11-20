@@ -1677,3 +1677,118 @@ describe("an unused agent server", () => {
     expect((await api<{ stopped: boolean }>(`${ADDED}/agent`)).body.stopped).toBe(true);
   });
 });
+
+describe("putting a project on pause", () => {
+  const STUDIO = `${ADDED}/preview/studio`;
+  const project = async () => (await api<StudioAppDetail>(STUDIO)).body;
+
+  it("stops its preview and agent server, and nothing wakes them until it is resumed", async () => {
+    await addOwnProject();
+    const { id } = await startConversation(`${ADDED}/preview`, "Bonjour");
+
+    // Not while the agent is at work: it would stop halfway.
+    const working = await api(`${STUDIO}/pause`, "POST");
+    expect(working.status).toBe(409);
+    expect(apiErrorOf(working).code).toBe("studio_agent_working");
+    for (const conversation of agents.conversations.values()) {
+      conversation.status = "finished";
+    }
+
+    const paused = await api<StudioAppDetail>(`${STUDIO}/pause`, "POST");
+    expect(paused.status).toBe(200);
+    expect(paused.body.paused).toMatchObject({ by: TEST_EMAIL });
+    await settle();
+    expect(await project()).toMatchObject({ previewStatus: "stopped", agentStatus: "stopped" });
+    const listed = await api<StudioOverview>("/studio");
+    expect(listed.body.apps[0]?.paused).toMatchObject({ by: TEST_EMAIL });
+
+    // Nothing wakes it: no message, conversation, file, preview start, update or version.
+    const refusal = async (path: string, body?: unknown) => apiErrorOf(await api(path, "POST", body)).code;
+    expect(await refusal(`${STUDIO}/conversations/${id}/messages`, { text: "Encore" })).toBe(
+      "studio_project_paused",
+    );
+    expect(await refusal(`${STUDIO}/conversations`, { text: "Bonjour" })).toBe("studio_project_paused");
+    expect(await refusal(`${STUDIO}/preview/start`)).toBe("studio_project_paused");
+    expect(await refusal(`${STUDIO}/sync`)).toBe("studio_project_paused");
+    expect(await refusal(`${STUDIO}/versions/${"a".repeat(40)}/view`)).toBe("studio_project_paused");
+    const file = await call(context.app, `/api/v1${STUDIO}/attachments?name=notes.md`, {
+      method: "POST",
+      rawBody: new Blob(["# Notes"]),
+      headers: { "content-type": "application/octet-stream" },
+      cookie,
+      origin: TEST_ORIGIN,
+    });
+    expect(apiErrorOf(file).code).toBe("studio_project_paused");
+    await settle();
+    expect(await project()).toMatchObject({ previewStatus: "stopped", agentStatus: "stopped" });
+    // Its conversation still reads, from the panel's copy.
+    const read = await api<StudioEventPage>(`${STUDIO}/conversations/${id}/events`);
+    expect(read.status).toBe(200);
+    expect(read.body.items.length).toBeGreaterThan(0);
+
+    const resumed = await api<{ started: boolean; agentStarted: boolean }>(`${STUDIO}/resume`, "POST");
+    expect(resumed.status).toBe(200);
+    expect(resumed.body).toEqual({ started: true, agentStarted: true });
+    await settle();
+    expect(await project()).toMatchObject({ previewStatus: "running", agentStatus: "running", paused: null });
+    expect((await api(`${STUDIO}/conversations/${id}/messages`, "POST", { text: "Encore" })).status).toBe(
+      200,
+    );
+
+    const recorded = (await api<ActionPage>("/actions?limit=100")).body.items
+      .filter((action) => action.type === "studio.pause" || action.type === "studio.resume")
+      .map((action) => action.title);
+    expect(recorded).toEqual([
+      "Resume studio-un-mot-par-jour-landing/preview in the Studio",
+      "Put studio-un-mot-par-jour-landing/preview on pause in the Studio: stop its preview and its agent server",
+    ]);
+  });
+
+  it("stops only the preview of a project on the shared agent server, which goes on for the others", async () => {
+    await prepareModel();
+    await saveSettings();
+    const SHARED = "/projects/lovable/services/cd-studio-preview";
+    await api("/projects/lovable/services", "POST", { name: "cd-studio-preview" });
+    await api(`${SHARED}/source`, "PUT", { image: "node:22" });
+    expect((await api(`${SHARED}/deploy`, "POST")).status).toBe(202);
+    await settle();
+    expect((await api(`${SHARED}/studio`, "PUT", { workspaceDir: "/projects/cd-studio" })).status).toBe(200);
+
+    expect((await api(`${SHARED}/studio/pause`, "POST")).status).toBe(200);
+    await settle();
+    expect((await api<StudioAppDetail>(`${SHARED}/studio`)).body).toMatchObject({
+      previewStatus: "stopped",
+      agentMode: "shared",
+      agentStatus: null,
+    });
+    const stops = (await api<ActionPage>("/actions?limit=100")).body.items.filter(
+      (action) => action.type === "service.stop",
+    );
+    expect(stops.map((action) => `${action.projectName}/${action.serviceName}`)).toEqual([
+      "lovable/cd-studio-preview",
+    ]);
+    expect(apiErrorOf(await api(`${SHARED}/studio/conversations`, "POST", { text: "Bonjour" })).code).toBe(
+      "studio_project_paused",
+    );
+  });
+
+  it("is an administrator's to do, and resuming it whoever works on the project's", async () => {
+    await addOwnProject();
+    const designer = await signInMember(context.app, cookie, "designer@example.com", []);
+    const users = await api<{ users: { id: string; email: string }[] }>("/users");
+    const designerId = users.body.users.find((user) => user.email === "designer@example.com")?.id;
+    await api(`${STUDIO}/members`, "PUT", { userIds: [designerId] });
+
+    expect((await api(`${STUDIO}/pause`, "POST", undefined, designer)).status).toBe(403);
+    expect((await api(`${STUDIO}/pause`, "POST")).status).toBe(200);
+    // Opening the project wakes nothing for them either.
+    expect(apiErrorOf(await api(`${STUDIO}/preview/start`, "POST", undefined, designer)).code).toBe(
+      "studio_project_paused",
+    );
+    const resumed = await api(`${STUDIO}/resume`, "POST", undefined, designer);
+    expect(resumed.status).toBe(200);
+    expect((await project()).paused).toBeNull();
+    // Resuming a project that is not on pause starts what is stopped, and changes nothing else.
+    expect((await api(`${STUDIO}/resume`, "POST", undefined, designer)).status).toBe(200);
+  });
+});

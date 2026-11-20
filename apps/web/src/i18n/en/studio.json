@@ -401,5 +401,23 @@
     "restoreChip": "Version:",
     "noSync": "Go back to the current version to bring the project up to date with GitHub.",
     "untitled": "untitled version"
+  },
+  "pause": {
+    "action": "Put {{name}} on pause",
+    "resume": "Resume {{name}}",
+    "resumeShort": "Resume",
+    "badge": "On pause",
+    "since": "since {{when}}",
+    "sinceBy": "since {{when}}, by {{by}}",
+    "title": "Put {{name}} on pause?",
+    "description": "Its preview and its agent stop, to free the server, and nothing starts them again, not even opening the project, until someone resumes it. Its conversations stay readable, and its links for clients show a page saying the site is switched off meanwhile.",
+    "confirm": "Put on pause",
+    "done": "{{name}} is on pause.",
+    "resumed": "{{name}} resumes: its preview is starting.",
+    "pausedTitle": "This project is on pause",
+    "pausedText": "It was put on pause on {{when}}: its preview and its agent are stopped. Resume it to see it and write to the agent.",
+    "pausedTextBy": "{{by}} put it on pause on {{when}}: its preview and its agent are stopped. Resume it to see it and write to the agent.",
+    "locked": "This project is on pause: resume it to write to the agent.",
+    "blocked": "The project is on pause: resume it first."
   }
 }

@@ -1,7 +1,7 @@
 import type { ServiceStatus, StudioApp } from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Boxes, Link2, Plus, Trash2 } from "lucide-react";
+import { Boxes, Link2, Pause, Play, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { errorMessage, useForm } from "../../lib/forms";
@@ -144,6 +144,7 @@ function AppRow({ app }: { app: StudioApp }) {
   const admin = useCurrentUser()?.role === "admin";
   const queryClient = useQueryClient();
   const [removing, setRemoving] = useState(false);
+  const [pausing, setPausing] = useState(false);
   const last = app.lastConversation;
   const name = studioAppName(app);
   const remove = async () => {
@@ -151,14 +152,44 @@ function AppRow({ app }: { app: StudioApp }) {
     toast.success(t("remove.started", { name }));
     await queryClient.invalidateQueries({ queryKey: studioKey });
   };
+  const pause = async () => {
+    await studioApi.pause(app.project, app.service);
+    toast.success(t("pause.done", { name }));
+    await queryClient.invalidateQueries({ queryKey: studioKey });
+  };
+  const resume = async () => {
+    try {
+      await studioApi.resume(app.project, app.service);
+      toast.success(t("pause.resumed", { name }));
+    } catch (reason) {
+      toast.error(errorMessage(reason, t));
+    }
+    await queryClient.invalidateQueries({ queryKey: studioKey });
+  };
   return (
     <li className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 border-b py-3 last:border-b-0">
-      <Lamp state={lampOf[app.previewStatus]} size="xs" label={t(`preview.status.${app.previewStatus}`)} />
+      {app.paused === null ? (
+        <Lamp state={lampOf[app.previewStatus]} size="xs" label={t(`preview.status.${app.previewStatus}`)} />
+      ) : (
+        <Lamp state="stopped" size="xs" label={t("pause.badge")} />
+      )}
       <span className="grid min-w-0 gap-0.5">
         <span className="flex min-w-0 flex-wrap items-center gap-x-2">
           <span className="truncate font-medium">{name}</span>
           {app.agentMode === "missing" && (
             <span className="rounded-sm border px-1.5 text-xs text-muted">{t("list.agentMissing")}</span>
+          )}
+          {app.paused !== null && (
+            <span className="rounded-sm border px-1.5 text-xs text-muted">
+              {t("pause.badge")}
+              <span className="sr-only">
+                {" "}
+                {t(app.paused.by === null ? "pause.since" : "pause.sinceBy", {
+                  when: new Date(app.paused.at).toLocaleString(),
+                  by: app.paused.by ?? "",
+                })}
+              </span>
+            </span>
           )}
         </span>
         <span className="truncate text-xs text-muted">
@@ -181,6 +212,28 @@ function AppRow({ app }: { app: StudioApp }) {
         >
           {t("list.open")}
         </Link>
+        {app.paused !== null ? (
+          // Whoever works on the project can start it again: it may be them who needs it.
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label={t("pause.resume", { name })}
+            tooltip={t("pause.resume", { name })}
+            icon={<Play aria-hidden="true" className="size-4" />}
+            onClick={resume}
+          />
+        ) : (
+          admin && (
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label={t("pause.action", { name })}
+              tooltip={t("pause.action", { name })}
+              icon={<Pause aria-hidden="true" className="size-4" />}
+              onClick={() => setPausing(true)}
+            />
+          )
+        )}
         {admin && (
           // Where its preview and agent server live, with their logs, settings and deployments.
           <Tooltip content={t("list.inOpsifier", { project: app.project })}>
@@ -207,6 +260,17 @@ function AppRow({ app }: { app: StudioApp }) {
           </Tooltip>
         )}
       </span>
+      {admin && (
+        <ConfirmDialog
+          open={pausing}
+          onOpenChange={setPausing}
+          title={t("pause.title", { name })}
+          description={t("pause.description")}
+          confirmLabel={t("pause.confirm")}
+          tone="primary"
+          onConfirm={pause}
+        />
+      )}
       {admin && (
         <ConfirmDialog
           open={removing}

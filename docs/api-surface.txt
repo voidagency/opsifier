@@ -1,6 +1,6 @@
 # The public API, one fact per line. Generated: see apps/server/src/api-surface.test.ts.
 # Operation, then its inputs and each field of its answers (`!` means required).
-# documented-changes: 60
+# documented-changes: 62
 GET /api/v1/actions
   200 items![].actorEmail!: null|string
   200 items![].createdAt!: string
@@ -4012,6 +4012,8 @@ GET /api/v1/projects/{project}/services/{service}/studio
   200 lastConversation!.readOnly!: boolean
   200 lastConversation!.title!: null|string
   200 lastConversation!.updatedAt!: string
+  200 paused!.at!: string
+  200 paused!.by!: null|string
   200 previewStatus!: enum(failing|running|starting|stopped|undeployed|unknown)
   200 previewUrl!: null|string
   200 project!: string
@@ -4043,6 +4045,8 @@ PUT /api/v1/projects/{project}/services/{service}/studio
   200 lastConversation!.readOnly!: boolean
   200 lastConversation!.title!: null|string
   200 lastConversation!.updatedAt!: string
+  200 paused!.at!: string
+  200 paused!.by!: null|string
   200 previewStatus!: enum(failing|running|starting|stopped|undeployed|unknown)
   200 previewUrl!: null|string
   200 project!: string
@@ -4246,6 +4250,39 @@ PUT /api/v1/projects/{project}/services/{service}/studio/members
   body userIds![]: string
   path project!: string
   path service!: string
+POST /api/v1/projects/{project}/services/{service}/studio/pause
+  200 agentMode!: enum(missing|own|shared)
+  200 agentStatus!: enum(failing|null|running|starting|stopped|undeployed|unknown)
+  200 conversations![].createdAt!: string
+  200 conversations![].createdBy!: null|string
+  200 conversations![].id!: string
+  200 conversations![].readOnly!: boolean
+  200 conversations![].title!: null|string
+  200 conversations![].updatedAt!: string
+  200 lastConversation!.createdAt!: string
+  200 lastConversation!.createdBy!: null|string
+  200 lastConversation!.id!: string
+  200 lastConversation!.readOnly!: boolean
+  200 lastConversation!.title!: null|string
+  200 lastConversation!.updatedAt!: string
+  200 paused!.at!: string
+  200 paused!.by!: null|string
+  200 previewStatus!: enum(failing|running|starting|stopped|undeployed|unknown)
+  200 previewUrl!: null|string
+  200 project!: string
+  200 service!: string
+  200 viewing!.at!: string
+  200 viewing!.by!: null|string
+  200 viewing!.sha!: string
+  200 viewing!.since!: string
+  200 viewing!.subject!: string
+  200 workspaceDir!: string
+  401
+  403
+  404
+  409
+  path project!: string
+  path service!: string
 POST /api/v1/projects/{project}/services/{service}/studio/preview/start
   200 agentStarted!: boolean
   200 started!: boolean
@@ -4352,6 +4389,16 @@ POST /api/v1/projects/{project}/services/{service}/studio/remove
   404
   409
   body confirm!: string
+  path project!: string
+  path service!: string
+POST /api/v1/projects/{project}/services/{service}/studio/resume
+  200 agentStarted!: boolean
+  200 started!: boolean
+  400
+  401
+  403
+  404
+  409
   path project!: string
   path service!: string
 POST /api/v1/projects/{project}/services/{service}/studio/sync
@@ -5742,6 +5789,8 @@ GET /api/v1/studio
   200 apps![].lastConversation!.readOnly!: boolean
   200 apps![].lastConversation!.title!: null|string
   200 apps![].lastConversation!.updatedAt!: string
+  200 apps![].paused!.at!: string
+  200 apps![].paused!.by!: null|string
   200 apps![].previewStatus!: enum(failing|running|starting|stopped|undeployed|unknown)
   200 apps![].previewUrl!: null|string
   200 apps![].project!: string
@@ -5792,6 +5841,8 @@ POST /api/v1/studio/projects
   201 lastConversation!.readOnly!: boolean
   201 lastConversation!.title!: null|string
   201 lastConversation!.updatedAt!: string
+  201 paused!.at!: string
+  201 paused!.by!: null|string
   201 previewStatus!: enum(failing|running|starting|stopped|undeployed|unknown)
   201 previewUrl!: null|string
   201 project!: string

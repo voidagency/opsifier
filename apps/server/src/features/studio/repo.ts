@@ -31,6 +31,7 @@ export function listLinkedApps(db: DbHandle): LinkedApp[] {
       gitTokenHash: studioApps.gitTokenHash,
       remarkCounter: studioApps.remarkCounter,
       viewing: studioApps.viewing,
+      paused: studioApps.paused,
       createdAt: studioApps.createdAt,
       updatedAt: studioApps.updatedAt,
       projectName: services.projectName,
@@ -96,6 +97,11 @@ export function moveApp(db: DbHandle, from: string, to: Omit<StudioAppRow, "rema
 /** The earlier version shown in the project's preview, in JSON, or null for the current one. */
 export function setViewing(db: DbHandle, serviceId: string, viewing: string | null): void {
   db.update(studioApps).set({ viewing }).where(eq(studioApps.serviceId, serviceId)).run();
+}
+
+/** When the project was put on pause and by whom, in JSON, or null once it is resumed. */
+export function setPaused(db: DbHandle, serviceId: string, paused: string | null): void {
+  db.update(studioApps).set({ paused }).where(eq(studioApps.serviceId, serviceId)).run();
 }
 
 /** The conversations go with it: the agent server keeps their content. */

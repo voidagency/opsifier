@@ -114,7 +114,9 @@
     "studio.github-key": "Clé GitHub du Studio modifiée",
     "studio.guest-link": "Lien client du Studio créé ou retiré",
     "studio.sync": "Projet Studio mis à jour depuis GitHub",
-    "studio.version": "Version d'un projet Studio affichée dans l'aperçu"
+    "studio.version": "Version d'un projet Studio affichée dans l'aperçu",
+    "studio.pause": "Projet Studio mis en pause",
+    "studio.resume": "Projet Studio repris"
   },
   "healthLabel": "Actions récentes par résultat",
   "noMatch": "Aucune entrée affichée n'a ce résultat.",

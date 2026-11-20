@@ -183,6 +183,8 @@ async function isolate(deps: AppDeps, isolation: Isolation): Promise<StudioIsola
       repository: own.repository,
       gitTokenHash: own.gitTokenHash,
       viewing: null,
+      // The move starts what it makes: the project is not on pause anymore.
+      paused: null,
       createdAt: app.createdAt,
       updatedAt: now,
     }),

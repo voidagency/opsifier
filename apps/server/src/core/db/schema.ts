@@ -818,6 +818,11 @@ export const studioApps = sqliteTable("studio_apps", {
    * branch the folder goes back to, who showed it and since when. Null while the folder is on its branch.
    */
   viewing: text("viewing"),
+  /**
+   * Put on pause, in JSON: when, and by whom. Its preview and its own agent server stay stopped, and
+   * nothing wakes them, until someone resumes it. Null while it is not.
+   */
+  paused: text("paused"),
   createdAt: millis("created_at").notNull(),
   updatedAt: millis("updated_at").notNull(),
 });

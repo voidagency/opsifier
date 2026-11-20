@@ -47,7 +47,7 @@ import { PREVIEW_PORT } from "./preview";
 import * as repo from "./repo";
 import { readStudioSettings, writeStudioSettings } from "./settings";
 import { refuseRestoreWhileBusy } from "./version-script";
-import { holdForMessage, publicViewing, readViewing } from "./viewing";
+import { holdForMessage, publicViewing, readPaused, readViewing, refuseWhilePaused } from "./viewing";
 
 /**
  * What the agent is told on top of its profile's own instructions: where it is talked to from, the
@@ -212,6 +212,7 @@ function appView(
     agentStatus: agent === undefined ? null : summarize(deps, agent, live, active).status,
     lastConversation: last === undefined ? null : toConversation(last, mode),
     viewing: publicViewing(readViewing(app.viewing)),
+    paused: readPaused(app.paused),
   };
 }
 
@@ -431,6 +432,8 @@ export async function startStudioPreview(
   actorEmail: string | undefined,
 ): Promise<{ started: boolean; agentStarted: boolean }> {
   const { record, app } = requireLinked(deps, target);
+  // A project on pause starts again only when someone resumes it.
+  refuseWhilePaused(app);
   const started = await wakeService(deps, record, actorEmail);
   const settings = readStudioSettings(deps);
   const agent =

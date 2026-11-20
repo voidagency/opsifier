@@ -106,8 +106,9 @@ function projectRequirement(method: string, project: string, rest: readonly stri
 }
 
 /**
- * A Studio project's conversations and the files attached to them, its preview and its versions, bringing its folder up to date with GitHub, its links
- * for clients and their remarks are open to the accounts it is shared with. Linking it, taking it out and sharing it are administration.
+ * A Studio project's conversations and the files attached to them, its preview and its versions, bringing its folder up to date with GitHub, resuming it
+ * after a pause, its links for clients and their remarks are open to the accounts it is shared with. Linking it, putting it on pause, taking it out and
+ * sharing it are administration.
  */
 function studioRequirement(method: string, project: string, rest: readonly string[]): Requirement {
   const [, service, , section] = rest;
@@ -123,6 +124,7 @@ function studioRequirement(method: string, project: string, rest: readonly strin
     section === "versions" ||
     section === "preview" ||
     section === "sync" ||
+    section === "resume" ||
     section === "links" ||
     section === "remarks"
   ) {

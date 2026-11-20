@@ -144,6 +144,12 @@ export const studioApi = {
   isolateAll: () => api.post("/studio/isolate", { schema: studioIsolateAll }),
   startPreview: (project: string, service: string) =>
     api.post(`${appPath(project, service)}/preview/start`, { schema: studioPreviewStart }),
+  /** Puts the project on pause: its preview and its own agent server stop until someone resumes it. */
+  pause: (project: string, service: string) =>
+    api.post(`${appPath(project, service)}/pause`, { schema: studioAppDetail }),
+  /** Resumes a project on pause: its preview starts again, and its own agent server with it. */
+  resume: (project: string, service: string) =>
+    api.post(`${appPath(project, service)}/resume`, { schema: studioPreviewStart }),
   /** Brings the project's folder up to date with GitHub, when that loses nothing made here. */
   sync: (project: string, service: string, force = false) =>
     api.post(`${appPath(project, service)}/sync`, {

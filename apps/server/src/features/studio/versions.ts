@@ -16,7 +16,14 @@ import {
   type ScriptAnswer,
   toVersion,
 } from "./version-script";
-import { holdForVersion, publicViewing, readViewing, type StoredViewing, versionChanging } from "./viewing";
+import {
+  holdForVersion,
+  publicViewing,
+  readViewing,
+  refuseWhilePaused,
+  type StoredViewing,
+  versionChanging,
+} from "./viewing";
 
 /**
  * A Studio project's versions are the commits of its folder's branch: the agent saves each change it
@@ -165,6 +172,8 @@ export async function viewStudioVersion(
     throw badRequest("studio_version_unknown", "No such version of the project.");
   }
   const { app } = requireLinked(deps, target);
+  // Its agent server, which holds the folder, stays stopped while the project is on pause.
+  refuseWhilePaused(app);
   const release = holdForVersion(app.serviceId);
   try {
     const viewing = readViewing(app.viewing);
@@ -222,6 +231,7 @@ export async function showCurrentVersion(
   if (viewing === null) {
     return { viewing: null };
   }
+  refuseWhilePaused(app);
   const release = holdForVersion(app.serviceId);
   try {
     const { agent } = await agentToChange(deps, app, actorEmail);

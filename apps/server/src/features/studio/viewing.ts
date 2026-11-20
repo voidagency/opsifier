@@ -1,7 +1,7 @@
-import { type StudioViewing, studioViewing } from "@opsifier/contract";
+import { type StudioPause, type StudioViewing, studioPause, studioViewing } from "@opsifier/contract";
 import { z } from "zod";
 import type { DbHandle } from "../../core/db";
-import { conflict } from "../../core/errors";
+import { type AppError, conflict } from "../../core/errors";
 import { findApp } from "./repo";
 
 /**
@@ -50,9 +50,32 @@ export function refuseWhileViewing(app: { viewing: string | null }): void {
   }
 }
 
+/** When the project's row says it was put on pause, and by whom, or null while it is not. */
+export function readPaused(value: string | null): StudioPause | null {
+  if (value === null) {
+    return null;
+  }
+  try {
+    const parsed = studioPause.safeParse(JSON.parse(value));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+export const pausedConflict = () =>
+  conflict("studio_project_paused", "This project is on pause: resume it first.");
+
+/** Nothing wakes a project on pause: its preview and agent server stay stopped until it is resumed. */
+export function refuseWhilePaused(app: { paused: string | null }): void {
+  if (readPaused(app.paused) !== null) {
+    throw pausedConflict();
+  }
+}
+
 /**
  * Per project, in this panel: the messages on their way to its agent, and whether the version its
- * folder shows is changing. Each waits for the other, so that no message reaches the agent while its
+ * folder shows, or whether it is on pause, is changing. Each waits for the other, so that no message reaches the agent while its
  * folder moves, and the folder never moves under a message the agent is about to work on.
  */
 interface Gate {
@@ -84,7 +107,12 @@ function forget(serviceId: string, gate: Gate): void {
  */
 export function holdForMessage(db: DbHandle, serviceId: string): () => void {
   const gate = gateOf(serviceId);
-  if (gate.changing || readViewing(findApp(db, serviceId)?.viewing ?? null) !== null) {
+  const app = findApp(db, serviceId);
+  if (readPaused(app?.paused ?? null) !== null) {
+    forget(serviceId, gate);
+    throw pausedConflict();
+  }
+  if (gate.changing || readViewing(app?.viewing ?? null) !== null) {
     forget(serviceId, gate);
     throw viewingConflict();
   }
@@ -99,20 +127,14 @@ export function holdForMessage(db: DbHandle, serviceId: string): () => void {
   };
 }
 
-/**
- * Holds the project's folder to change the version it shows, until the returned function is called.
- * Refused while a message is on its way to the agent, or while the version shown is already changing.
- */
-export function holdForVersion(serviceId: string): () => void {
+function holdForChange(serviceId: string, onSending: () => AppError, onChanging: () => AppError): () => void {
   const gate = gateOf(serviceId);
   if (gate.sending > 0) {
-    throw conflict(
-      "studio_agent_working",
-      "A message is on its way to the agent: show an earlier version once it has answered.",
-    );
+    forget(serviceId, gate);
+    throw onSending();
   }
   if (gate.changing) {
-    throw conflict("studio_version_busy", "The version shown is changing: try again in a moment.");
+    throw onChanging();
   }
   gate.changing = true;
   return () => {
@@ -120,6 +142,33 @@ export function holdForVersion(serviceId: string): () => void {
     forget(serviceId, gate);
   };
 }
+
+/**
+ * Holds the project's folder to change the version it shows, until the returned function is called.
+ * Refused while a message is on its way to the agent, or while the version shown is already changing.
+ */
+export const holdForVersion = (serviceId: string): (() => void) =>
+  holdForChange(
+    serviceId,
+    () =>
+      conflict(
+        "studio_agent_working",
+        "A message is on its way to the agent: show an earlier version once it has answered.",
+      ),
+    () => conflict("studio_version_busy", "The version shown is changing: try again in a moment."),
+  );
+
+/** Holds the project to put it on pause or resume it, as {@link holdForVersion} does to change its version. */
+export const holdForPause = (serviceId: string): (() => void) =>
+  holdForChange(
+    serviceId,
+    () =>
+      conflict(
+        "studio_agent_working",
+        "A message is on its way to the agent: put the project on pause once it has answered.",
+      ),
+    () => conflict("studio_project_busy", "The project is changing: try again in a moment."),
+  );
 
 /** Whether the version the project's folder shows is changing in this panel right now. */
 export const versionChanging = (serviceId: string): boolean => gates.get(serviceId)?.changing === true;

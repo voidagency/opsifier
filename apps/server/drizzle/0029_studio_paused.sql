@@ -1,0 +1,1 @@
+ALTER TABLE `studio_apps` ADD `paused` text;

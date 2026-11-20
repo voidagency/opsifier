@@ -11,6 +11,7 @@ import {
   Monitor,
   MousePointerClick,
   PanelLeftOpen,
+  Play,
   RotateCcw,
   RotateCw,
   Smartphone,
@@ -168,6 +169,8 @@ export function PreviewPane({
   versionBusy = false,
   onShowCurrent,
   onRestoreShown,
+  onResume,
+  resuming = false,
   className,
 }: {
   app: StudioAppDetail;
@@ -196,6 +199,9 @@ export function PreviewPane({
   onShowCurrent?: () => void;
   /** Asks the agent to bring the version shown back, as a new one. */
   onRestoreShown?: () => void;
+  /** Starts a project on pause again: its preview, and its own agent server. */
+  onResume?: () => void;
+  resuming?: boolean;
   className?: string;
 }) {
   const { t, i18n } = useTranslation(["studio", "common"]);
@@ -224,7 +230,9 @@ export function PreviewPane({
   const [box, size] = useSize<HTMLDivElement>();
   // Only a project's own agent server brings its folder up to date: the shared one leaves it to its agent.
   const ownAgent = app.agentMode === "own";
-  const sync = useProjectSync(app.project, app.service, ownAgent);
+  // On pause, nothing starts on its own, not even its agent server for an update: someone resumes it.
+  const paused = app.paused;
+  const sync = useProjectSync(app.project, app.service, ownAgent && paused === null);
   const [noticeHidden, setNoticeHidden] = useState(false);
   // A new answer is told, even after the last one was put away.
   // biome-ignore lint/correctness/useExhaustiveDependencies: once per answer.
@@ -281,7 +289,7 @@ export function PreviewPane({
   // whoever opens it may have no other way to, a designer least of all.
   // biome-ignore lint/correctness/useExhaustiveDependencies: starts once per visit, on the first stopped state.
   useEffect(() => {
-    if (!autoStarted.current && (status === "stopped" || status === "undeployed")) {
+    if (!autoStarted.current && paused === null && (status === "stopped" || status === "undeployed")) {
       autoStarted.current = true;
       void start();
     }
@@ -420,7 +428,7 @@ export function PreviewPane({
     tell({ type: "edit", on });
   };
 
-  const showFrame = status === "running" && app.previewUrl !== null;
+  const showFrame = paused === null && status === "running" && app.previewUrl !== null;
   const waiting = status === "starting" || (startRequested && status !== "running");
   const deviceWidth = DEVICE_WIDTHS[device];
   const scale =
@@ -449,9 +457,15 @@ export function PreviewPane({
             onClick={onShowChat}
           />
         )}
-        <Lamp state={waiting ? "progress" : lampOf[status]} size="xs" decorative />
+        <Lamp
+          state={paused !== null ? "stopped" : waiting ? "progress" : lampOf[status]}
+          size="xs"
+          decorative
+        />
         <span className="shrink-0 text-muted">
-          {t(waiting ? "preview.status.starting" : `preview.status.${status}`)}
+          {paused !== null
+            ? t("pause.badge")
+            : t(waiting ? "preview.status.starting" : `preview.status.${status}`)}
         </span>
         {showFrame && (
           <>
@@ -591,13 +605,15 @@ export function PreviewPane({
         {ownAgent && (
           <Tooltip
             content={
-              viewing !== null
-                ? t("versions.noSync")
-                : sync.syncing
-                  ? t("preview.sync.running")
-                  : sync.result?.state === "current"
-                    ? t("preview.sync.current", { branch: sync.result.branch })
-                    : t("preview.sync.action")
+              paused !== null
+                ? t("pause.blocked")
+                : viewing !== null
+                  ? t("versions.noSync")
+                  : sync.syncing
+                    ? t("preview.sync.running")
+                    : sync.result?.state === "current"
+                      ? t("preview.sync.current", { branch: sync.result.branch })
+                      : t("preview.sync.action")
             }
           >
             <Button
@@ -606,7 +622,7 @@ export function PreviewPane({
               className="ml-auto"
               aria-label={t("preview.sync.action")}
               aria-busy={sync.syncing}
-              disabled={sync.syncing || viewing !== null}
+              disabled={sync.syncing || viewing !== null || paused !== null}
               onClick={sync.run}
             >
               {sync.syncing ? (
@@ -627,7 +643,7 @@ export function PreviewPane({
           {t("preview.share")}
         </Button>
       </header>
-      {viewing !== null && (
+      {viewing !== null && paused === null && (
         <div
           role="status"
           className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-accent/40 bg-accent/10 px-3 py-1.5 text-xs"
@@ -689,7 +705,30 @@ export function PreviewPane({
         <p className="border-b bg-wash px-3 py-1.5 text-xs text-muted">{t("preview.editingText")}</p>
       )}
       <div ref={box} className="min-h-0 flex-1 overflow-hidden bg-wash">
-        {showFrame ? (
+        {paused !== null ? (
+          <div className="grid h-full place-items-center p-6">
+            <div role="status" className="grid max-w-sm justify-items-center gap-3 text-center">
+              <Lamp state="stopped" size="lg" decorative />
+              <p className="font-medium">{t("pause.pausedTitle")}</p>
+              <p className="text-sm text-muted">
+                {t(paused.by === null ? "pause.pausedText" : "pause.pausedTextBy", {
+                  when: formatDateTime(paused.at, i18n.language),
+                  by: paused.by ?? "",
+                })}
+              </p>
+              {onResume !== undefined && (
+                <Button
+                  variant="primary"
+                  pending={resuming}
+                  icon={<Play aria-hidden="true" className="size-4" />}
+                  onClick={onResume}
+                >
+                  {t("pause.resumeShort")}
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : showFrame ? (
           <div className={cn("flex h-full justify-center", deviceWidth !== null && "pt-4")}>
             <iframe
               ref={frame}

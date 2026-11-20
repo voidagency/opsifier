@@ -26,6 +26,7 @@ import {
   PanelLeftClose,
   Paperclip,
   PencilLine,
+  Play,
   Plus,
   RotateCcw,
   Sparkles,
@@ -208,6 +209,20 @@ export function WorkspacePage() {
     }
   };
   const showCurrent = () => void changeVersion(() => studioApi.currentVersion(project, service));
+  // A project on pause starts again only when someone resumes it.
+  const [resuming, setResuming] = useState(false);
+  const resume = async () => {
+    setResuming(true);
+    try {
+      await studioApi.resume(project, service);
+      setStartRequested(true);
+    } catch (reason) {
+      toast.error(errorMessage(reason, t));
+    } finally {
+      await versionsClient.invalidateQueries({ queryKey: [...studioKey, "apps", project, service] });
+      setResuming(false);
+    }
+  };
   const onTextEdited = useCallback(
     (edit: TextEdit) => {
       setEdits((current) => {
@@ -373,6 +388,8 @@ export function WorkspacePage() {
         versionBusy={versionBusy}
         onViewVersion={(version) => void viewVersion(version)}
         onShowCurrent={showCurrent}
+        onResume={() => void resume()}
+        resuming={resuming}
         restoreAsk={restoreAsk}
         onRestoreHandled={() => setRestoreAsk(null)}
       />
@@ -392,6 +409,8 @@ export function WorkspacePage() {
         versionBusy={versionBusy}
         onShowCurrent={showCurrent}
         onRestoreShown={() => setRestoreAsk(data.viewing)}
+        onResume={() => void resume()}
+        resuming={resuming}
         remarks={(remarks.data?.remarks ?? []).filter(
           (remark) => remark.status !== "done" || remark.id === selectedRemark,
         )}
@@ -474,6 +493,8 @@ function ConversationPane({
   versionBusy,
   onViewVersion,
   onShowCurrent,
+  onResume,
+  resuming,
   restoreAsk,
   onRestoreHandled,
   className,
@@ -506,6 +527,9 @@ function ConversationPane({
   onViewVersion: (version: StudioVersion) => void;
   /** Shows the current version in the preview again, in place of an earlier one. */
   onShowCurrent: () => void;
+  /** Starts a project on pause again. */
+  onResume: () => void;
+  resuming: boolean;
   /** A version to bring back, asked from the preview: the conversation asks the agent for it. */
   restoreAsk: StudioVersion | null;
   onRestoreHandled: () => void;
@@ -906,7 +930,13 @@ function ConversationPane({
           // What a conversation from the shared agent server saved is not in this project's copy.
           versions={readOnly ? [] : (versions.data?.versions ?? [])}
           viewingSha={app.viewing?.sha ?? null}
-          versionsBlocked={busy || sending || versionBusy}
+          versionsBlocked={
+            app.paused !== null
+              ? t("pause.blocked")
+              : busy || sending || versionBusy
+                ? t("versions.blocked")
+                : null
+          }
           onViewVersion={onViewVersion}
           onRestoreVersion={(version) => void restore(version)}
         />
@@ -936,7 +966,7 @@ function ConversationPane({
           </p>
         )}
 
-        {!readOnly && app.viewing === null && suggestions.length > 0 && (
+        {!readOnly && app.viewing === null && app.paused === null && suggestions.length > 0 && (
           <ul aria-label={t("suggestions.label")} className="flex flex-wrap gap-1.5 px-3 pt-2.5">
             {suggestions.map((suggestion) => (
               <li key={suggestion} className="min-w-0 max-w-full">
@@ -982,9 +1012,25 @@ function ConversationPane({
             onSend={send}
             onStop={stop}
             switcher={switcher}
-            locked={app.viewing !== null}
-            onUnlock={onShowCurrent}
-            unlocking={versionBusy}
+            lock={
+              app.paused !== null
+                ? {
+                    text: t("pause.locked"),
+                    action: t("pause.resumeShort"),
+                    icon: <Play aria-hidden="true" className="size-3.5" />,
+                    onAction: onResume,
+                    pending: resuming,
+                  }
+                : app.viewing !== null
+                  ? {
+                      text: t("versions.locked"),
+                      action: t("versions.back"),
+                      icon: <Undo2 aria-hidden="true" className="size-3.5" />,
+                      onAction: onShowCurrent,
+                      pending: versionBusy,
+                    }
+                  : null
+            }
             edits={edits}
             onRemoveEdit={onRemoveEdit}
           />
@@ -1019,8 +1065,8 @@ function EventList({
   versions: readonly StudioVersion[];
   /** The earlier version shown in the preview, if one is. */
   viewingSha: string | null;
-  /** While the agent works, or a version is being shown, another cannot be. */
-  versionsBlocked: boolean;
+  /** Why no version can be shown or brought back now: the agent works, or the project is on pause. */
+  versionsBlocked: string | null;
   onViewVersion: (version: StudioVersion) => void;
   onRestoreVersion: (version: StudioVersion) => void;
 }) {
@@ -1191,7 +1237,8 @@ function VersionCard({
   current: boolean;
   /** Shown in the preview in place of the current one. */
   shown: boolean;
-  blocked: boolean;
+  /** Why it cannot be shown or brought back now, if it cannot. */
+  blocked: string | null;
   onView: () => void;
   onRestore: () => void;
 }) {
@@ -1222,7 +1269,7 @@ function VersionCard({
             <Button
               size="sm"
               variant="secondary"
-              disabledReason={blocked ? t("versions.blocked") : undefined}
+              disabledReason={blocked ?? undefined}
               icon={<Eye aria-hidden="true" className="size-3.5" />}
               onClick={onView}
             >
@@ -1232,7 +1279,7 @@ function VersionCard({
           <Button
             size="sm"
             variant="ghost"
-            disabledReason={blocked ? t("versions.blocked") : undefined}
+            disabledReason={blocked ?? undefined}
             icon={<RotateCcw aria-hidden="true" className="size-3.5" />}
             onClick={onRestore}
           >
@@ -1557,6 +1604,15 @@ function Step({ step }: { step: StudioActionEvent }) {
   );
 }
 
+/** Why a message waits, and the button that ends the wait. */
+interface ComposerLock {
+  text: string;
+  action: string;
+  icon: ReactNode;
+  onAction: () => void;
+  pending: boolean;
+}
+
 function Composer({
   firstMessage,
   sending,
@@ -1571,9 +1627,7 @@ function Composer({
   onSend,
   onStop,
   switcher,
-  locked = false,
-  onUnlock,
-  unlocking = false,
+  lock = null,
   edits = [],
   onRemoveEdit,
 }: {
@@ -1594,12 +1648,10 @@ function Composer({
   /** Which conversation the message goes to, and how to start another, beside the attachments. */
   switcher?: ReactNode;
   /**
-   * An earlier version is shown in the preview: what the agent would change is the current one, so a
-   * message waits until it is shown again.
+   * Why a message waits, and the way out: an earlier version shown in the preview, which the agent would
+   * change rather than the current one, or the project on pause.
    */
-  locked?: boolean;
-  onUnlock?: () => void;
-  unlocking?: boolean;
+  lock?: ComposerLock | null;
   /** The texts changed in the preview that go with the message. */
   edits?: readonly TextEdit[];
   onRemoveEdit?: (index: number) => void;
@@ -1737,7 +1789,7 @@ function Composer({
     text.trim() === "" && images.length === 0 && files.length === 0 && handed === null && edits.length === 0;
 
   const submit = async () => {
-    if (empty || locked) {
+    if (empty || lock !== null) {
       return;
     }
     // What is added while the message and its files go stays for the next one.
@@ -1795,21 +1847,19 @@ function Composer({
           dropping && "border-accent border-dashed",
         )}
       >
-        {locked && (
+        {lock !== null && (
           <div role="status" className="grid min-w-0 gap-1.5 rounded-sm bg-wash px-2 py-1.5 text-xs">
-            <p className="text-muted">{t("versions.locked")}</p>
-            {onUnlock !== undefined && (
-              <Button
-                size="sm"
-                variant="secondary"
-                className="justify-self-start"
-                pending={unlocking}
-                icon={<Undo2 aria-hidden="true" className="size-3.5" />}
-                onClick={onUnlock}
-              >
-                {t("versions.back")}
-              </Button>
-            )}
+            <p className="text-muted">{lock.text}</p>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="justify-self-start"
+              pending={lock.pending}
+              icon={lock.icon}
+              onClick={lock.onAction}
+            >
+              {lock.action}
+            </Button>
           </div>
         )}
         {handed !== null && (
@@ -1942,7 +1992,7 @@ function Composer({
             size="icon-sm"
             variant="primary"
             pending={sending}
-            disabled={empty || locked}
+            disabled={empty || lock !== null}
             aria-label={t("composer.send")}
             tooltip={t("composer.send")}
             icon={<ArrowUp aria-hidden="true" className="size-4" />}

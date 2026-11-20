@@ -401,5 +401,23 @@
     "restoreChip": "Version :",
     "noSync": "Revenez à la version actuelle pour mettre le projet à jour depuis GitHub.",
     "untitled": "version sans titre"
+  },
+  "pause": {
+    "action": "Mettre en pause {{name}}",
+    "resume": "Reprendre {{name}}",
+    "resumeShort": "Reprendre",
+    "badge": "En pause",
+    "since": "depuis le {{when}}",
+    "sinceBy": "depuis le {{when}}, par {{by}}",
+    "title": "Mettre en pause {{name}} ?",
+    "description": "Son aperçu et son agent s'arrêtent pour libérer le serveur, et rien ne les relance, pas même l'ouverture du projet, jusqu'à ce que quelqu'un le reprenne. Ses conversations restent lisibles, et ses liens clients affichent une page « site éteint » en attendant.",
+    "confirm": "Mettre en pause",
+    "done": "{{name}} est en pause.",
+    "resumed": "{{name}} reprend : son aperçu redémarre.",
+    "pausedTitle": "Ce projet est en pause",
+    "pausedText": "Il a été mis en pause le {{when}} : son aperçu et son agent sont arrêtés. Reprenez-le pour le voir et écrire à l'agent.",
+    "pausedTextBy": "{{by}} l'a mis en pause le {{when}} : son aperçu et son agent sont arrêtés. Reprenez-le pour le voir et écrire à l'agent.",
+    "locked": "Ce projet est en pause : reprenez-le pour écrire à l'agent.",
+    "blocked": "Le projet est en pause : reprenez-le d'abord."
   }
 }
