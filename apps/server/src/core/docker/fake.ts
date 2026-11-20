@@ -150,8 +150,11 @@ export interface FakeExecReply {
   exitCode: number;
 }
 
-/** A reply worked out from what the command was given on its standard input, once that is closed. */
-export type FakeExecResponder = (input: string) => FakeExecReply;
+/**
+ * A reply worked out from what the command was given on its standard input, once that is closed. A
+ * promise holds the command running until it settles.
+ */
+export type FakeExecResponder = (input: string) => FakeExecReply | Promise<FakeExecReply>;
 
 /**
  * An in-memory Docker: services get tasks that move through Swarm's states, produce logs and
@@ -670,14 +673,19 @@ export class FakeDriver implements DockerDriver {
         callback();
       },
       final(callback) {
-        // A responder answers what it was given, so it only ends once its input has.
-        const answer = typeof reply === "function" ? reply(Buffer.concat(input).toString("utf8")) : reply;
-        this.push(answer.output);
-        this.push(null);
-        callback();
-        if (typeof reply === "function") {
-          finish(answer.exitCode);
+        if (typeof reply !== "function") {
+          this.push(reply.output);
+          this.push(null);
+          callback();
+          return;
         }
+        // A responder answers what it was given, so it only ends once its input has.
+        void Promise.resolve(reply(Buffer.concat(input).toString("utf8"))).then((answer) => {
+          this.push(answer.output);
+          this.push(null);
+          callback();
+          finish(answer.exitCode);
+        });
       },
     });
     const exec: FakeExec = {

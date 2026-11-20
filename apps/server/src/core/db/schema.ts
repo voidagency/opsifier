@@ -813,6 +813,11 @@ export const studioApps = sqliteTable("studio_apps", {
   gitTokenHash: text("git_token_hash"),
   /** The number of the project's last remark: a number, once given, is never given again. */
   remarkCounter: integer("remark_counter").notNull().default(0),
+  /**
+   * An earlier version shown in the preview, in JSON: its commit, what it says, when it was saved, the
+   * branch the folder goes back to, who showed it and since when. Null while the folder is on its branch.
+   */
+  viewing: text("viewing"),
   createdAt: millis("created_at").notNull(),
   updatedAt: millis("updated_at").notNull(),
 });

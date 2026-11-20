@@ -383,5 +383,23 @@
     "removeDescription": "Il n'ouvre plus l'aperçu : ses remarques coupent aussitôt, l'aperçu dans la demi-minute. Ce qu'il a écrit reste, sauf si vous cochez ci-dessous.",
     "removeRemarks_one": "Supprimer aussi la remarque écrite avec ce lien",
     "removeRemarks_other": "Supprimer aussi les {{count}} remarques écrites avec ce lien"
+  },
+  "versions": {
+    "card": "Version : {{subject}}",
+    "saved": "Enregistrée le {{when}}",
+    "current": "Version actuelle",
+    "shown": "Affichée dans l'aperçu",
+    "view": "Aperçu",
+    "restore": "Restaurer",
+    "blocked": "Possible une fois que l'agent a répondu.",
+    "banner": "Aperçu de la version du {{when}} : {{subject}}. Le projet, lui, n'a pas changé.",
+    "bannerBy": "{{by}} affiche la version du {{when}} : {{subject}}. Le projet, lui, n'a pas changé.",
+    "back": "Revenir à la version actuelle",
+    "restoreThis": "Restaurer cette version",
+    "locked": "Une version précédente est affichée dans l'aperçu. Revenez à la version actuelle pour écrire à l'agent, ou restaurez celle-ci depuis l'aperçu.",
+    "restoreMessage": "Restaure la version du {{when}}.",
+    "restoreChip": "Version :",
+    "noSync": "Revenez à la version actuelle pour mettre le projet à jour depuis GitHub.",
+    "untitled": "version sans titre"
   }
 }

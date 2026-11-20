@@ -232,7 +232,18 @@
     "studio_attachment_failed": "The file could not be saved in the project's folder.",
     "studio_attachment_busy": "Other files are being sent: send this one again in a moment.",
     "studio_attachment_timeout": "The file stopped arriving: send it again.",
-    "studio_attachments_full": "The project's attached files already take 100 MB: ask the agent to delete those it no longer needs."
+    "studio_attachments_full": "The project's attached files already take 100 MB: ask the agent to delete those it no longer needs.",
+    "studio_viewing_version": "An earlier version is shown in the preview: go back to the current version before writing to the agent.",
+    "studio_agent_working": "The agent is at work on this project: show an earlier version once it has answered.",
+    "studio_version_unsaved": "Changes to the project are not saved yet: the agent saves them as it works, so try again once it has answered.",
+    "studio_version_detached": "The project's folder is on no branch.",
+    "studio_version_no_branch": "The project's branch is gone from its folder.",
+    "studio_version_not_a_copy": "The project's folder is not a git repository.",
+    "studio_version_failed": "The project's folder could not be read or changed. Try again in a moment.",
+    "studio_version_unknown": "No such version of the project.",
+    "studio_version_overwrite": "That version would write over files git does not keep, such as the site's settings: it is not shown.",
+    "studio_version_unsafe": "The project's own git settings run commands as files are read or written: the panel leaves its folder as it is.",
+    "studio_version_busy": "The version shown is changing. Try again in a moment."
   },
   "retention": {
     "removed": "Removed",

@@ -113,7 +113,8 @@
     "studio.remove": "Project taken out of the Studio",
     "studio.github-key": "Studio GitHub key changed",
     "studio.guest-link": "Studio client link made or taken back",
-    "studio.sync": "Studio project brought up to date with GitHub"
+    "studio.sync": "Studio project brought up to date with GitHub",
+    "studio.version": "Studio project version shown in the preview"
   },
   "healthLabel": "Recent actions by outcome",
   "noMatch": "Nothing with this outcome in the entries shown.",

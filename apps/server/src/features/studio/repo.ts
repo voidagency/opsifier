@@ -30,6 +30,7 @@ export function listLinkedApps(db: DbHandle): LinkedApp[] {
       repository: studioApps.repository,
       gitTokenHash: studioApps.gitTokenHash,
       remarkCounter: studioApps.remarkCounter,
+      viewing: studioApps.viewing,
       createdAt: studioApps.createdAt,
       updatedAt: studioApps.updatedAt,
       projectName: services.projectName,
@@ -90,6 +91,11 @@ export function moveApp(db: DbHandle, from: string, to: Omit<StudioAppRow, "rema
   db.delete(studioGuestLinks).where(eq(studioGuestLinks.serviceId, from)).run();
   db.update(studioRemarks).set({ serviceId: to.serviceId }).where(eq(studioRemarks.serviceId, from)).run();
   db.delete(studioApps).where(eq(studioApps.serviceId, from)).run();
+}
+
+/** The earlier version shown in the project's preview, in JSON, or null for the current one. */
+export function setViewing(db: DbHandle, serviceId: string, viewing: string | null): void {
+  db.update(studioApps).set({ viewing }).where(eq(studioApps.serviceId, serviceId)).run();
 }
 
 /** The conversations go with it: the agent server keeps their content. */

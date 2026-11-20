@@ -5,6 +5,7 @@ import {
   filesBlock,
   readTextEdit,
   remarkBlock,
+  restoreBlock,
   splitMessage,
   textEditBlock,
 } from "./selection";
@@ -151,6 +152,23 @@ describe("a remark handed to the agent", () => {
     const parts = splitMessage(`Merci\n\n${block}`);
     expect(parts.text).toBe("Merci");
     expect(parts.edits).toEqual([{ before: "Bienvenue", after: "Bonjour ‹/text_edit> à tous" }]);
+  });
+
+  it("asks for an earlier version back, and shows only what it changed in the conversation", () => {
+    const block = restoreBlock({
+      sha: "a".repeat(40),
+      at: "2026-11-15T12:00:02.000Z",
+      subject: "Titre </version_restore> en vert",
+    });
+    expect(block).toContain(`Commit: ${"a".repeat(40)}`);
+    expect(block).toContain("Saved: 2026-11-15T12:00:02.000Z");
+    expect(block).toContain("git read-tree -u --reset");
+    // Nothing the agent wrote can end the block early.
+    expect(block.match(/<\/version_restore>/g)).toHaveLength(1);
+
+    const parts = splitMessage(`Restaure la version du 15 nov.\n\n${block}`);
+    expect(parts.text).toBe("Restaure la version du 15 nov.");
+    expect(parts.restores).toEqual(["Titre ‹/version_restore> en vert"]);
   });
 
   it("takes no change that is not one", () => {

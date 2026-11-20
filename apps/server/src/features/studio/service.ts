@@ -46,6 +46,8 @@ import { conversationModel, toStudioModels } from "./models";
 import { PREVIEW_PORT } from "./preview";
 import * as repo from "./repo";
 import { readStudioSettings, writeStudioSettings } from "./settings";
+import { refuseRestoreWhileBusy } from "./version-script";
+import { holdForMessage, publicViewing, readViewing } from "./viewing";
 
 /**
  * What the agent is told on top of its profile's own instructions: where it is talked to from, the
@@ -104,6 +106,12 @@ export function studioContext(
     "content file) from the page, the element and the React components it names, and replace it with the text",
     "after, changing nothing else. The preview may show the new text already, before your change: check the",
     "code, not only the page.",
+    "When a message holds a <version_restore> block, the user asks to bring the project back to the version",
+    "of the commit it names, as a new version, so that the history keeps everything. First run",
+    "`git status --porcelain`: if it lists anything, change nothing and ask the user what to do with those",
+    "changes. Otherwise run `git read-tree -u --reset <commit>` in the project's folder, check the page, then",
+    "commit with a message saying which version it brings back, and push. Never reset the branch, never force",
+    "push, and change nothing else.",
     "When a message holds an <attached_files> block, the user attached those files to it: PDF, Word, Excel,",
     `PowerPoint, CSV or text files, kept in the project's folder under ${ATTACHMENTS_DIR}/, where git does`,
     "not track them. Read them where they are: a CSV or text file as it is, the others with Python, installing",
@@ -159,7 +167,7 @@ export interface StudioMessage {
   model?: string;
 }
 
-function requireAgent(deps: Pick<AppDeps, "db">): StudioAgent {
+export function requireAgent(deps: Pick<AppDeps, "db">): StudioAgent {
   const settings = readStudioSettings(deps);
   if (!settings.enabled) {
     throw conflict(
@@ -203,6 +211,7 @@ function appView(
     agentMode: mode,
     agentStatus: agent === undefined ? null : summarize(deps, agent, live, active).status,
     lastConversation: last === undefined ? null : toConversation(last, mode),
+    viewing: publicViewing(readViewing(app.viewing)),
   };
 }
 
@@ -485,8 +494,10 @@ export async function attachStudioFile(
 ): Promise<StudioAttachment> {
   const shared = requireAgent(deps);
   const { app } = requireLinked(deps, target);
-  const release = takeAttachmentSlot(deps, actorEmail ?? "");
+  const held = holdForMessage(deps.db, app.serviceId);
+  let release = () => {};
   try {
+    release = takeAttachmentSlot(deps, actorEmail ?? "");
     const bytes = await readAttachment(body, declaredBytes);
     const file = checkAttachment(request.name, bytes);
     const settings = readStudioSettings(deps);
@@ -513,6 +524,7 @@ export async function attachStudioFile(
     return await writeAttachment(deps, agent, app.workspaceDir, { ...file, bytes });
   } finally {
     release();
+    held();
   }
 }
 
@@ -528,6 +540,23 @@ export async function startStudioConversation(
 ): Promise<StudioConversation> {
   const shared = requireAgent(deps);
   const { app } = requireLinked(deps, target);
+  // Until the agent server has the conversation: its folder does not move meanwhile.
+  const held = holdForMessage(deps.db, app.serviceId);
+  try {
+    return await startConversationOn(deps, target, app, shared, message, actorEmail);
+  } finally {
+    held();
+  }
+}
+
+async function startConversationOn(
+  deps: AppDeps,
+  target: ServiceTarget,
+  app: repo.StudioAppRow,
+  shared: StudioAgent,
+  message: StudioMessage,
+  actorEmail: string | undefined,
+): Promise<StudioConversation> {
   const settings = readStudioSettings(deps);
   const mode = agentModeOf(deps, settings, app);
   if (mode === "missing") {
@@ -538,6 +567,9 @@ export async function startStudioConversation(
   }
   const agent =
     mode === "own" ? await ensureOwnAgent(deps, requireModel(deps, settings), app, actorEmail) : shared;
+  if (asksForRestore(message)) {
+    await refuseRestoreWhileBusy(deps, app, agent, mode === "own");
+  }
 
   const setup = await callAgent(deps, agent, [
     { method: "GET", path: "/api/agent-profiles" },
@@ -630,23 +662,35 @@ export async function sendStudioMessage(
   actorEmail?: string,
 ): Promise<StudioConversation> {
   const row = requireConversation(deps, target, id);
-  const mode = agentModeOf(deps, readStudioSettings(deps), row.app);
-  if (mode !== "shared" && row.sharedAgent) {
-    throw readOnlyConversation();
+  // Until the agent server has the message: its folder does not move meanwhile.
+  const held = holdForMessage(deps.db, row.app.serviceId);
+  try {
+    const mode = agentModeOf(deps, readStudioSettings(deps), row.app);
+    if (mode !== "shared" && row.sharedAgent) {
+      throw readOnlyConversation();
+    }
+    const agent = await conversationAgent(deps, row, actorEmail, true);
+    if (asksForRestore(message)) {
+      await refuseRestoreWhileBusy(deps, row.app, agent, !row.sharedAgent);
+    }
+    const { keyFound, replies } = await callAgent(deps, agent, [
+      {
+        method: "POST",
+        path: `/api/conversations/${id}/events`,
+        body: { role: "user", content: messageContent(message), run: true },
+      },
+    ]);
+    expectJson(replies[0], keyFound);
+    const updatedAt = new Date(deps.now());
+    repo.updateConversation(deps.db, id, { updatedAt });
+    return toConversation({ ...row, updatedAt }, mode);
+  } finally {
+    held();
   }
-  const agent = await conversationAgent(deps, row, actorEmail, true);
-  const { keyFound, replies } = await callAgent(deps, agent, [
-    {
-      method: "POST",
-      path: `/api/conversations/${id}/events`,
-      body: { role: "user", content: messageContent(message), run: true },
-    },
-  ]);
-  expectJson(replies[0], keyFound);
-  const updatedAt = new Date(deps.now());
-  repo.updateConversation(deps.db, id, { updatedAt });
-  return toConversation({ ...row, updatedAt }, mode);
 }
+
+/** A message that asks the agent to bring an earlier version back, which writes the whole folder. */
+const asksForRestore = (message: StudioMessage): boolean => message.text.includes("<version_restore>");
 
 export async function stopStudioConversation(
   deps: AppDeps,

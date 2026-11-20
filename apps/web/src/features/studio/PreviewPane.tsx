@@ -1,26 +1,31 @@
-import type { ServiceStatus, StudioAppDetail, StudioRemark } from "@opsifier/contract";
+import type { ServiceStatus, StudioAppDetail, StudioRemark, StudioViewing } from "@opsifier/contract";
 import { useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
 import {
   ExternalLink,
   GitBranch,
+  History,
   Link2,
   LoaderCircle,
   MessageSquareText,
   Monitor,
   MousePointerClick,
   PanelLeftOpen,
+  RotateCcw,
   RotateCw,
   Smartphone,
   Tablet,
   TextCursorInput,
+  Undo2,
   X,
 } from "lucide-react";
 import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/cn";
+import { formatDateTime } from "../../lib/format";
 import { errorMessage } from "../../lib/forms";
 import { Button, buttonClass, Lamp, Tooltip, toast } from "../../ui";
+import { useCurrentUser } from "../auth/session";
 import { studioApi, studioAppQuery } from "./api";
 import { type Device, readSelected, readTextEdit, type SelectedElement, type TextEdit } from "./selection";
 import { type ProjectSync, useProjectSync } from "./useProjectSync";
@@ -59,6 +64,8 @@ function syncNotice(sync: ProjectSync, t: TFunction): string | null {
 
 /** How soon the preview's state is read again after it was started again for new packages. */
 const RESTART_CHECK_MS = 2_000;
+/** How long the preview's server takes to read the files of another version, before the page loads again. */
+const VERSION_RELOAD_MS = 1_500;
 
 const lampOf: Record<ServiceStatus, LampState> = {
   running: "running",
@@ -157,6 +164,10 @@ export function PreviewPane({
   onShare,
   chatHidden = false,
   onShowChat,
+  viewing = null,
+  versionBusy = false,
+  onShowCurrent,
+  onRestoreShown,
   className,
 }: {
   app: StudioAppDetail;
@@ -179,9 +190,16 @@ export function PreviewPane({
   /** The conversation is folded away on a wide screen: the preview offers it back. */
   chatHidden?: boolean;
   onShowChat?: () => void;
+  /** An earlier version shown in place of the current one: the preview says so, and how to leave it. */
+  viewing?: StudioViewing | null;
+  versionBusy?: boolean;
+  onShowCurrent?: () => void;
+  /** Asks the agent to bring the version shown back, as a new one. */
+  onRestoreShown?: () => void;
   className?: string;
 }) {
-  const { t } = useTranslation(["studio", "common"]);
+  const { t, i18n } = useTranslation(["studio", "common"]);
+  const me = useCurrentUser()?.email ?? null;
   const status = app.previewStatus;
   const origin = originOf(app.previewUrl);
   const [device, setDevice] = useState<Device>("desktop");
@@ -225,7 +243,25 @@ export function PreviewPane({
     }, RESTART_CHECK_MS);
     return () => clearTimeout(later);
   }, [sync.result]);
-  const notice = syncNotice(sync, t);
+  // An earlier version is not on a branch, so nothing is brought from GitHub while it is shown: the
+  // preview asks again once the current one is back.
+  const notice = viewing === null ? syncNotice(sync, t) : null;
+  const viewingSha = viewing?.sha ?? null;
+  const shownVersion = useRef(viewingSha);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per version shown
+  useEffect(() => {
+    if (shownVersion.current === viewingSha) {
+      return;
+    }
+    const wasViewing = shownVersion.current !== null;
+    shownVersion.current = viewingSha;
+    // The folder changed under the preview's server: the page is loaded again once it has read it.
+    const later = setTimeout(() => reload(), VERSION_RELOAD_MS);
+    if (wasViewing && viewingSha === null && ownAgent && sync.result?.reason === "detached") {
+      sync.run();
+    }
+    return () => clearTimeout(later);
+  }, [viewingSha]);
 
   const start = async () => {
     onStartRequested();
@@ -555,11 +591,13 @@ export function PreviewPane({
         {ownAgent && (
           <Tooltip
             content={
-              sync.syncing
-                ? t("preview.sync.running")
-                : sync.result?.state === "current"
-                  ? t("preview.sync.current", { branch: sync.result.branch })
-                  : t("preview.sync.action")
+              viewing !== null
+                ? t("versions.noSync")
+                : sync.syncing
+                  ? t("preview.sync.running")
+                  : sync.result?.state === "current"
+                    ? t("preview.sync.current", { branch: sync.result.branch })
+                    : t("preview.sync.action")
             }
           >
             <Button
@@ -568,7 +606,7 @@ export function PreviewPane({
               className="ml-auto"
               aria-label={t("preview.sync.action")}
               aria-busy={sync.syncing}
-              disabled={sync.syncing}
+              disabled={sync.syncing || viewing !== null}
               onClick={sync.run}
             >
               {sync.syncing ? (
@@ -589,6 +627,47 @@ export function PreviewPane({
           {t("preview.share")}
         </Button>
       </header>
+      {viewing !== null && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-accent/40 bg-accent/10 px-3 py-1.5 text-xs"
+        >
+          <History aria-hidden="true" className="size-3.5 shrink-0 text-accent" />
+          <p className="min-w-0 flex-1 wrap-anywhere">
+            {t(viewing.by !== null && viewing.by !== me ? "versions.bannerBy" : "versions.banner", {
+              when: formatDateTime(viewing.at, i18n.language),
+              // Still being shown, a version is known by its time only.
+              subject: viewing.subject === "" ? t("versions.untitled") : viewing.subject,
+              by: viewing.by ?? "",
+            })}
+          </p>
+          {/* On a phone, the buttons go one under the other rather than past the screen's edge. */}
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            {onShowCurrent !== undefined && (
+              <Button
+                size="sm"
+                variant="secondary"
+                pending={versionBusy}
+                icon={<Undo2 aria-hidden="true" className="size-3.5" />}
+                onClick={onShowCurrent}
+              >
+                {t("versions.back")}
+              </Button>
+            )}
+            {onRestoreShown !== undefined && (
+              <Button
+                size="sm"
+                variant="primary"
+                disabledReason={versionBusy ? t("versions.blocked") : undefined}
+                icon={<RotateCcw aria-hidden="true" className="size-3.5" />}
+                onClick={onRestoreShown}
+              >
+                {t("versions.restoreThis")}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
       {notice !== null && !noticeHidden && (
         <div role="status" className="flex items-start gap-2 border-b bg-wash px-3 py-1.5 text-xs text-muted">
           <GitBranch aria-hidden="true" className="mt-px size-3.5 shrink-0" />

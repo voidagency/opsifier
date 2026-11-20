@@ -31,6 +31,8 @@ import {
   studioRemarkList,
   studioSettings,
   studioSync,
+  studioVersions,
+  studioViewingState,
   type UpdateStudioRemarkRequest,
   unlinkedStudioApp,
 } from "@opsifier/contract";
@@ -79,6 +81,19 @@ export const studioMembersQuery = (project: string, service: string) =>
     queryFn: ({ signal }) =>
       api.get(`${appPath(project, service)}/members`, { schema: studioMembers, signal }),
     staleTime: 0,
+  });
+
+/** How often the versions are read again, so that the agent's newest shows under its answer. */
+const VERSIONS_REFRESH_MS = 30_000;
+
+/** The project's versions, the newest first, and the earlier one shown, if any. */
+export const studioVersionsQuery = (project: string, service: string) =>
+  queryOptions({
+    queryKey: [...studioKey, "versions", project, service] as const,
+    queryFn: ({ signal }) =>
+      api.get(`${appPath(project, service)}/versions`, { schema: studioVersions, signal }),
+    staleTime: 0,
+    refetchInterval: VERSIONS_REFRESH_MS,
   });
 
 /** How often the remarks are read again, so that a client's new remark shows without a reload. */
@@ -150,6 +165,12 @@ export const studioApi = {
   /** Takes the project out, with what the Studio made for it. Its folder stays. */
   remove: (project: string, service: string, confirm: string) =>
     api.post(`${appPath(project, service)}/remove`, { body: { confirm }, schema: actionEntry }),
+  /** Shows an earlier version of the project in its preview. */
+  viewVersion: (project: string, service: string, sha: string) =>
+    api.post(`${appPath(project, service)}/versions/${sha}/view`, { schema: studioViewingState }),
+  /** Brings the project's current version back in its preview. */
+  currentVersion: (project: string, service: string) =>
+    api.post(`${appPath(project, service)}/versions/current`, { schema: studioViewingState }),
   /** Keeps a file for the next message in the project's folder: where it is, for the message to say. */
   attach: (project: string, service: string, file: File, conversation: string | null) =>
     api.post(`${appPath(project, service)}/attachments`, {

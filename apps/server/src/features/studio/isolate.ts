@@ -182,6 +182,7 @@ async function isolate(deps: AppDeps, isolation: Isolation): Promise<StudioIsola
       agentServiceId: own.agent.id,
       repository: own.repository,
       gitTokenHash: own.gitTokenHash,
+      viewing: null,
       createdAt: app.createdAt,
       updatedAt: now,
     }),

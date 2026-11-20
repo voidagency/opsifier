@@ -383,5 +383,23 @@
     "removeDescription": "It no longer opens the preview: its remarks stop at once, the preview within half a minute. What was written through it stays, unless you tick below.",
     "removeRemarks_one": "Also delete the remark written through this link",
     "removeRemarks_other": "Also delete the {{count}} remarks written through this link"
+  },
+  "versions": {
+    "card": "Version: {{subject}}",
+    "saved": "Saved {{when}}",
+    "current": "Current version",
+    "shown": "Shown in the preview",
+    "view": "Preview",
+    "restore": "Restore",
+    "blocked": "Possible once the agent has answered.",
+    "banner": "Previewing the version of {{when}}: {{subject}}. The project itself has not changed.",
+    "bannerBy": "{{by}} is showing the version of {{when}}: {{subject}}. The project itself has not changed.",
+    "back": "Back to the current version",
+    "restoreThis": "Restore this version",
+    "locked": "An earlier version is shown in the preview. Go back to the current version to write to the agent, or restore this one from the preview.",
+    "restoreMessage": "Restore the version of {{when}}.",
+    "restoreChip": "Version:",
+    "noSync": "Go back to the current version to bring the project up to date with GitHub.",
+    "untitled": "untitled version"
   }
 }

@@ -1,4 +1,4 @@
-import type { StudioAttachment, StudioRemark } from "@opsifier/contract";
+import type { StudioAttachment, StudioRemark, StudioVersion } from "@opsifier/contract";
 import { formatBytes } from "../../lib/format";
 
 /**
@@ -184,6 +184,29 @@ export function textEditBlock(edit: TextEdit): string {
   ].join("\n");
 }
 
+const RESTORE_OPEN = "<version_restore>";
+const RESTORE_CLOSE = "</version_restore>";
+const RESTORE_BLOCK = /<version_restore>([\s\S]*?)<\/version_restore>/g;
+
+/**
+ * The block a message carries to bring the project back to an earlier version, as a new one, with the
+ * way to do it, there as well as in the conversation's own instructions, which a conversation started
+ * earlier lacks.
+ */
+export function restoreBlock(version: StudioVersion): string {
+  return [
+    RESTORE_OPEN,
+    "Bring the project back to this version as a new one. First run `git status --porcelain`: if it lists",
+    "anything, change nothing and ask the user what to do with those changes. Otherwise run",
+    "`git read-tree -u --reset <commit>` in the project's folder, check the page, then commit saying which",
+    "version it brings back, and push. Never reset the branch or force push.",
+    `Commit: ${fence(version.sha)}`,
+    `Saved: ${fence(version.at)}`,
+    `Subject: ${fence(version.subject)}`,
+    RESTORE_CLOSE,
+  ].join("\n");
+}
+
 const FILES_OPEN = "<attached_files>";
 const FILES_CLOSE = "</attached_files>";
 const FILES_BLOCK = /<attached_files>([\s\S]*?)<\/attached_files>/g;
@@ -231,9 +254,15 @@ export function splitMessage(text: string): {
   remarks: RemarkTag[];
   files: string[];
   edits: { before: string; after: string }[];
+  restores: string[];
 } {
+  const restores: string[] = [];
+  const withoutRestores = text.replace(RESTORE_BLOCK, (_, body: string) => {
+    restores.push(lineOf(body, "Subject:"));
+    return "";
+  });
   const edits: { before: string; after: string }[] = [];
-  const withoutEdits = text.replace(EDIT_BLOCK, (_, body: string) => {
+  const withoutEdits = withoutRestores.replace(EDIT_BLOCK, (_, body: string) => {
     edits.push({ before: lineOf(body, "Before:"), after: lineOf(body, "After:") });
     return "";
   });
@@ -288,5 +317,5 @@ export function splitMessage(text: string): {
     );
     return "";
   });
-  return { text: rest.trim(), elements, remarks, files, edits };
+  return { text: rest.trim(), elements, remarks, files, edits, restores };
 }

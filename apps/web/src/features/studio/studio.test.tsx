@@ -35,6 +35,7 @@ const app = (overrides: Partial<StudioApp> = {}): StudioApp => ({
   agentMode: "shared",
   agentStatus: null,
   lastConversation: conversation,
+  viewing: null,
   ...overrides,
 });
 
@@ -404,6 +405,254 @@ function fromPreview(data: Record<string, unknown>) {
     }),
   );
 }
+
+describe("the versions the agent saved", () => {
+  const VERSIONS = `${APP}/versions`;
+  const OLDEST = "0".repeat(40);
+  const FIRST = "a".repeat(40);
+  const SECOND = "b".repeat(40);
+  const shownFirst = {
+    sha: FIRST,
+    at: "2026-11-15T12:00:02.000Z",
+    subject: "Change le titre de l'accueil",
+    since: "2026-11-15T12:10:00.000Z",
+    by: "admin@example.com",
+  };
+  // Two requests answered, the agent's server writing its times without their zone.
+  const twoAnswers = (status: StudioEventPage["status"] = "finished") =>
+    page({
+      status,
+      items: [
+        ...page().items.map((item) => ({ ...item, timestamp: item.timestamp.replace("Z", ".123456") })),
+        {
+          kind: "message",
+          id: "e4",
+          timestamp: "2026-11-15T12:01:00.000001",
+          role: "user",
+          text: "Ajoute un formulaire de contact",
+          images: [],
+          suggestions: [],
+        },
+        {
+          kind: "message",
+          id: "e5",
+          timestamp: "2026-11-15T12:02:00.5",
+          role: "agent",
+          text: "Voilà le formulaire.",
+          images: [],
+          suggestions: [],
+        },
+      ],
+    });
+  const saved = {
+    versions: [
+      { sha: SECOND, at: "2026-11-15T12:01:30.000Z", subject: "Ajoute le formulaire de contact" },
+      { sha: FIRST, at: "2026-11-15T12:00:02.000Z", subject: "Change le titre de l'accueil" },
+      // Saved before the conversation: under none of its answers.
+      { sha: OLDEST, at: "2026-11-14T09:00:00.000Z", subject: "Premier jet" },
+    ],
+    asleep: false,
+    viewing: null,
+  };
+  const versionsServer = (extra: FakeRoute = {}, initially: typeof shownFirst | null = null) => {
+    let viewing = initially;
+    const server = installFakeServer(
+      base({
+        [`GET ${APP}`]: () => detail({ viewing }),
+        [`GET ${APP}/conversations/${CONVERSATION}/events`]: twoAnswers(),
+        [`GET ${VERSIONS}`]: () => ({ ...saved, viewing }),
+        [`POST ${VERSIONS}/${FIRST}/view`]: () => {
+          viewing = shownFirst;
+          return { viewing };
+        },
+        [`POST ${VERSIONS}/current`]: () => {
+          viewing = null;
+          return { viewing };
+        },
+        [`POST ${APP}/conversations/${CONVERSATION}/messages`]: conversation,
+        ...extra,
+      }),
+    );
+    return server;
+  };
+  const card = (subject: string) => screen.findByRole("group", { name: `Version: ${subject}` });
+
+  it("shows under each answer the version it saved", async () => {
+    versionsServer();
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    const first = await card("Change le titre de l'accueil");
+    expect(within(first).getByRole("button", { name: "Preview" })).toBeTruthy();
+    expect(within(first).getByRole("button", { name: "Restore" })).toBeTruthy();
+    const second = await card("Ajoute le formulaire de contact");
+    expect(within(second).getByText("Current version")).toBeTruthy();
+    expect(within(second).queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("group", { name: "Version: Premier jet" })).toBeNull();
+    // Each under its own answer.
+    const answers = screen.getAllByRole("listitem");
+    const under = (text: string) => answers.find((item) => within(item).queryByText(text) !== null);
+    expect(under("Voilà le formulaire.")?.contains(second)).toBe(true);
+    expect(under("Voilà le formulaire.")?.contains(first)).toBe(false);
+  });
+
+  it("shows an earlier version in the preview, holds messages meanwhile, and brings the current one back", async () => {
+    const server = versionsServer();
+    renderApp("/studio/lovable/cd-studio-preview");
+    const first = await card("Change le titre de l'accueil");
+
+    fireEvent.click(within(first).getByRole("button", { name: "Preview" }));
+    const preview = screen.getByRole("region", { name: "Live preview" });
+    await within(preview).findByText(/Previewing the version of .*Change le titre de l'accueil/);
+    expect(
+      server.calls.some((call) => call.method === "POST" && call.path === `${VERSIONS}/${FIRST}/view`),
+    ).toBe(true);
+    expect(within(await card("Change le titre de l'accueil")).getByText("Shown in the preview")).toBeTruthy();
+
+    // What would be sent waits for the current version.
+    expect(screen.getByText(/An earlier version is shown in the preview/)).toBeTruthy();
+    fireEvent.change(screen.getByRole("textbox", { name: "Message to the agent" }), {
+      target: { value: "Encore" },
+    });
+    expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByRole("list", { name: "Suggestions" })).toBeNull();
+
+    fireEvent.click(within(preview).getByRole("button", { name: "Back to the current version" }));
+    await waitFor(() => expect(within(preview).queryByText(/Previewing the version of/)).toBeNull());
+    expect(server.calls.some((call) => call.method === "POST" && call.path === `${VERSIONS}/current`)).toBe(
+      true,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(false),
+    );
+    expect(screen.queryByText(/An earlier version is shown in the preview/)).toBeNull();
+  });
+
+  it("asks the agent to bring an earlier version back as a new one, with nothing else waiting", async () => {
+    const server = versionsServer();
+    renderApp("/studio/lovable/cd-studio-preview");
+    const first = await card("Change le titre de l'accueil");
+    fireEvent.change(screen.getByRole("textbox", { name: "Message to the agent" }), {
+      target: { value: "Un mot de plus" },
+    });
+
+    fireEvent.click(within(first).getByRole("button", { name: "Restore" }));
+    await waitFor(() => expect(server.calls.find((call) => call.path.endsWith("/messages"))).toBeTruthy());
+    const sent = server.calls.find((call) => call.path.endsWith("/messages"))?.body as { text: string };
+    expect(sent.text).toMatch(/^Restore the version of .+\.\n\n<version_restore>\n/);
+    expect(sent.text).toContain(`Commit: ${FIRST}`);
+    expect(sent.text).toContain("Subject: Change le titre de l'accueil");
+    expect(sent.text).not.toContain("Un mot de plus");
+    // What was being typed stays for the next message.
+    expect((screen.getByRole("textbox", { name: "Message to the agent" }) as HTMLTextAreaElement).value).toBe(
+      "Un mot de plus",
+    );
+    // The message shows the version asked for, not its block.
+    expect(await screen.findByText("Version:")).toBeTruthy();
+    expect(screen.queryByText(/<version_restore>/)).toBeNull();
+  });
+
+  it("brings the version shown back from the preview, once the current one is in its folder again", async () => {
+    const server = versionsServer({}, shownFirst);
+    renderApp("/studio/lovable/cd-studio-preview");
+    const preview = await screen.findByRole("region", { name: "Live preview" });
+    fireEvent.click(await within(preview).findByRole("button", { name: "Restore this version" }));
+
+    await waitFor(() => expect(server.calls.find((call) => call.path.endsWith("/messages"))).toBeTruthy());
+    const order = server.calls
+      .filter((call) => call.method === "POST" && call.path !== `${APP}/sync`)
+      .map((call) => call.path);
+    expect(order).toEqual([`${VERSIONS}/current`, `${APP}/conversations/${CONVERSATION}/messages`]);
+    const sent = server.calls.find((call) => call.path.endsWith("/messages"))?.body as { text: string };
+    expect(sent.text).toContain(`Commit: ${FIRST}`);
+  });
+
+  it("follows a version someone else shows", async () => {
+    let reads = 0;
+    // The page opened before a colleague showed an earlier version.
+    versionsServer({
+      [`GET ${APP}`]: () => {
+        reads += 1;
+        return detail({ viewing: reads === 1 ? null : shownFirst });
+      },
+      [`GET ${VERSIONS}`]: { ...saved, viewing: shownFirst },
+    });
+    renderApp("/studio/lovable/cd-studio-preview");
+    const preview = await screen.findByRole("region", { name: "Live preview" });
+    expect(
+      await within(preview).findByText(/admin@example.com is showing|Previewing the version of/),
+    ).toBeTruthy();
+    expect(screen.getByText(/An earlier version is shown in the preview/)).toBeTruthy();
+  });
+
+  it("says why a message waits when it finds an earlier version shown", async () => {
+    let shown = false;
+    const server = versionsServer({
+      [`GET ${APP}`]: () => detail({ viewing: shown ? { ...shownFirst, by: "karim@example.com" } : null }),
+      [`GET ${VERSIONS}`]: () => ({ ...saved, viewing: null }),
+      [`POST ${APP}/conversations/${CONVERSATION}/messages`]: () => {
+        shown = true;
+        return withStatus(409, {
+          error: { code: "studio_viewing_version", message: "An earlier version is shown." },
+        });
+      },
+    });
+    renderApp("/studio/lovable/cd-studio-preview");
+    await card("Change le titre de l'accueil");
+    fireEvent.change(screen.getByRole("textbox", { name: "Message to the agent" }), {
+      target: { value: "Encore" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    const preview = screen.getByRole("region", { name: "Live preview" });
+    expect(await within(preview).findByText(/karim@example.com is showing the version of/)).toBeTruthy();
+    expect(server.calls.filter((call) => call.path.endsWith("/messages"))).toHaveLength(1);
+    // What was typed waits for the current version.
+    expect((screen.getByRole("textbox", { name: "Message to the agent" }) as HTMLTextAreaElement).value).toBe(
+      "Encore",
+    );
+  });
+
+  it("brings a version back in a new conversation when the one shown is kept for reading", async () => {
+    const kept = { ...conversation, readOnly: true };
+    const started = { ...conversation, id: "c0ffee00-0000-4000-8000-000000000002", readOnly: false };
+    let viewing: typeof shownFirst | null = shownFirst;
+    const server = versionsServer({
+      [`GET ${APP}`]: () => detail({ viewing, conversations: [kept], lastConversation: kept }),
+      [`POST ${VERSIONS}/current`]: () => {
+        viewing = null;
+        return { viewing };
+      },
+      [`POST ${APP}/conversations`]: started,
+      [`GET ${APP}/conversations/${started.id}/events`]: page({ items: [] }),
+    });
+    renderApp(`/studio/lovable/cd-studio-preview?c=${CONVERSATION}`);
+    const preview = await screen.findByRole("region", { name: "Live preview" });
+    fireEvent.click(await within(preview).findByRole("button", { name: "Restore this version" }));
+
+    await waitFor(() =>
+      expect(
+        server.calls.some((call) => call.method === "POST" && call.path === `${APP}/conversations`),
+      ).toBe(true),
+    );
+    expect(server.calls.some((call) => call.path.endsWith("/messages"))).toBe(false);
+    const sent = server.calls.find((call) => call.method === "POST" && call.path === `${APP}/conversations`)
+      ?.body as { text: string };
+    expect(sent.text).toContain(`Commit: ${FIRST}`);
+  });
+
+  it("waits for the agent's answer before another version can be shown", async () => {
+    const server = versionsServer({
+      [`GET ${APP}/conversations/${CONVERSATION}/events`]: twoAnswers("running"),
+    });
+    renderApp("/studio/lovable/cd-studio-preview");
+    const first = await card("Change le titre de l'accueil");
+    const view = within(first).getByRole("button", { name: "Preview" });
+    expect(view.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(view);
+    fireEvent.click(within(first).getByRole("button", { name: "Restore" }));
+    expect(server.calls.some((call) => call.path.startsWith(`${VERSIONS}/`))).toBe(false);
+    expect(server.calls.some((call) => call.path.endsWith("/messages"))).toBe(false);
+  });
+});
 
 describe("the conversation beside the preview", () => {
   it("folds away for the preview to take the whole width, and comes back", async () => {

@@ -9,6 +9,8 @@ import type {
   StudioOverview,
   StudioSettings,
   StudioSync,
+  StudioVersions,
+  StudioViewingState,
 } from "@opsifier/contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { studioConversationEvents } from "../../core/db/schema";
@@ -18,6 +20,7 @@ import {
   createTestContext,
   setupAdmin,
   signInMember,
+  TEST_EMAIL,
   TEST_ORIGIN,
   type TestContext,
 } from "../../testing/harness";
@@ -46,7 +49,7 @@ const ADDED = "/projects/studio-un-mot-par-jour-landing/services";
 const OWN_AGENT = "studio-un-mot-par-jour-landing_agent";
 
 type Raw = Record<string, unknown>;
-type Script = "folder" | "seed-read" | "seed-write" | "clone" | "sync" | "attach" | "agent";
+type Script = "folder" | "seed-read" | "seed-write" | "clone" | "sync" | "attach" | "versions" | "agent";
 interface Exec {
   service: string;
   script: Script;
@@ -66,7 +69,9 @@ const kindOf = (script: string): Script =>
             ? "sync"
             : script.includes("opsifier-studio-attach")
               ? "attach"
-              : "agent";
+              : script.includes("opsifier-studio-versions")
+                ? "versions"
+                : "agent";
 
 /**
  * Plays the agent servers in their containers: the model, `lovable_openhands`, which alone has a
@@ -89,6 +94,12 @@ function installFakeAgents() {
       manifest: true,
       vite: true,
     }),
+    /** The commit the project's folder shows in place of its branch, if any. */
+    shown: null as string | null,
+    /** What the folder's versions are, and what showing one answers: null for no answer at all. */
+    versions: (request: Raw): Raw | null | Promise<Raw | null> => usualVersions(request),
+    /** Holds the messages that reach an agent server until it settles. */
+    holdMessages: null as Promise<void> | null,
     /** What bringing a folder up to date answers: nothing new on GitHub, unless a test says otherwise. */
     sync: (_request: Raw): Raw => ({
       ok: true,
@@ -102,6 +113,30 @@ function installFakeAgents() {
       dependencies: false,
     }),
   };
+  const VERSIONS: Record<string, Raw> = {
+    ["b".repeat(40)]: { sha: "b".repeat(40), at: 1_795_100_000, subject: "Ajoute le formulaire de contact" },
+    ["a".repeat(40)]: { sha: "a".repeat(40), at: 1_795_000_000, subject: "Premier jet de la page" },
+  };
+  function usualVersions(request: Raw): Raw {
+    switch (request.action) {
+      case "list":
+        return {
+          ok: true,
+          branch: state.shown === null ? "main" : null,
+          detached: state.shown !== null,
+          shown: state.shown === null ? null : { ...VERSIONS[state.shown], branch: "main" },
+          versions: Object.values(VERSIONS),
+        };
+      case "view":
+        state.shown = String(request.sha);
+        return { ok: true, branch: "main", stashed: false, ...VERSIONS[String(request.sha)] };
+      case "return":
+        state.shown = null;
+        return { ok: true, branch: "main", stashed: false };
+      default:
+        return { ok: true };
+    }
+  }
   let sequence = 0;
   let stamp = 0;
   const ok = (body: unknown, status = 200) => ({ status, text: JSON.stringify(body) });
@@ -231,11 +266,20 @@ function installFakeAgents() {
           return { output: `opsifier-studio-sync ${JSON.stringify(state.sync(request))}\n`, exitCode: 0 };
         case "attach":
           return { output: `opsifier-studio-attach ${JSON.stringify({ ok: true })}\n`, exitCode: 0 };
+        case "versions":
+          return Promise.resolve(state.versions(request)).then((said) => ({
+            output: said === null ? "" : `opsifier-studio-versions ${JSON.stringify(said)}\n`,
+            exitCode: 0,
+          }));
         default: {
           const calls = request.calls as { method: string; path: string; body?: unknown }[];
-          const answers = calls.map((one) => answer(service, one));
-          const encoded = Buffer.from(JSON.stringify({ keyFound: true, answers })).toString("base64");
-          return { output: `opsifier-studio ${encoded}\nopsifier-ok\n`, exitCode: 0 };
+          const reply = () => {
+            const answers = calls.map((one) => answer(service, one));
+            const encoded = Buffer.from(JSON.stringify({ keyFound: true, answers })).toString("base64");
+            return { output: `opsifier-studio ${encoded}\nopsifier-ok\n`, exitCode: 0 };
+          };
+          const posting = calls.some((one) => one.method === "POST" && one.path.endsWith("/events"));
+          return posting && state.holdMessages !== null ? state.holdMessages.then(reply) : reply();
         }
       }
     };
@@ -565,6 +609,289 @@ describe("an agent server for each project", () => {
     expect(big.status).toBe(413);
     expect(apiErrorOf(big).code).toBe("studio_attachment_too_large");
     expect(agents.execs.filter((one) => one.script === "attach")).toHaveLength(1);
+  });
+
+  it("shows an earlier version in the preview from inside its agent server, and holds messages meanwhile", async () => {
+    const app = await addOwnProject();
+    const { id } = await startConversation(`${ADDED}/preview`, "Bonjour");
+    const VERSIONS = `${ADDED}/preview/studio/versions`;
+    const earlier = "a".repeat(40);
+    const runs = () => agents.execs.filter((exec) => exec.script === "versions");
+
+    const listed = await api<StudioVersions>(VERSIONS);
+    expect(listed.status).toBe(200);
+    expect(listed.body).toEqual({
+      versions: [
+        {
+          sha: "b".repeat(40),
+          at: new Date(1_795_100_000_000).toISOString(),
+          subject: "Ajoute le formulaire de contact",
+        },
+        { sha: earlier, at: new Date(1_795_000_000_000).toISOString(), subject: "Premier jet de la page" },
+      ],
+      asleep: false,
+      viewing: null,
+    });
+    expect(runs()[0]).toMatchObject({
+      service: OWN_AGENT,
+      input: { action: "list", dir: app.workspaceDir, branch: null, limit: 50 },
+    });
+
+    // Not while the agent is at work: the folder would move under it.
+    const working = await api(`${VERSIONS}/${earlier}/view`, "POST");
+    expect(working.status).toBe(409);
+    expect(apiErrorOf(working).code).toBe("studio_agent_working");
+    expect(runs().filter((exec) => exec.input.action === "view")).toHaveLength(0);
+
+    for (const conversation of agents.conversations.values()) {
+      conversation.status = "finished";
+    }
+    const shown = await api<StudioViewingState>(`${VERSIONS}/${earlier}/view`, "POST");
+    expect(shown.status).toBe(200);
+    expect(shown.body.viewing).toMatchObject({
+      sha: earlier,
+      subject: "Premier jet de la page",
+      by: TEST_EMAIL,
+    });
+    expect(shown.body.viewing).not.toHaveProperty("branch");
+    expect(runs().at(-1)?.input).toMatchObject({ action: "view", sha: earlier, branch: null });
+
+    // Everyone sees it, and the list goes on from the branch, not from the version shown.
+    expect((await api<StudioAppDetail>(`${ADDED}/preview/studio`)).body.viewing).toMatchObject({
+      sha: earlier,
+    });
+    expect((await api<StudioVersions>(VERSIONS)).body.viewing).toMatchObject({ sha: earlier });
+    expect(runs().at(-1)?.input).toMatchObject({ action: "list", branch: "main" });
+
+    // Nothing reaches the agent while an earlier version is in its folder.
+    const message = await api(`${ADDED}/preview/studio/conversations/${id}/messages`, "POST", {
+      text: "Encore",
+    });
+    expect(message.status).toBe(409);
+    expect(apiErrorOf(message).code).toBe("studio_viewing_version");
+    const another = await api(`${ADDED}/preview/studio/conversations`, "POST", { text: "Bonjour" });
+    expect(apiErrorOf(another).code).toBe("studio_viewing_version");
+    const file = await call(context.app, `/api/v1${ADDED}/preview/studio/attachments?name=notes.md`, {
+      method: "POST",
+      rawBody: new Blob(["# Notes"]),
+      headers: { "content-type": "application/octet-stream" },
+      cookie,
+      origin: TEST_ORIGIN,
+    });
+    expect(apiErrorOf(file).code).toBe("studio_viewing_version");
+
+    const back = await api<StudioViewingState>(`${VERSIONS}/current`, "POST");
+    expect(back.status).toBe(200);
+    expect(back.body).toEqual({ viewing: null });
+    expect(runs().at(-1)?.input).toMatchObject({ action: "return", dir: app.workspaceDir, branch: "main" });
+    expect((await api<StudioAppDetail>(`${ADDED}/preview/studio`)).body.viewing).toBeNull();
+    const after = await api(`${ADDED}/preview/studio/conversations/${id}/messages`, "POST", {
+      text: "Encore",
+    });
+    expect(after.status).toBe(200);
+
+    const recorded = (await api<ActionPage>("/actions?limit=100")).body.items.filter(
+      (action) => action.type === "studio.version",
+    );
+    expect(recorded.map((action) => action.title)).toEqual([
+      expect.stringContaining("Show the current version of studio-un-mot-par-jour-landing/preview"),
+      expect.stringContaining("Show the version of 2026-11-18T11:06:40.000Z of"),
+    ]);
+
+    // Back already: nothing to run.
+    const count = runs().length;
+    expect((await api(`${VERSIONS}/current`, "POST")).status).toBe(200);
+    expect(runs()).toHaveLength(count);
+  });
+
+  it("says why a version could not be shown, and changes nothing", async () => {
+    await addOwnProject();
+    await startConversation(`${ADDED}/preview`, "Bonjour");
+    for (const conversation of agents.conversations.values()) {
+      conversation.status = "finished";
+    }
+    const VERSIONS = `${ADDED}/preview/studio/versions`;
+    agents.versions = () => ({ ok: false, code: "changed", files: ["src/App.tsx"] });
+    const unsaved = await api(`${VERSIONS}/${"a".repeat(40)}/view`, "POST");
+    expect(unsaved.status).toBe(409);
+    expect(apiErrorOf(unsaved).code).toBe("studio_version_unsaved");
+    agents.versions = () => ({ ok: false, code: "unknown" });
+    expect((await api(`${VERSIONS}/${"c".repeat(40)}/view`, "POST")).status).toBe(404);
+    expect((await api(`${VERSIONS}/HEAD~1/view`, "POST")).status).toBe(400);
+    expect((await api<StudioAppDetail>(`${ADDED}/preview/studio`)).body.viewing).toBeNull();
+  });
+
+  it("never moves the folder under a message on its way, nor lets one in while it moves", async () => {
+    await addOwnProject();
+    const { id } = await startConversation(`${ADDED}/preview`, "Bonjour");
+    for (const conversation of agents.conversations.values()) {
+      conversation.status = "finished";
+    }
+    const VERSIONS = `${ADDED}/preview/studio/versions`;
+    const earlier = "a".repeat(40);
+    const usual = agents.versions;
+    const ran = (action: string) =>
+      agents.execs.some((exec) => exec.script === "versions" && exec.input.action === action);
+
+    // A version being shown: a message waits for it.
+    let showIt = () => {};
+    agents.versions = (request) =>
+      request.action === "view"
+        ? new Promise((resolve) => {
+            showIt = () => resolve(usual(request) as Raw);
+          })
+        : usual(request);
+    const showing = api(`${VERSIONS}/${earlier}/view`, "POST");
+    await vi.waitFor(() => expect(ran("view")).toBe(true));
+    const early = await api(`${ADDED}/preview/studio/conversations/${id}/messages`, "POST", {
+      text: "Encore",
+    });
+    expect(apiErrorOf(early).code).toBe("studio_viewing_version");
+    const twice = await api(`${VERSIONS}/${earlier}/view`, "POST");
+    expect(apiErrorOf(twice).code).toBe("studio_version_busy");
+    showIt();
+    expect((await showing).status).toBe(200);
+    expect((await api(`${VERSIONS}/current`, "POST")).status).toBe(200);
+    agents.versions = usual;
+
+    // A message on its way: the version waits for the agent to have it.
+    let deliver = () => {};
+    agents.holdMessages = new Promise((resolve) => {
+      deliver = resolve;
+    });
+    const sending = api(`${ADDED}/preview/studio/conversations/${id}/messages`, "POST", { text: "Encore" });
+    await vi.waitFor(() =>
+      expect(
+        agents.execs.some(
+          (exec) => exec.script === "agent" && JSON.stringify(exec.input).includes("/events"),
+        ),
+      ).toBe(true),
+    );
+    const meanwhile = await api(`${VERSIONS}/${earlier}/view`, "POST");
+    expect(apiErrorOf(meanwhile).code).toBe("studio_agent_working");
+    deliver();
+    expect((await sending).status).toBe(200);
+    agents.holdMessages = null;
+  });
+
+  it("follows what the folder says it shows, and holds messages while it says nothing", async () => {
+    await addOwnProject();
+    const { id } = await startConversation(`${ADDED}/preview`, "Bonjour");
+    for (const conversation of agents.conversations.values()) {
+      conversation.status = "finished";
+    }
+    const VERSIONS = `${ADDED}/preview/studio/versions`;
+    const earlier = "a".repeat(40);
+    const message = () =>
+      api(`${ADDED}/preview/studio/conversations/${id}/messages`, "POST", { text: "Encore" });
+
+    // The folder moved, but its answer was lost on the way: messages wait until it is read again.
+    const usual = agents.versions;
+    agents.versions = (request) => {
+      if (request.action === "view") {
+        agents.shown = String(request.sha);
+        return null;
+      }
+      return usual(request);
+    };
+    const lost = await api(`${VERSIONS}/${earlier}/view`, "POST");
+    expect(lost.status).toBe(503);
+    expect(apiErrorOf(lost).code).toBe("studio_version_failed");
+    expect(apiErrorOf(await message()).code).toBe("studio_viewing_version");
+    agents.versions = usual;
+    const read = await api<StudioVersions>(VERSIONS);
+    expect(read.body.viewing).toMatchObject({ sha: earlier, subject: "Premier jet de la page" });
+    expect((await api<StudioAppDetail>(`${ADDED}/preview/studio`)).body.viewing).toMatchObject({
+      subject: "Premier jet de la page",
+    });
+
+    // Someone went back by hand: the folder is on its branch again, and messages go.
+    agents.shown = null;
+    expect((await api<StudioVersions>(VERSIONS)).body.viewing).toBeNull();
+    expect((await message()).status).toBe(200);
+
+    // A folder shown from elsewhere, say after the project was linked again, is followed too.
+    agents.shown = earlier;
+    expect((await api<StudioVersions>(VERSIONS)).body.viewing).toMatchObject({ sha: earlier, by: null });
+    expect(apiErrorOf(await message()).code).toBe("studio_viewing_version");
+
+    // A refusal leaves the folder, and the project's row, as they were.
+    expect((await api(`${VERSIONS}/current`, "POST")).status).toBe(200);
+    for (const conversation of agents.conversations.values()) {
+      conversation.status = "finished";
+    }
+    agents.versions = (request) =>
+      request.action === "view" ? { ok: false, code: "overwrite", files: [".env"] } : usual(request);
+    const refused = await api(`${VERSIONS}/${earlier}/view`, "POST");
+    expect(refused.status).toBe(409);
+    expect(apiErrorOf(refused).code).toBe("studio_version_overwrite");
+    expect((await api<StudioAppDetail>(`${ADDED}/preview/studio`)).body.viewing).toBeNull();
+    expect((await message()).status).toBe(200);
+  });
+
+  it("asks the folder before a message brings an earlier version back", async () => {
+    await addOwnProject();
+    const { id } = await startConversation(`${ADDED}/preview`, "Bonjour");
+    const restore = () =>
+      api(`${ADDED}/preview/studio/conversations/${id}/messages`, "POST", {
+        text: `Restaure la version du 15 nov.\n\n<version_restore>\nCommit: ${"a".repeat(40)}\n</version_restore>`,
+      });
+    const statuses = () =>
+      agents.execs.filter((exec) => exec.script === "versions" && exec.input.action === "status").length;
+
+    // The agent at work: it would write the folder under it.
+    const working = await restore();
+    expect(apiErrorOf(working).code).toBe("studio_agent_working");
+    for (const conversation of agents.conversations.values()) {
+      conversation.status = "finished";
+    }
+    const usual = agents.versions;
+    agents.versions = (request) =>
+      request.action === "status" ? { ok: false, code: "changed", files: ["src/App.tsx"] } : usual(request);
+    const unsaved = await restore();
+    expect(apiErrorOf(unsaved).code).toBe("studio_version_unsaved");
+    agents.versions = usual;
+    const before = statuses();
+    expect((await restore()).status).toBe(200);
+    expect(statuses()).toBe(before + 1);
+
+    // Any other message goes without asking the folder.
+    for (const conversation of agents.conversations.values()) {
+      conversation.status = "finished";
+    }
+    expect(
+      (await api(`${ADDED}/preview/studio/conversations/${id}/messages`, "POST", { text: "Merci" })).status,
+    ).toBe(200);
+    expect(statuses()).toBe(before + 1);
+  });
+
+  it("leaves out a version whose date cannot be read", async () => {
+    await addOwnProject();
+    await startConversation(`${ADDED}/preview`, "Bonjour");
+    agents.versions = () => ({
+      ok: true,
+      branch: "main",
+      detached: false,
+      shown: null,
+      versions: [
+        { sha: "c".repeat(40), at: 99_999_999_999_999, subject: "Du futur" },
+        { sha: "a".repeat(40), at: 1_795_000_000, subject: "Premier jet de la page" },
+      ],
+    });
+    const listed = await api<StudioVersions>(`${ADDED}/preview/studio/versions`);
+    expect(listed.status).toBe(200);
+    expect(listed.body.versions.map((one) => one.subject)).toEqual(["Premier jet de la page"]);
+  });
+
+  it("lists no version while the agent server sleeps, and never wakes it to", async () => {
+    await addOwnProject();
+    await startConversation(`${ADDED}/preview`, "Bonjour");
+    expect((await api(`${ADDED}/agent/stop`, "POST")).status).toBe(202);
+    await settle();
+    const before = agents.execs.length;
+    const listed = await api<StudioVersions>(`${ADDED}/preview/studio/versions`);
+    expect(listed.body).toEqual({ versions: [], asleep: true, viewing: null });
+    expect(agents.execs).toHaveLength(before);
   });
 
   it("keeps a file for a conversation under way with its agent server, and sets nothing up again", async () => {

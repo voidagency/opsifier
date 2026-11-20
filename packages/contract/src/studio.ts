@@ -93,6 +93,32 @@ export const studioAgentMode = z.enum(["shared", "own", "missing"]);
 export type StudioAgentMode = z.infer<typeof studioAgentMode>;
 
 /** A service linked to the Studio: its live preview, and the folder the agent works in. */
+/** A version of a Studio project: a commit of its folder's branch. */
+export const studioVersion = z.object({
+  sha: z.string(),
+  /** When it was saved. */
+  at: z.iso.datetime(),
+  /** Its commit's first line. */
+  subject: z.string(),
+});
+export type StudioVersion = z.infer<typeof studioVersion>;
+
+/** An earlier version shown in the preview in place of the current one, and since when, by whom. */
+export const studioViewing = studioVersion.extend({
+  since: z.iso.datetime(),
+  by: z.string().nullable(),
+});
+export type StudioViewing = z.infer<typeof studioViewing>;
+
+/** GET .../studio/versions: the folder's versions, the newest first. */
+export const studioVersions = z.object({
+  versions: z.array(studioVersion),
+  /** The project's own agent server sleeps: its folder is read once it wakes, and there is none yet. */
+  asleep: z.boolean(),
+  viewing: studioViewing.nullable(),
+});
+export type StudioVersions = z.infer<typeof studioVersions>;
+
 export const studioApp = z.object({
   project: z.string(),
   service: z.string(),
@@ -104,6 +130,8 @@ export const studioApp = z.object({
   /** The state of the project's own agent server, when it has one. */
   agentStatus: serviceStatus.nullable(),
   lastConversation: studioConversation.nullable(),
+  /** An earlier version shown in the preview: no message goes to the agent until the current one is back. */
+  viewing: studioViewing.nullable(),
 });
 export type StudioApp = z.infer<typeof studioApp>;
 
@@ -402,6 +430,13 @@ export const isStudioConversationId = (value: unknown): value is string =>
   conversationId.safeParse(value).success;
 
 export const studioConversationPath = servicePath.extend({ conversation: conversationId });
+/** POST .../studio/versions/{sha}/view: a version, by its commit. */
+export const studioVersionPath = servicePath.extend({
+  sha: z.string().regex(/^[0-9a-f]{40}$/, "A commit's full hash"),
+});
+/** What the preview shows: an earlier version, or the current one. */
+export const studioViewingState = z.object({ viewing: studioViewing.nullable() });
+export type StudioViewingState = z.infer<typeof studioViewingState>;
 export const studioEventsQuery = z.object({ after: conversationId.optional() });
 
 /** A GitHub account or organization, as it appears in github.com/<owner>/<repository>. */

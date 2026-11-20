@@ -41,6 +41,9 @@ import {
   studioSettings,
   studioSync,
   studioSyncQuery,
+  studioVersionPath,
+  studioVersions,
+  studioViewingState,
   unlinkedStudioApp,
   updateStudioRemarkRequest,
 } from "@opsifier/contract";
@@ -106,6 +109,7 @@ import {
   safeReturnPath,
 } from "./signin";
 import { syncBeforeStart, syncStudioProject } from "./sync";
+import { listStudioVersions, showCurrentVersion, viewStudioVersion } from "./versions";
 
 const tags = ["Studio"];
 const SETTINGS = "/api/v1/settings/studio";
@@ -465,6 +469,62 @@ const eventsRoute = createRoute({
   responses: {
     200: jsonResponse(studioEventPage, "What happened after `after`, oldest first."),
     400: invalid,
+    401: denied,
+    403: refused,
+    404: missing,
+    409: blocked,
+    503: unreachable,
+  },
+});
+
+const VERSIONS = `${APP}/versions`;
+
+const versionsRoute = createRoute({
+  method: "get",
+  path: VERSIONS,
+  tags,
+  description:
+    "The project's versions, the commits of its folder's branch, the newest first, and the earlier one shown in " +
+    "the preview, if any. A project's own agent server that sleeps is not started for it: `asleep` says so.",
+  request: { params: servicePath },
+  responses: {
+    200: jsonResponse(studioVersions, "The versions."),
+    401: denied,
+    403: refused,
+    404: missing,
+    409: blocked,
+    503: unreachable,
+  },
+});
+
+const viewVersionRoute = createRoute({
+  method: "post",
+  path: `${VERSIONS}/{sha}/view`,
+  tags,
+  description:
+    "Shows an earlier version in the project's preview, by checking its commit out in the project's folder. " +
+    "Refused while the agent is at work or while changes are not saved yet; no message reaches the agent " +
+    "until the current version is back.",
+  request: { params: studioVersionPath },
+  responses: {
+    200: jsonResponse(studioViewingState, "The version shown."),
+    400: invalid,
+    401: denied,
+    403: refused,
+    404: missing,
+    409: blocked,
+    503: unreachable,
+  },
+});
+
+const currentVersionRoute = createRoute({
+  method: "post",
+  path: `${VERSIONS}/current`,
+  tags,
+  description: "Brings the project's current version back in its preview.",
+  request: { params: servicePath },
+  responses: {
+    200: jsonResponse(studioViewingState, "The current version is shown."),
     401: denied,
     403: refused,
     404: missing,
@@ -1021,6 +1081,22 @@ export const feature: Feature = {
         200,
       );
     });
+
+    app.openapi(versionsRoute, async (c) =>
+      c.json(await listStudioVersions(deps, target(c.req.valid("param"))), 200),
+    );
+
+    app.openapi(viewVersionRoute, async (c) => {
+      const params = c.req.valid("param");
+      return c.json(
+        { viewing: await viewStudioVersion(deps, target(params), params.sha, actorOf(requirePrincipal(c))) },
+        200,
+      );
+    });
+
+    app.openapi(currentVersionRoute, async (c) =>
+      c.json(await showCurrentVersion(deps, target(c.req.valid("param")), actorOf(requirePrincipal(c))), 200),
+    );
 
     // The file is the body, far larger than the API's general limit, and is counted as it comes in.
     app.openapi(attachmentRoute, async (c) => {

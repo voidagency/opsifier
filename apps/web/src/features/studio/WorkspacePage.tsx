@@ -7,6 +7,7 @@ import {
   type StudioEvent,
   type StudioModel,
   type StudioRemark,
+  type StudioVersion,
 } from "@opsifier/contract";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
@@ -15,8 +16,10 @@ import {
   ArrowLeft,
   ArrowUp,
   ChevronRight,
+  Eye,
   FileText,
   Globe,
+  History,
   Lock,
   MessageSquareText,
   MousePointerClick,
@@ -24,8 +27,10 @@ import {
   Paperclip,
   PencilLine,
   Plus,
+  RotateCcw,
   Sparkles,
   Square,
+  Undo2,
   Users,
   X,
 } from "lucide-react";
@@ -44,7 +49,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../../lib/api";
 import { cn } from "../../lib/cn";
-import { formatBytes } from "../../lib/format";
+import { formatBytes, formatDateTime } from "../../lib/format";
 import { errorMessage } from "../../lib/forms";
 import {
   Button,
@@ -70,8 +75,16 @@ import {
   studioModelsQuery,
   studioRemarkScreenshotQuery,
   studioRemarksQuery,
+  studioVersionsQuery,
 } from "./api";
-import { type ChatItem, changedFiles, type StudioActionEvent, toChatItems, userMessageCount } from "./chat";
+import {
+  type ChatItem,
+  changedFiles,
+  type StudioActionEvent,
+  toChatItems,
+  userMessageCount,
+  versionsByAnswer,
+} from "./chat";
 import { ChatResizer, useChatPanel } from "./chatPanel";
 import { GuestLinksDialog } from "./GuestLinksDialog";
 import { imageToDataUrl } from "./images";
@@ -85,6 +98,7 @@ import {
   filesBlock,
   type RemarkTag,
   remarkBlock,
+  restoreBlock,
   type SelectedElement,
   splitMessage,
   type TextEdit,
@@ -155,6 +169,45 @@ export function WorkspacePage() {
   const showChat = chat.setCollapsed;
   // The texts changed in the preview, for the next message.
   const [edits, setEdits] = useState<TextEdit[]>([]);
+  // An earlier version shown in the preview, and one to bring back, which the conversation asks the agent for.
+  const versionsClient = useQueryClient();
+  const [versionBusy, setVersionBusy] = useState(false);
+  const [restoreAsk, setRestoreAsk] = useState<StudioVersion | null>(null);
+  const shown = useRef(true);
+  useEffect(
+    () => () => {
+      shown.current = false;
+    },
+    [],
+  );
+  const changeVersion = async (request: () => Promise<unknown>) => {
+    setVersionBusy(true);
+    try {
+      await whenAgentReady(
+        request,
+        () => {},
+        () => shown.current,
+      );
+      return true;
+    } catch (reason) {
+      if (!(reason instanceof LeftPage)) {
+        toast.error(errorMessage(reason, t));
+      }
+      return false;
+    } finally {
+      // Done or not, the folder is read again: it says which version it shows.
+      await versionsClient.invalidateQueries({ queryKey: [...studioKey, "apps", project, service] });
+      await versionsClient.invalidateQueries({ queryKey: [...studioKey, "versions", project, service] });
+      setVersionBusy(false);
+    }
+  };
+  const viewVersion = async (version: StudioVersion) => {
+    if (await changeVersion(() => studioApi.viewVersion(project, service, version.sha))) {
+      // On a phone, the version is what the person wants to see.
+      setPane("preview");
+    }
+  };
+  const showCurrent = () => void changeVersion(() => studioApi.currentVersion(project, service));
   const onTextEdited = useCallback(
     (edit: TextEdit) => {
       setEdits((current) => {
@@ -317,6 +370,11 @@ export function WorkspacePage() {
         edits={edits}
         onRemoveEdit={(index) => setEdits((current) => current.filter((_, at) => at !== index))}
         onClearEdits={() => setEdits([])}
+        versionBusy={versionBusy}
+        onViewVersion={(version) => void viewVersion(version)}
+        onShowCurrent={showCurrent}
+        restoreAsk={restoreAsk}
+        onRestoreHandled={() => setRestoreAsk(null)}
       />
       {!chat.collapsed && <ChatResizer width={chat.width} workspace={workspace} onWidth={chat.setWidth} />}
       <PreviewPane
@@ -330,6 +388,10 @@ export function WorkspacePage() {
         onStartFailed={() => setStartRequested(false)}
         onSelected={onSelected}
         onTextEdited={onTextEdited}
+        viewing={data.viewing}
+        versionBusy={versionBusy}
+        onShowCurrent={showCurrent}
+        onRestoreShown={() => setRestoreAsk(data.viewing)}
         remarks={(remarks.data?.remarks ?? []).filter(
           (remark) => remark.status !== "done" || remark.id === selectedRemark,
         )}
@@ -409,6 +471,11 @@ function ConversationPane({
   edits,
   onRemoveEdit,
   onClearEdits,
+  versionBusy,
+  onViewVersion,
+  onShowCurrent,
+  restoreAsk,
+  onRestoreHandled,
   className,
 }: {
   app: StudioAppDetail;
@@ -435,12 +502,39 @@ function ConversationPane({
   edits: readonly TextEdit[];
   onRemoveEdit: (index: number) => void;
   onClearEdits: () => void;
+  versionBusy: boolean;
+  onViewVersion: (version: StudioVersion) => void;
+  /** Shows the current version in the preview again, in place of an earlier one. */
+  onShowCurrent: () => void;
+  /** A version to bring back, asked from the preview: the conversation asks the agent for it. */
+  restoreAsk: StudioVersion | null;
+  onRestoreHandled: () => void;
   className?: string;
 }) {
-  const { t } = useTranslation(["studio", "common"]);
+  const { t, i18n } = useTranslation(["studio", "common"]);
   const queryClient = useQueryClient();
   const conversation = useConversation(app.project, app.service, conversationId);
   const busy = conversation.status === "running" || conversation.status === "waiting";
+  // The versions the agent saved, under the answers that saved them; read again once it has answered.
+  const versions = useQuery({
+    ...studioVersionsQuery(app.project, app.service),
+    enabled: conversationId !== null,
+  });
+  const wasBusy = useRef(busy);
+  useEffect(() => {
+    if (wasBusy.current && !busy) {
+      void versions.refetch();
+    }
+    wasBusy.current = busy;
+  }, [busy, versions.refetch]);
+  // Someone else showed an earlier version, or went back: the page follows, as the list says.
+  const listedViewing = versions.data === undefined ? undefined : (versions.data.viewing?.sha ?? null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per change the list tells
+  useEffect(() => {
+    if (listedViewing !== undefined && listedViewing !== (app.viewing?.sha ?? null)) {
+      void queryClient.invalidateQueries({ queryKey: [...studioKey, "apps", app.project, app.service] });
+    }
+  }, [listedViewing]);
   const [stopping, setStopping] = useState(false);
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<PendingMessage | null>(null);
@@ -501,10 +595,18 @@ function ConversationPane({
    */
   // The files already kept in the project's folder, by the file chosen: a message sent again reuses them.
   const uploaded = useRef(new WeakMap<File, StudioAttachment>());
-  const send = async (text: string, images: string[], files: readonly File[] = []): Promise<boolean> => {
+  const send = async (
+    text: string,
+    images: string[],
+    files: readonly File[] = [],
+    // A message of its own, which takes nothing of what waits in the composer.
+    alone = false,
+  ): Promise<boolean> => {
     if (sending) {
       return false;
     }
+    // A conversation kept for reading takes no message: one of its own starts a new conversation.
+    const into = alone && readOnly ? null : conversationId;
     const remark = handed;
     // The remark's screenshot, when it is still among the images, is named in its block: it is the client's.
     const screenshot = handedShot.data === undefined ? -1 : images.indexOf(handedShot.data);
@@ -522,7 +624,7 @@ function ConversationPane({
         let kept: StudioAttachment;
         try {
           kept = await whenAgentReady(
-            () => studioApi.attach(app.project, app.service, file, conversationId),
+            () => studioApi.attach(app.project, app.service, file, into),
             setAgentStarting,
             () => alive.current,
           );
@@ -538,20 +640,20 @@ function ConversationPane({
       }
       const full = [
         text.trim(),
-        remark === null ? null : remarkBlock(remark, screenshot === -1 ? null : screenshot + 1),
-        element === null ? null : elementBlock(element),
-        ...edits.map(textEditBlock),
+        alone || remark === null ? null : remarkBlock(remark, screenshot === -1 ? null : screenshot + 1),
+        alone || element === null ? null : elementBlock(element),
+        ...(alone ? [] : edits.map(textEditBlock)),
         attached.length === 0 ? null : filesBlock(attached),
       ]
         .filter((part) => part !== null && part !== "")
         .join("\n\n");
       setPending({
-        conversationId,
+        conversationId: into,
         text: full,
         images,
-        sentBefore: conversationId === null ? 0 : userMessageCount(conversation.events),
+        sentBefore: into === null ? 0 : userMessageCount(conversation.events),
       });
-      if (conversationId === null) {
+      if (into === null) {
         const started = await whenAgentReady(
           () =>
             studioApi.start(app.project, app.service, {
@@ -569,23 +671,25 @@ function ConversationPane({
         }
         setPending((current) => (current === null ? null : { ...current, conversationId: started.id }));
         onSelect(started.id);
-        if (remark !== null) {
+        if (remark !== null && !alone) {
           await markHanded(remark, started.id);
         }
       } else {
         await whenAgentReady(
-          () => studioApi.send(app.project, app.service, conversationId, { text: full, images }),
+          () => studioApi.send(app.project, app.service, into, { text: full, images }),
           setAgentStarting,
           () => alive.current,
         );
         conversation.refresh();
-        if (remark !== null) {
-          await markHanded(remark, conversationId);
+        if (remark !== null && !alone) {
+          await markHanded(remark, into);
         }
       }
-      onClearElement();
-      onClearHanded();
-      onClearEdits();
+      if (!alone) {
+        onClearElement();
+        onClearHanded();
+        onClearEdits();
+      }
       return true;
     } catch (reason) {
       if (reason instanceof LeftPage) {
@@ -593,11 +697,50 @@ function ConversationPane({
       }
       setPending(null);
       toast.error(errorMessage(reason, t));
+      // Someone showed an earlier version meanwhile: the page says so, and how to go back.
+      if (reason instanceof ApiError && reason.code === "studio_viewing_version") {
+        void queryClient.invalidateQueries({ queryKey: [...studioKey, "apps", app.project, app.service] });
+      }
       return false;
     } finally {
       setSending(false);
     }
   };
+
+  // Bringing an earlier version back is the agent's to do, as a new version: the current one comes back
+  // in the preview first, then the message asks for it.
+  const restore = async (version: StudioVersion) => {
+    if (app.viewing !== null) {
+      try {
+        await whenAgentReady(
+          () => studioApi.currentVersion(app.project, app.service),
+          setAgentStarting,
+          () => alive.current,
+        );
+        await queryClient.invalidateQueries({ queryKey: [...studioKey, "apps", app.project, app.service] });
+      } catch (reason) {
+        if (!(reason instanceof LeftPage)) {
+          toast.error(errorMessage(reason, t));
+        }
+        return;
+      }
+    }
+    const when = formatDateTime(version.at, i18n.language);
+    await send(
+      `${t("versions.restoreMessage", { when, subject: version.subject })}\n\n${restoreBlock(version)}`,
+      [],
+      [],
+      true,
+    );
+  };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new request is a new version asked for
+  useEffect(() => {
+    if (restoreAsk === null) {
+      return;
+    }
+    onRestoreHandled();
+    void restore(restoreAsk);
+  }, [restoreAsk]);
 
   const stop = async () => {
     if (conversationId === null) {
@@ -760,6 +903,12 @@ function ConversationPane({
           busy={busy}
           waiting={conversation.status === "waiting"}
           pending={pending !== null && pending.conversationId === conversationId ? pending : null}
+          // What a conversation from the shared agent server saved is not in this project's copy.
+          versions={readOnly ? [] : (versions.data?.versions ?? [])}
+          viewingSha={app.viewing?.sha ?? null}
+          versionsBlocked={busy || sending || versionBusy}
+          onViewVersion={onViewVersion}
+          onRestoreVersion={(version) => void restore(version)}
         />
 
         {/* Not while it wakes: opening the project or a message is already starting it. */}
@@ -787,7 +936,7 @@ function ConversationPane({
           </p>
         )}
 
-        {!readOnly && suggestions.length > 0 && (
+        {!readOnly && app.viewing === null && suggestions.length > 0 && (
           <ul aria-label={t("suggestions.label")} className="flex flex-wrap gap-1.5 px-3 pt-2.5">
             {suggestions.map((suggestion) => (
               <li key={suggestion} className="min-w-0 max-w-full">
@@ -833,6 +982,9 @@ function ConversationPane({
             onSend={send}
             onStop={stop}
             switcher={switcher}
+            locked={app.viewing !== null}
+            onUnlock={onShowCurrent}
+            unlocking={versionBusy}
             edits={edits}
             onRemoveEdit={onRemoveEdit}
           />
@@ -850,6 +1002,11 @@ function EventList({
   busy,
   waiting,
   pending,
+  versions,
+  viewingSha,
+  versionsBlocked,
+  onViewVersion,
+  onRestoreVersion,
 }: {
   app: StudioAppDetail;
   conversationId: string | null;
@@ -858,6 +1015,14 @@ function EventList({
   busy: boolean;
   waiting: boolean;
   pending: PendingMessage | null;
+  /** The versions the agent saved, the current one first: each shows under the answer that saved it. */
+  versions: readonly StudioVersion[];
+  /** The earlier version shown in the preview, if one is. */
+  viewingSha: string | null;
+  /** While the agent works, or a version is being shown, another cannot be. */
+  versionsBlocked: boolean;
+  onViewVersion: (version: StudioVersion) => void;
+  onRestoreVersion: (version: StudioVersion) => void;
 }) {
   const { t } = useTranslation(["studio", "common"]);
   const scroller = useRef<HTMLDivElement>(null);
@@ -867,6 +1032,8 @@ function EventList({
   // Groups of steps the person opened or closed; the others follow whether the agent is still on them.
   const [toggled, setToggled] = useState<Readonly<Record<string, boolean>>>({});
   const items = toChatItems(events);
+  const saved = versionsByAnswer(items, versions);
+  const currentSha = versions[0]?.sha ?? null;
 
   const toEnd = useCallback(() => {
     const element = scroller.current;
@@ -948,6 +1115,7 @@ function EventList({
             <ol className="grid grid-cols-1 gap-4">
               {items.map((item, index) => {
                 const live = busy && item.kind === "work" && index === items.length - 1;
+                const version = item.kind === "message" ? saved.get(item.event.id) : undefined;
                 return (
                   <li key={item.kind === "work" ? `work-${item.id}` : item.event.id} className="min-w-0">
                     {item.kind === "work" ? (
@@ -960,7 +1128,19 @@ function EventList({
                         }
                       />
                     ) : (
-                      <ChatEntry item={item} />
+                      <>
+                        <ChatEntry item={item} />
+                        {version !== undefined && (
+                          <VersionCard
+                            version={version}
+                            current={version.sha === currentSha}
+                            shown={version.sha === viewingSha}
+                            blocked={versionsBlocked}
+                            onView={() => onViewVersion(version)}
+                            onRestore={() => onRestoreVersion(version)}
+                          />
+                        )}
+                      </>
                     )}
                   </li>
                 );
@@ -991,6 +1171,88 @@ function EventList({
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * The version an answer saved, under it: what the agent said it changed, and when. An earlier one can be
+ * looked at in the preview, or brought back as a new version.
+ */
+function VersionCard({
+  version,
+  current,
+  shown,
+  blocked,
+  onView,
+  onRestore,
+}: {
+  version: StudioVersion;
+  /** The project as it is now. */
+  current: boolean;
+  /** Shown in the preview in place of the current one. */
+  shown: boolean;
+  blocked: boolean;
+  onView: () => void;
+  onRestore: () => void;
+}) {
+  const { t, i18n } = useTranslation("studio");
+  return (
+    <fieldset
+      className={cn(
+        "mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-md border bg-raised px-2.5 py-2 text-xs",
+        shown && "border-accent",
+      )}
+    >
+      <legend className="sr-only">{t("versions.card", { subject: version.subject })}</legend>
+      <History aria-hidden="true" className="size-4 shrink-0 text-muted" />
+      {/* The text keeps room of its own: in a narrow conversation, the buttons go under it. */}
+      <div className="grid min-w-0 flex-[1_1_14rem] gap-0.5">
+        <span className="min-w-0 truncate font-medium text-ink" title={version.subject}>
+          {version.subject}
+        </span>
+        <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-muted">
+          <span>{t("versions.saved", { when: formatDateTime(version.at, i18n.language) })}</span>
+          {current && <span className="font-medium text-ok">{t("versions.current")}</span>}
+          {shown && <span className="font-medium text-accent">{t("versions.shown")}</span>}
+        </span>
+      </div>
+      {!current && (
+        <div className="flex shrink-0 items-center gap-1.5">
+          {!shown && (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabledReason={blocked ? t("versions.blocked") : undefined}
+              icon={<Eye aria-hidden="true" className="size-3.5" />}
+              onClick={onView}
+            >
+              {t("versions.view")}
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            disabledReason={blocked ? t("versions.blocked") : undefined}
+            icon={<RotateCcw aria-hidden="true" className="size-3.5" />}
+            onClick={onRestore}
+          >
+            {t("versions.restore")}
+          </Button>
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
+/** An earlier version a message asked the agent to bring back. */
+function RestoreChip({ subject }: { subject: string }) {
+  const { t } = useTranslation("studio");
+  return (
+    <span className="inline-flex max-w-full items-center gap-1.5 rounded-sm border border-accent/40 bg-raised px-2 py-0.5 text-xs">
+      <RotateCcw aria-hidden="true" className="size-3.5 shrink-0 text-accent" />
+      <span className="shrink-0 text-muted">{t("versions.restoreChip")}</span>
+      <span className="min-w-0 truncate">{subject}</span>
+    </span>
   );
 }
 
@@ -1200,6 +1462,12 @@ function UserMessage({
           <FileChip name={name} />
         </span>
       ))}
+      {parts.restores.map((subject, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: two versions may say the same
+        <span key={`restore-${index}`} className="min-w-0">
+          <RestoreChip subject={subject} />
+        </span>
+      ))}
       {parts.text !== "" && <p className="whitespace-pre-wrap text-sm wrap-anywhere">{parts.text}</p>}
       <Images urls={images} />
       {sending && <span className="text-xs text-muted">{t("conversation.sending")}</span>}
@@ -1303,6 +1571,9 @@ function Composer({
   onSend,
   onStop,
   switcher,
+  locked = false,
+  onUnlock,
+  unlocking = false,
   edits = [],
   onRemoveEdit,
 }: {
@@ -1322,6 +1593,13 @@ function Composer({
   onStop: () => void;
   /** Which conversation the message goes to, and how to start another, beside the attachments. */
   switcher?: ReactNode;
+  /**
+   * An earlier version is shown in the preview: what the agent would change is the current one, so a
+   * message waits until it is shown again.
+   */
+  locked?: boolean;
+  onUnlock?: () => void;
+  unlocking?: boolean;
   /** The texts changed in the preview that go with the message. */
   edits?: readonly TextEdit[];
   onRemoveEdit?: (index: number) => void;
@@ -1459,7 +1737,7 @@ function Composer({
     text.trim() === "" && images.length === 0 && files.length === 0 && handed === null && edits.length === 0;
 
   const submit = async () => {
-    if (empty) {
+    if (empty || locked) {
       return;
     }
     // What is added while the message and its files go stays for the next one.
@@ -1517,6 +1795,23 @@ function Composer({
           dropping && "border-accent border-dashed",
         )}
       >
+        {locked && (
+          <div role="status" className="grid min-w-0 gap-1.5 rounded-sm bg-wash px-2 py-1.5 text-xs">
+            <p className="text-muted">{t("versions.locked")}</p>
+            {onUnlock !== undefined && (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="justify-self-start"
+                pending={unlocking}
+                icon={<Undo2 aria-hidden="true" className="size-3.5" />}
+                onClick={onUnlock}
+              >
+                {t("versions.back")}
+              </Button>
+            )}
+          </div>
+        )}
         {handed !== null && (
           <div className="grid min-w-0 gap-1">
             <RemarkChip
@@ -1647,7 +1942,7 @@ function Composer({
             size="icon-sm"
             variant="primary"
             pending={sending}
-            disabled={empty}
+            disabled={empty || locked}
             aria-label={t("composer.send")}
             tooltip={t("composer.send")}
             icon={<ArrowUp aria-hidden="true" className="size-4" />}
