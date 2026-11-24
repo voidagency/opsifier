@@ -624,7 +624,8 @@ const stopRoute = createRoute({
   method: "post",
   path: `${CONVERSATION}/stop`,
   tags,
-  description: "Stops the agent where it is. A new message sets it to work again.",
+  description:
+    "Stops the agent at once, cancelling the model's answer under way. A new message sets it to work again.",
   request: { params: studioConversationPath },
   responses: {
     200: jsonResponse(studioConversation, "The conversation."),

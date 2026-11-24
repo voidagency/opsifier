@@ -211,7 +211,7 @@ function installFakeAgents() {
       conversation.events.push(message("user", "Encore"), message("agent", "C'est fait."));
       return ok({ success: true });
     }
-    if (request.method === "POST" && parts[3] === "pause") {
+    if (request.method === "POST" && (parts[3] === "pause" || parts[3] === "interrupt")) {
       conversation.status = "paused";
       return ok({ success: true });
     }

@@ -713,10 +713,18 @@ export async function stopStudioConversation(
     return toConversation(row, mode);
   }
   const agent = own === undefined ? shared : ownAgentOf(shared, own);
-  const { keyFound, replies } = await callAgent(deps, agent, [
-    { method: "POST", path: `/api/conversations/${id}/pause` },
+  // At once: the model's answer under way is cancelled rather than waited for, which a slow model can
+  // make last for minutes. An agent server that does not know how yet pauses once that answer is in.
+  const interrupted = await callAgent(deps, agent, [
+    { method: "POST", path: `/api/conversations/${id}/interrupt` },
   ]);
-  expectJson(replies[0], keyFound);
+  const reply = interrupted.replies[0];
+  if (reply?.status === 404 || reply?.status === 405) {
+    const paused = await callAgent(deps, agent, [{ method: "POST", path: `/api/conversations/${id}/pause` }]);
+    expectJson(paused.replies[0], paused.keyFound);
+  } else {
+    expectJson(reply, interrupted.keyFound);
+  }
   return toConversation(row, mode);
 }
 

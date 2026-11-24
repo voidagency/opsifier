@@ -52,6 +52,8 @@ interface FakeConversation {
   events: Raw[];
   started: Raw;
   sent: unknown[];
+  /** How the Studio stopped it, if it did. */
+  stoppedBy?: "interrupt" | "pause";
 }
 
 const PROFILES = [
@@ -89,6 +91,8 @@ function installFakeAgent() {
     calls: [] as AgentCall[],
     inputs: [] as string[],
     conversations: new Map<string, FakeConversation>(),
+    /** An agent server older than `/interrupt`. */
+    knowsNoInterrupt: false,
   };
   const ok = (body: unknown, status = 200) => ({ status, text: JSON.stringify(body) });
 
@@ -157,8 +161,14 @@ function installFakeAgent() {
       conversation.status = "running";
       return ok({ success: true });
     }
+    if (call.method === "POST" && parts[3] === "interrupt" && !agent.knowsNoInterrupt) {
+      conversation.status = "paused";
+      conversation.stoppedBy = "interrupt";
+      return ok({ success: true });
+    }
     if (call.method === "POST" && parts[3] === "pause") {
       conversation.status = "paused";
+      conversation.stoppedBy = "pause";
       return ok({ success: true });
     }
     return ok({ detail: "Not Found" }, 404);
@@ -994,7 +1004,23 @@ describe("a Studio conversation", () => {
       { role: "user", content: [{ type: "text", text: "Et le pied de page ?" }], run: true },
     ]);
     expect(conversation?.status).toBe("paused");
+    // At once, without waiting for the model's answer under way.
+    expect(conversation?.stoppedBy).toBe("interrupt");
     expect((await events(started.id)).body.status).toBe("paused");
+  });
+
+  it("pauses the conversation on an agent server that cannot interrupt it yet", async () => {
+    const agent = installFakeAgent();
+    agent.knowsNoInterrupt = true;
+    const { body: started } = await start("Bonjour");
+
+    const stopped = await api<StudioConversation>(
+      `${PREVIEW}/studio/conversations/${started.id}/stop`,
+      "POST",
+    );
+
+    expect(stopped.status).toBe(200);
+    expect(agent.conversations.get(started.id)?.stoppedBy).toBe("pause");
   });
 
   it("answers 404 for a conversation of another project or one it never started", async () => {
