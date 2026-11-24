@@ -61,7 +61,19 @@
     "readOnlyAction": "Nouvelle conversation",
     "agentStarting": "L'agent du projet démarre…",
     "agentAsleep": "L'agent du projet est en veille : la conversation s'affiche telle qu'il l'a laissée. Un message le réveille.",
-    "agentAsleepEmpty": "L'agent du projet est en veille : cette conversation s'affichera à son réveil. Un message le réveille."
+    "agentAsleepEmpty": "L'agent du projet est en veille : cette conversation s'affichera à son réveil. Un message le réveille.",
+    "stopped": {
+      "timeout": {
+        "title": "Le modèle a mis trop de temps à répondre",
+        "text": "L'agent s'est arrêté : le modèle n'a pas répondu à temps, même après un nouvel essai. Cela arrive surtout quand une conversation devient très longue. Le travail déjà fait reste dans le projet : ouvrez une nouvelle conversation pour la suite, en y reprenant ce qui reste à faire."
+      },
+      "context": {
+        "title": "La conversation est trop longue pour le modèle",
+        "text": "L'agent s'est arrêté : la conversation dépasse ce que le modèle peut lire en une fois. Le travail déjà fait reste dans le projet : ouvrez une nouvelle conversation pour la suite, en y reprenant ce qui reste à faire."
+      },
+      "newConversation": "Ouvrir une nouvelle conversation",
+      "detail": "Détail de l'erreur"
+    }
   },
   "composer": {
     "label": "Message à l'agent",

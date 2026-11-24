@@ -1521,6 +1521,76 @@ describe("a Studio project", () => {
     expect(screen.queryByText("This project is on pause: resume it to write to the agent.")).toBeNull();
   });
 
+  it("says in plain words why the agent stopped, and offers a new conversation after its last stop", async () => {
+    installFakeServer(
+      base({
+        [`GET ${APP}/conversations/${CONVERSATION}/events`]: page({
+          status: "error",
+          items: [
+            ...page().items,
+            {
+              kind: "error",
+              id: "e4",
+              timestamp: "2026-11-15T12:10:00Z",
+              text: "litellm.Timeout: LLM hard timeout after 300 seconds",
+            },
+            {
+              kind: "message",
+              id: "e5",
+              timestamp: "2026-11-15T12:20:00Z",
+              role: "user",
+              text: "Continue",
+              images: [],
+              suggestions: [],
+            },
+            {
+              kind: "error",
+              id: "e6",
+              timestamp: "2026-11-15T12:30:00Z",
+              text: "litellm.ContextWindowExceededError: maximum context length is 262144 tokens",
+            },
+          ],
+        }),
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    expect(await screen.findByText("The model took too long to answer")).toBeTruthy();
+    expect(screen.getByText("The conversation is too long for the model")).toBeTruthy();
+    // The error itself is one click away.
+    expect(screen.getByText("litellm.Timeout: LLM hard timeout after 300 seconds")).toBeTruthy();
+    // Only the last stop offers a new conversation.
+    const offers = screen.getAllByRole("link", { name: "Open a new conversation" });
+    expect(offers).toHaveLength(1);
+    expect(offers[0]?.getAttribute("href")).toBe("/studio/lovable/cd-studio-preview?c=new");
+    expect(screen.queryByText(/The agent stopped: litellm/)).toBeNull();
+  });
+
+  it("shows any other error as it came", async () => {
+    installFakeServer(
+      base({
+        [`GET ${APP}/conversations/${CONVERSATION}/events`]: page({
+          status: "error",
+          items: [
+            ...page().items,
+            {
+              kind: "error",
+              id: "e4",
+              timestamp: "2026-11-15T12:10:00Z",
+              text: "litellm.APIConnectionError: Connection refused",
+            },
+          ],
+        }),
+      }),
+    );
+    renderApp("/studio/lovable/cd-studio-preview");
+
+    expect(
+      await screen.findByText("The agent stopped: litellm.APIConnectionError: Connection refused"),
+    ).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Open a new conversation" })).toBeNull();
+  });
+
   it("builds a preview that never ran as the project opens, for whoever opens it", async () => {
     const server = installFakeServer(
       base({

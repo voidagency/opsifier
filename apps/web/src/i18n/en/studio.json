@@ -61,7 +61,19 @@
     "readOnlyAction": "New conversation",
     "agentStarting": "The project's agent is starting…",
     "agentAsleep": "The project's agent is resting: the conversation shows as it left it. A message wakes it.",
-    "agentAsleepEmpty": "The project's agent is resting: this conversation shows once it wakes. A message wakes it."
+    "agentAsleepEmpty": "The project's agent is resting: this conversation shows once it wakes. A message wakes it.",
+    "stopped": {
+      "timeout": {
+        "title": "The model took too long to answer",
+        "text": "The agent stopped: the model did not answer in time, even after another try. This happens mostly once a conversation gets very long. The work already done stays in the project: open a new conversation for what follows, with what is left to do."
+      },
+      "context": {
+        "title": "The conversation is too long for the model",
+        "text": "The agent stopped: the conversation is longer than the model can read at once. The work already done stays in the project: open a new conversation for what follows, with what is left to do."
+      },
+      "newConversation": "Open a new conversation",
+      "detail": "Details of the error"
+    }
   },
   "composer": {
     "label": "Message to the agent",

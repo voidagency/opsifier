@@ -101,3 +101,21 @@ export function versionsByAnswer(
   }
   return byAnswer;
 }
+
+/** Why the agent stopped, when a new conversation is the cure: what the conversation then advises. */
+export type AgentStop = "timeout" | "context";
+
+/**
+ * Reads an error the agent stopped on for the stops a new conversation cures: a conversation longer
+ * than the model can read, and the model answering too slowly, which a long conversation makes more
+ * likely. Anything else is shown as it came.
+ */
+export function agentStopOf(text: string): AgentStop | null {
+  if (/context ?window|context length|maximum context|too many tokens|prompt is too long/i.test(text)) {
+    return "context";
+  }
+  if (/litellm\.Timeout|APITimeoutError|timed out|timeout after|hard timeout/i.test(text)) {
+    return "timeout";
+  }
+  return null;
+}

@@ -1,6 +1,6 @@
 import type { StudioEvent, StudioVersion } from "@opsifier/contract";
 import { describe, expect, it } from "vitest";
-import { eventTime, toChatItems, versionsByAnswer } from "./chat";
+import { agentStopOf, eventTime, toChatItems, versionsByAnswer } from "./chat";
 
 const said = (id: string, role: "user" | "agent", timestamp: string): StudioEvent => ({
   kind: "message",
@@ -78,5 +78,19 @@ describe("the version an answer saved", () => {
     const once = versionsByAnswer(items, [version("a", "2026-11-15T12:00:05.000Z")]);
     expect(once.get("a1")?.subject).toBe("a");
     expect(once.has("a2")).toBe(false);
+  });
+});
+
+describe("an error the agent stopped on", () => {
+  it("is read for the stops a new conversation cures", () => {
+    expect(agentStopOf("litellm.Timeout: LLM hard timeout after 300 seconds")).toBe("timeout");
+    expect(agentStopOf("litellm.APITimeoutError: Request timed out.")).toBe("timeout");
+    expect(
+      agentStopOf("litellm.ContextWindowExceededError: This model's maximum context length is 262144 tokens"),
+    ).toBe("context");
+    expect(agentStopOf("The prompt is too long for this model")).toBe("context");
+    // Anything else shows as it came.
+    expect(agentStopOf("litellm.APIConnectionError: Connection refused")).toBeNull();
+    expect(agentStopOf("The agent stopped on an error.")).toBeNull();
   });
 });

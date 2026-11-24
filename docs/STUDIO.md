@@ -33,6 +33,8 @@ In a project of your own, `studio` for example, create a service `agent`:
 2. **Storage:** a volume mounted at `/home/openhands/.openhands`, where the agent server keeps its settings, its key and its conversations, and the server's folder `/srv/studio` mounted at `/projects`.
 3. **Deploy it**, then open its address once, from its domain: in its interface, set up the model, and add a secret named `GITHUB_TOKEN` holding the token of step 3.
 
+With a model on your own server, give it time: in the model's settings, a timeout of 900 seconds with one retry lets a long answer finish, and stops one that never comes after half an hour at most. The agent server's own default, 300 seconds tried five times, stops an agent at work on a long conversation after 27 minutes of waiting. Each project's agent server takes the model's settings for its next conversation.
+
 The agent server listens on `127.0.0.1:18000` in its container, where the panel reaches it: it needs no domain of its own after this step.
 
 ### 3. The GitHub keys
@@ -183,6 +185,7 @@ Only an element that holds text and nothing else can be changed: in a paragraph 
 - **Which conversation a message goes to** is chosen under the message being written, beside the attachments, with the button that starts a new one. While a new conversation waits for its first message, the others stay one choice away there.
 - **On a wide screen, the conversation folds away** with the button at the top of its pane, for the preview to take the whole width; the button at the left of the preview's toolbar brings it back, and so does pointing at an element. Its border with the preview drags to make it wider or narrower, or moves with the arrow keys once focused; a double click puts it back. The browser keeps both for the next visit.
 - **A conversation stays readable while its project's agent server sleeps.** The panel keeps a copy of each such conversation's events, as they are read and, for the five most recent conversations, before the agent server is put to sleep. It keeps the newest 10,000 events of each, in its database and so in its backups, and shows them with a note until a message wakes the agent server; the conversation then goes on from where the copy ends. A conversation nobody has opened since the copy began, and not among the five most recent, shows once the agent server is up again.
+- **When the model takes too long to answer**, even after another try, or the conversation grows longer than the model can read, the agent stops, and the conversation says so in plain words, with the error itself one click away. Its last stop offers a new conversation, where the agent answers faster: the work already done stays in the project, so say there what is left to do.
 - **Nothing in the conversation is wider than it:** long words and addresses wrap, and a code block scrolls within itself.
 - **On a phone**, the Studio shows the conversation or the preview, one at a time at full height. Pointing at an element in the preview brings the conversation back, with the element joined to the next message.
 

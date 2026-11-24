@@ -79,6 +79,7 @@ import {
   studioVersionsQuery,
 } from "./api";
 import {
+  agentStopOf,
   type ChatItem,
   changedFiles,
   type StudioActionEvent,
@@ -1175,7 +1176,12 @@ function EventList({
                       />
                     ) : (
                       <>
-                        <ChatEntry item={item} />
+                        <ChatEntry
+                          item={item}
+                          app={app}
+                          // Only the conversation's last word offers to start another.
+                          last={index === items.length - 1 && !busy && pending === null}
+                        />
                         {version !== undefined && (
                           <VersionCard
                             version={version}
@@ -1422,13 +1428,47 @@ function RemarkChip({ tag, onRemove }: { tag: RemarkTag; onRemove?: () => void }
   );
 }
 
-function ChatEntry({ item }: { item: Exclude<ChatItem, { kind: "work" }> }) {
+function ChatEntry({
+  item,
+  app,
+  last = false,
+}: {
+  item: Exclude<ChatItem, { kind: "work" }>;
+  app: Pick<StudioAppDetail, "project" | "service">;
+  /** The conversation's last word: a stop it ends on offers to go on in a new conversation. */
+  last?: boolean;
+}) {
   const { t } = useTranslation("studio");
   if (item.kind === "error") {
+    const stop = agentStopOf(item.event.text);
+    if (stop === null) {
+      return (
+        <p className="text-xs text-bad wrap-anywhere">
+          {t("conversation.error", { message: item.event.text })}
+        </p>
+      );
+    }
+    // A stop a new conversation cures says so in plain words, with the error itself one click away.
     return (
-      <p className="text-xs text-bad wrap-anywhere">
-        {t("conversation.error", { message: item.event.text })}
-      </p>
+      <div className="grid min-w-0 gap-1.5 rounded-md border border-bad/40 px-3 py-2 text-xs">
+        <p className="font-medium text-bad">{t(`conversation.stopped.${stop}.title`)}</p>
+        <p className="text-muted">{t(`conversation.stopped.${stop}.text`)}</p>
+        {last && (
+          <Link
+            to="/studio/$project/$service"
+            params={{ project: app.project, service: app.service }}
+            search={{ c: "new" }}
+            className={cn(buttonClass("secondary", "sm"), "justify-self-start")}
+          >
+            <Plus aria-hidden="true" className="size-3.5" />
+            {t("conversation.stopped.newConversation")}
+          </Link>
+        )}
+        <details className="min-w-0 text-muted">
+          <summary className="cursor-pointer select-none">{t("conversation.stopped.detail")}</summary>
+          <p className="mt-1 font-mono wrap-anywhere">{item.event.text}</p>
+        </details>
+      </div>
     );
   }
   if (item.event.role === "user") {
