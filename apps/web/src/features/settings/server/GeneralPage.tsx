@@ -64,6 +64,7 @@ import {
   serviceDomainQuery,
   trustedProxiesQuery,
 } from "./api";
+import { ServerAddressDialog } from "./ServerAddressDialog";
 
 const TerminalPane = lazy(() => import("../../service-runtime/TerminalPane"));
 
@@ -832,6 +833,7 @@ function ServerStrip() {
     | "env"
     | "dashboard"
     | "docker-update"
+    | "address"
     | null;
   const [open, setOpen] = useState<Open>(null);
   const [confirm, setConfirm] = useState<"restart-panel" | "restart-proxy" | "reboot" | null>(null);
@@ -915,6 +917,7 @@ function ServerStrip() {
             {t("menu.restart")}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={refreshIp}>{t("menu.refreshIp")}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setOpen("address")}>{t("menu.setIp")}</DropdownMenuItem>
           <DropdownMenuItem onSelect={checkPanelUpdate}>{t("menu.checkUpdates")}</DropdownMenuItem>
         </Menu>
         <Menu label={t("menus.server")}>
@@ -1029,6 +1032,7 @@ function ServerStrip() {
       <EnvironmentDialog open={open === "env"} onOpenChange={close} />
       <DashboardDialog open={open === "dashboard"} onOpenChange={close} />
       <DockerUpdateDialog open={open === "docker-update"} onOpenChange={close} />
+      <ServerAddressDialog open={open === "address"} onOpenChange={close} />
       <CleanupDialog kind={cleanup} onClose={() => setCleanup(null)} />
 
       <ConfirmDialog

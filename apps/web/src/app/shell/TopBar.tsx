@@ -57,6 +57,7 @@ function PrimaryNav({ className }: { className?: string }) {
           key={item.to}
           to={item.to}
           activeOptions={{ exact: item.exact }}
+          data-tour={`nav-${item.key}`}
           className="relative flex h-11 shrink-0 items-center gap-1.5 text-base text-muted after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:origin-left after:scale-x-0 after:bg-accent after:transition-transform after:duration-[160ms] after:ease-out hover:text-ink data-[status=active]:text-ink data-[status=active]:after:scale-x-100"
         >
           <Pictogram name={item.pictogram} size={16} />
@@ -167,6 +168,7 @@ function PaletteTrigger() {
       type="button"
       aria-label={t("palette.open")}
       onClick={() => setPaletteOpen(true)}
+      data-tour="palette"
       className="flex size-8 items-center justify-center rounded-sm text-sm text-muted hover:text-ink min-[100rem]:h-8 min-[100rem]:w-auto min-[100rem]:justify-start min-[100rem]:gap-2 min-[100rem]:border min-[100rem]:pr-1 min-[100rem]:pl-2 min-[100rem]:hover:bg-wash"
     >
       <Search aria-hidden="true" className="size-4" />

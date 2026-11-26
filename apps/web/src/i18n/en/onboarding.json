@@ -1,0 +1,120 @@
+{
+  "guide": {
+    "title": "Your server is ready",
+    "lead": "Three ways to see something running here in a minute.",
+    "tour": "Take the tour",
+    "hide": "Hide this guide",
+    "hidden": "The guide is in your account menu whenever you need it again.",
+    "address": "Apps get an address like {{example}}, with HTTPS: nothing to set up in DNS.",
+    "addressCustom": "Apps get an address like {{example}}.",
+    "addressUnknown": "The panel could not find this server's IP, so apps get no address yet.",
+    "addressPrivate": "{{ip}} is a private address: nobody outside the server's own network can reach names made from it, and no certificate can be issued for them. Use the IP people reach the server on.",
+    "setAddress": "Set the server's IP",
+    "sample": {
+      "title": "Try a sample app",
+      "body": "IT Tools, a page of handy converters and generators. One click deploys it at its own address.",
+      "action": "Deploy IT Tools"
+    },
+    "templates": {
+      "title": "Install a ready-made app",
+      "body": "Nextcloud, Ghost, Uptime Kuma, Vaultwarden and more, each with its database when it needs one.",
+      "action": "Browse the apps"
+    },
+    "own": {
+      "title": "Deploy your own",
+      "body": "From a Docker image, a Git repository or a Dockerfile.",
+      "action": "Add a service"
+    }
+  },
+  "sample": {
+    "steps": {
+      "project": "Project {{project}}",
+      "install": "IT Tools set up",
+      "deploy": "Image downloaded and started",
+      "live": "Live at its address"
+    },
+    "preparing": "Setting up IT Tools…",
+    "deploying": "Deploying: the image is downloaded once, then it starts. Usually under a minute.",
+    "elapsed": "{{seconds}} s",
+    "live": "IT Tools is running.",
+    "open": "Open IT Tools",
+    "inPanel": "See it in the panel",
+    "certificate": "The first visit can take a few seconds more, while its certificate is issued.",
+    "protected": "This server is in {{purpose}}: the app first asks for the server's password, user {{user}}, and the password you copied when you chose. Lost it? Set a new one under Settings, Purpose.",
+    "protectedNoUser": "This server is in {{purpose}}: the app first asks for the server's password, set under Settings, Purpose.",
+    "locked": "Choose what this server is for first: until then, every site on it stays locked.",
+    "choose": "Choose now",
+    "failed": "IT Tools could not be deployed.",
+    "retry": "Try again",
+    "next": "Next: add your own app, or open its page to see its logs, console and domains."
+  },
+  "tour": {
+    "progress": "{{current}} / {{total}}",
+    "next": "Next",
+    "back": "Back",
+    "done": "Done",
+    "skip": "Skip the tour",
+    "close": "Close the tour",
+    "menu": "Take the tour",
+    "guideMenu": "Get started guide",
+    "serviceMenu": "Tour of this service"
+  },
+  "tours": {
+    "panel": {
+      "welcome": {
+        "title": "Welcome to Opsifier",
+        "body": "A one-minute tour of the panel, in a few stops. Leave it whenever you like with Escape; it stays in your account menu."
+      },
+      "guide": {
+        "title": "Start here",
+        "body": "Deploy a sample app in one click, install one of the ready-made apps, or bring your own. Each gets its own address right away."
+      },
+      "project": {
+        "title": "Projects",
+        "body": "A project groups the services that work together: they share a private network and their variables."
+      },
+      "domains": {
+        "title": "Every address",
+        "body": "All the names this panel answers on. New services get one under {{base}} with HTTPS, and you can add your own domains at any time."
+      },
+      "activity": {
+        "title": "Work in progress",
+        "body": "Builds, deploys and backups run here, live. Open one to read its log as it goes."
+      },
+      "purpose": {
+        "title": "Who can see the sites",
+        "body": "While the server is in development or staging, every site asks for its password and stays out of search engines. In production they are public."
+      },
+      "palette": {
+        "title": "Go anywhere",
+        "body": "Search, or press {{shortcut}}, to open a page or run an action from the keyboard."
+      },
+      "account": {
+        "title": "Your account",
+        "body": "Two-factor sign-in, the theme and the language. This tour and the guide are here too, when you need them again."
+      }
+    },
+    "service": {
+      "state": {
+        "title": "A service at a glance",
+        "body": "Its lamp, its replicas and its last deployments, each a mark: problems show before you read a word."
+      },
+      "deploy": {
+        "title": "Deploy",
+        "body": "Settings you save reach the container at the next deploy. Each one is kept, so you can go back to an earlier version."
+      },
+      "open": {
+        "title": "Its address",
+        "body": "Opens the service at its address. Add your own domain under Domains when you are ready."
+      },
+      "logs": {
+        "title": "Logs and console",
+        "body": "Follow its logs live, or open a terminal inside its container."
+      },
+      "tabs": {
+        "title": "Everything else",
+        "body": "Source, environment, domains, storage, backups and more: one tab for each part."
+      }
+    }
+  }
+}

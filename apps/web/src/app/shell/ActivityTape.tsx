@@ -302,7 +302,7 @@ export function ActivityTape() {
   );
 
   return (
-    <footer className="relative z-40 shrink-0 border-t bg-bg">
+    <footer className="relative z-40 shrink-0 border-t bg-bg" data-tour="activity-tape">
       {expanded && shown.length > 0 && (
         <TapeDrawer
           id={drawerId}

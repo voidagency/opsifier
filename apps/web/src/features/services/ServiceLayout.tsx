@@ -35,6 +35,7 @@ function TabNav({ project, service }: { project: string; service: string }) {
   return (
     <nav
       aria-label={t("tabs.label")}
+      data-tour="service-tabs"
       className="-mb-px flex gap-x-5 overflow-x-auto [scrollbar-width:none] md:flex-wrap md:overflow-visible"
     >
       {serviceTabs.map((tab) => (
@@ -113,6 +114,7 @@ export function ServiceToolbar({ detail }: { detail: ServiceDetail }) {
         pending={deploying}
         disabledReason={deploying ? undefined : busyReason}
         onClick={() => deploy()}
+        data-tour="service-deploy"
       >
         {t("toolbar.deploy")}
       </Button>
@@ -141,7 +143,12 @@ export function ServiceToolbar({ detail }: { detail: ServiceDetail }) {
       <LogsButton project={project} service={service} />
       <ConsoleButton project={project} service={service} running={detail.replicas.running > 0} />
       {detail.primaryUrl === null ? (
-        <Button size="icon" aria-label={t("toolbar.open")} disabledReason={t("toolbar.noDomain")}>
+        <Button
+          size="icon"
+          aria-label={t("toolbar.open")}
+          disabledReason={t("toolbar.noDomain")}
+          data-tour="service-open"
+        >
           <ExternalLink aria-hidden="true" className="size-4" />
         </Button>
       ) : (
@@ -151,6 +158,7 @@ export function ServiceToolbar({ detail }: { detail: ServiceDetail }) {
             target="_blank"
             rel="noreferrer noopener"
             aria-label={t("toolbar.open")}
+            data-tour="service-open"
             className="flex size-8 items-center justify-center rounded-sm border border-off hover:bg-wash"
           >
             <ExternalLink aria-hidden="true" className="size-4" />

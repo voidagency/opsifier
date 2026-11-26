@@ -1,0 +1,120 @@
+{
+  "guide": {
+    "title": "Votre serveur est prêt",
+    "lead": "Trois façons de voir quelque chose tourner ici en une minute.",
+    "tour": "Faire la visite",
+    "hide": "Masquer ce guide",
+    "hidden": "Le guide reste dans le menu de votre compte, quand vous en avez besoin.",
+    "address": "Les apps reçoivent une adresse comme {{example}}, en HTTPS : rien à régler dans le DNS.",
+    "addressCustom": "Les apps reçoivent une adresse comme {{example}}.",
+    "addressUnknown": "Le panneau n'a pas trouvé l'IP de ce serveur : les apps n'ont pas encore d'adresse.",
+    "addressPrivate": "{{ip}} est une adresse privée : personne en dehors du réseau du serveur ne peut joindre les noms faits à partir d'elle, et aucun certificat ne peut être émis pour eux. Indiquez l'IP par laquelle on joint le serveur.",
+    "setAddress": "Indiquer l'IP du serveur",
+    "sample": {
+      "title": "Essayer une app d'exemple",
+      "body": "IT Tools, une page de convertisseurs et de générateurs bien pratiques. Un clic le déploie à sa propre adresse.",
+      "action": "Déployer IT Tools"
+    },
+    "templates": {
+      "title": "Installer une app toute prête",
+      "body": "Nextcloud, Ghost, Uptime Kuma, Vaultwarden et d'autres, chacune avec sa base de données quand il lui en faut une.",
+      "action": "Voir les apps"
+    },
+    "own": {
+      "title": "Déployer la vôtre",
+      "body": "À partir d'une image Docker, d'un dépôt Git ou d'un Dockerfile.",
+      "action": "Ajouter un service"
+    }
+  },
+  "sample": {
+    "steps": {
+      "project": "Projet {{project}}",
+      "install": "IT Tools préparé",
+      "deploy": "Image téléchargée et démarrée",
+      "live": "En ligne à son adresse"
+    },
+    "preparing": "Préparation d'IT Tools…",
+    "deploying": "Déploiement : l'image est téléchargée une fois, puis elle démarre. En général moins d'une minute.",
+    "elapsed": "{{seconds}} s",
+    "live": "IT Tools tourne.",
+    "open": "Ouvrir IT Tools",
+    "inPanel": "Le voir dans le panneau",
+    "certificate": "La première visite peut prendre quelques secondes de plus, le temps d'émettre son certificat.",
+    "protected": "Ce serveur est en {{purpose}} : l'app demande d'abord le mot de passe du serveur, utilisateur {{user}}, et le mot de passe copié au moment du choix. Perdu ? Définissez-en un nouveau dans Réglages, Rôle.",
+    "protectedNoUser": "Ce serveur est en {{purpose}} : l'app demande d'abord le mot de passe du serveur, défini dans Réglages, Rôle.",
+    "locked": "Choisissez d'abord à quoi sert ce serveur : d'ici là, chaque site y reste verrouillé.",
+    "choose": "Choisir maintenant",
+    "failed": "IT Tools n'a pas pu être déployé.",
+    "retry": "Réessayer",
+    "next": "Ensuite : ajoutez votre propre app, ou ouvrez sa page pour voir ses journaux, sa console et ses domaines."
+  },
+  "tour": {
+    "progress": "{{current}} / {{total}}",
+    "next": "Suivant",
+    "back": "Précédent",
+    "done": "Terminé",
+    "skip": "Passer la visite",
+    "close": "Fermer la visite",
+    "menu": "Faire la visite",
+    "guideMenu": "Guide de démarrage",
+    "serviceMenu": "Visite de ce service"
+  },
+  "tours": {
+    "panel": {
+      "welcome": {
+        "title": "Bienvenue dans Opsifier",
+        "body": "Une visite du panneau en une minute, en quelques étapes. Quittez-la quand vous voulez avec Échap ; elle reste dans le menu de votre compte."
+      },
+      "guide": {
+        "title": "Commencez ici",
+        "body": "Déployez une app d'exemple en un clic, installez une des apps toutes prêtes ou apportez la vôtre. Chacune reçoit tout de suite sa propre adresse."
+      },
+      "project": {
+        "title": "Les projets",
+        "body": "Un projet regroupe les services qui travaillent ensemble : ils partagent un réseau privé et leurs variables."
+      },
+      "domains": {
+        "title": "Toutes les adresses",
+        "body": "Tous les noms auxquels répond ce panneau. Chaque nouveau service en reçoit un sous {{base}}, en HTTPS, et vous pouvez ajouter vos propres domaines à tout moment."
+      },
+      "activity": {
+        "title": "Le travail en cours",
+        "body": "Les builds, les déploiements et les sauvegardes s'affichent ici, en direct. Ouvrez-en un pour lire son journal au fil de l'eau."
+      },
+      "purpose": {
+        "title": "Qui voit les sites",
+        "body": "Tant que le serveur est en développement ou en préproduction, chaque site demande son mot de passe et reste hors des moteurs de recherche. En production, ils sont publics."
+      },
+      "palette": {
+        "title": "Aller partout",
+        "body": "Cherchez, ou appuyez sur {{shortcut}}, pour ouvrir une page ou lancer une action au clavier."
+      },
+      "account": {
+        "title": "Votre compte",
+        "body": "La connexion en deux étapes, le thème et la langue. Cette visite et le guide s'y trouvent aussi, quand vous en avez besoin."
+      }
+    },
+    "service": {
+      "state": {
+        "title": "Un service d'un coup d'œil",
+        "body": "Son voyant, ses réplicas et ses derniers déploiements, chacun une marque : les problèmes se voient avant de lire un mot."
+      },
+      "deploy": {
+        "title": "Déployer",
+        "body": "Les réglages enregistrés arrivent dans le conteneur au prochain déploiement. Chacun est conservé, pour revenir à une version précédente."
+      },
+      "open": {
+        "title": "Son adresse",
+        "body": "Ouvre le service à son adresse. Ajoutez votre propre domaine dans Domaines quand vous êtes prêt."
+      },
+      "logs": {
+        "title": "Journaux et console",
+        "body": "Suivez ses journaux en direct, ou ouvrez un terminal dans son conteneur."
+      },
+      "tabs": {
+        "title": "Tout le reste",
+        "body": "Source, environnement, domaines, stockage, sauvegardes et le reste : un onglet par partie."
+      }
+    }
+  }
+}

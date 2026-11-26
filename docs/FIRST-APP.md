@@ -4,6 +4,14 @@ This guide takes an empty Opsifier panel to a running app with its own HTTPS add
 
 > **Early development.** Opsifier is not ready for production yet. Try it on a server whose data you can afford to lose.
 
+## The quickest way: a sample app
+
+On a fresh panel, the **Overview** opens with a **Get started** guide. It says where apps will answer, and offers three ways to start: **Deploy IT Tools**, a sample app deployed in one click, **Browse the apps**, the ready-made applications, and **Add a service**, which is the path this guide follows.
+
+**Deploy IT Tools** creates a project named `apps`, installs IT Tools in it, deploys it, and follows the deployment to its address, such as `https://apps-it-tools.<server-ip>.sslip.io`, usually in under a minute. Its steps light up as they happen, and once it runs, **Open IT Tools** opens it and **See it in the panel** opens its page. The guide stays until something else than the sample is deployed, or until you hide it, and the account menu brings it back.
+
+**Take the tour** shows the panel in a few stops, one part of the screen at a time: where to start, projects, addresses, the work in progress, who can see the sites, the command palette and your account. It offers itself once, after you have chosen what the server is for, and a shorter one does the same the first time a service's page opens. Both stay in the account menu, and the panel's tour in the command palette.
+
 ## 1. Create a project
 
 A project groups services that work together. They share a private network and a set of variables, and no other project can reach them over the network.

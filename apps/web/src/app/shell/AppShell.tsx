@@ -3,6 +3,7 @@ import { Outlet, useRouter, useRouterState } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { sessionQuery } from "../../features/auth/session";
+import { TourHost } from "../../features/onboarding/TourHost";
 import { useLiveServiceData } from "../../features/services/api";
 import { usePlatformCommands } from "../../features/settings/usePlatformCommands";
 import { useStudioOnly } from "../../features/studio/studioOnly";
@@ -68,12 +69,15 @@ export function AppShell() {
         ref={main}
         id="main"
         tabIndex={-1}
-        className="min-h-0 flex-1 overflow-y-auto focus-visible:outline-none"
+        // Relative, so that what is placed absolutely inside, as text only screen readers get, scrolls and
+        // clips with the page instead of stretching the whole document under the bars.
+        className="relative min-h-0 flex-1 overflow-y-auto focus-visible:outline-none"
       >
         <Outlet />
       </main>
       {!inStudioProject && studioOnly === false && <ActivityTape />}
       {studioOnly === false && <CommandPalette />}
+      <TourHost />
     </div>
   );
 }

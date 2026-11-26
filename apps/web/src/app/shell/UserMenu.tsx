@@ -1,8 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import { LogOut } from "lucide-react";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { Compass, LogOut, Signpost } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useCurrentUser } from "../../features/auth/session";
+import { setGuide } from "../../features/onboarding/progress";
+import { SERVICE_PAGE, startTour } from "../../features/onboarding/tours";
+import { useStudioOnly } from "../../features/studio/studioOnly";
 import { type Language, languages, setLanguage } from "../../i18n";
 import {
   setThemePreference,
@@ -27,9 +30,11 @@ import { systemInfoQuery } from "./systemInfo";
 import { useSignOut } from "./useSignOut";
 
 export function UserMenu() {
-  const { t, i18n } = useTranslation("shell");
+  const { t, i18n } = useTranslation(["shell", "onboarding"]);
   const user = useCurrentUser();
   const navigate = useNavigate();
+  const studioOnly = useStudioOnly();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const signOut = useSignOut();
   const preference = useThemePreference();
   const { data: system } = useQuery(systemInfoQuery);
@@ -46,6 +51,7 @@ export function UserMenu() {
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={t("user.menu")}
+        data-tour="account"
         className="ml-1 flex size-7 shrink-0 items-center justify-center rounded-sm border border-off font-medium text-xs hover:bg-wash data-[state=open]:bg-wash"
       >
         {initial}
@@ -62,6 +68,37 @@ export function UserMenu() {
           <Pictogram name="access" size={16} className="text-muted" />
           {t("settingsNav.authentication")}
         </DropdownMenuItem>
+        {studioOnly === false && (
+          <>
+            <DropdownMenuSeparator />
+            {SERVICE_PAGE.test(pathname) && (
+              <DropdownMenuItem onSelect={() => startTour("service")}>
+                <Compass aria-hidden="true" className="size-4 text-muted" />
+                {t("onboarding:tour.serviceMenu")}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              onSelect={() => {
+                // The tour starts from the Overview, where its first stops are.
+                void navigate({ to: "/" }).then(() => window.setTimeout(() => startTour("panel"), 400));
+              }}
+            >
+              <Compass aria-hidden="true" className="size-4 text-muted" />
+              {t("onboarding:tour.menu")}
+            </DropdownMenuItem>
+            {user.role === "admin" && (
+              <DropdownMenuItem
+                onSelect={() => {
+                  setGuide(user.id, "shown");
+                  void navigate({ to: "/" });
+                }}
+              >
+                <Signpost aria-hidden="true" className="size-4 text-muted" />
+                {t("onboarding:tour.guideMenu")}
+              </DropdownMenuItem>
+            )}
+          </>
+        )}
         {ip && (
           <DropdownMenuItem onSelect={copy} className="min-[112.5rem]:hidden">
             <span className="flex-1">{t("server.copyIp")}</span>

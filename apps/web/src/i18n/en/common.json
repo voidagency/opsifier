@@ -244,7 +244,8 @@
     "studio_version_overwrite": "That version would write over files git does not keep, such as the site's settings: it is not shown.",
     "studio_version_unsafe": "The project's own git settings run commands as files are read or written: the panel leaves its folder as it is.",
     "studio_version_busy": "The version shown is changing. Try again in a moment.",
-    "studio_project_paused": "This project is on pause: resume it first."
+    "studio_project_paused": "This project is on pause: resume it first.",
+    "server_address_configured": "The server's configuration sets its IP (OPSIFIER_SERVER_IP). To change it, run the installer again with --server-ip and the new IP."
   },
   "retention": {
     "removed": "Removed",

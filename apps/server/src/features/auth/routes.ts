@@ -29,6 +29,7 @@ import {
 } from "../../core/auth";
 import type { Feature } from "../../core/context";
 import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
+import { adoptClaimAddress } from "../server/host";
 import { createAuthService, prepareSetupToken } from "./service";
 
 const PREFIX = "/api/v1/auth";
@@ -243,8 +244,11 @@ export const feature: Feature = {
     app.openapi(sessionRoute, (c) => c.json(service.sessionState(c.get("principal")), 200));
 
     app.openapi(setupRoute, async (c) => {
-      const signedIn = await service.setup(c.req.valid("json"), requestMeta(c, deps.config));
+      const input = c.req.valid("json");
+      const signedIn = await service.setup(input, requestMeta(c, deps.config));
       setSessionCookie(c, deps.config, signedIn.token, signedIn.persistent);
+      // Behind NAT, the address the owner typed is the one known to reach the server: generated names use it.
+      await adoptClaimAddress(deps, new URL(c.req.url).host, signedIn.state.user.email);
       return c.json(signedIn.state, 201);
     });
 

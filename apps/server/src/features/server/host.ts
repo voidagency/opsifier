@@ -1,10 +1,16 @@
 import type { Dirent } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
+import { BlockList, isIP } from "node:net";
 import { hostname, uptime } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { ActionEntry, DiskUsageListing, ServerOverview } from "@opsifier/contract";
-import { serverConfirmWords, type TerminalServerFrame, terminalClientFrame } from "@opsifier/contract";
+import {
+  isValidHostname,
+  serverConfirmWords,
+  type TerminalServerFrame,
+  terminalClientFrame,
+} from "@opsifier/contract";
 import { and, eq } from "drizzle-orm";
 import { type RawData, WebSocket } from "ws";
 import { type ActionContext, type ActionRow, toActionEntry } from "../../core/actions";
@@ -15,6 +21,7 @@ import { DockerDriverError, type ExecSession } from "../../core/docker";
 import { badRequest, conflict } from "../../core/errors";
 import { sslipBase } from "../../core/proxy/sslip";
 import type { SocketAdmission, SocketRoute } from "../../core/realtime";
+import { isPrivateAddress } from "../notifications/destinations";
 import { releasesKept } from "../releases/service";
 import { rewriteAllRoutes } from "../service-tabs/domains/changes";
 import { getSetting, putSetting } from "../system/repo";
@@ -133,47 +140,201 @@ export function finishInterruptedRestarts(deps: AppDeps, rows: readonly ActionRo
   }
 }
 
-/** Hostnames generated from the old address follow it. Custom ones are not touched. */
-export async function refreshServerIp(deps: AppDeps, actorEmail: string | undefined): Promise<ActionEntry> {
-  const previous = getSetting(deps.db, SERVER_IP_KEY);
-  const detected = deps.config.serverIp ?? (await detectServerIp(deps));
-  if (detected === null) {
-    throw conflict("server_address_unknown", "The server's address could not be determined.");
+/** Addresses no one reaches a server on: none, the server itself, its link, a group, or a reserved range. */
+const unreachable = new BlockList();
+for (const [address, prefix] of [
+  ["0.0.0.0", 8],
+  ["127.0.0.0", 8],
+  ["169.254.0.0", 16],
+  ["224.0.0.0", 4],
+  ["240.0.0.0", 4],
+] as const) {
+  unreachable.addSubnet(address, prefix, "ipv4");
+}
+for (const [address, prefix] of [
+  ["::", 128],
+  ["::1", 128],
+  ["fe80::", 10],
+  ["ff00::", 8],
+] as const) {
+  unreachable.addSubnet(address, prefix, "ipv6");
+}
+
+/** One way of writing each address, IPv6 in lower case with its zeros left out, since names are made from it. */
+export function canonicalIp(ip: string): string {
+  return isIP(ip) === 6 ? new URL(`http://[${ip}]/`).hostname.slice(1, -1) : ip;
+}
+
+/**
+ * Why names can't be made from an address, or null when they can: one nobody reaches a server on, or one
+ * whose name on sslip.io would not be a valid hostname.
+ */
+export function unusableServerIp(ip: string): string | null {
+  const family = isIP(ip);
+  // An IPv4 address written as IPv6 is checked apart: a BlockList holding ::ffff:0:0/96 refuses every IPv4.
+  const mapped = family === 6 && /^::ffff:/i.test(canonicalIp(ip));
+  if (family === 0 || mapped || unreachable.check(ip, family === 6 ? "ipv6" : "ipv4")) {
+    return "Nobody can reach a server on this address. Enter the IP people reach it on.";
   }
-  const changed = previous !== detected;
+  return isValidHostname(`panel.${sslipBase(ip)}`) ? null : "No valid name can be made from this address.";
+}
+
+/**
+ * The server's address becomes `next`. The setting and the hostnames generated from the old address move in
+ * one transaction, custom ones staying as they are, then the routes are written again: also when nothing
+ * changed, which finishes a move that stopped after the database.
+ */
+async function moveServerIp(deps: AppDeps, next: string): Promise<boolean> {
+  const previous = getSetting(deps.db, SERVER_IP_KEY);
+  const changed = previous !== next;
   if (changed) {
-    putSetting(deps.db, SERVER_IP_KEY, detected, new Date(deps.now()));
-    if (typeof previous === "string") {
+    const now = new Date(deps.now());
+    deps.db.transaction((tx) => {
+      putSetting(tx, SERVER_IP_KEY, next, now);
+      if (typeof previous !== "string") {
+        return;
+      }
       // Written the way they were made, IPv6 addresses included.
       const oldBase = `.${sslipBase(previous)}`;
-      const newBase = `.${sslipBase(detected)}`;
-      const now = new Date(deps.now());
-      for (const row of deps.db.select().from(domains).all()) {
+      const newBase = `.${sslipBase(next)}`;
+      for (const row of tx.select().from(domains).all()) {
         if (!row.host.endsWith(oldBase)) {
           continue;
         }
         const host = `${row.host.slice(0, -oldBase.length)}${newBase}`;
-        // A name the panel now answers on stays the panel's: that domain keeps its old, dead name.
-        if (isReservedForPanel(deps, host, row.wildcard)) {
+        // A name the panel now answers on stays the panel's: that domain keeps its old, dead name. The panel's
+        // names are read inside the transaction, so they are already those of the new address.
+        if (isReservedForPanel({ ...deps, db: tx as unknown as AppDeps["db"] }, host, row.wildcard)) {
           deps.logger.warn(
             { host },
             "A domain was not moved to the server's new address: the panel answers on it",
           );
           continue;
         }
-        deps.db.update(domains).set({ host, updatedAt: now }).where(eq(domains.id, row.id)).run();
+        tx.update(domains).set({ host, updatedAt: now }).where(eq(domains.id, row.id)).run();
       }
-    }
-    await writePanelRoutes(deps);
-    await rewriteAllRoutes(deps);
+    });
   }
+  await writePanelRoutes(deps);
+  await rewriteAllRoutes(deps);
+  return changed;
+}
+
+const addressTitle = (changed: boolean, ip: string) =>
+  changed ? `Server address is now ${ip}` : `Server address is still ${ip}`;
+
+/**
+ * Hostnames generated from the old address follow it. Custom ones are not touched. A private address found
+ * on the server never replaces a public one already known: behind NAT, the server only ever sees the first,
+ * and the second came from its owner.
+ */
+export async function refreshServerIp(deps: AppDeps, actorEmail: string | undefined): Promise<ActionEntry> {
+  const found = deps.config.serverIp ?? (await detectServerIp(deps));
+  if (found === null) {
+    throw conflict("server_address_unknown", "The server's address could not be determined.");
+  }
+  const detected = canonicalIp(found);
+  const stored = getSetting(deps.db, SERVER_IP_KEY);
+  const keepsPublic =
+    deps.config.serverIp === undefined &&
+    typeof stored === "string" &&
+    isIP(stored) !== 0 &&
+    !isPrivateAddress(stored) &&
+    isPrivateAddress(detected);
+  if (keepsPublic) {
+    await moveServerIp(deps, stored);
+    return toActionEntry(
+      deps.actions.record({
+        type: "server.refresh-ip",
+        title: `Server address is still ${stored}: the server only sees ${detected}, a private address`,
+        actorEmail,
+      }),
+    );
+  }
+  const changed = await moveServerIp(deps, detected);
   return toActionEntry(
-    deps.actions.record({
-      type: "server.refresh-ip",
-      title: changed ? `Server address is now ${detected}` : `Server address is still ${detected}`,
-      actorEmail,
-    }),
+    deps.actions.record({ type: "server.refresh-ip", title: addressTitle(changed, detected), actorEmail }),
   );
+}
+
+/**
+ * The address people reach the server on, given by an administrator: a server behind NAT, as most cloud
+ * servers are, only sees a private address on its own network, and names generated from it lead nowhere.
+ * An address set in the server's configuration wins at every start, so it is changed there instead.
+ */
+export async function setServerIp(
+  deps: AppDeps,
+  given: string,
+  actorEmail: string | undefined,
+): Promise<ActionEntry> {
+  if (deps.config.serverIp !== undefined) {
+    throw conflict(
+      "server_address_configured",
+      `The server's configuration sets its address to ${deps.config.serverIp} (OPSIFIER_SERVER_IP). To change it, run the installer again with --server-ip and the new address.`,
+    );
+  }
+  const ip = canonicalIp(given);
+  const unusable = unusableServerIp(ip);
+  if (unusable !== null) {
+    throw badRequest("validation_failed", "Some fields need attention.", { ip: unusable });
+  }
+  const changed = await moveServerIp(deps, ip);
+  return toActionEntry(
+    deps.actions.record({ type: "server.set-ip", title: addressTitle(changed, ip), actorEmail }),
+  );
+}
+
+/** The IP a request's Host header names, if it names one: `1.2.3.4`, `1.2.3.4:3000` or `[2001:db8::1]:3000`. */
+export function ipOfHostHeader(header: string | undefined): string | null {
+  const value = (header ?? "").trim().toLowerCase();
+  const bracketed = /^\[([0-9a-f:.]+)\](?::\d+)?$/.exec(value);
+  const candidate = bracketed?.[1] ?? value.replace(/^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/, "$1");
+  return isIP(candidate) === 0 ? null : canonicalIp(candidate);
+}
+
+/**
+ * At the claim, the address the owner opened the panel at becomes the server's, when it is a public IP and
+ * the server only knew a private one, or none: on a cloud server behind NAT, that is the one address known to
+ * reach it, and every name generated from it, under sslip.io, then works from the first app. An address that
+ * is already public is kept, and one set in the configuration always wins. It never stops the claim.
+ */
+export async function adoptClaimAddress(
+  deps: AppDeps,
+  hostHeader: string | undefined,
+  actorEmail: string | undefined,
+): Promise<void> {
+  const ip = ipOfHostHeader(hostHeader);
+  if (
+    ip === null ||
+    isPrivateAddress(ip) ||
+    unusableServerIp(ip) !== null ||
+    deps.config.serverIp !== undefined
+  ) {
+    return;
+  }
+  const stored = getSetting(deps.db, SERVER_IP_KEY);
+  if (typeof stored === "string" && isIP(stored) !== 0 && !isPrivateAddress(stored)) {
+    return;
+  }
+  let changed = false;
+  try {
+    changed = await moveServerIp(deps, ip);
+  } catch (error) {
+    // The address is taken once the database has it: only writing the routes failed, and the next start or
+    // change of address writes them again.
+    changed = getSetting(deps.db, SERVER_IP_KEY) === ip && stored !== ip;
+    deps.logger.warn(
+      { err: error },
+      "Took the address the panel was opened at, but could not write its routes",
+    );
+  }
+  if (changed) {
+    deps.actions.record({
+      type: "server.set-ip",
+      title: `Server address is now ${ip}, the address the panel was opened at`,
+      actorEmail,
+    });
+  }
 }
 
 function assertSafeDiskPath(path: string): string {

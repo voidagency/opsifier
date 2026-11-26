@@ -98,7 +98,7 @@ export function ServerPurposeIndicator() {
   return (
     <>
       <Tooltip content={label}>
-        <Link to="/settings/server/purpose" className={chip}>
+        <Link to="/settings/server/purpose" className={chip} data-tour="purpose">
           {failed && <Count state={data} />}
           <Purpose state={data} />
           {!failed && (

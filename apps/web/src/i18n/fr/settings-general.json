@@ -19,7 +19,8 @@
     "checkUpdates": "Rechercher des mises à jour",
     "restartNotManaged": "Le panneau ne tourne pas comme service Swarm ici.",
     "restartProxyMissing": "Le proxy ne tourne pas ici.",
-    "needsHostAdmin": "Nécessite l'accès au serveur, que seul le propriétaire accorde."
+    "needsHostAdmin": "Nécessite l'accès au serveur, que seul le propriétaire accorde.",
+    "setIp": "Saisir l'IP à la main"
   },
   "dailyCleanup": "Nettoyage Docker quotidien",
   "uptime": "En marche depuis : {{days}} jours, {{hours}} heures, {{minutes}} minutes",
@@ -165,5 +166,14 @@
   "releasesKept": "Versions conservées",
   "releasesKeptHint": "Combien des versions les plus récentes de chaque service restent sur ce serveur pour pouvoir y revenir. Chacune garde son image sur le disque. Baisser ce nombre retire aussitôt les plus anciennes.",
   "releasesKeptSaved": "Enregistré",
-  "releasesKeptHintLabel": "À quoi cela sert"
+  "releasesKeptHintLabel": "À quoi cela sert",
+  "address": {
+    "title": "L'IP du serveur",
+    "description": "L'adresse par laquelle on joint ce serveur. Les noms générés sous sslip.io sont faits à partir d'elle.",
+    "label": "Adresse IP",
+    "hint": "Sur un serveur dans le cloud, l'IP publique que montre sa console. Les noms générés la suivent ; vos propres domaines ne changent pas.",
+    "required": "Saisissez l'adresse IP du serveur",
+    "save": "Utiliser cette IP",
+    "panelThen": "Le panneau répondra alors à {{url}}, et les noms générés suivront. Vos propres domaines ne changent pas."
+  }
 }

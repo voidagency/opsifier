@@ -19,6 +19,7 @@ import {
   type VisualState,
 } from "../../ui";
 import { SystemGauges } from "../monitor/SystemGauges";
+import { GetStarted, useGuideVisible } from "../onboarding/GetStarted";
 import { projectsQuery } from "../projects/api";
 import { CreateProjectDialog } from "../projects/CreateProjectDialog";
 import { resourcesKey, type ServiceResources, useAllServiceResources } from "../service-runtime/resources";
@@ -198,6 +199,7 @@ export function OverviewPage() {
   const all = data?.projects ?? [];
   const counts = useMemo(() => serviceCounts(all.flatMap((project) => project.services)), [all]);
   const arranged = useMemo(() => arrangeProjects(all, sort, filter), [all, sort, filter]);
+  const guide = useGuideVisible(data?.projects);
 
   return (
     <>
@@ -208,12 +210,14 @@ export function OverviewPage() {
             variant="primary"
             icon={<Plus aria-hidden="true" className="size-4" />}
             onClick={() => setCreating(true)}
+            data-tour="new-project"
           >
             {t("newProject")}
           </Button>
         }
       />
       <div className="grid gap-4 px-4 py-6 md:px-6 lg:px-8">
+        {guide && <GetStarted />}
         {isPending ? (
           <Skeleton className="h-[90px] max-w-[1400px]" />
         ) : (

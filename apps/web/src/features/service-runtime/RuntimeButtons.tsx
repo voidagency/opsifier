@@ -18,7 +18,12 @@ export function LogsButton({ project, service }: RuntimeButtonProps) {
   return (
     <>
       <Tooltip content={t("logs.open")}>
-        <Button size="icon" aria-label={t("logs.open")} onClick={() => setOpen(true)}>
+        <Button
+          size="icon"
+          aria-label={t("logs.open")}
+          onClick={() => setOpen(true)}
+          data-tour="service-logs"
+        >
           <ScrollText aria-hidden="true" className="size-4" />
         </Button>
       </Tooltip>

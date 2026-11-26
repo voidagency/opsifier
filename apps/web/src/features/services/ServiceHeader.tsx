@@ -77,7 +77,7 @@ export function ServiceHeader({ project, service, detail, toolbar, tabs, onRenam
         </span>
       }
       description={
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span data-tour="service-state" className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="text-sm font-medium text-ink">{serviceStateLabel(detail, t)}</span>
           <ReplicaPips {...detail.replicas} />
           <WakeStrip outcomes={detail.wake} label={t("rows.wakeLabel", { count: detail.wake.length })} />

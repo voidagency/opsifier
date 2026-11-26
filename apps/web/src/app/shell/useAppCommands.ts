@@ -1,7 +1,8 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Languages, LogOut } from "lucide-react";
+import { Compass, Languages, LogOut } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { startTour } from "../../features/onboarding/tours";
 import { languages, setLanguage } from "../../i18n";
 import { setThemePreference, themePreferences } from "../../lib/theme";
 import { type PaletteCommand, useRegisterCommands } from "../commands";
@@ -10,7 +11,7 @@ import { useSignOut } from "./useSignOut";
 
 /** The commands that exist on every screen of the signed-in app. */
 export function useAppCommands(): void {
-  const { t } = useTranslation("shell");
+  const { t } = useTranslation(["shell", "onboarding"]);
   const navigate = useNavigate();
   const signOut = useSignOut();
 
@@ -50,6 +51,15 @@ export function useAppCommands(): void {
         pictogram: "domain",
         keywords: ["dns", "routes", "certificates"],
         run: () => navigate({ to: "/domains" }),
+      },
+      {
+        id: "tour.panel",
+        group: navigation,
+        title: t("onboarding:tour.menu"),
+        icon: Compass,
+        keywords: ["tour", "guide", "help", "onboarding", "visite", "aide"],
+        // The tour starts from the Overview, where its first stops are.
+        run: () => navigate({ to: "/" }).then(() => window.setTimeout(() => startTour("panel"), 400)),
       },
       {
         id: "go.authentication",

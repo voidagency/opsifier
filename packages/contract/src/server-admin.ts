@@ -96,6 +96,15 @@ export type ServiceDomainSettings = z.infer<typeof serviceDomainSettings>;
 export const saveServiceDomainRequest = z.strictObject({ customDomain: optionalHost });
 export type SaveServiceDomainRequest = z.input<typeof saveServiceDomainRequest>;
 
+/**
+ * PUT /api/v1/server/panel/ip: the address people reach the server on, for a server that can't see it itself,
+ * as behind NAT. Generated hostnames follow it.
+ */
+export const setServerIpRequest = z.strictObject({
+  ip: z.union([z.ipv4(), z.ipv6()], { error: "Enter an IPv4 or IPv6 address" }),
+});
+export type SetServerIpRequest = z.infer<typeof setServerIpRequest>;
+
 /** GET and PUT /api/v1/server/letsencrypt-email */
 export const letsEncryptEmail = z.strictObject({
   email: z.email("Enter a valid email address").max(254, "Must be at most 254 characters"),

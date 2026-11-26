@@ -23,6 +23,7 @@ import {
   serverConfirmWords,
   serverOverview,
   serviceDomainSettings,
+  setServerIpRequest,
   swarmNodeList,
   trustedProxiesSettings,
 } from "@opsifier/contract";
@@ -44,6 +45,7 @@ import {
   readDiskUsage,
   rebootHost,
   refreshServerIp,
+  setServerIp,
 } from "./host";
 import { listSwarmNodes } from "./nodes";
 import {
@@ -184,6 +186,22 @@ const refreshIpRoute = route({
   description: "Generated hostnames follow the new address. Custom ones are not touched.",
   responses: {
     200: jsonResponse(actionEntry, "The entry recording the result."),
+    401: denied,
+    403: refused,
+    409: clash,
+  },
+});
+
+const setIpRoute = route({
+  method: "put",
+  path: `${PREFIX}/panel/ip`,
+  summary: "Set the server's address by hand",
+  description:
+    "For a server that can't see the address people reach it on, as behind NAT. Generated hostnames follow it, custom ones are not touched. Refused with 409 when the server's configuration sets the address.",
+  request: { body: jsonBody(setServerIpRequest) },
+  responses: {
+    200: jsonResponse(actionEntry, "The entry recording the result."),
+    400: invalid,
     401: denied,
     403: refused,
     409: clash,
@@ -394,6 +412,10 @@ export const feature: Feature = {
     );
 
     app.openapi(refreshIpRoute, async (c) => c.json(await refreshServerIp(deps, actor(c)), 200));
+
+    app.openapi(setIpRoute, async (c) =>
+      c.json(await setServerIp(deps, c.req.valid("json").ip, actor(c)), 200),
+    );
 
     app.openapi(rebootRoute, async (c) =>
       c.json(await rebootHost(deps, c.req.valid("json").confirm, actor(c)), 200),

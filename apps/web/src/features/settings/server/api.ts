@@ -124,6 +124,8 @@ export const serverApi = {
   restartPanel: (confirm: string): Promise<ActionEntry> =>
     api.post("/server/panel/restart", { body: { confirm }, schema: actionEntry }),
   refreshIp: (): Promise<ActionEntry> => api.post("/server/panel/refresh-ip", { schema: actionEntry }),
+  setIp: (ip: string): Promise<ActionEntry> =>
+    api.put("/server/panel/ip", { body: { ip }, schema: actionEntry }),
   reboot: (confirm: string): Promise<ActionEntry> =>
     api.post("/server/reboot", { body: { confirm }, schema: actionEntry }),
   saveTrusted: (body: TrustedProxiesSettings): Promise<ActionEntry> =>

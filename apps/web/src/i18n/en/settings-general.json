@@ -19,7 +19,8 @@
     "checkUpdates": "Check for updates",
     "restartNotManaged": "The panel doesn't run as a Swarm service here.",
     "restartProxyMissing": "The proxy isn't running here.",
-    "needsHostAdmin": "Needs server access, which only the owner gives."
+    "needsHostAdmin": "Needs server access, which only the owner gives.",
+    "setIp": "Set the IP by hand"
   },
   "dailyCleanup": "Daily Docker cleanup",
   "uptime": "Uptime: {{days}} days, {{hours}} hours, {{minutes}} minutes",
@@ -165,5 +166,14 @@
   "releasesKept": "Versions kept",
   "releasesKeptHint": "How many of the newest versions of each service stay on this server for going back to. Each one keeps its image on the disk. Lowering this removes the older ones right away.",
   "releasesKeptSaved": "Saved",
-  "releasesKeptHintLabel": "What this keeps"
+  "releasesKeptHintLabel": "What this keeps",
+  "address": {
+    "title": "The server's IP",
+    "description": "The address people reach this server on. Names generated under sslip.io are made from it.",
+    "label": "IP address",
+    "hint": "On a cloud server, the public IP its console shows. Generated names move to it; your own domains stay as they are.",
+    "required": "Enter the server's IP address",
+    "save": "Use this IP",
+    "panelThen": "The panel will then answer at {{url}}, and generated names follow. Your own domains stay as they are."
+  }
 }
