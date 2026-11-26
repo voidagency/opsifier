@@ -1,0 +1,72 @@
+---
+// The produced Shorts, grouped by series. Each loads only when it is played.
+import { content, type Locale } from "../content";
+import "../styles/videos.css";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = content[locale].videos;
+const demo = locale === "en" ? "/demo/" : "/fr/demo/";
+---
+
+<section class="videos">
+  <div class="wrap videos__intro">
+    <p class="videos__eyebrow">{t.eyebrow}</p>
+    <h1 class="videos__title">{t.heading}</h1>
+    <p class="videos__lead">{t.lead}</p>
+    <p class="videos__note">{t.note} {t.language}</p>
+  </div>
+  {
+    t.series.map((series) => (
+      <div class="wrap videos__series">
+        <div class="videos__head">
+          <h2>{series.name}</h2>
+          <p>{series.lead}</p>
+        </div>
+        <ul class="videos__grid">
+          {series.items.map((item) => (
+            <li class="videos__item">
+              <video
+                class="videos__player"
+                controls
+                preload="none"
+                playsinline
+                width="540"
+                height="960"
+                poster={`/videos/${item.file}.webp`}
+                aria-label={item.title}
+                data-video
+              >
+                <source src={`/videos/${item.file}.mp4`} type="video/mp4" />
+              </video>
+              <h3>
+                {item.title} <span class="videos__len">{t.seconds(item.length)}</span>
+              </h3>
+              <p>{item.text}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
+    ))
+  }
+  <div class="wrap videos__end">
+    <a class="quiet" href={demo}>{t.tryDemo} →</a>
+  </div>
+</section>
+
+<script>
+  // One video plays at a time.
+  const players = [...document.querySelectorAll<HTMLVideoElement>("[data-video]")];
+  for (const player of players) {
+    player.addEventListener("play", () => {
+      for (const other of players) {
+        if (other !== player) {
+          other.pause();
+        }
+      }
+    });
+  }
+</script>

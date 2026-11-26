@@ -1,0 +1,68 @@
+---
+// The interactive demo: a simulated panel that runs in the visitor's browser (scripts/demo.ts), beside a short tour.
+import project from "../../../package.json";
+import { content, type Locale } from "../content";
+import "../styles/demo.css";
+import Sprite from "./Sprite.astro";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = content[locale].demo;
+const videos = locale === "en" ? "/videos/" : "/fr/videos/";
+---
+
+<section class="demo" data-demo data-locale={locale} data-version={project.version}>
+  <Sprite />
+  <div class="wrap demo__intro">
+    <p class="demo__eyebrow">{t.eyebrow}</p>
+    <h1 class="demo__title">{t.heading}</h1>
+    <p class="demo__lead">{t.lead}</p>
+  </div>
+  <div class="wrap demo__grid">
+    <aside class="demo__steps" aria-labelledby="demo-steps">
+      <h2 id="demo-steps">{t.stepsTitle}</h2>
+      <ol>
+        {
+          t.steps.map((step, i) => (
+            <li data-step={i}>
+              <span class="demo__check" aria-hidden="true" />
+              <div>
+                <p class="demo__step-title">
+                  {step.title}
+                  <span class="demo__done">{t.done}</span>
+                </p>
+                <p class="demo__hint">{step.hint}</p>
+                <button type="button" class="demo__show" data-act="show" data-step={i}>
+                  {t.show} →
+                </button>
+              </div>
+            </li>
+          ))
+        }
+      </ol>
+      <p class="demo__all" data-dm-all hidden>
+        {t.allDone} <a href="/docs/install/" hreflang="en">{t.install} →</a>
+      </p>
+      <div class="demo__foot">
+        <button type="button" class="demo__reset" data-act="reset">{t.reset}</button>
+        <p class="demo__note">{t.note}</p>
+        <a class="demo__watch" href={videos}>{t.watch} →</a>
+      </div>
+    </aside>
+    <div class="demo__window on-light" data-dm-window role="region" aria-label={t.windowLabel}>
+      <header class="dm-bar" data-dm-bar></header>
+      <div class="dm-main" data-dm-main>
+        <noscript><p class="dm-empty">{t.noscript}</p></noscript>
+      </div>
+      <dialog class="dm-dialog on-light" data-dm-dialog aria-label={t.windowLabel}></dialog>
+      <p class="dm-sr" aria-live="polite" data-dm-live></p>
+    </div>
+  </div>
+</section>
+
+<script>
+  import "../scripts/demo.ts";
+</script>

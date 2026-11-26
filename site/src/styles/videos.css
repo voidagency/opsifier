@@ -1,0 +1,117 @@
+/* The videos page: the produced Shorts, by series, on navy. */
+
+.videos {
+  padding-block: clamp(40px, 6vw, 88px) var(--sec);
+  color: var(--white);
+}
+
+.videos__intro {
+  max-width: 980px;
+}
+
+.videos__eyebrow {
+  margin-bottom: 14px;
+  color: var(--amber);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.videos__title {
+  font-size: var(--h2);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.videos__lead {
+  max-width: 46em;
+  margin-top: 18px;
+  color: var(--navy-muted);
+}
+
+.videos__note {
+  margin-top: 10px;
+  color: var(--navy-muted);
+  font-size: 0.85rem;
+}
+
+.videos__series {
+  margin-top: clamp(44px, 6vw, 88px);
+}
+
+.videos__head {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--navy-line);
+}
+
+.videos__head h2 {
+  font-size: clamp(1.4rem, 2.2vw, 2rem);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.videos__head p {
+  max-width: 46em;
+  color: var(--navy-muted);
+}
+
+.videos__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: clamp(20px, 2.4vw, 32px) clamp(16px, 2vw, 28px);
+}
+
+.videos__item {
+  min-width: 0;
+}
+
+.videos__player {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 9 / 16;
+  border-radius: 8px;
+  background: var(--navy-deep);
+  box-shadow: 0 0 0 1px var(--navy-line);
+}
+
+.videos__item h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin-top: 12px;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.videos__len {
+  color: var(--navy-muted);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.videos__item p {
+  margin-top: 4px;
+  color: var(--navy-muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.videos__end {
+  margin-top: clamp(44px, 6vw, 80px);
+}
+
+@media (max-width: 520px) {
+  .videos__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

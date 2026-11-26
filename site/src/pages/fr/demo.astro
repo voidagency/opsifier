@@ -1,0 +1,11 @@
+---
+import Demo from "../../components/Demo.astro";
+import { content } from "../../content";
+import Base from "../../layouts/Base.astro";
+
+const t = content.fr;
+---
+
+<Base locale="fr" title={t.demo.title} description={t.demo.description} path="/fr/demo/" otherPath="/demo/">
+  <Demo locale="fr" />
+</Base>

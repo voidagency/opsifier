@@ -31,6 +31,8 @@ const canonical = new URL(path, Astro.site).href;
 const other = otherPath === null ? null : new URL(otherPath, Astro.site).href;
 const image = new URL("/og.png", Astro.site).href;
 const abuse = locale === "en" ? "/abuse/" : "/fr/abuse/";
+const demo = locale === "en" ? "/demo/" : "/fr/demo/";
+const videos = locale === "en" ? "/videos/" : "/fr/videos/";
 const site = new URL("/", Astro.site).href;
 const LICENSE = "https://www.apache.org/licenses/LICENSE-2.0";
 const structured = {
@@ -145,6 +147,8 @@ const structured = {
         <nav aria-label={t.nav.label}>
           <a class="hide-s" href={`${home}#runs`}>{t.nav.what}</a>
           <a class="hide-s" href={`${home}#status`}>{t.nav.status}</a>
+          <a href={demo} aria-current={path === demo ? "page" : undefined}>{t.nav.demo}</a>
+          <a class="hide-s" href={videos} aria-current={path === videos ? "page" : undefined}>{t.nav.videos}</a>
           <a href="/docs/" hreflang="en">{t.nav.docs}</a>
           <a href={REPOSITORY} rel="noopener">{t.nav.github}</a>
           {
@@ -164,6 +168,8 @@ const structured = {
         <ul>
           <li><a href={`${home}#runs`}>{t.nav.what}</a></li>
           <li><a href={`${home}#status`}>{t.nav.status}</a></li>
+          <li><a href={demo}>{t.nav.demo}</a></li>
+          <li><a href={videos}>{t.nav.videos}</a></li>
           <li><a href="/docs/" hreflang="en">{t.nav.docs}</a></li>
           <li><a href={REPOSITORY} rel="noopener">{t.nav.github}</a></li>
           <li><a href={`${REPOSITORY}/blob/main/LICENSE`} rel="noopener">{t.footer.license}</a></li>

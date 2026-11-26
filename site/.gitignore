@@ -4,3 +4,6 @@ dist/
 .shots/
 # Written from ../docs by scripts/sync-docs.mjs before each build.
 src/content/docs/docs/
+# The videos are uploaded to the site's bucket on their own (infra/site/deploy.sh, SITE_VIDEOS), so that
+# every clone of the repository does not carry them. Their posters stay here.
+public/videos/*.mp4

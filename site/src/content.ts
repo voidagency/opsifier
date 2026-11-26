@@ -22,6 +22,8 @@ const en = {
     label: "Main",
     what: "What it runs",
     status: "Where it stands",
+    demo: "Demo",
+    videos: "Videos",
     docs: "Docs",
     github: "GitHub",
     switchLabel: "Français",
@@ -33,6 +35,7 @@ const en = {
     lead: "Opsifier is an open-source control panel for your own server. It deploys your apps and databases, and tells you how they are doing before you read a word.",
     primary: "Read the code on GitHub",
     secondary: "See what it runs",
+    demo: "Try the demo",
     early: "Early development. Not ready for production yet.",
     scroll: "Scroll to deploy",
     boardLabel:
@@ -163,6 +166,67 @@ const en = {
     body: "There is nothing deployed here. It may have moved, or it may never have existed.",
     back: "Back to the home page",
   },
+  demo: {
+    title: "Opsifier demo: try the control panel in your browser",
+    description:
+      "Deploy an app from a Docker image, read its live logs, add a domain with HTTPS and go back a version, in a simulated Opsifier panel that runs in your browser.",
+    eyebrow: "Interactive demo",
+    heading: "Try the panel, right here.",
+    lead: "A simulated Opsifier that runs in your browser. Deploy an app, read its logs, give it a domain and go back a version. Nothing is sent anywhere and nothing is deployed.",
+    note: "Simulation: the server, its apps and their numbers are made up.",
+    windowLabel: "Simulated Opsifier panel",
+    stepsTitle: "Five things to try",
+    steps: [
+      { title: "Deploy an app", hint: "In the shop project, add a service from a Docker image." },
+      { title: "Read its logs", hint: "Open the Logs tab, then filter them." },
+      { title: "Give it a domain", hint: "Add a domain. The certificate comes by itself." },
+      { title: "Go back a version", hint: "In Deployments, go back to an earlier version." },
+      { title: "Back up a database", hint: "Run a backup of the shop's Postgres." },
+    ],
+    show: "Show me",
+    done: "Done",
+    reset: "Start over",
+    allDone: "That's the tour. The real panel installs on your own server with one command.",
+    install: "Install it",
+    noscript: "This demo needs JavaScript. The home page shows screenshots of the real panel.",
+    watch: "Rather watch it? Ten short videos",
+  },
+  videos: {
+    title: "Opsifier videos: the control panel at work, in 20 seconds",
+    description:
+      "Short videos of Opsifier filmed on a demo server: deploy a Docker image, build a Dockerfile, read logs, share behind a password, back up a database, and edit a site with the Studio.",
+    eyebrow: "Videos",
+    heading: "Watch it work, one task at a time.",
+    lead: "Each video is filmed for real on a demo server and shows one task, from the click to the result. Each one ends on what you no longer have to do.",
+    note: "Voice-overs are generated with AI. Filmed on a demo server with sample apps.",
+    language: "",
+    seconds: (n: string) => `${n} s`,
+    tryDemo: "Rather try it yourself? Open the demo",
+    series: [
+      {
+        name: "Opsifier for DevOps",
+        lead: "Deploy, debug, share and back up, from a web interface on your own server.",
+        items: [
+          { file: "devops-00-overview", title: "The whole workflow", text: "Paste an image or build a Dockerfile, deploy, read the logs, open a terminal, get HTTPS, share, protect and back up.", length: "34" },
+          { file: "devops-01-docker-image", title: "From Docker image to HTTPS link", text: "A Docker image, a new service, Deploy: 27 seconds later it is live on HTTPS.", length: "24" },
+          { file: "devops-02-dockerfile", title: "Build from your Dockerfile", text: "Opsifier builds the image on your server, and every git push redeploys.", length: "20" },
+          { file: "devops-03-logs-terminal", title: "Logs and terminal", text: "Search the live logs, then open a terminal in the container, from your browser.", length: "21" },
+          { file: "devops-05-basic-auth", title: "Share it, behind a password", text: "Copy the HTTPS link, then add a username and a password in one step.", length: "19" },
+          { file: "devops-06-backups", title: "Backups that restore", text: "Pick a destination and a schedule. Restoring takes a safety copy first.", length: "22" },
+        ],
+      },
+      {
+        name: "Opsifier Studio",
+        lead: "Change a website by asking, with the model of your choice, and watch the preview follow.",
+        items: [
+          { file: "studio-00-no-cms", title: "No CMS needed", text: "Ask for a change in plain words: 36 seconds later, it is in the preview.", length: "23" },
+          { file: "studio-01-change-a-text", title: "Change a text on the page", text: "Click a text, type the new one, and the agent writes it in the code.", length: "18" },
+          { file: "studio-02-point-at-it", title: "Point at an element", text: "Pick a button in the preview and ask: only that one changes.", length: "20" },
+          { file: "studio-03-share-with-a-designer", title: "Share with a designer", text: "Share one project with an account that sees nothing else on the server.", length: "19" },
+        ],
+      },
+    ],
+  },
 };
 
 export type Content = typeof en;
@@ -182,6 +246,8 @@ const fr: Content = {
     label: "Principale",
     what: "Ce qu'il fait tourner",
     status: "Où il en est",
+    demo: "Démo",
+    videos: "Vidéos",
     docs: "Docs",
     github: "GitHub",
     switchLabel: "English",
@@ -193,6 +259,7 @@ const fr: Content = {
     lead: "Opsifier est un panneau de contrôle open source pour votre propre serveur. Il déploie vos applications et vos bases de données, et vous dit comment elles vont avant que vous ayez lu un mot.",
     primary: "Lire le code sur GitHub",
     secondary: "Voir ce qu'il fait tourner",
+    demo: "Essayer la démo",
     early: "Développement précoce. Pas encore prêt pour la production.",
     scroll: "Faites défiler pour déployer",
     boardLabel:
@@ -322,6 +389,68 @@ const fr: Content = {
     description: "Cette page n'existe pas.",
     body: "Rien n'est déployé ici. La page a peut-être changé de place, ou n'a jamais existé.",
     back: "Retour à l'accueil",
+  },
+  demo: {
+    title: "Démo d'Opsifier : essayez le panneau dans votre navigateur",
+    description:
+      "Déployez une app depuis une image Docker, lisez ses logs en direct, ajoutez un domaine en HTTPS et revenez à une version précédente, dans un panneau Opsifier simulé qui tourne dans votre navigateur.",
+    eyebrow: "Démo interactive",
+    heading: "Essayez le panneau, ici même.",
+    lead: "Un Opsifier simulé, qui tourne dans votre navigateur. Déployez une app, lisez ses logs, donnez-lui un domaine et revenez à une version précédente. Rien n'est envoyé, rien n'est déployé.",
+    note: `Simulation${NB}: le serveur, ses apps et leurs chiffres sont inventés.`,
+    windowLabel: "Panneau Opsifier simulé",
+    stepsTitle: "Cinq choses à essayer",
+    steps: [
+      { title: "Déployer une app", hint: "Dans le projet shop, ajoutez un service depuis une image Docker." },
+      { title: "Lire ses logs", hint: "Ouvrez l'onglet Logs, puis filtrez-les." },
+      { title: "Lui donner un domaine", hint: "Ajoutez un domaine. Le certificat arrive tout seul." },
+      { title: "Revenir à une version", hint: "Dans Déploiements, revenez à une version précédente." },
+      { title: "Sauvegarder une base", hint: "Lancez une sauvegarde du Postgres de shop." },
+    ],
+    show: "Montrez-moi",
+    done: "Fait",
+    reset: "Recommencer",
+    allDone: "C'est tout pour le tour. Le vrai panneau s'installe sur votre serveur en une commande.",
+    install: "L'installer",
+    noscript: "Cette démo a besoin de JavaScript. La page d'accueil montre des captures du vrai panneau.",
+    watch: `Plutôt regarder${NB}? Dix courtes vidéos`,
+  },
+  videos: {
+    title: "Vidéos d'Opsifier : le panneau à l'œuvre, en 20 secondes",
+    description:
+      "De courtes vidéos d'Opsifier filmées sur un serveur de démo : déployer une image Docker, construire un Dockerfile, lire les logs, partager derrière un mot de passe, sauvegarder une base et modifier un site avec le Studio.",
+    eyebrow: "Vidéos",
+    heading: "Regardez-le travailler, une tâche à la fois.",
+    lead: "Chaque vidéo est filmée pour de vrai sur un serveur de démo et montre une tâche, du clic au résultat. Chacune se termine sur ce que vous n'avez plus à faire.",
+    note: "Les voix sont générées par IA. Filmé sur un serveur de démo avec des applications d'exemple.",
+    language: "Vidéos en anglais, sous-titrées en anglais.",
+    // A plain no-break space: the duration is set in the mono face, which has no narrow one.
+    seconds: (n: string) => `${n}\u00a0s`,
+    tryDemo: `Plutôt essayer vous-même${NB}? Ouvrir la démo`,
+    series: [
+      {
+        name: "Opsifier pour les DevOps",
+        lead: "Déployer, déboguer, partager et sauvegarder, depuis une interface web sur votre propre serveur.",
+        items: [
+          { file: "devops-00-overview", title: "Tout le parcours", text: "Collez une image ou construisez un Dockerfile, déployez, lisez les logs, ouvrez un terminal, obtenez le HTTPS, partagez, protégez et sauvegardez.", length: "34" },
+          { file: "devops-01-docker-image", title: "De l'image Docker au lien HTTPS", text: `Une image Docker, un nouveau service, Déployer${NB}: 27 secondes plus tard, c'est en ligne en HTTPS.`, length: "24" },
+          { file: "devops-02-dockerfile", title: "Construire depuis votre Dockerfile", text: "Opsifier construit l'image sur votre serveur, et chaque git push redéploie.", length: "20" },
+          { file: "devops-03-logs-terminal", title: "Logs et terminal", text: "Cherchez dans les logs en direct, puis ouvrez un terminal dans le conteneur, depuis le navigateur.", length: "21" },
+          { file: "devops-05-basic-auth", title: "Partager derrière un mot de passe", text: "Copiez le lien HTTPS, puis ajoutez un identifiant et un mot de passe en une étape.", length: "19" },
+          { file: "devops-06-backups", title: "Des sauvegardes qui se restaurent", text: "Choisissez une destination et une planification. La restauration prend d'abord une copie de sécurité.", length: "22" },
+        ],
+      },
+      {
+        name: "Opsifier Studio",
+        lead: "Modifiez un site en le demandant, avec le modèle de votre choix, et l'aperçu suit.",
+        items: [
+          { file: "studio-00-no-cms", title: "Pas besoin de CMS", text: `Demandez un changement avec vos mots${NB}: 36 secondes plus tard, il est dans l'aperçu.`, length: "23" },
+          { file: "studio-01-change-a-text", title: "Changer un texte sur la page", text: "Cliquez un texte, tapez le nouveau, et l'agent l'écrit dans le code.", length: "18" },
+          { file: "studio-02-point-at-it", title: "Pointer un élément", text: `Choisissez un bouton dans l'aperçu et demandez${NB}: seul celui-là change.`, length: "20" },
+          { file: "studio-03-share-with-a-designer", title: "Partager avec un designer", text: "Partagez un seul projet avec un compte qui ne voit rien d'autre du serveur.", length: "19" },
+        ],
+      },
+    ],
   },
 };
 

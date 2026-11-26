@@ -2,8 +2,11 @@
 # Deploys the public site.
 #
 #   infra/site/deploy.sh <aws-profile> [stack-only]
+#   SITE_VIDEOS=<folder> infra/site/deploy.sh <aws-profile>
 #
 # The hosted zone must already exist and be delegated: the certificate is validated through it.
+# The videos (site/public/videos/*.mp4) are not in git. SITE_VIDEOS names the folder that holds them: its .mp4
+# files are uploaded to videos/ and replace the ones there. Without it, the videos already online stay as they are.
 set -euo pipefail
 
 readonly DOMAIN="opsifier.com"
@@ -33,5 +36,11 @@ bun run build
 bucket="$(output BucketName)"
 # Files in _astro are named by their content, so they can be cached for good. Everything else has to be asked for again.
 aws_cli s3 sync dist/_astro "s3://${bucket}/_astro" --delete --cache-control "public, max-age=31536000, immutable"
-aws_cli s3 sync dist "s3://${bucket}" --delete --exclude "_astro/*" --cache-control "public, max-age=300, must-revalidate"
+aws_cli s3 sync dist "s3://${bucket}" --delete --exclude "_astro/*" --exclude "videos/*.mp4" \
+  --cache-control "public, max-age=300, must-revalidate"
+if [ -n "${SITE_VIDEOS:-}" ]; then
+  [ -d "$SITE_VIDEOS" ] || { echo "SITE_VIDEOS is not a folder: ${SITE_VIDEOS}" >&2; exit 1; }
+  aws_cli s3 sync "$SITE_VIDEOS" "s3://${bucket}/videos" --delete --exclude "*" --include "*.mp4" \
+    --content-type video/mp4 --cache-control "public, max-age=86400"
+fi
 aws_cli cloudfront create-invalidation --distribution-id "$(output DistributionId)" --paths "/*" --query "Invalidation.Status" --output text
