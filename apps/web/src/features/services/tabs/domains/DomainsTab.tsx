@@ -18,6 +18,7 @@ import {
   toast,
   type VisualState,
 } from "../../../../ui";
+import { useOpenSite } from "../../../server-purpose/open-site";
 import { DomainProtectionLamp } from "../../../server-purpose/ProtectionIndicator";
 import { domainsQuery, serviceKey, useServiceParams } from "../../api";
 import { domainsApi, domainTlsQuery } from "./api";
@@ -73,6 +74,7 @@ function DomainRow({
   onMakePrimary: () => void;
 }) {
   const { t } = useTranslation("service-domains");
+  const openSite = useOpenSite();
   return (
     <li className="grid grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1 border-b py-2.5 last:border-b-0 sm:grid-cols-[auto_auto_minmax(0,1fr)_auto]">
       <CertificateState domain={domain} tls={tls} />
@@ -119,6 +121,7 @@ function DomainRow({
               href={domain.url}
               target="_blank"
               rel="noreferrer noopener"
+              onClick={(event) => openSite(event, domain.url)}
               aria-label={t("open")}
               className="flex size-8 items-center justify-center rounded-sm text-muted hover:bg-wash hover:text-ink"
             >

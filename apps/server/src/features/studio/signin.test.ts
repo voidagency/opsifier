@@ -193,6 +193,11 @@ describe("the hops of a preview's sign-in", () => {
       "//evil.example.com/",
       "https://evil.example.com/",
       "/\\evil.example.com",
+      "/\t/evil.example.com",
+      "/\n/evil.example.com",
+      "/\r/evil.example.com",
+      "/\u0000/evil.example.com",
+      "/\u007f/evil.example.com",
       "",
       undefined,
     ]) {

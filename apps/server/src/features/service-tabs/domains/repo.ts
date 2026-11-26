@@ -44,7 +44,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * domains, and are routes all the same: a claim over one would take the tool's traffic, and its
  * login with it.
  */
-function toolRoutes(db: DbHandle): HeldRoute[] {
+export function toolRoutes(db: DbHandle): HeldRoute[] {
   const rows = db
     .select({ project: services.projectName, service: services.name, spec: services.spec })
     .from(services)

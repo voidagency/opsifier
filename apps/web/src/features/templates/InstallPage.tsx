@@ -26,6 +26,7 @@ import {
 } from "../../ui";
 import { servicePageLink } from "../databases/links";
 import { projectsKey } from "../projects/api";
+import { useOpenSite } from "../server-purpose/open-site";
 import { useActionFollower } from "../services/ActionFollower";
 import {
   serviceCounts,
@@ -101,7 +102,8 @@ function ComponentRow({
   project: string;
 }) {
   const { t } = useTranslation(["templates", "services", "visual", "activity"]);
-  const { service } = component;
+  const openSite = useOpenSite();
+  const { service, url } = component;
   return (
     <li className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-x-3 border-b py-3 last:border-b-0">
       <Lamp
@@ -119,15 +121,16 @@ function ComponentRow({
         </Link>
         <p className="truncate text-xs text-muted">{serviceStateLabel(service, t)}</p>
       </div>
-      {component.url !== null && (
+      {url !== null && (
         <a
-          href={component.url}
+          href={url}
           target="_blank"
           rel="noreferrer noopener"
+          onClick={(event) => openSite(event, url)}
           className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted hover:text-ink"
         >
-          <span className="hidden max-w-[350px] truncate font-mono sm:inline" title={component.url}>
-            {component.url}
+          <span className="hidden max-w-[350px] truncate font-mono sm:inline" title={url}>
+            {url}
           </span>
           <ExternalLink aria-hidden="true" className="size-4 shrink-0" />
         </a>

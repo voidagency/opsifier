@@ -40,8 +40,8 @@
     "open": "Open IT Tools",
     "inPanel": "See it in the panel",
     "certificate": "The first visit can take a few seconds more, while its certificate is issued.",
-    "protected": "This server is in {{purpose}}: the app first asks for the server's password, user {{user}}, and the password you copied when you chose. Lost it? Set a new one under Settings, Purpose.",
-    "protectedNoUser": "This server is in {{purpose}}: the app first asks for the server's password, set under Settings, Purpose.",
+    "protected": "This server is in {{purpose}}, so its sites stay private: opened from the panel, they let you in at once; anyone else is asked for the server's password, user {{user}}. Lost it? Set a new one under Settings, Purpose.",
+    "protectedNoUser": "This server is in {{purpose}}, so its sites stay private: opened from the panel, they let you in at once; anyone else is asked for the server's password, set under Settings, Purpose.",
     "locked": "Choose what this server is for first: until then, every site on it stays locked.",
     "choose": "Choose now",
     "failed": "IT Tools could not be deployed.",
@@ -83,7 +83,7 @@
       },
       "purpose": {
         "title": "Who can see the sites",
-        "body": "While the server is in development or staging, every site asks for its password and stays out of search engines. In production they are public."
+        "body": "While the server is in development or staging, every site asks for its password and stays out of search engines; opened from the panel, it lets you in without it. In production they are public."
       },
       "palette": {
         "title": "Go anywhere",

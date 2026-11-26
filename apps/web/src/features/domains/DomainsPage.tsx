@@ -21,6 +21,7 @@ import {
   type VisualState,
 } from "../../ui";
 import { useCurrentUser } from "../auth/session";
+import { useOpenSite } from "../server-purpose/open-site";
 import { DomainProtectionLamp } from "../server-purpose/ProtectionIndicator";
 import { domainsOverviewKey, domainsOverviewQuery, overviewApi } from "./api";
 import { DomainFormDialog } from "./DomainFormDialog";
@@ -47,6 +48,7 @@ function DomainRow({
   onDelete: () => void;
 }) {
   const { t } = useTranslation("domains");
+  const openSite = useOpenSite();
   const stateLabel = t(`tls.${domain.tls}`);
   const target =
     domain.destination === "service"
@@ -71,6 +73,7 @@ function DomainRow({
             href={domain.url}
             target="_blank"
             rel="noreferrer noopener"
+            onClick={domain.wildcard ? undefined : (event) => openSite(event, domain.url)}
             aria-label={t("open")}
             className="flex size-8 items-center justify-center rounded-sm text-muted hover:bg-wash hover:text-ink"
           >

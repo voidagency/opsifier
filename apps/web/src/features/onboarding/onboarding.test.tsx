@@ -251,6 +251,15 @@ describe("the sample app", () => {
     ];
     const open = await screen.findByRole("link", { name: "Open IT Tools" }, { timeout: 5000 });
     expect(open.getAttribute("href")).toBe("https://apps-it-tools.34.240.101.95.sslip.io/");
+    // Its sites ask for the server's password: a click goes through the panel, which lets the browser in.
+    const opened = vi.spyOn(window, "open").mockReturnValue(null);
+    fireEvent.click(open);
+    expect(opened).toHaveBeenCalledWith(
+      `/api/v1/server-purpose/open?url=${encodeURIComponent("https://apps-it-tools.34.240.101.95.sslip.io/")}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+    opened.mockRestore();
     expect(screen.getByRole("link", { name: "See it in the panel" }).getAttribute("href")).toBe(
       "/projects/apps/app/it-tools",
     );

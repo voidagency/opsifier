@@ -9,6 +9,7 @@ import { createErrorHandler, errorBody, notFoundHandler, validationHook } from "
 import { PROXY_PAGES_PREFIX } from "./core/proxy";
 import * as featureModules from "./features";
 import { authorizeRequests, guardPanelHost, strictTransport } from "./features/access/guard";
+import { OPEN_SITE_PATH, ownPagePolicy } from "./features/server-purpose/gate";
 import { noindexPanelResponses } from "./features/server-purpose/routes";
 import { INSPECTOR_PATH, SNAPSHOT_PATH } from "./features/studio/preview";
 import { requireTwoFactorSetup } from "./features/two-factor-policy/service";
@@ -102,6 +103,9 @@ export function createApp(deps: AppDeps, featureList: Feature[] = features): Api
       c.header("Cross-Origin-Resource-Policy", "cross-origin");
     });
   }
+  // The hop that opens a protected site sends a form to that site, which the panel's own pages may not
+  // do: its page names a policy of its own, for that one site, set around the headers below.
+  app.use(OPEN_SITE_PATH, ownPagePolicy());
   app.use(
     "*",
     secureHeaders({

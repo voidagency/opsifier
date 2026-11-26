@@ -31,6 +31,17 @@ export const PASS_ROUTER_PREFIX = `${RESERVED}pass-`;
 export const PASS_BASIC_ROUTER_PREFIX = `${RESERVED}passbasic-`;
 /** The cookie the gate remembers a browser by, on each site it got into. */
 export const GATE_COOKIE = "opsifier_gate";
+/**
+ * On a protected site's own address: where a pass from the panel, which a form sends there, becomes
+ * the gate's cookie. A route of its own sends it to the panel, so the site never sees a pass, whether
+ * its browser is known or not.
+ */
+export const GATE_PASS_PATH = "/__opsifier/gate-pass";
+/** Where the panel answers that address: under the proxy's pages, which answer under any name. */
+export const GATE_PASS_PAGE = `${PROXY_PAGES_PREFIX}/gate-pass`;
+/** The route of that address, on each host a service answers on. */
+export const ENTRY_ROUTER_PREFIX = `${RESERVED}entry-`;
+const ENTRY_PATH_MIDDLEWARE = `${RESERVED}entry-path`;
 /** What a value of the cookie looks like: anything else is never written into a rule. */
 const GATE_TOKEN = /^[0-9a-f]{32,128}$/;
 /** A request that sends a password the way a browser sends the gate's. */
@@ -257,6 +268,22 @@ function robotsRouter(source: Router, priority: number): Router {
   };
 }
 
+/**
+ * The route of {@link GATE_PASS_PATH} on one host: to the panel, with nothing of the site's own on
+ * the way, and ranked with robots.txt, above any route of the site, a twin for a known browser too.
+ */
+function entryRouter(source: Router, host: string): Router {
+  const { tls, entryPoints } = source;
+  return {
+    rule: `Host(\`${host}\`) && Path(\`${GATE_PASS_PATH}\`)`,
+    priority: ROBOTS_PRIORITY,
+    ...(entryPoints === undefined ? {} : { entryPoints }),
+    middlewares: [NOINDEX_MIDDLEWARE, ENTRY_PATH_MIDDLEWARE],
+    service: PANEL_SERVICE,
+    ...(tls === undefined ? {} : { tls }),
+  };
+}
+
 /** Exactly where the exemption says, and never wider than the route it belongs to. */
 function exemptionMatcher({ kind, value }: ProtectionExemption): string | null {
   if (kind === "ip") {
@@ -292,6 +319,7 @@ function sharedDefinitions(plan: ProtectionPlan): Record<string, unknown> {
     [NOINDEX_MIDDLEWARE]: { headers: { customResponseHeaders: { "X-Robots-Tag": ROBOTS_TAG } } },
     [GATE_MIDDLEWARE]: { basicAuth: { users: gateUsers(plan), realm: REALM, removeHeader: true } },
     [ROBOTS_PATH_MIDDLEWARE]: { replacePath: { path: ROBOTS_TXT_PATH } },
+    [ENTRY_PATH_MIDDLEWARE]: { replacePath: { path: GATE_PASS_PAGE } },
     ...(remember === null
       ? {}
       : {
@@ -378,6 +406,7 @@ export function protectServiceConfig(input: unknown, plan: ProtectionPlan): Rout
   const routers: Record<string, Router> = {};
   const added: Record<string, unknown> = {};
   const seenRobots = new Set<string>();
+  const seenEntries = new Set<string>();
   const remember = rememberOf(plan);
 
   for (const [name, router] of Object.entries(config.http.routers)) {
@@ -415,6 +444,16 @@ export function protectServiceConfig(input: unknown, plan: ProtectionPlan): Rout
     if (!seenRobots.has(robots)) {
       seenRobots.add(robots);
       routers[`${ROBOTS_ROUTER_PREFIX}${name}`] = robotsRouter(router, ROBOTS_PRIORITY);
+    }
+
+    // Where a pass from the panel lets a browser in, on every host a route names for certain, behind
+    // the gate or behind a sign-in of its own: a pass sent to a host without it would reach the site.
+    // A route that sends to HTTPS gets none: the request goes on to HTTPS, and finds it there.
+    const host = chain[0] === REDIRECT_HTTPS_MIDDLEWARE ? null : soleHost(router.rule);
+    const entry = `${host}|${entryKey(router)}`;
+    if (host !== null && !seenEntries.has(entry)) {
+      seenEntries.add(entry);
+      routers[`${ENTRY_ROUTER_PREFIX}${name}`] = entryRouter(router, host);
     }
 
     plan.exemptions.forEach((exemption, index) => {

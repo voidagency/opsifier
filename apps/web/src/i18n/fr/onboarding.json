@@ -40,8 +40,8 @@
     "open": "Ouvrir IT Tools",
     "inPanel": "Le voir dans le panneau",
     "certificate": "La première visite peut prendre quelques secondes de plus, le temps d'émettre son certificat.",
-    "protected": "Ce serveur est en {{purpose}} : l'app demande d'abord le mot de passe du serveur, utilisateur {{user}}, et le mot de passe copié au moment du choix. Perdu ? Définissez-en un nouveau dans Réglages, Rôle.",
-    "protectedNoUser": "Ce serveur est en {{purpose}} : l'app demande d'abord le mot de passe du serveur, défini dans Réglages, Rôle.",
+    "protected": "Ce serveur est en {{purpose}}, ses sites restent donc privés : ouverts depuis le panneau, ils vous laissent entrer directement ; toute autre personne doit saisir le mot de passe du serveur, utilisateur {{user}}. Perdu ? Définissez-en un nouveau dans Réglages, Rôle.",
+    "protectedNoUser": "Ce serveur est en {{purpose}}, ses sites restent donc privés : ouverts depuis le panneau, ils vous laissent entrer directement ; toute autre personne doit saisir le mot de passe du serveur, défini dans Réglages, Rôle.",
     "locked": "Choisissez d'abord à quoi sert ce serveur : d'ici là, chaque site y reste verrouillé.",
     "choose": "Choisir maintenant",
     "failed": "IT Tools n'a pas pu être déployé.",
@@ -83,7 +83,7 @@
       },
       "purpose": {
         "title": "Qui voit les sites",
-        "body": "Tant que le serveur est en développement ou en préproduction, chaque site demande son mot de passe et reste hors des moteurs de recherche. En production, ils sont publics."
+        "body": "Tant que le serveur est en développement ou en préproduction, chaque site demande son mot de passe et reste hors des moteurs de recherche ; ouvert depuis le panneau, il ne vous le demande pas. En production, ils sont publics."
       },
       "palette": {
         "title": "Aller partout",

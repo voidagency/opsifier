@@ -173,7 +173,8 @@ export function requirementFor(method: string, path: string): Requirement {
       // A backup of the server holds every secret on it: the same people as its shell and disk.
       return second === "reboot" || second === "disk" || second === "backup" ? HOST_ADMIN : SERVER_ADMIN;
     case "server-purpose":
-      return second === undefined && isSafeMethod(method) ? OPEN : SERVER_ADMIN;
+      // The hop that opens a site answers signed out too, and checks who may pass its gate itself.
+      return (second === undefined || second === "open") && isSafeMethod(method) ? OPEN : SERVER_ADMIN;
     case "system":
       // Updating or rolling back the panel is server administration, as much as its settings are.
       return (second === "info" || second === "storage" || second === "about") && isSafeMethod(method)

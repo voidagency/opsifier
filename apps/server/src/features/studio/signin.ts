@@ -119,9 +119,16 @@ export function mayOpenPreview(db: DbHandle, userId: string, serviceId: string):
   );
 }
 
+/**
+ * Whether a character changes how a browser reads an address: it drops tabs and line breaks before
+ * reading one, so that `/<tab>/elsewhere` is `//elsewhere`, another site; a backslash reads as a slash.
+ */
+const misleads = (character: string): boolean =>
+  character < " " || character === "\u007f" || character === "\\";
+
 /** A path on the preview to land on: absolute, on the same host, and nothing a browser reads as another. */
 export function safeReturnPath(to: string | undefined): string {
-  if (to === undefined || !to.startsWith("/") || to.startsWith("//") || /[\\\r\n]/.test(to)) {
+  if (to === undefined || !to.startsWith("/") || to.startsWith("//") || [...to].some(misleads)) {
     return "/";
   }
   return to;

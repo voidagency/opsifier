@@ -3,6 +3,7 @@ import { join } from "node:path";
 import {
   type AllowlistEntry,
   type AllowlistState,
+  type CreatedApiKey,
   type ProtectionUserList,
   type ProtectionUserResult,
   type ServerPurposeState,
@@ -12,14 +13,16 @@ import {
 import bcrypt from "bcryptjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
-import { apiErrorOf, call, type TestContext } from "../../testing/harness";
+import { apiErrorOf, call, signInMember, TEST_ORIGIN, type TestContext } from "../../testing/harness";
 import { requirementFor } from "../access/policy";
 import { type DatabaseTestContext, setupDatabaseTests } from "../databases/testing";
 import { PANEL_DOMAIN_KEY } from "../server/panel-host";
 import {
+  ENTRY_ROUTER_PREFIX,
   GATE_CHECK_MIDDLEWARE,
   GATE_COOKIE,
   GATE_MIDDLEWARE,
+  GATE_PASS_PATH,
   GATE_STRIP_MIDDLEWARE,
   NOINDEX_MIDDLEWARE,
   PASS_BASIC_ROUTER_PREFIX,
@@ -94,6 +97,13 @@ function expectEveryRouterProtected(): void {
     if (name.startsWith(ROBOTS_ROUTER_PREFIX)) {
       expect(router.rule, where).toContain("Path(`/robots.txt`)");
       expect(gated(router), where).toBe(false);
+      continue;
+    }
+    if (name.startsWith(ENTRY_ROUTER_PREFIX)) {
+      // Where a pass becomes the gate's cookie: the panel answers it, and nothing of the site's own.
+      expect(router.rule, where).toMatch(/^Host\(`[^`]+`\) && Path\(`\/__opsifier\/gate-pass`\)$/);
+      expect(router.service, where).toBe("opsifier-panel");
+      expect(router.middlewares, where).toEqual([NOINDEX_MIDDLEWARE, "opsifier-protect-entry-path"]);
       continue;
     }
     if (file === "_base.yaml") {
@@ -659,6 +669,189 @@ describe("the gate remembering a browser", () => {
 
     await setPurpose("production", "PUBLIC 0");
     expect((await asked({ authorization: basic(username, password) })).status).toBe(401);
+  });
+
+  describe("opened from the panel", () => {
+    /** Through the panel's hop, as a browser follows a link of the panel to the site. */
+    const hop = (url: string, cookie = suite.cookie, headers: Record<string, string> = {}) =>
+      call<string>(context.app, `/api/v1/server-purpose/open?${new URLSearchParams({ url })}`, {
+        cookie,
+        headers,
+      });
+    const unescapeHtml = (value: string) =>
+      value
+        .replaceAll("&lt;", "<")
+        .replaceAll("&gt;", ">")
+        .replaceAll("&quot;", '"')
+        .replaceAll("&#39;", "'")
+        .replaceAll("&amp;", "&");
+    /** What the hop's page sends at once: where, the pass, and the path to land on. */
+    const formOf = (page: { body: unknown }) => {
+      const html = String(page.body);
+      const field = (name: string) =>
+        unescapeHtml(new RegExp(`name="${name}" value="([^"]*)"`).exec(html)?.[1] ?? "");
+      return {
+        action: unescapeHtml(/<form method="post" action="([^"]*)"/.exec(html)?.[1] ?? ""),
+        pass: field("pass"),
+        to: field("to"),
+      };
+    };
+    /** The site's address for passes, which the proxy brings to the panel, as the form sends it. */
+    const entry = (host: string, form: Record<string, string>) =>
+      call(context.app, "/api/proxy-pages/gate-pass", {
+        method: "POST",
+        rawBody: new URLSearchParams(form).toString(),
+        headers: {
+          host,
+          "x-forwarded-host": host,
+          "x-forwarded-proto": "https",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+      });
+    const location = (result: { headers: Headers }) => result.headers.get("location") ?? "";
+
+    async function site(): Promise<string> {
+      await staging();
+      await suite.api("/projects/shop/services", "POST", { name: "web" });
+      const host = twins()[0]?.host;
+      if (host === undefined) {
+        throw new Error("No route of the site");
+      }
+      return host;
+    }
+
+    it("has an address for passes on every host, which the panel answers", async () => {
+      const host = await site();
+
+      const entries = allRouters().filter(({ name }) => name.startsWith(ENTRY_ROUTER_PREFIX));
+      expect(entries.map(({ router }) => router.rule)).toContain(
+        `Host(\`${host}\`) && Path(\`${GATE_PASS_PATH}\`)`,
+      );
+      const base = routingFiles().find(({ file }) => file === "_base.yaml")?.http.middlewares ?? {};
+      expect(base["opsifier-protect-entry-path"]).toEqual({
+        replacePath: { path: "/api/proxy-pages/gate-pass" },
+      });
+
+      await setPurpose("production", "PUBLIC 1");
+      expect(allRouters().some(({ name }) => name.startsWith(ENTRY_ROUTER_PREFIX))).toBe(false);
+    });
+
+    it("lets an administrator in without the password, once, on the page the link was for", async () => {
+      const host = await site();
+
+      const page = await hop(`https://${host}/reports?week=3&sort=a#top`);
+      expect(page.status).toBe(200);
+      const form = formOf(page);
+      expect(form.action).toBe(`https://${host}${GATE_PASS_PATH}`);
+      expect(form.to).toBe("/reports?week=3&sort=a#top");
+      expect(form.pass).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      // The page may send its one form to that site and nowhere else, and run its one script only.
+      const policy = page.headers.get("content-security-policy") ?? "";
+      expect(policy).toContain(`form-action https://${host};`);
+      expect(policy).toMatch(/script-src 'sha256-[A-Za-z0-9+/]{43}=';/);
+      expect(policy).toContain("default-src 'none'");
+      expect(page.headers.get("x-opsifier-page-policy")).toBeNull();
+
+      const landed = await entry(host, { pass: form.pass, to: form.to });
+      expect(landed.status).toBe(303);
+      expect(location(landed)).toBe(`https://${host}/reports?week=3&sort=a#top`);
+      expect(landed.setCookie).toContain("HttpOnly");
+      expect(landed.setCookie).toContain("Secure");
+      expect(landed.setCookie).toContain("SameSite=Lax");
+      expect(landed.setCookie).toContain("Max-Age=604800");
+      // The very cookie the right password gives, which the site's routes let through.
+      expect(tokensOf(host)[1]).toBe(cookieValue(landed));
+
+      const again = await entry(host, { pass: form.pass, to: form.to });
+      expect(again.status).toBe(303);
+      expect(again.setCookie).toBeNull();
+    });
+
+    it("takes a pass on its own host only, within a minute, and only from a form", async () => {
+      const host = await site();
+      await suite.api("/projects/shop/services", "POST", { name: "api" });
+      const other = twins().find((twin) => twin.host !== host)?.host ?? "";
+      const pass = async () => formOf(await hop(`https://${host}/`)).pass;
+
+      expect((await entry(other, { pass: await pass() })).setCookie).toBeNull();
+
+      const late = await pass();
+      context.advance(61_000);
+      expect((await entry(host, { pass: late })).setCookie).toBeNull();
+
+      // In an address, a pass is refused and left alone: anyone may have read it there.
+      const read = await pass();
+      const inAddress = await call(
+        context.app,
+        `/api/proxy-pages/gate-pass?${new URLSearchParams({ pass: read })}`,
+        {
+          headers: { host, "x-forwarded-host": host, "x-forwarded-proto": "https" },
+        },
+      );
+      expect(inAddress.status).toBe(303);
+      expect(location(inAddress)).toBe(`https://${host}/`);
+      expect(inAddress.setCookie).toBeNull();
+      expect(cookieValue(await entry(host, { pass: read }))).toBe(tokensOf(host)[1]);
+    });
+
+    it("gives a member a pass for a site of their projects, and sends them straight to any other", async () => {
+      const host = await site();
+      await suite.api("/projects", "POST", { name: "other" });
+      const viewer = await signInMember(context.app, suite.cookie, "viewer@example.com", [
+        { project: "shop", role: "viewer" },
+      ]);
+      const outsider = await signInMember(context.app, suite.cookie, "outsider@example.com", [
+        { project: "other", role: "maintainer" },
+      ]);
+
+      expect(formOf(await hop(`https://${host}/`, viewer)).pass).not.toBe("");
+      const straight = await hop(`https://${host}/`, outsider);
+      expect(straight.status).toBe(302);
+      expect(location(straight)).toBe(`https://${host}/`);
+    });
+
+    it("sends an API key, a signed-out browser and every site of a server in production straight there", async () => {
+      const host = await site();
+      const key = await call<CreatedApiKey>(context.app, "/api/v1/me/api-keys", {
+        method: "POST",
+        body: { name: "automation" },
+        cookie: suite.cookie,
+        origin: TEST_ORIGIN,
+      });
+
+      expect(location(await hop(`https://${host}/a`, ""))).toBe(`https://${host}/a`);
+      expect(
+        location(await hop(`https://${host}/a`, "", { authorization: `Bearer ${key.body.token}` })),
+      ).toBe(`https://${host}/a`);
+
+      await setPurpose("production", "PUBLIC 1");
+      expect(location(await hop(`https://${host}/a`))).toBe(`https://${host}/a`);
+    });
+
+    it("sends nobody to an address that is not one of this server's sites, nor off the site after", async () => {
+      const host = await site();
+
+      for (const url of [
+        "https://elsewhere.example/",
+        "javascript:alert(1)",
+        "not a link",
+        `ftp://${host}/`,
+      ]) {
+        expect((await hop(url)).status, url).toBe(404);
+      }
+      expect(formOf(await hop(`https://${host}//elsewhere.example/x`)).to).toBe("/");
+
+      for (const to of [
+        "//elsewhere.example/",
+        "https://elsewhere.example/",
+        "/\\elsewhere.example",
+        "/\t/elsewhere.example",
+        "/\n/elsewhere.example",
+      ]) {
+        const { pass } = formOf(await hop(`https://${host}/`));
+        expect(location(await entry(host, { pass, to })), JSON.stringify(to)).toBe(`https://${host}/`);
+      }
+    });
   });
 });
 

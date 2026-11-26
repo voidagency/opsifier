@@ -90,6 +90,15 @@ A browser that gave the right password is remembered on that site for a week. Th
 - A browser not yet remembered goes through the panel. While the panel restarts, its request gets an error rather than the password prompt, and so does a script that sends the password with every request. Browsers already remembered, and scripts that keep the cookie between requests, don't depend on the panel.
 - A service with users of its own, under **Security**, still asks for its own password with every request.
 
+Opened from the panel, a site lets you in without the password. **Open**, a domain's link and the sample app's link go through the panel, which hands your browser a pass good once, for a minute, on that one site. A page of the panel sends it at once, in a form, to the site's own address for passes, `/__opsifier/gate-pass`, which the proxy brings back to the panel: the pass becomes the same cookie the password gives, and you land on the page you opened. The pass is never in an address, so neither the site's pages nor your history nor a log ever holds it.
+
+- Administrators get a pass for every site of the server, other accounts for the sites of the projects they can see, whatever their role. Anyone else is asked for the password, as before.
+- The cookie names no one, as the password names no one: a browser let in keeps going in for up to two weeks, even if its account then loses the project or is deactivated. To shut someone out at once, change the server's password under **Settings, Purpose**: every cookie changes with it.
+- A plain click uses the pass. A click with a key held, or the browser's own **Open link in new tab**, opens the site's address as it is: a browser that got in that week goes in again, any other is asked for the password.
+- The link keeps the site's own address, to copy and send. Whoever opens that address is asked for the password unless their browser already got in that week, signed in to the panel or not: only the panel's own link skips it.
+- A site's service worker that answers a form sent to the site by itself, rather than letting it through, keeps the pass from arriving: the page it shows instead is the site's own, and the password is asked as before. Service workers made with the usual tools, which answer pages from their cache, let a form through.
+- A service with users of its own still asks for its own password: a pass only stands in for the server's.
+
 ## The panel's own address
 
 **Settings, General, Panel domain** gives the panel a domain of its own, which must point at the server. Turn **Serve on IP** off and only its domains answer.

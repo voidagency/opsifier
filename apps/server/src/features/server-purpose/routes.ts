@@ -22,7 +22,7 @@ import { errorResponse, jsonBody, jsonResponse } from "../../core/openapi";
 import { requestAccess } from "../access/guard";
 import { roleInProject } from "../access/rules";
 import { ROBOTS_TAG, ROBOTS_TXT, ROBOTS_TXT_PATH } from "../services/compile/protection";
-import { registerGateCheck } from "./gate";
+import { OPEN_SITE_PATH, registerGateCheck, registerGatePass } from "./gate";
 import { readProtection } from "./repo";
 import {
   addAllowlistEntry,
@@ -201,6 +201,9 @@ const refreshers = new WeakMap<AppDeps, () => void>();
 export const feature: Feature = {
   boot: reconcileProtection,
 
+  // Signed out, the hop that opens a site sends the browser straight to it, where the gate asks.
+  publicPaths: [OPEN_SITE_PATH],
+
   // The gate's cookie changes every week, so its routes are brought to the week's values.
   ready(deps) {
     refreshers.get(deps)?.();
@@ -215,6 +218,8 @@ export const feature: Feature = {
   register(app, deps) {
     // Traefik asks here about a request to a protected site that carries no cookie of the gate.
     registerGateCheck(app, deps);
+    // A site opened from the panel goes past its gate without the password, for someone who may open it.
+    registerGatePass(app, deps);
 
     // What the proxy answers on /robots.txt of every host, and the panel's own too.
     app.all(ROBOTS_TXT_PATH, (c) => {

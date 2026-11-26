@@ -18,6 +18,7 @@ import {
 } from "../../ui";
 import { useCurrentUser } from "../auth/session";
 import { protectionUsersQuery, purposeQuery } from "../server-purpose/api";
+import { useOpenSite } from "../server-purpose/open-site";
 import { serviceDomainQuery } from "../settings/server/api";
 import { ServerAddressDialog } from "../settings/server/ServerAddressDialog";
 import { isPrivateIp } from "./address";
@@ -110,6 +111,8 @@ function SampleProgress({ sample }: { sample: SampleApp }) {
   const user = users.data?.users[0]?.username ?? null;
   const chosen = purpose.data?.purpose ?? null;
   const purposeName = chosen === null ? "" : t(`server-purpose:purposes.${chosen}`).toLowerCase();
+  const openSite = useOpenSite();
+  const url = sample.url;
 
   return (
     <div className="grid gap-4 p-4 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] md:p-5">
@@ -143,24 +146,26 @@ function SampleProgress({ sample }: { sample: SampleApp }) {
         {sample.stage === "live" && (
           <>
             <p className="text-sm font-medium">{t("sample.live")}</p>
-            {sample.url !== null && (
+            {url !== null && (
               <p className="font-mono text-sm break-all">
                 <a
-                  href={sample.url}
+                  href={url}
                   target="_blank"
                   rel="noreferrer noopener"
+                  onClick={(event) => openSite(event, url)}
                   className="underline underline-offset-4"
                 >
-                  {sample.url}
+                  {url}
                 </a>
               </p>
             )}
             <div className="flex flex-wrap items-center gap-2">
-              {sample.url !== null && (
+              {url !== null && (
                 <a
-                  href={sample.url}
+                  href={url}
                   target="_blank"
                   rel="noreferrer noopener"
+                  onClick={(event) => openSite(event, url)}
                   className={buttonClass("primary")}
                 >
                   <ExternalLink aria-hidden="true" className="size-4" />

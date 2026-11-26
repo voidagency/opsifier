@@ -26,6 +26,7 @@ import {
   WakeStrip,
 } from "../../ui";
 import { projectsKey } from "../projects/api";
+import { useOpenSite } from "../server-purpose/open-site";
 import { MetricsRow } from "../service-runtime/MetricsRow";
 import { ConsoleButton, LogsButton } from "../service-runtime/RuntimeButtons";
 import { useActionFollower } from "../services/ActionFollower";
@@ -72,6 +73,8 @@ function ComposeToolbar({ detail }: { detail: ServiceDetail }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const follow = useActionFollower();
+  const openSite = useOpenSite();
+  const openUrl = detail.primaryUrl;
   const [notesOpen, setNotesOpen] = useState(false);
   const [destroyOpen, setDestroyOpen] = useState(false);
 
@@ -164,7 +167,7 @@ function ComposeToolbar({ detail }: { detail: ServiceDetail }) {
       </Button>
       <LogsButton project={project} service={service} />
       <ConsoleButton project={project} service={service} running={detail.replicas.running > 0} />
-      {detail.primaryUrl === null ? (
+      {openUrl === null ? (
         <Button
           size="icon"
           aria-label={t("services:toolbar.open")}
@@ -175,9 +178,10 @@ function ComposeToolbar({ detail }: { detail: ServiceDetail }) {
       ) : (
         <Tooltip content={t("services:toolbar.open")}>
           <a
-            href={detail.primaryUrl}
+            href={openUrl}
             target="_blank"
             rel="noreferrer noopener"
+            onClick={(event) => openSite(event, openUrl)}
             aria-label={t("services:toolbar.open")}
             className="flex size-8 items-center justify-center rounded-sm border border-off hover:bg-wash"
           >

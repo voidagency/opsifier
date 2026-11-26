@@ -46,7 +46,7 @@ Its output streams into the live log drawer at the bottom of the screen, and sta
 
 Press **Open this site**. The certificate can take a moment after the first deployment.
 
-Until the server is in production, every site on it asks for the server's password and stays out of search engines. That password is shown once when you choose the server's purpose, and managed under **Settings, Purpose**. Move the server to production when its sites should be public.
+Until the server is in production, every site on it asks for the server's password and stays out of search engines. Opened from the panel, with **Open** or a domain's link, a site lets you in without it. That password, for everyone else, is shown once when you choose the server's purpose, and managed under **Settings, Purpose**. Move the server to production when its sites should be public.
 
 ## 6. Use your own domain
 

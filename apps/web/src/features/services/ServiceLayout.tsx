@@ -22,6 +22,7 @@ import {
   useDocumentTitle,
 } from "../../ui";
 import { projectsKey } from "../projects/api";
+import { useOpenSite } from "../server-purpose/open-site";
 import { ConsoleButton, LogsButton } from "../service-runtime/RuntimeButtons";
 import { useActionFollower } from "./ActionFollower";
 import { serviceKey, serviceQuery, servicesApi, useServiceParams } from "./api";
@@ -60,6 +61,8 @@ export function ServiceToolbar({ detail }: { detail: ServiceDetail }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const follow = useActionFollower();
+  const openSite = useOpenSite();
+  const openUrl = detail.primaryUrl;
   const [notesOpen, setNotesOpen] = useState(false);
   const [destroyOpen, setDestroyOpen] = useState(false);
 
@@ -142,7 +145,7 @@ export function ServiceToolbar({ detail }: { detail: ServiceDetail }) {
       </Button>
       <LogsButton project={project} service={service} />
       <ConsoleButton project={project} service={service} running={detail.replicas.running > 0} />
-      {detail.primaryUrl === null ? (
+      {openUrl === null ? (
         <Button
           size="icon"
           aria-label={t("toolbar.open")}
@@ -154,9 +157,10 @@ export function ServiceToolbar({ detail }: { detail: ServiceDetail }) {
       ) : (
         <Tooltip content={t("toolbar.open")}>
           <a
-            href={detail.primaryUrl}
+            href={openUrl}
             target="_blank"
             rel="noreferrer noopener"
+            onClick={(event) => openSite(event, openUrl)}
             aria-label={t("toolbar.open")}
             data-tour="service-open"
             className="flex size-8 items-center justify-center rounded-sm border border-off hover:bg-wash"
