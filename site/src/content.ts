@@ -29,6 +29,7 @@ const en = {
     switchLabel: "Français",
     switchLang: "fr",
     home: "Opsifier home",
+    menu: "Menu",
   },
   hero: {
     question: "Is everything running?",
@@ -253,6 +254,7 @@ const fr: Content = {
     switchLabel: "English",
     switchLang: "en",
     home: "Accueil Opsifier",
+    menu: "Menu",
   },
   hero: {
     question: `Est-ce que tout tourne${NB}?`,

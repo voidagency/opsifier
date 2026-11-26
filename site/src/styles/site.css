@@ -221,6 +221,109 @@ h2 {
   transform: scaleX(1);
 }
 
+/* The Menu button: on a phone only, and only once the script can open it. */
+.bar__menu {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .bar__menu:not([hidden]) {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    margin-inline-end: -10px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--white);
+    font: inherit;
+    font-size: 0.95em;
+    cursor: pointer;
+  }
+
+  .bar__menu svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+  }
+
+  .bar__menu path {
+    transform-origin: 12px 12px;
+    transition:
+      transform 0.24s var(--ease),
+      opacity 0.16s var(--ease);
+  }
+
+  .bar[data-menu="open"] .bar__menu-top {
+    transform: translateY(5px) rotate(45deg);
+  }
+
+  .bar[data-menu="open"] .bar__menu-mid {
+    opacity: 0;
+  }
+
+  .bar[data-menu="open"] .bar__menu-low {
+    transform: translateY(-5px) rotate(-45deg);
+  }
+
+  /* Without the script, the links scroll inside the bar rather than the page. */
+  .bar nav {
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  /* With it, they fold under the button and open as a panel under the bar. */
+  .bar[data-menu] nav {
+    display: none;
+  }
+
+  .bar[data-menu="open"] nav {
+    position: absolute;
+    top: 100%;
+    inset-inline: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 4px var(--gut) 12px;
+    overflow: visible;
+    background: var(--navy);
+    border-bottom: 1px solid var(--navy-line);
+    animation: menu-in 0.2s var(--ease) both;
+  }
+
+  .bar[data-menu="open"] nav a,
+  .bar[data-menu="open"] nav .hide-s {
+    display: block;
+    margin: 0;
+    padding: 13px 0;
+    border-top: 1px solid var(--navy-line);
+    color: var(--white);
+    font-size: 1.02em;
+  }
+
+  .bar[data-menu="open"] nav a:first-child {
+    border-top: 0;
+  }
+
+  .bar[data-menu="open"] nav a::after {
+    inset: auto auto 8px 0;
+    width: 24px;
+  }
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+}
+
 /* Lamps */
 .lamp {
   width: 100%;

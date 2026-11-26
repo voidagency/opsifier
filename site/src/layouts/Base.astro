@@ -144,7 +144,15 @@ const structured = {
           </svg>
           <span>Opsifier</span>
         </a>
-        <nav aria-label={t.nav.label}>
+        <button class="bar__menu" type="button" aria-expanded="false" aria-controls="site-nav" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path class="bar__menu-top" d="M4 7H20"></path>
+            <path class="bar__menu-mid" d="M4 12H20"></path>
+            <path class="bar__menu-low" d="M4 17H20"></path>
+          </svg>
+          <span>{t.nav.menu}</span>
+        </button>
+        <nav id="site-nav" aria-label={t.nav.label}>
           <a class="hide-s" href={`${home}#runs`}>{t.nav.what}</a>
           <a class="hide-s" href={`${home}#status`}>{t.nav.status}</a>
           <a href={demo} aria-current={path === demo ? "page" : undefined}>{t.nav.demo}</a>
@@ -180,6 +188,7 @@ const structured = {
       </div>
     </footer>
     <script>
+      import "../scripts/menu.ts";
       import "../scripts/site.ts";
     </script>
   </body>
